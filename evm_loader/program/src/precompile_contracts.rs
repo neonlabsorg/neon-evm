@@ -20,6 +20,7 @@ use crate::{
 const SYSTEM_ACCOUNT_ERC20_WRAPPER: H160 =     H160([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01]);
 const SYSTEM_ACCOUNT_QUERY: H160 =             H160([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x02]);
 const SYSTEM_ACCOUNT_NEON_TOKEN: H160 =        H160([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x03]);
+const SYSTEM_ACCOUNT_ERC20_FACTORY: H160 =     H160([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x04]);
 const SYSTEM_ACCOUNT_ECRECOVER: H160 =         H160([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01]);
 const SYSTEM_ACCOUNT_SHA_256: H160 =           H160([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x02]);
 const SYSTEM_ACCOUNT_RIPEMD160: H160 =         H160([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x03]);
@@ -37,6 +38,7 @@ pub fn is_precompile_address(address: &H160) -> bool {
            *address == SYSTEM_ACCOUNT_ERC20_WRAPPER
         || *address == SYSTEM_ACCOUNT_QUERY
         || *address == SYSTEM_ACCOUNT_NEON_TOKEN
+        || *address == SYSTEM_ACCOUNT_ERC20_FACTORY
         || *address == SYSTEM_ACCOUNT_ECRECOVER
         || *address == SYSTEM_ACCOUNT_SHA_256
         || *address == SYSTEM_ACCOUNT_RIPEMD160
@@ -67,6 +69,9 @@ pub fn call_precompile<'a, B: AccountStorage>(
     }
     if address == SYSTEM_ACCOUNT_NEON_TOKEN {
         return Some(neon_token(input, context, state, gasometer));
+    }
+    if address == SYSTEM_ACCOUNT_ERC20_FACTORY {
+        return Some(erc20_for_spl_factory(input, state));
     }
     if address == SYSTEM_ACCOUNT_ECRECOVER {
         return Some(ecrecover(input));
@@ -357,6 +362,48 @@ pub fn neon_token<'a, B: AccountStorage>(
 
     debug_print!("neon_token UNKNOWN");
     Capture::Exit((ExitReason::Fatal(evm::ExitFatal::NotSupported), vec![]))
+}
+
+// ERC20 Spl Factory method ids:
+//--------------------------------------------------
+// check_spl_token(bytes32)     => fd18a2ce
+//--------------------------------------------------
+const ERC20_FACTORY_METHOD_CREATE_ERC20_CHECK: &[u8; 4] = &[0xfd, 0x18, 0xa2, 0xce];
+
+/// Call inner `neon_token`
+#[must_use]
+#[allow(clippy::too_many_lines)]
+pub fn erc20_for_spl_factory<'a, B: AccountStorage>(
+    input: &[u8],
+    state: &mut ExecutorState<'a, B>,
+)
+    -> Capture<(ExitReason, Vec<u8>), Infallible>
+{
+    debug_print!("erc20_factory({})", hex::encode(&input));
+
+    let (method_id, rest) = input.split_at(4);
+    let method_id: &[u8; 4] = method_id.try_into().unwrap_or(&[0_u8; 4]);
+
+    debug_print!("method_id: {:?}", method_id);
+    match method_id {
+        ERC20_FACTORY_METHOD_CREATE_ERC20_CHECK => {
+            let (account_address, _rest) = rest.split_at(32);
+            // let spl_token_mint_address: Pubkey = Pubkey::new_from_array(*account_address);
+            let spl_token_mint_address: Pubkey = Pubkey::new(account_address);
+            debug_print!("spl_token_mint_address: {}", spl_token_mint_address);
+
+            let is_mint: bool = state.account_is_spl_token_mint(&spl_token_mint_address);
+
+            let mut output = vec![0_u8; 32];
+            output[31] = if is_mint { 1_u8 } else { 0_u8 };
+
+            Capture::Exit((ExitReason::Succeed(evm::ExitSucceed::Returned), output))
+        },
+        _ => {
+            debug_print!("erc20 factory UNKNOWN");
+            Capture::Exit((ExitReason::Fatal(evm::ExitFatal::NotSupported), vec![]))
+        },
+    }
 }
 
 // QueryAccount method ids:

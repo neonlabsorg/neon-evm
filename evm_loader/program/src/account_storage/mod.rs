@@ -75,6 +75,8 @@ pub trait AccountStorage {
     /// Get data from storage
     fn storage(&self, address: &H160, index: &U256) -> U256;
 
+    /// Check if an account is spl-token mint
+    fn account_is_spl_token_mint(&self, token_account: &Pubkey) -> bool;
     /// Get SPL token balance
     fn get_spl_token_balance(&self, token_account: &Pubkey) -> u64;
     /// Get SPL token supply

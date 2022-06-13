@@ -1280,4 +1280,9 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     ) -> ApplyState {
         self.substate.deconstruct(self.backend)
     }
+
+    #[must_use]
+    pub fn account_is_spl_token_mint(&self, token_account: &Pubkey) -> bool {
+        self.backend.account_is_spl_token_mint(token_account)
+    }
 }

@@ -85,6 +85,15 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
             .unwrap_or_else(U256::zero)
     }
 
+    fn account_is_spl_token_mint(&self, token_account: &Pubkey) -> bool {
+        if let Some(account) = self.solana_accounts.get(token_account) {
+            token::Mint::from_account(account)
+                .map_or(false, |a| a.is_initialized )
+        } else {
+            false
+        }
+    }
+    
     fn get_spl_token_balance(&self, token_account: &Pubkey) -> u64 {
         let account = self.solana_accounts[token_account];
         token::State::from_account(account)

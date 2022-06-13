@@ -653,6 +653,26 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         ).unwrap_or_else(U256::zero)
     }
 
+    fn account_is_spl_token_mint(&self, token_mint: &Pubkey) -> bool {
+        let mut solana_accounts = self.solana_accounts.borrow_mut();
+        solana_accounts.entry(*token_mint).or_insert_with(|| AccountMeta::new_readonly(*token_mint, false));
+
+        if let Ok(ref mut account) = self.config.rpc_client.get_account(token_mint) {
+            let info = account_info(token_mint, account);
+            token::Mint::from_account(&info)
+                .map_or(false, |mint| mint.is_initialized )
+        } else {
+            false
+        }
+        
+        // if let Some(account) = self.solana_accounts.get(token_account) {
+        //     token::Mint::from_account(account)
+        //         .map_or(false, |a| a.is_initialized )
+        // } else {
+        //     false
+        // }
+    }
+
     fn get_spl_token_balance(&self, token_account: &Pubkey) -> u64 {
         let mut solana_accounts = self.solana_accounts.borrow_mut();
         solana_accounts.entry(*token_account).or_insert_with(|| AccountMeta::new_readonly(*token_account, false));

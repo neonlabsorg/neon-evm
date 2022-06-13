@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity >=0.5.12;
+pragma solidity >=0.5.16;
 
 
 interface IERC20 {
@@ -22,18 +22,21 @@ interface IERC20 {
 
 
 
-/*abstract*/ contract NeonERC20Wrapper /*is IERC20*/ {
-    address constant NeonERC20 = 0xff00000000000000000000000000000000000001;
+contract ERC20ForSpl {
+    address constant precompiled = 0xff00000000000000000000000000000000000001;
 
-    string public name;
-    string public symbol;
+    address public factory;
+    string  public name;
+    string  public symbol;
     bytes32 public tokenMint;
 
-    constructor(
-        string memory _name,
-        string memory _symbol,
-        bytes32 _tokenMint
-    ) {
+    constructor() {
+        factory = msg.sender;
+    }
+
+    // called once by the factory at time of deployment
+    function initialize(string memory _name, string memory _symbol, bytes32 _tokenMint) external {
+        require(msg.sender == factory, 'Neon ERC20 Factory: FORBIDDEN'); // sufficient check
         name = _name;
         symbol = _symbol;
         tokenMint = _tokenMint;
@@ -41,7 +44,7 @@ interface IERC20 {
 
     fallback() external {
         bytes memory call_data = abi.encodePacked(tokenMint, msg.data);
-        (bool success, bytes memory result) = NeonERC20.delegatecall(call_data);
+        (bool success, bytes memory result) = precompiled.delegatecall(call_data);
 
         require(success, string(result));
 

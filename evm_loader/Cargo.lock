@@ -903,10 +903,8 @@ dependencies = [
 name = "evm-core"
 version = "0.18.2"
 dependencies = [
- "borsh",
  "fixed-hash",
  "impl-rlp",
- "impl-serde",
  "log",
  "rlp",
  "serde",
@@ -952,7 +950,6 @@ dependencies = [
 name = "evm-runtime"
 version = "0.18.0"
 dependencies = [
- "borsh",
  "evm-core",
  "sha3 0.8.2",
 ]

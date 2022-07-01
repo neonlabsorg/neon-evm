@@ -30,6 +30,6 @@ pub mod utils;
 // solana-sdk version
 pub use solana_program;
 
-#[cfg(feature = "tracing")]
+// #[cfg(feature = "tracing")]
 pub use evm::*;
 

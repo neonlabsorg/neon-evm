@@ -1,15 +1,18 @@
+use std::cmp::min;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
+use std::mem::ManuallyDrop;
 use evm::{H160, U256};
 use solana_program::instruction::Instruction;
-use solana_program::{
-    program_error::ProgramError,
-};
-use crate::account::{ACCOUNT_SEED_VERSION, EthereumAccount, EthereumStorage, Operator, program};
-use crate::account_storage::{Account, AccountStorage, ProgramAccountStorage};
+use solana_program::{program_error::ProgramError, system_instruction};
+use solana_program::entrypoint::{MAX_PERMITTED_DATA_INCREASE, ProgramResult};
+use crate::account::{ACCOUNT_SEED_VERSION, ether_contract, EthereumAccount, EthereumStorage, Operator, program};
+use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::executor::{Action, AccountMeta};
 use crate::config::STORAGE_ENTIRIES_IN_CONTRACT_ACCOUNT;
-use solana_program::program::{invoke_signed_unchecked};
+use solana_program::program::{invoke, invoke_signed_unchecked};
+use solana_program::rent::Rent;
+use solana_program::sysvar::Sysvar;
 
 
 impl<'a> ProgramAccountStorage<'a> {
@@ -18,7 +21,7 @@ impl<'a> ProgramAccountStorage<'a> {
         origin: H160,
         mut operator: EthereumAccount<'a>,
         value: U256,
-    ) -> Result<(), ProgramError> {
+    ) -> ProgramResult {
         let origin_balance = self.balance(&origin);
         if origin_balance < value {
             self.transfer_gas_payment(origin, operator, origin_balance)?;
@@ -49,7 +52,7 @@ impl<'a> ProgramAccountStorage<'a> {
         system_program: &program::System<'a>,
         operator: &Operator<'a>,
         actions: Vec<Action>,
-    ) -> Result<(), ProgramError> {
+    ) -> ProgramResult {
 
         debug_print!("Applies begin");
 
@@ -83,7 +86,7 @@ impl<'a> ProgramAccountStorage<'a> {
                     account.trx_count += 1;
                 },
                 Action::EvmSetCode { address, code, valids } => {
-                    self.deploy_contract(address, &code, &valids)?;
+                    self.deploy_contract(address, &code, &valids, system_program, operator)?;
                 },
                 Action::EvmSelfDestruct { address } => {
                     storage.remove(&address);
@@ -113,7 +116,7 @@ impl<'a> ProgramAccountStorage<'a> {
                     let index: usize = key.as_usize() * 32;
                     
                     let contract = self.ethereum_contract_mut(&address);
-                    value.to_big_endian(&mut contract.extension.storage[index..index+32]);
+                    value.to_big_endian(&mut contract.storage[index..index+32]);
                 } else {
                     self.update_storage_infinite(address, key, value, operator, system_program)?;
                 }
@@ -126,42 +129,115 @@ impl<'a> ProgramAccountStorage<'a> {
     }
 
     /// Delete all data in the account.
-    fn delete_account(&mut self, address: H160) -> Result<(), ProgramError> {
+    fn delete_account(&mut self, address: H160) -> ProgramResult {
         let account = self.ethereum_account_mut(&address);
 
         assert_eq!(account.balance, U256::zero()); // balance should be moved by executor
         account.trx_count = 0;
-
-
-        let contract = self.ethereum_contract_mut(&address);
-
-        contract.code_size = 0;
-        contract.generation = contract.generation.checked_add(1)
+        account.generation = account.generation.checked_add(1)
             .ok_or_else(|| E!(ProgramError::InvalidInstructionData; "Account {} - generation overflow", address))?;
 
-        contract.extension.code.fill(0);
-        contract.extension.valids.fill(0);
-        contract.extension.storage.fill(0);
+
+        unsafe {
+            // Release borrowed account data
+            ManuallyDrop::drop(
+                &mut std::mem::replace(&mut account.extension, ManuallyDrop::new(None))
+            );
+        }
+
+        account.info.realloc(EthereumAccount::SIZE, false)?;
 
         Ok(())
     }
 
-    fn deploy_contract(&mut self, address: H160, code: &[u8], valids: &[u8]) -> Result<(), ProgramError> {
-        if let Some(account) = self.ethereum_accounts.get_mut(&address) {
+    fn deploy_contract(
+        &mut self,
+        address: H160,
+        code: &[u8],
+        _valids: &[u8],
+        system_program: &program::System<'a>,
+        payer: &Operator<'a>,
+    ) -> ProgramResult {
+        solana_program::msg!("deploy_contract: begin");
+        let account = self.ethereum_accounts.get_mut(&address)
+            .ok_or_else(|| E!(ProgramError::UninitializedAccount; "Account {} - is not initialized", address))?;
 
-            let contract = match account {
-                Account::User(_) => return Err!(ProgramError::InvalidArgument; "Account {} - is not contract account", address),
-                Account::Contract(_, contract) => contract
-            };
+        solana_program::msg!("deploy_contract: 1");
 
-            contract.code_size = code.len().try_into().expect("code.len() never exceeds u32::max");
+        if account.code_size as usize != code.len() {
+            solana_program::msg!("deploy_contract: 3");
+            unsafe { account.drop_extension(); }
+            solana_program::msg!("deploy_contract: 4");
 
-            contract.reload_extension()?;
-            contract.extension.code.copy_from_slice(code);
-            contract.extension.valids.copy_from_slice(valids);
-        } else {
-            return Err!(ProgramError::UninitializedAccount; "Account {} - is not initialized", address);
+            let mut cur_len = account.info.data_len();
+            let new_len = EthereumAccount::SIZE + ether_contract::Extension::size_needed(code.len());
+
+            let rent = Rent::get()?;
+            solana_program::msg!("deploy_contract: 5");
+
+            let balance_needed = rent.minimum_balance(new_len);
+
+            if account.info.lamports() < balance_needed {
+                solana_program::msg!("deploy_contract: 6");
+                invoke(
+                    &system_instruction::transfer(
+                        payer.key,
+                        account.info.key,
+                        balance_needed - account.info.lamports(),
+                    ),
+                    &[
+                        (*payer).clone(),
+                        account.info.clone(),
+                        (*system_program).clone(),
+                    ],
+                )?;
+            }
+
+            solana_program::msg!("deploy_contract: 7 (cur_len: {}, new_len: {})", cur_len, new_len);
+
+            if cur_len > new_len {
+                solana_program::msg!("deploy_contract: 8");
+                account.info.realloc(new_len, false)?;
+            } else {
+                solana_program::msg!("deploy_contract: 9");
+                while cur_len < new_len {
+                    solana_program::msg!("deploy_contract: 10");
+                    cur_len += min(new_len - cur_len, MAX_PERMITTED_DATA_INCREASE);
+                    account.info.realloc(cur_len, false)?;
+                }
+            }
+
+            solana_program::msg!("deploy_contract: 11");
+
+            account.code_size = code.len()
+                .try_into()
+                .expect("code.len() never exceeds u32::max");
+
+            solana_program::msg!("deploy_contract: 16");
+
+            if account.info.lamports() > balance_needed {
+                solana_program::msg!("deploy_contract: 17");
+                let diff = account.info.lamports().saturating_sub(balance_needed);
+                **account.info.lamports.borrow_mut() = balance_needed;
+                **payer.lamports.borrow_mut() += diff;
+            }
+
+            account.reload_extension()?;
         }
+
+        // solana_program::msg!("deploy_contract: 18");
+        //
+        // let extension = account.extension.as_mut().unwrap();
+        //
+        // solana_program::msg!("deploy_contract: 19");
+        //
+        // extension.code.copy_from_slice(code);
+        //
+        // solana_program::msg!("deploy_contract: 20");
+        //
+        // extension.valids.copy_from_slice(valids);
+
+        solana_program::msg!("deploy_contract: end");
 
         Ok(())
     }
@@ -173,7 +249,7 @@ impl<'a> ProgramAccountStorage<'a> {
         value: U256,
         operator: &Operator<'a>,
         system_program: &program::System<'a>,
-    ) -> Result<(), ProgramError> {
+    ) -> ProgramResult {
         let (solana_address, bump_seed) = self.get_storage_address(&address, &index);
         let account = self.solana_accounts.get(&solana_address)
             .ok_or_else(|| E!(ProgramError::InvalidArgument; "Account {} - storage account not found", solana_address))?;
@@ -207,7 +283,7 @@ impl<'a> ProgramAccountStorage<'a> {
     }
 
 
-    fn transfer_neon_tokens(&mut self, source: H160, target: H160, value: U256) -> Result<(), ProgramError> {
+    fn transfer_neon_tokens(&mut self, source: H160, target: H160, value: U256) -> ProgramResult {
         solana_program::msg!("Transfer {} NEONs from {} to {}", value, source, target);
 
         if source == target {

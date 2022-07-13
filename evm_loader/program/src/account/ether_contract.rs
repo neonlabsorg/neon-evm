@@ -1,11 +1,15 @@
 use std::cell::RefMut;
+use std::mem::size_of;
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
+use evm::{U256, Valids};
 use solana_program::program_error::ProgramError;
 use solana_program::pubkey::Pubkey;
+use crate::account::ether_account::Data;
+use crate::config::STORAGE_ENTIRIES_IN_CONTRACT_ACCOUNT;
 use crate::hamt::Hamt;
 use super::{ Packable, AccountExtension };
 
-/// Ethereum contract data account
+/// Ethereum contract data account v1
 #[deprecated]
 #[derive(Debug)]
 pub struct DataV1 {
@@ -66,10 +70,10 @@ impl Packable for DataV1 {
     }
 }
 
-
-/// Ethereum contract data account
+/// Ethereum contract data account v2
+#[deprecated]
 #[derive(Debug)]
-pub struct Data {
+pub struct DataV2 {
     /// Solana account with ethereum account data associated with this code data
     pub owner: Pubkey,
     /// Contract code size
@@ -86,8 +90,28 @@ pub struct Extension<'a> {
     pub storage: RefMut<'a, [u8]>,
 }
 
-impl<'a> AccountExtension<'a, Data> for Extension<'a> {
-    fn unpack(data: &Data, remaining: RefMut<'a, [u8]>) -> Result<Self, ProgramError> {
+impl<'a> Extension<'a> {
+    pub const INTERNAL_STORAGE_SIZE: usize =
+        size_of::<U256>() * STORAGE_ENTIRIES_IN_CONTRACT_ACCOUNT as usize;
+
+    #[must_use]
+    pub fn size_needed(code_size: usize) -> usize {
+        if code_size == 0 {
+            return 0;
+        }
+
+        code_size + Valids::size_needed(code_size) + Self::INTERNAL_STORAGE_SIZE
+    }
+
+    #[must_use]
+    pub fn size(&self) -> usize {
+        self.code.len() + self.valids.len() + self.storage.len()
+    }
+}
+
+#[allow(deprecated)]
+impl<'a> AccountExtension<'a, DataV2> for Extension<'a> {
+    fn unpack(data: &DataV2, remaining: RefMut<'a, [u8]>) -> Result<Self, ProgramError> {
         let code_size = data.code_size as usize;
         let valids_size = (code_size / 8) + 1;
 
@@ -98,9 +122,26 @@ impl<'a> AccountExtension<'a, Data> for Extension<'a> {
     }
 }
 
-impl Packable for Data {
+impl<'a> AccountExtension<'a, Data> for Option<Extension<'a>> {
+    fn unpack(data: &Data, remaining: RefMut<'a, [u8]>) -> Result<Self, ProgramError> {
+        if data.code_size == 0 {
+            return Ok(None);
+        }
+        let valids_size = Valids::size_needed(data.code_size as usize);
+
+        let (code, rest) = RefMut::map_split(remaining, |r| r.split_at_mut(data.code_size as usize));
+        let (valids, storage) = RefMut::map_split(rest, |r| r.split_at_mut(valids_size));
+
+        assert!(storage.len() >= Extension::INTERNAL_STORAGE_SIZE);
+
+        Ok(Some(Extension { code, valids, storage }))
+    }
+}
+
+#[allow(deprecated)]
+impl Packable for DataV2 {
     /// Contract struct tag
-    const TAG: u8 = super::TAG_CONTRACT;
+    const TAG: u8 = super::_TAG_CONTRACT_V2;
     /// Contract struct serialized size
     const SIZE: usize = 32 + 4 + 4;
 
@@ -108,7 +149,7 @@ impl Packable for Data {
     #[must_use]
     fn unpack(input: &[u8]) -> Self {
         #[allow(clippy::use_self)]
-        let data = array_ref![input, 0, Data::SIZE];
+        let data = array_ref![input, 0, DataV2::SIZE];
         let (owner, code_size, generation) = array_refs![data, 32, 4, 4];
 
         Self {
@@ -121,7 +162,7 @@ impl Packable for Data {
     /// Serialize `Contract` struct into given destination
     fn pack(&self, dst: &mut [u8]) {
         #[allow(clippy::use_self)]
-        let data = array_mut_ref![dst, 0, Data::SIZE];
+        let data = array_mut_ref![dst, 0, DataV2::SIZE];
         let (owner, code_size, generation) = mut_array_refs![data, 32, 4, 4];
         owner.copy_from_slice(self.owner.as_ref());
         *code_size = self.code_size.to_le_bytes();

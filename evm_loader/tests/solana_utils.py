@@ -377,7 +377,7 @@ class EvmLoader:
         else:
             return program[0], ether, code[0]
 
-    def create_ether_account_trx(self, ether: Union[str, bytes], code_acc=None) -> Tuple[Transaction, str]:
+    def create_ether_account_trx(self, ether: Union[str, bytes]) -> Tuple[Transaction, str]:
         if isinstance(ether, str):
             if ether.startswith('0x'):
                 ether = ether[2:]
@@ -388,27 +388,16 @@ class EvmLoader:
         print('createEtherAccount: {} {} => {}'.format(ether, nonce, sol))
 
         base = self.acc.get_acc().public_key()
-        data = bytes.fromhex('18') + CREATE_ACCOUNT_LAYOUT.build(dict(ether=bytes.fromhex(ether), nonce=nonce))
+        data = bytes.fromhex('1E') + CREATE_ACCOUNT_LAYOUT.build(dict(ether=bytes.fromhex(ether), nonce=nonce, code_size=0))
         trx = TransactionWithComputeBudget()
-        if code_acc is None:
-            trx.add(TransactionInstruction(
-                program_id=self.loader_id,
-                data=data,
-                keys=[
-                    AccountMeta(pubkey=base, is_signer=True, is_writable=True),
-                    AccountMeta(pubkey=PublicKey(SYSTEM_ADDRESS), is_signer=False, is_writable=False),
-                    AccountMeta(pubkey=PublicKey(sol), is_signer=False, is_writable=True),
-                ]))
-        else:
-            trx.add(TransactionInstruction(
-                program_id=self.loader_id,
-                data=data,
-                keys=[
-                    AccountMeta(pubkey=base, is_signer=True, is_writable=True),
-                    AccountMeta(pubkey=SYSTEM_ADDRESS, is_signer=False, is_writable=False),
-                    AccountMeta(pubkey=PublicKey(sol), is_signer=False, is_writable=True),
-                    AccountMeta(pubkey=PublicKey(code_acc), is_signer=False, is_writable=True),
-                ]))
+        trx.add(TransactionInstruction(
+            program_id=self.loader_id,
+            data=data,
+            keys=[
+                AccountMeta(pubkey=base, is_signer=True, is_writable=True),
+                AccountMeta(pubkey=PublicKey(SYSTEM_ADDRESS), is_signer=False, is_writable=False),
+                AccountMeta(pubkey=PublicKey(sol), is_signer=False, is_writable=True),
+            ]))
         return trx, sol
 
 
@@ -419,12 +408,11 @@ def get_solana_balance(account):
 class AccountInfo(NamedTuple):
     ether: eth_keys.PublicKey
     trx_count: int
-    code_account: PublicKey
 
     @staticmethod
     def from_bytes(data: bytes):
         cont = ACCOUNT_INFO_LAYOUT.parse(data)
-        return AccountInfo(cont.ether, cont.trx_count, PublicKey(cont.code_account))
+        return AccountInfo(cont.ether, cont.trx_count)
 
 
 def get_account_data(solana_client: Client, account: Union[str, PublicKey, Keypair], expected_length: int) -> bytes:

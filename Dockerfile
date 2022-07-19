@@ -41,7 +41,7 @@ RUN solc --output-dir . --bin *.sol && \
         ls -l
 
 # Define solana-image that contains utility
-FROM solanalabs/solana:${SOLANA_REVISION} AS solana
+FROM neonlabsorg/solana:${SOLANA_REVISION} AS solana
 
 # Build target image
 FROM ubuntu:20.04 AS base

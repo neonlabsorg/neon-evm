@@ -3,7 +3,6 @@ use evm::{H160, U256, ExitReason, Capture, ExitFatal, Resolve, CONFIG, Control, 
 use solana_program::{program_error::ProgramError, entrypoint::ProgramResult};
 
 use crate::{
-    emit_exit,
     account_storage::AccountStorage
 };
 
@@ -11,6 +10,13 @@ use super::{
     handler::{CallInterrupt, CreateInterrupt, Executor}, 
     state::ExecutorState, gasometer::Gasometer, action::Action
 };
+
+use evm::event;
+
+#[cfg(feature = "tracing")]
+use evm::{Event, ExitTrace};
+#[cfg(feature = "tracing")]
+extern "C" { fn sol_send_trace_message(val: *const u8) -> u64;}
 
 /// Represents reason of an Ethereum transaction.
 /// It can be creation of a smart contract or a call of it's function.
@@ -138,41 +144,6 @@ impl<'a, B: AccountStorage> Machine<'a, B> {
         Ok(())
     }
 
-    #[cfg(feature = "tracing")]
-    fn run(&mut self, max_steps: u64) -> (u64, RuntimeApply) {
-        let runtime = match self.runtime.last_mut() {
-            Some((runtime, _)) => runtime,
-            None => return (0, RuntimeApply::Exit(ExitFatal::NotSupported.into()))
-        };
-
-        let mut steps_executed = 0;
-        loop {
-            if steps_executed >= max_steps {
-                    return (steps_executed, RuntimeApply::Continue);
-            }
-            if let Err(capture) = runtime.step(&mut self.executor) {
-                return match capture {
-                    Capture::Exit(ExitReason::StepLimitReached) => (steps_executed, RuntimeApply::Continue),
-                    Capture::Exit(reason) => (steps_executed, RuntimeApply::Exit(reason)),
-                    Capture::Trap(interrupt) => {
-                        match interrupt {
-                            Resolve::Call(interrupt, resolve) => {
-                                mem::forget(resolve);
-                                (steps_executed, RuntimeApply::Call(interrupt))
-                            },
-                            Resolve::Create(interrupt, resolve) => {
-                                mem::forget(resolve);
-                                (steps_executed, RuntimeApply::Create(interrupt))
-                            },
-                        }
-                    }
-                };
-            }
-            steps_executed += 1;
-        }
-    }
-
-    #[cfg(not(feature = "tracing"))]
     fn run(&mut self, max_steps: u64) -> (u64, RuntimeApply) {
         let runtime = match self.runtime.last_mut() {
             Some((runtime, _)) => runtime,
@@ -304,7 +275,10 @@ impl<'a, B: AccountStorage> Machine<'a, B> {
             None => return Err((Vec::new(), ExitFatal::NotSupported.into()))
         };
 
-        emit_exit!(exited_runtime.machine().return_value(), reason);
+        event!(Event::Exit(ExitTrace {
+                    reason: &reason,
+                    return_value: &exited_runtime.machine().return_value(),
+                }));
 
         if !reason.is_succeed() {
             self.executor.state.exit_revert();

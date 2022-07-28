@@ -2,11 +2,17 @@ use evm::{H160, ExitReason, U256, Transfer, ExitError, CONFIG, Handler, H256, Ca
 use solana_program::{entrypoint::ProgramResult, program_error::ProgramError};
 
 use crate::{
-    event, account_storage::AccountStorage, precompile::{call_precompile, is_precompile_address}
+    account_storage::AccountStorage, precompile::{call_precompile, is_precompile_address}
 };
 
 use super::{state::ExecutorState, gasometer::Gasometer};
 
+#[cfg(feature = "tracing")]
+extern "C" { fn sol_send_trace_message(val: *const u8) -> u64;}
+
+#[cfg(feature = "tracing")]
+use evm::{Event, CreateTrace, CallTrace,  TransactCreateTrace, TransactCallTrace, ExitTrace};
+use evm::event;
 
 pub struct CallInterrupt {
     pub context: evm::Context,
@@ -61,12 +67,12 @@ impl<'a, B: AccountStorage> Executor<'a, B> {
         &mut self,
         origin: H160,
         address: H160,
-        #[allow(unused)] data: &[u8],
+        #[allow( clippy::ptr_arg)] _data: &Vec<u8>,
         value: U256,
         gas_limit: U256,
         gas_price: U256
     ) -> ProgramResult {
-        event!(TransactCall { caller, address, value, data, gas_limit });
+        event!(Event::TransactCall (TransactCallTrace{ caller: origin, address, value, data: _data, gas_limit }));
 
         self.gas_limit = gas_limit;
         self.gas_price = gas_price;
@@ -77,21 +83,25 @@ impl<'a, B: AccountStorage> Executor<'a, B> {
         self.gasometer.record_transfer(&self.state, address, value);
 
         if let Err(error) = self.state.transfer(origin, address, value)  {
+            event!(Event::Exit(ExitTrace {
+                        reason: &error.into(),
+                        return_value: &Vec::new(),
+                    }));
             return Err!(ProgramError::InsufficientFunds; "ExitError={:?}", error);
         }
-
         Ok(())
     }
 
     pub fn create_begin(
         &mut self,
         origin: H160,
-        #[allow(unused)] init_code: &[u8],
+        #[allow( clippy::ptr_arg)] _init_code: &Vec<u8>,
         value: U256,
         gas_limit: U256,
         gas_price: U256
     ) -> Result<H160, ProgramError> {
-        event!(TransactCreate { caller, value, init_code, gas_limit });
+        event!(Event::TransactCreate (TransactCreateTrace{ caller: origin, value, init_code: _init_code, gas_limit,
+        address: self.create_address(evm::CreateScheme::Legacy { caller: origin })}));
 
         self.gas_limit = gas_limit;
         self.gas_price = gas_price;
@@ -117,6 +127,10 @@ impl<'a, B: AccountStorage> Executor<'a, B> {
         }
 
         if let Err(error) = self.state.transfer(origin, address, value) {
+            event!(Event::Exit(ExitTrace {
+                        reason: &error.into(),
+                        return_value: &Vec::new(),
+                    }));
             return Err!(ProgramError::InsufficientFunds; "ExitError={:?}", error);
         }
 
@@ -262,15 +276,14 @@ impl<'a, B: AccountStorage> Handler for Executor<'a, B> {
         // Get the create address from given scheme.
         let address = self.create_address(scheme);
 
-        event!(Create {
+        event!(Event::Create(CreateTrace {
             caller,
             address,
             scheme,
             value,
             init_code: &init_code,
             target_gas,
-        });
-
+        }));
 
         self.state.inc_nonce(caller);
 
@@ -302,14 +315,14 @@ impl<'a, B: AccountStorage> Handler for Executor<'a, B> {
         is_static: bool,
         context: evm::Context,
     ) -> Capture<(ExitReason, Vec<u8>), Self::CallInterrupt> {
-        event!(Call {
+        event!(Event::Call(CallTrace{
             code_address,
             transfer: &transfer,
             input: &input,
             target_gas,
             is_static,
             context: &context,
-        });
+        }));
 
         debug_print!("call {:?}, {:?}", code_address, input);
 

@@ -11,6 +11,12 @@ use crate::executor::{Action, AccountMeta};
 use crate::config::STORAGE_ENTIRIES_IN_CONTRACT_ACCOUNT;
 use solana_program::program::{invoke_signed_unchecked};
 
+#[cfg(feature = "tracing")]
+extern "C" { fn sol_send_trace_message(val: *const u8) -> u64;}
+
+#[cfg(feature = "tracing")]
+use evm::{Event, TransferTrace, WithDrawTrace, SetStorageTrace, IncrementNonceTrace, SetCodeTrace, SelfDestructTrace};
+use evm::event;
 
 impl<'a> ProgramAccountStorage<'a> {
     pub fn transfer_gas_payment(
@@ -59,6 +65,7 @@ impl<'a> ProgramAccountStorage<'a> {
             match action {
                 Action::NeonTransfer { source, target, value } => {
                     self.transfer_neon_tokens(source, target, value)?;
+                    event!(Event::Transfer (TransferTrace{ source, target, value }));
                 },
                 Action::NeonWithdraw { source, value } => {
                     let account = self.ethereum_account_mut(&source);
@@ -67,12 +74,14 @@ impl<'a> ProgramAccountStorage<'a> {
                     }
 
                     account.balance -= value;
+                    event!(Event::WithDraw (WithDrawTrace{source, value }));
                 },
                 Action::EvmLog { address, topics, data } => {
                     neon_program.on_event(address, &topics, &data)?;
                 },
                 Action::EvmSetStorage { address, key, value } => {
                     storage.entry(address).or_default().push((key, value));
+                    event!(Event::SetStorage (SetStorageTrace{ address, key, value }));
                 },
                 Action::EvmIncrementNonce { address } => {
                     let account = self.ethereum_account_mut(&address);
@@ -81,14 +90,17 @@ impl<'a> ProgramAccountStorage<'a> {
                     }
 
                     account.trx_count += 1;
+                    event!(Event::IncrementNonce (IncrementNonceTrace{ address }));
                 },
                 Action::EvmSetCode { address, code, valids } => {
                     self.deploy_contract(address, &code, &valids)?;
+                    event!(Event::SetCode (SetCodeTrace{ address, code: &code }));
                 },
                 Action::EvmSelfDestruct { address } => {
                     storage.remove(&address);
 
                     self.delete_account(address)?;
+                    event!(Event::SelfDestruct (SelfDestructTrace{ address }));
                 },
                 Action::ExternalInstruction { program_id, instruction, accounts, seeds } => {
                     let seeds: Vec<&[u8]> = seeds.iter().map(|seed| &seed[..]).collect();

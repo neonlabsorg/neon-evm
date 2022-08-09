@@ -8,6 +8,7 @@ mod syscall_stubs;
 mod errors;
 mod logs;
 mod commands;
+mod rpc;
 
 use crate::{
     account_storage::{

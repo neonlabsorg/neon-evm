@@ -71,7 +71,7 @@ impl Rpc for RpcClients{
 
     fn get_account_data(&self, key: &Pubkey)-> ClientResult<Vec<u8>>{
         if self.rpc_db.is_some(){
-            return Err(ClientError::from(ClientErrorKind::Custom("get_account_data() not implemented for rpc_db client".to_string())))
+            return Ok(self.get_account(key)?.data)
         }
         Ok(self.get_account(key)?.data)
     }

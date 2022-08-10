@@ -9,7 +9,7 @@ use evm_loader::{
 
 use crate::{
     account_storage::{EmulatorAccountStorage, account_info },
-    Config,
+    Config, rpc::Rpc,
 };
 
 

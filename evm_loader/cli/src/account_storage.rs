@@ -22,7 +22,7 @@ use evm_loader::{
 };
 
 
-use crate::Config;
+use crate::{Config, rpc::Rpc,};
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 

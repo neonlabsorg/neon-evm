@@ -9,7 +9,7 @@ use solana_sdk::{
     bpf_loader_upgradeable::{self, UpgradeableLoaderState},
 };
 
-use crate::{ Config, errors::NeonCliError, NeonCliResult };
+use crate::{ Config, errors::NeonCliError, NeonCliResult, rpc::Rpc, };
 
 pub struct CachedElfParams {
     elf_params: HashMap<String,String>,

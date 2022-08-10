@@ -29,6 +29,7 @@ use crate::{
     NeonCliError,
     NeonCliResult,
     make_solana_program_address,
+    rpc::Rpc
 };
 
 /// Executes subcommand `migrate-account`.
@@ -59,7 +60,7 @@ pub fn execute(
     finalize_message.recent_blockhash = blockhash;
 
     check_account_for_fee(
-        &config.rpc_client,
+        &config.rpc_client.rpc_node,
         &config.signer.pubkey(),
         &finalize_message
     )?;

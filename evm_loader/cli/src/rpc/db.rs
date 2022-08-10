@@ -2,10 +2,19 @@ use solana_sdk::{
     account::Account,
     pubkey::Pubkey,
 };
-use clickhouse::{Client, error::Error};
+use clickhouse::{Client as DBClient, error::Error};
 use log::{debug};
 use tokio::task::block_in_place;
 
+use serde::{Serialize, Deserialize };
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct DBConfig{
+    pub url: String,
+    pub user: String,
+    pub password: String,
+    pub database: String,
+}
 
 #[derive(Debug, serde::Deserialize, clickhouse::Row, Clone)]
 struct AccountRow {
@@ -31,32 +40,26 @@ impl From<AccountRow> for Account {
 
 
 pub struct ClickHouseClient {
-    client: Client,
+    client: DBClient,
     pub slot: u64,
 }
 
 
 impl ClickHouseClient {
     #[allow(unused)]
-    pub fn new(
-        addr: impl Into<String>,
-        user: Option<String>,
-        password: Option<String>,
-        db: Option<String>,
-        slot: u64,
-    ) -> Self {
-        let client = Client::default()
-            .with_url(addr)
-            .with_user(user.unwrap())
-            .with_password(password.unwrap())
-            .with_database(db.unwrap());
+    pub fn new(config: &DBConfig, slot: u64) -> Self {
+        let client = DBClient::default()
+            .with_url(config.url.clone())
+            .with_user(config.user.clone())
+            .with_password(config.password.clone())
+            .with_database(config.database.clone());
 
         ClickHouseClient { client, slot }
     }
 
     fn block<F, Fu, R>(&self, f: F) -> R
         where
-            F: FnOnce(Client) -> Fu,
+            F: FnOnce(DBClient) -> Fu,
             Fu: std::future::Future<Output = R>,
     {
         let client = self.client.clone();

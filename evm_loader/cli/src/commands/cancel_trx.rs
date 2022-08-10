@@ -23,6 +23,7 @@ use crate::{
     },
     Config,
     NeonCliResult,
+    rpc::Rpc,
 };
 
 

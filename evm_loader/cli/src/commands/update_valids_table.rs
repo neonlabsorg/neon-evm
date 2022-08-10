@@ -31,6 +31,7 @@ use crate::{
     errors::NeonCliError,
     Config,
     NeonCliResult,
+    rpc::Rpc,
 };
 
 
@@ -70,7 +71,7 @@ pub fn execute(config: &Config, ether_address: H160) -> NeonCliResult {
     finalize_message.recent_blockhash = blockhash;
 
     check_account_for_fee(
-        &config.rpc_client,
+        &config.rpc_client.rpc_node,
         &config.signer.pubkey(),
         &finalize_message
     )?;

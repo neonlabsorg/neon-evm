@@ -59,6 +59,7 @@ use crate::{
     errors::NeonCliError,
     Config,
     NeonCliResult,
+    rpc::Rpc,
 };
 
 
@@ -184,7 +185,7 @@ fn fill_holder_account(
 
         debug!("Writing program data");
         send_and_confirm_transactions_with_spinner(
-            &config.rpc_client,
+            &config.rpc_client.rpc_node,
             &config.websocket_url,
             write_transactions,
             &signers,

@@ -28,6 +28,7 @@ use crate::{
         get_storage_at,
         update_valids_table,
     },
+    rpc::{Rpc, RpcClients, db::ClickHouseClient},
 };
 
 use evm_loader::{
@@ -89,7 +90,7 @@ use crate::get_neon_elf::CachedElfParams;
 type NeonCliResult = Result<(),NeonCliError>;
 
 pub struct Config {
-    rpc_client: Arc<RpcClient>,
+    rpc_client: RpcClients,
     websocket_url: String,
     evm_loader: Pubkey,
     // #[allow(unused)]
@@ -436,6 +437,13 @@ fn main() {
             }
         })
         .arg(
+            Arg::with_name("db_config_file")
+                .long("db_config_file")
+                .takes_value(true)
+                .global(true)
+                .help("Configuration file to use Click-house DB")
+        )
+        .arg(
             Arg::with_name("verbose")
                 .short("v")
                 .long("verbose")
@@ -566,6 +574,14 @@ fn main() {
                         .required(false)
                         .default_value("100000")
                         .help("Maximal number of steps to execute in a single run"),
+                )
+                .arg(
+                    Arg::with_name("slot")
+                        .long("slot")
+                        .value_name("SLOT")
+                        .takes_value(true)
+                        .required(false)
+                        .help("Slot for db-client"),
                 )
         )
         .subcommand(
@@ -748,7 +764,7 @@ fn main() {
     logs::init(context, loglevel).unwrap();
 
     let mut wallet_manager = None;
-    let config = {
+    let mut config = {
         let cli_config = app_matches.value_of("config_file").map_or_else(
             solana_cli_config::Config::default,
             |config_file| solana_cli_config::Config::load(config_file).unwrap_or_default()
@@ -800,8 +816,12 @@ fn main() {
             true,
         ).ok();
 
+
         Config {
-            rpc_client: Arc::new(RpcClient::new_with_commitment(json_rpc_url, commitment)),
+            rpc_client: RpcClients{
+                rpc_node: Arc::new(RpcClient::new_with_commitment(json_rpc_url, commitment)),
+                rpc_db: None
+            },
             websocket_url: "".to_string(),
             evm_loader,
             signer,
@@ -818,6 +838,7 @@ fn main() {
                 let sender = h160_of(arg_matches, "sender").unwrap();
                 let data = hexdata_of(arg_matches, "data");
                 let value = value_of(arg_matches, "value");
+                let slot: Option<u64> = value_of(arg_matches, "slot");
 
                 // Read ELF params only if token_mint or chain_id is not set.
                 let mut token_mint = pubkey_of(arg_matches, "token_mint");
@@ -834,6 +855,13 @@ fn main() {
                 let token_mint = token_mint.unwrap();
                 let chain_id = chain_id.unwrap();
                 let max_steps_to_execute = value_of::<u64>(arg_matches, "max_steps_to_execute").unwrap();
+
+                if let Some(slot) = slot{
+                    let db_config = app_matches.value_of("db_config_file").map(|path|{
+                        solana_cli_config::load_config_file(path).unwrap()
+                    }).unwrap();
+                    config.rpc_client.rpc_db = Some(ClickHouseClient::new(&db_config, slot));
+                }
 
                 emulate::execute(&config,
                                  contract,

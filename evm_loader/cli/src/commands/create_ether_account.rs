@@ -23,6 +23,7 @@ use evm::{H160};
 use crate::{
     Config,
     NeonCliResult,
+    rpc::Rpc,
 };
 
 
@@ -55,7 +56,7 @@ pub fn execute (
     finalize_message.recent_blockhash = blockhash;
 
     check_account_for_fee(
-        &config.rpc_client,
+        &config.rpc_client.rpc_node,
         &config.signer.pubkey(),
         &finalize_message
     )?;

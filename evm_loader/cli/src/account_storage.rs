@@ -3,6 +3,7 @@ use std::{
     collections::HashMap,
     rc::Rc,
     convert::TryInto,
+    str::FromStr,
 };
 
 use log::{info, trace, warn};
@@ -39,7 +40,7 @@ fn serde_opt_pubkey_bs58<S>(value: &Option<Pubkey>, s: S) -> Result<S::Ok, S::Er
         s.serialize_none()
     }
 }
-
+#[allow(unused)]
 fn deserialize_pubkey_from_str<'de, D>(deserializer: D) -> Result<Pubkey, D::Error>
     where
         D: serde::de::Deserializer<'de>,

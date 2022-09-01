@@ -18,7 +18,7 @@ use solana_sdk::{
 use solana_transaction_status::{EncodedConfirmedBlock, EncodedConfirmedTransaction, TransactionStatus};
 use std::sync::Arc;
 
-pub struct RpcClients{
+pub struct Clients{
     pub rpc_node: Arc<RpcClient>,
     pub rpc_db: Option<ClickHouseClient>,
 }
@@ -46,13 +46,13 @@ pub trait Rpc{
     fn get_latest_blockhash_with_commitment(&self, commitment: CommitmentConfig) -> ClientResult<(Hash, u64)>;
 }
 
-impl Rpc for RpcClients{
+impl Rpc for Clients{
     fn get_account(&self, key: &Pubkey) -> ClientResult<Account>  {
         if self.rpc_db.is_some() {
             return self.rpc_db.as_ref().unwrap()
                 .get_account_at_slot(key)
                 .map_err(|_| ClientError::from(ClientErrorKind::Custom("load account error".to_string())) )?
-                .ok_or(ClientError::from(ClientErrorKind::Custom(format!("account not found {}", key))))
+                .ok_or_else(|| ClientError::from(ClientErrorKind::Custom(format!("account not found {}", key))))
         }
         self.rpc_node.get_account(key)
     }
@@ -63,7 +63,7 @@ impl Rpc for RpcClients{
             let account= rpc_db.get_account_at_slot(key)
                 .map_err(|_| ClientError::from( ClientErrorKind::Custom("load account error".to_string())))?;
             let context = RpcResponseContext{slot: rpc_db.slot};
-            return Ok(Response {context: context, value: account})
+            return Ok(Response {context, value: account})
         }
 
         self.rpc_node.get_account_with_commitment(key, commitment)

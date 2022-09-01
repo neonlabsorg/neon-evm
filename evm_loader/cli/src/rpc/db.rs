@@ -8,7 +8,7 @@ use tokio::task::block_in_place;
 
 use serde::{Serialize, Deserialize };
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct DBConfig{
     pub url: String,
     pub user: String,
@@ -113,7 +113,7 @@ impl ClickHouseClient {
     }
 
     pub fn get_account_at_slot(&self, pubkey: &Pubkey) -> Result<Option<Account>, Error> {
-        let accounts = self.get_accounts_at_slot(std::iter::once(pubkey.to_owned()))?;
+        let accounts = self.get_accounts_at_slot(std::iter::once(*pubkey))?;
         let account = accounts.get(0).map(|(_, account)| account).cloned();
         Ok(account)
     }

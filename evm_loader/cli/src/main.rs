@@ -28,7 +28,7 @@ use crate::{
         get_storage_at,
         update_valids_table,
     },
-    rpc::{Rpc, RpcClients, db::ClickHouseClient},
+    rpc::{Rpc, Clients, db::ClickHouseClient},
 };
 
 use evm_loader::{
@@ -90,7 +90,7 @@ use crate::get_neon_elf::CachedElfParams;
 type NeonCliResult = Result<(),NeonCliError>;
 
 pub struct Config {
-    rpc_client: RpcClients,
+    rpc_client: Clients,
     websocket_url: String,
     evm_loader: Pubkey,
     // #[allow(unused)]
@@ -818,7 +818,7 @@ fn main() {
 
 
         Config {
-            rpc_client: RpcClients{
+            rpc_client: Clients{
                 rpc_node: Arc::new(RpcClient::new_with_commitment(json_rpc_url, commitment)),
                 rpc_db: None
             },

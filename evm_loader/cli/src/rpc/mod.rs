@@ -1,6 +1,6 @@
 pub mod db;
 
-use db::ClickHouseClient;
+use db::PostgresClient;
 use solana_client::{
     rpc_client::RpcClient,
     client_error::{
@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 pub struct Clients{
     pub rpc_node: Arc<RpcClient>,
-    pub rpc_db: Option<ClickHouseClient>,
+    pub rpc_db: Option<PostgresClient>,
 }
 
 

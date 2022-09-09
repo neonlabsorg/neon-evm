@@ -2,114 +2,88 @@ use solana_sdk::{
     account::Account,
     pubkey::Pubkey,
 };
-use clickhouse::{Client as DBClient, error::Error};
-use log::{debug};
-use tokio::task::block_in_place;
-
+use tokio_postgres::{Client as DBClient, connect, Error};
+use postgres::{ NoTls };
+// use tokio::task::block_in_place;
 use serde::{Serialize, Deserialize };
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct DBConfig{
-    pub url: String,
+    pub host: String,
+    pub port: String,
+    pub database: String,
     pub user: String,
     pub password: String,
-    pub database: String,
 }
 
-#[derive(Debug, serde::Deserialize, clickhouse::Row, Clone)]
-struct AccountRow {
-    pubkey: [u8; 32],
-    lamports: u64,
-    data: Vec<u8>,
-    owner: [u8; 32],
-    executable: bool,
-    rent_epoch: u64,
-}
-
-impl From<AccountRow> for Account {
-    fn from(row: AccountRow) -> Account {
-        Account {
-            lamports: row.lamports,
-            data: row.data,
-            owner: Pubkey::new_from_array(row.owner),
-            executable: row.executable,
-            rent_epoch: row.rent_epoch,
-        }
-    }
-}
-
-
-pub struct ClickHouseClient {
+pub struct PostgresClient {
     client: DBClient,
     pub slot: u64,
 }
 
 
-impl ClickHouseClient {
-    #[allow(unused)]
-    pub fn new(config: &DBConfig, slot: u64) -> Self {
-        let client = DBClient::default()
-            .with_url(config.url.clone())
-            .with_user(config.user.clone())
-            .with_password(config.password.clone())
-            .with_database(config.database.clone());
+impl PostgresClient {
+    // #[allow(unused)]
+    #[tokio::main]
+    pub async fn new(config: &DBConfig, slot: u64) -> Self {
+        let connection_str= format!("host={} port={} dbname={} user={} password={}",
+                                    config.host, config.port, config.database, config.user, config.password);
 
-        ClickHouseClient { client, slot }
+        let (client, connection) =
+            connect(&connection_str, NoTls).await.unwrap();
+
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("connection error: {}", e);
+            }
+        });
+        Self {client, slot}
     }
 
-    fn block<F, Fu, R>(&self, f: F) -> R
-        where
-            F: FnOnce(DBClient) -> Fu,
-            Fu: std::future::Future<Output = R>,
-    {
-        let client = self.client.clone();
-        block_in_place(|| {
-            let handle = tokio::runtime::Handle::current();
-            handle.block_on(f(client))
-        })
-    }
+    // fn block<F, Fu, R>(&self, f: F) -> R
+    //     where
+    //         F: FnOnce(DBClient) -> Fu,
+    //         Fu: std::future::Future<Output = R>,
+    // {
+    //     let client = self.client.clone();
+    //     block_in_place(|| {
+    //         let handle = tokio::runtime::Handle::current();
+    //         handle.block_on(f(client))
+    //     })
+    // }
 
     #[tokio::main]
-    pub async  fn get_accounts_at_slot(
-        &self,
-        pubkeys: impl Iterator<Item = Pubkey>,
-    ) -> Result<Vec<(Pubkey, Account)>, Error> {
-        let pubkeys = pubkeys
-            .map(|pubkey| hex::encode(&pubkey.to_bytes()[..]))
-            .fold(String::new(), |old, addr| {
-                format!("{} unhex('{}'),", old, addr)
-            });
+    pub async fn get_accounts_at_slot(&self, keys: impl Iterator<Item = Pubkey>) -> Result<Vec<(Pubkey, Account)>, Error> {
+        let key_bytes = keys.map(|entry| entry.to_bytes()).collect::<Vec<_>>();
+        let key_slices = key_bytes.iter().map(|entry| entry.as_slice()).collect::<Vec<_>>();
 
+        let mut result = vec![];
 
-        let accounts = self.block(|client| async move {
-            client
-                .query(&format!(
-                    "SELECT
-                        public_key,
-                        argMax(lamports, T.slot),
-                        argMax(data, T.slot),
-                        argMax(owner,T.slot),
-                        argMax(executable,T.slot),
-                        argMax(rent_epoch,T.slot)
-                     FROM accounts A
-                     JOIN transactions T
-                     ON A.transaction_signature = T.transaction_signature
-                     WHERE T.slot <= ? AND public_key IN ({})
-                     GROUP BY public_key",
-                     pubkeys
-                ))
-                .bind(self.slot)
-                .fetch_all::<AccountRow>()
-                .await
-        })?;
+        // let rows = self.block(|| async {
+        //     self.client.query(
+        //         "SELECT * FROM get_accounts_at_slot($1, $2)",&[&key_slices, &(self.slot as i64)]
+        //     ).await
+        // })?;
 
+        let rows = self.client.query(
+            "SELECT * FROM get_accounts_at_slot($1, $2)",&[&key_slices, &(self.slot as i64)]
+        ).await?;
 
-        let accounts = accounts
-            .into_iter()
-            .map(|row| (Pubkey::new_from_array(row.pubkey), Account::from(row)))
-            .collect();
-        debug!("found account: {:?}", accounts);
-        Ok(accounts)
+        for row in rows {
+            let lamports: i64 = row.try_get(2)?;
+            let rent_epoch: i64 = row.try_get(4)?;
+            result.push((
+                Pubkey::new(row.try_get(0)?),
+                Account {
+                    lamports: lamports as u64,
+                    data: row.try_get(5)?,
+                    owner: Pubkey::new(row.try_get(1)?),
+                    executable: row.try_get(3)?,
+                    rent_epoch: rent_epoch as u64,
+                }
+            ));
+        }
+        Ok(result)
     }
 
     pub fn get_account_at_slot(&self, pubkey: &Pubkey) -> Result<Option<Account>, Error> {
@@ -117,5 +91,4 @@ impl ClickHouseClient {
         let account = accounts.get(0).map(|(_, account)| account).cloned();
         Ok(account)
     }
-
 }

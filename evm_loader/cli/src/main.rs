@@ -28,7 +28,7 @@ use crate::{
         get_storage_at,
         update_valids_table,
     },
-    rpc::{Rpc, Clients, db::ClickHouseClient},
+    rpc::{Rpc, Clients, db::PostgresClient},
 };
 
 use evm_loader::{
@@ -860,7 +860,7 @@ fn main() {
                     let db_config = app_matches.value_of("db_config_file").map(|path|{
                         solana_cli_config::load_config_file(path).unwrap()
                     }).unwrap();
-                    config.rpc_client.rpc_db = Some(ClickHouseClient::new(&db_config, slot));
+                    config.rpc_client.rpc_db = Some(PostgresClient::new(&db_config, slot));
                 }
 
                 emulate::execute(&config,

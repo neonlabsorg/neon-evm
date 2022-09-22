@@ -1,18 +1,17 @@
 use std::convert::Infallible;
-
-use evm::{Capture, ExitReason};
+use std::convert::TryInto;
+use evm::{Capture, ExitReason, U256};
+use num_bigint::BigUint;
+use num_traits::{One, Zero};
 
 
 #[must_use]
 pub fn big_mod_exp(
-    _input: &[u8]
+    input: &[u8]
 ) -> Capture<(ExitReason, Vec<u8>), Infallible> {
     // Should be implemented via Solana syscall
-    Capture::Exit((ExitReason::Fatal(evm::ExitFatal::NotSupported), vec![0; 0]))
+    // Capture::Exit((ExitReason::Fatal(evm::ExitFatal::NotSupported), vec![0; 0]));
 
-    /*
-    use num_bigint::BigUint;
-    use num_traits::{One, Zero};
     debug_print!("big_mod_exp");
     debug_print!("input: {}", &hex::encode(&input));
 
@@ -60,5 +59,4 @@ pub fn big_mod_exp(
     return_value.extend(ret_int);
 
     Capture::Exit((ExitReason::Succeed(evm::ExitSucceed::Returned), return_value))
-    */
 }

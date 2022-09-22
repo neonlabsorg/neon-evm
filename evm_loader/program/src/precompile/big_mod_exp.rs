@@ -12,9 +12,6 @@ pub fn big_mod_exp(
     // Should be implemented via Solana syscall
     // Capture::Exit((ExitReason::Fatal(evm::ExitFatal::NotSupported), vec![0; 0]));
 
-    debug_print!("big_mod_exp");
-    debug_print!("input: {}", &hex::encode(&input));
-
     if input.len() < 96 {
         return Capture::Exit((ExitReason::Succeed(evm::ExitSucceed::Returned), vec![0; 0]))
     };

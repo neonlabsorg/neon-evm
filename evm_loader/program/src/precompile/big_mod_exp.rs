@@ -11,6 +11,7 @@ pub fn big_mod_exp(
 ) -> Capture<(ExitReason, Vec<u8>), Infallible> {
     // Should be implemented via Solana syscall
     // Capture::Exit((ExitReason::Fatal(evm::ExitFatal::NotSupported), vec![0; 0]));
+    solana_program::log::sol_log_compute_units();
 
     if input.len() < 96 {
         return Capture::Exit((ExitReason::Succeed(evm::ExitSucceed::Returned), vec![0; 0]))
@@ -54,6 +55,7 @@ pub fn big_mod_exp(
     let ret_int = ret_int.to_bytes_be();
     let mut return_value = vec![0_u8; mod_len - ret_int.len()];
     return_value.extend(ret_int);
+    solana_program::log::sol_log_compute_units();
 
     Capture::Exit((ExitReason::Succeed(evm::ExitSucceed::Returned), return_value))
 }

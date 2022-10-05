@@ -1,9 +1,7 @@
 use std::convert::Infallible;
 use std::convert::TryInto;
 use evm::{Capture, ExitReason, U256};
-use num_bigint::BigUint;
-use num_traits::{One, Zero};
-
+use solana_program;
 
 #[must_use]
 pub fn big_mod_exp(
@@ -43,19 +41,8 @@ pub fn big_mod_exp(
     let (exp_val, rest) = rest.split_at(exp_len);
     let (mod_val, _rest) = rest.split_at(mod_len);
 
-    let base_val = BigUint::from_bytes_be(base_val);
-    let exp_val  = BigUint::from_bytes_be(exp_val);
-    let mod_val  = BigUint::from_bytes_be(mod_val);
+    let return_value = solana_program::big_mod_exp::big_mod_exp(base_val, exp_val, mod_val);
 
-    if mod_val.is_zero() || mod_val.is_one() {
-        let return_value = vec![0_u8; mod_len];
-        return Capture::Exit((ExitReason::Succeed(evm::ExitSucceed::Returned), return_value));
-    }
-
-    let ret_int = base_val.modpow(&exp_val, &mod_val);
-    let ret_int = ret_int.to_bytes_be();
-    let mut return_value = vec![0_u8; mod_len - ret_int.len()];
-    return_value.extend(ret_int);
     #[cfg(target_arch = "bpf")]
     solana_program::log::sol_log_compute_units();
 

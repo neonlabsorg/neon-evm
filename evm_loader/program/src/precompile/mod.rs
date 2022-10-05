@@ -17,7 +17,7 @@ mod query_account;
 mod neon_token;
 mod erc20_wrapper;
 mod spl_token;
-mod metaplex;
+// mod metaplex;
 
 const SYSTEM_ACCOUNT_ERC20_WRAPPER: H160 =     H160([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01]);
 const SYSTEM_ACCOUNT_QUERY: H160 =             H160([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x02]);
@@ -77,9 +77,9 @@ pub fn call_precompile<B: AccountStorage>(
     if address == SYSTEM_ACCOUNT_SPL_TOKEN {
         return Some(spl_token::spl_token(input, context, state, gasometer));
     }
-    if address == SYSTEM_ACCOUNT_METAPLEX {
-        return Some(metaplex::metaplex(input, context, state, gasometer));
-    }
+    // if address == SYSTEM_ACCOUNT_METAPLEX {
+    //     return Some(metaplex::metaplex(input, context, state, gasometer));
+    // }
     if address == SYSTEM_ACCOUNT_ECRECOVER {
         return Some(ecrecover::ecrecover(input));
     }

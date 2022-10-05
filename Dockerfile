@@ -63,15 +63,26 @@ WORKDIR /opt/contracts
 RUN npm install
 WORKDIR /opt
 
+#COPY --from=solana \
+#     /usr/bin/solana \
+#     /usr/bin/solana-validator \
+#     /usr/bin/solana-keygen \
+#     /usr/bin/solana-faucet \
+#     /usr/bin/solana-genesis \
+#     /usr/bin/solana-run.sh \
+#     /usr/bin/fetch-spl.sh \
+#     /usr/bin/spl* \
+#     /opt/solana/bin/
+
 COPY --from=solana \
-     /usr/bin/solana \
-     /usr/bin/solana-validator \
-     /usr/bin/solana-keygen \
-     /usr/bin/solana-faucet \
-     /usr/bin/solana-genesis \
-     /usr/bin/solana-run.sh \
-     /usr/bin/fetch-spl.sh \
-     /usr/bin/spl* \
+     /opt/solana/bin/solana \
+     /opt/solana/bin/solana-validator \
+     /opt/solana/bin/solana-keygen \
+     /opt/solana/bin/solana-faucet \
+     /opt/solana/bin/solana-genesis \
+     /opt/solana/bin/solana-run.sh \
+     /opt/solana/bin/fetch-spl.sh \
+     /opt/solana/bin/spl* \
      /opt/solana/bin/
 
 COPY evm_loader/solana-run-neon.sh \

@@ -409,12 +409,6 @@ dependencies = [
 
 [[package]]
 name = "bs58"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "476e9cd489f9e121e02ffa6014a8ef220ecb15c05ed23fc34cca13925dc283fb"
-
-[[package]]
-name = "bs58"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "771fe0050b883fcc3ea2359b1a96bcfbc090b7116eae7c3c512c7a083fdf23d3"
@@ -1120,28 +1114,36 @@ dependencies = [
 
 [[package]]
 name = "evm-loader"
-version = "0.11.0-dev"
+version = "0.12.0-dev"
 dependencies = [
  "arrayref",
  "bincode",
  "borsh",
- "bs58 0.3.1",
  "bytes",
  "cfg-if",
  "const_format",
  "environmental",
  "evm",
+ "evm-loader-macro",
  "evm-runtime",
  "hex",
  "log",
- "num-derive",
- "num-traits",
  "ripemd160",
  "rlp",
  "solana-program 1.15.0",
  "spl-associated-token-account 1.1.1 (git+https://github.com/neonlabsorg/solana-program-library?branch=NDEV-670_eip_198_big_mod_exp)",
  "spl-token 3.5.0 (git+https://github.com/neonlabsorg/solana-program-library?branch=NDEV-670_eip_198_big_mod_exp)",
  "thiserror",
+]
+
+[[package]]
+name = "evm-loader-macro"
+version = "1.0.0"
+dependencies = [
+ "bs58",
+ "proc-macro2 1.0.46",
+ "quote 1.0.21",
+ "syn 1.0.101",
 ]
 
 [[package]]
@@ -1948,12 +1950,12 @@ dependencies = [
 
 [[package]]
 name = "neon-cli"
-version = "0.11.0-dev"
+version = "0.12.0-dev"
 dependencies = [
  "arrayref",
  "base64 0.13.0",
  "bincode",
- "bs58 0.4.0",
+ "bs58",
  "chrono",
  "clap 2.34.0",
  "ethereum-types",
@@ -3140,7 +3142,7 @@ dependencies = [
  "Inflector",
  "base64 0.13.0",
  "bincode",
- "bs58 0.4.0",
+ "bs58",
  "bv",
  "lazy_static",
  "serde",
@@ -3218,7 +3220,7 @@ version = "1.15.0"
 source = "git+https://github.com/neonlabsorg/solana?branch=NDEV-670_eip_198_big_mod_exp#53511e355c1e8b54c1040a651a879366209550b1"
 dependencies = [
  "bincode",
- "bs58 0.4.0",
+ "bs58",
  "clap 2.34.0",
  "console",
  "const_format",
@@ -3362,7 +3364,7 @@ dependencies = [
  "ahash",
  "blake3",
  "block-buffer 0.9.0",
- "bs58 0.4.0",
+ "bs58",
  "bv",
  "byteorder",
  "cc",
@@ -3395,7 +3397,7 @@ dependencies = [
  "ahash",
  "blake3",
  "block-buffer 0.9.0",
- "bs58 0.4.0",
+ "bs58",
  "bv",
  "byteorder",
  "cc",
@@ -3545,7 +3547,7 @@ dependencies = [
  "blake3",
  "borsh",
  "borsh-derive",
- "bs58 0.4.0",
+ "bs58",
  "bv",
  "bytemuck",
  "cc",
@@ -3593,7 +3595,7 @@ dependencies = [
  "blake3",
  "borsh",
  "borsh-derive",
- "bs58 0.4.0",
+ "bs58",
  "bv",
  "bytemuck",
  "cc",
@@ -3716,7 +3718,7 @@ dependencies = [
  "async-trait",
  "base64 0.13.0",
  "bincode",
- "bs58 0.4.0",
+ "bs58",
  "indicatif",
  "log",
  "reqwest",
@@ -3739,7 +3741,7 @@ version = "1.15.0"
 source = "git+https://github.com/neonlabsorg/solana?branch=NDEV-670_eip_198_big_mod_exp#53511e355c1e8b54c1040a651a879366209550b1"
 dependencies = [
  "base64 0.13.0",
- "bs58 0.4.0",
+ "bs58",
  "jsonrpc-core",
  "reqwest",
  "semver",
@@ -3777,7 +3779,7 @@ dependencies = [
  "bincode",
  "bitflags",
  "borsh",
- "bs58 0.4.0",
+ "bs58",
  "bytemuck",
  "byteorder",
  "chrono",
@@ -3827,7 +3829,7 @@ dependencies = [
  "bincode",
  "bitflags",
  "borsh",
- "bs58 0.4.0",
+ "bs58",
  "bytemuck",
  "byteorder",
  "chrono",
@@ -3873,7 +3875,7 @@ version = "1.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92ffde9b5b7313629780baca10eaffec7421d53be725c76031ca409a5298705c"
 dependencies = [
- "bs58 0.4.0",
+ "bs58",
  "proc-macro2 1.0.46",
  "quote 1.0.21",
  "rustversion",
@@ -3885,7 +3887,7 @@ name = "solana-sdk-macro"
 version = "1.15.0"
 source = "git+https://github.com/neonlabsorg/solana?branch=NDEV-670_eip_198_big_mod_exp#53511e355c1e8b54c1040a651a879366209550b1"
 dependencies = [
- "bs58 0.4.0",
+ "bs58",
  "proc-macro2 1.0.46",
  "quote 1.0.21",
  "rustversion",
@@ -3978,7 +3980,7 @@ dependencies = [
  "base64 0.13.0",
  "bincode",
  "borsh",
- "bs58 0.4.0",
+ "bs58",
  "lazy_static",
  "log",
  "serde",

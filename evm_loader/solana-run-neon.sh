@@ -40,7 +40,6 @@ fi
 
 NEON_VALIDATOR_ARGS=(
     --gossip-host $(hostname -i)
-    --log-messages-bytes-limit 20000
 )
 
 if [[ -n $GEYSER_PLUGIN_CONFIG ]]; then

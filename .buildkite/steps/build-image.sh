@@ -10,7 +10,7 @@ set ${SOLANA_REVISION:=v1.14.5}
 
 
 #export SOLANA_IMAGE=${SOLANA_PROVIDER}/solana:${SOLANA_REVISION}
-export SOLANA_IMAGE=neonlabsorg/neon-validator:4eeef4d31564a8a3914b84a31e40f72f4ff81e31
+export SOLANA_IMAGE=neonlabsorg/neon-validator:86fecfb9c64cfcf5d17128a15c0178ca36434010
 #export SOLANA_IMAGE=neonlabs/solana:v1.15.0
 echo "SOLANA_IMAGE=${SOLANA_IMAGE}"
 docker pull ${SOLANA_IMAGE}

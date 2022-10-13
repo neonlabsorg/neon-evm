@@ -460,7 +460,6 @@ fn main() {
                 .takes_value(true)
                 .global(true)
                 .validator(is_url_or_moniker)
-                .default_value("http://localhost:8899")
                 .help("URL for Solana node"),
         )
         .arg(

@@ -65,9 +65,9 @@ fn validate(
     check_ethereum_transaction(account_storage, caller_address, trx)?;
     account_storage.check_for_blocked_accounts(true)?;
 
-    if trx.to.is_none() { // WHY!?
-        return Err!(ProgramError::InvalidArgument; "Deploy transactions are not allowed")
-    }
+    // if trx.to.is_none() { // WHY!?
+    //     return Err!(ProgramError::InvalidArgument; "Deploy transactions are not allowed")
+    // }
 
     Ok(())
 }

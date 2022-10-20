@@ -65,9 +65,9 @@ fn validate(
     check_ethereum_transaction(account_storage, caller_address, trx)?;
     account_storage.check_for_blocked_accounts(true)?;
 
-    if trx.to.is_none() { // WHY!?
-        return Err!(ProgramError::InvalidArgument; "Deploy transactions are not allowed")
-    }
+    // if trx.to.is_none() { // WHY!?
+    //     return Err!(ProgramError::InvalidArgument; "Deploy transactions are not allowed")
+    // }
 
     Ok(())
 }
@@ -84,14 +84,20 @@ fn execute<'a>(
         let mut executor = Machine::new(caller_address, account_storage)?;
         executor.gasometer_mut().record_transaction_size(&trx);
 
-        executor.call_begin(
-            caller_address,
-            trx.to.expect("This is function call or transfer"),
-            trx.call_data,
-            trx.value,
-            trx.gas_limit,
-            trx.gas_price,
-        )?;
+        // executor.call_begin(
+        //     caller_address,
+        //     trx.to.expect("This is function call or transfer"),
+        //     trx.call_data,
+        //     trx.value,
+        //     trx.gas_limit,
+        //     trx.gas_price,
+        // )?;
+
+        if let Some(code_address) = trx.to {
+            executor.call_begin(caller_address, code_address, trx.call_data, trx.value, trx.gas_limit, trx.gas_price)?
+        } else {
+            executor.create_begin(caller_address, trx.call_data, trx.value, trx.gas_limit, trx.gas_price)?
+        };
 
         let (result, exit_reason) = executor.execute();
 

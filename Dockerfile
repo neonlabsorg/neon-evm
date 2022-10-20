@@ -1,8 +1,8 @@
 ARG SOLANA_IMAGE
 # Install BPF SDK
 FROM solanalabs/rust:1.63.0 AS builder
-RUN rustup toolchain install nightly
-RUN rustup component add clippy --toolchain nightly
+#RUN rustup toolchain install nightly
+#RUN rustup component add clippy --toolchain nightly
 WORKDIR /opt
 ARG SOLANA_REVISION
 RUN sh -c "$(curl -sSfL https://release.solana.com/"${SOLANA_REVISION}"/install)" && \

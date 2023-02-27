@@ -34,7 +34,7 @@ impl TrxDbClient {
         let indexer_db = IndexerDb::new(config);
         let sol_sig = indexer_db
             .get_sol_sig(&hash)
-            .expect(&format!("get_sol_sig error, hash: 0x{}", hex::encode(hash)));
+            .unwrap_or_else(|_| panic!("get_sol_sig error, hash: 0x{}", hex::encode(hash)));
 
         Self {
             hash,

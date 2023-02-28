@@ -124,7 +124,7 @@ impl TracerDb {
         })?;
 
         if row.is_none() {
-            return Ok(None)
+            return Ok(None);
         }
         let row = row.unwrap();
 

@@ -64,7 +64,6 @@ impl Rpc for CallDbClient {
         key: &Pubkey,
         _: CommitmentConfig,
     ) -> RpcResult<Option<Account>> {
-
         let account = self
             .tracer_db
             .get_account_at(key, self.slot)

@@ -73,8 +73,8 @@ impl Rpc for TrxDbClient {
         key: &Pubkey,
         _commitment: CommitmentConfig,
     ) -> RpcResult<Option<Account>> {
-
-        let account = self.tracer_db
+        let account = self
+            .tracer_db
             .get_account_by_sol_sig(key, &self.sol_sig)
             .map_err(|e| e!("load account error", key, e))?;
 

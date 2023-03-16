@@ -7,7 +7,7 @@ use evm_loader::{
     evm::{ExitStatus, Machine},
     executor::ExecutorState,
     gasometer::LAMPORTS_PER_SIGNATURE,
-    types::Transaction,
+    types::{Address, Transaction},
 };
 
 use crate::types::TxParams;
@@ -25,6 +25,7 @@ pub fn execute(
     token: Pubkey,
     chain: u64,
     steps: u64,
+    _accounts: Vec<Address>,
 ) -> NeonCliResult {
     let syscall_stubs = Stubs::new(config)?;
     solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);

@@ -147,6 +147,38 @@ impl<'a> EmulatorAccountStorage<'a> {
         }
     }
 
+    pub fn initialize_cached_accounts(&self, addresses: &[Address]) {
+        let pubkeys: Vec<_> = addresses
+            .iter()
+            .map(|address| make_solana_program_address(address, &self.config.evm_loader).0)
+            .collect();
+        if let Ok(accounts) = self.config.rpc_client.get_multiple_accounts(&pubkeys) {
+            let entries = addresses.iter().zip(accounts).zip(pubkeys).filter_map(
+                |((&address, account), pubkey)| {
+                    account.map(|a| {
+                        (
+                            address,
+                            NeonAccount {
+                                address,
+                                account: pubkey,
+                                writable: false,
+                                new: false,
+                                size: a.data.len(),
+                                size_current: a.data.len(),
+                                additional_resize_steps: 0,
+                                data: Some(a),
+                            },
+                        )
+                    })
+                },
+            );
+            let mut accounts = self.accounts.borrow_mut();
+            for (address, account) in entries {
+                accounts.insert(address, account);
+            }
+        }
+    }
+
     pub fn get_account_from_solana(
         config: &'a Config,
         address: &Address,

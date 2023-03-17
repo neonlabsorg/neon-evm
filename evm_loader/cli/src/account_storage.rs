@@ -158,17 +158,10 @@ impl<'a> EmulatorAccountStorage<'a> {
             .map(|address| make_solana_program_address(address, &self.config.evm_loader).0)
             .collect();
         if let Ok(accounts) = self.config.rpc_client.get_multiple_accounts(&pubkeys) {
-            let entries =
-                addresses
-                    .iter()
-                    .zip(accounts)
-                    .zip(pubkeys)
-                    .map(|((&address, account), pubkey)| {
-                        (address, NeonAccount::new(address, pubkey, account, false))
-                    });
-            let mut accounts = self.accounts.borrow_mut();
-            for (address, account) in entries {
-                accounts.insert(address, account);
+            let entries = addresses.iter().zip(accounts).zip(pubkeys);
+            let mut accounts_storage = self.accounts.borrow_mut();
+            for ((&address, account), pubkey) in entries {
+                accounts_storage.insert(address, NeonAccount::new(address, pubkey, account, false));
             }
         }
     }

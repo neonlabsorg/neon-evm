@@ -79,6 +79,8 @@ pub struct NeonAccount {
 impl NeonAccount {
     pub fn new(address: Address, pubkey: Pubkey, account: Option<Account>, writable: bool) -> Self {
         if let Some(account) = account {
+            trace!("Account found {}", address);
+
             Self {
                 address,
                 account: pubkey,
@@ -90,6 +92,8 @@ impl NeonAccount {
                 data: Some(account),
             }
         } else {
+            trace!("Account not found {}", address);
+
             Self {
                 address,
                 account: pubkey,
@@ -107,18 +111,7 @@ impl NeonAccount {
         let (key, _) = make_solana_program_address(&address, &config.evm_loader);
         info!("get_account_from_solana {} => {}", address, key);
 
-        let account = config
-            .rpc_client
-            .get_account(&key)
-            .map(|a| {
-                trace!("Account found");
-                a
-            })
-            .map_err(|e| {
-                trace!("Account not found");
-                e
-            })
-            .ok();
+        let account = config.rpc_client.get_account(&key).ok();
         Self::new(address, key, account, writable)
     }
 }

@@ -77,7 +77,7 @@ pub struct NeonAccount {
 }
 
 impl NeonAccount {
-    pub fn new(address: Address, pubkey: Pubkey, account: Option<Account>, writable: bool) -> Self {
+    fn new(address: Address, pubkey: Pubkey, account: Option<Account>, writable: bool) -> Self {
         if let Some(account) = account {
             trace!("Account found {}", address);
 

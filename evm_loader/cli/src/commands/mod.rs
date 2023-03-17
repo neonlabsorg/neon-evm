@@ -36,22 +36,22 @@ pub fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonC
         ("emulate", Some(params)) => {
             let tx = parse_tx(params);
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            emulate::execute(config, tx, token, chain, steps, accounts)
+            emulate::execute(config, tx, token, chain, steps, &accounts)
         }
         ("emulate_hash", Some(params)) => {
             let tx = config.rpc_client.get_transaction_data()?;
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            emulate::execute(config, tx, token, chain, steps, accounts)
+            emulate::execute(config, tx, token, chain, steps, &accounts)
         }
         ("trace", Some(params)) => {
             let tx = parse_tx(params);
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            trace::execute(config, tx, token, chain, steps, accounts)
+            trace::execute(config, tx, token, chain, steps, &accounts)
         }
         ("trace_hash", Some(params)) => {
             let tx = config.rpc_client.get_transaction_data()?;
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            trace::execute(config, tx, token, chain, steps, accounts)
+            trace::execute(config, tx, token, chain, steps, &accounts)
         }
         ("create-ether-account", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");

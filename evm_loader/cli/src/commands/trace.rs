@@ -13,7 +13,7 @@ pub fn execute(
     token: Pubkey,
     chain: u64,
     steps: u64,
-    accounts: Vec<Address>,
+    accounts: &[Address],
 ) -> NeonCliResult {
     let mut tracer = Tracer::new();
 

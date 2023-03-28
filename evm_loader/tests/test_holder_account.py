@@ -67,7 +67,7 @@ def test_write_tx_to_holder_by_no_owner(operator_keypair, session_user, second_s
 
     signed_tx = make_eth_transaction(second_session_user.eth_address, None, session_user.solana_account,
                                      session_user.solana_account_address, 10)
-    with pytest.raises(solana.rpc.core.RPCException, match="invalid account data for instruction"):
+    with pytest.raises(solana.rpc.core.RPCException, match="invalid owner"):
         write_transaction_to_holder_account(signed_tx, holder_acc, session_user.solana_account)
 
 
@@ -93,7 +93,7 @@ def test_success_refund_after_holder_deliting(operator_keypair):
 
 def test_delete_holder_by_no_owner(operator_keypair, user_account):
     holder_acc = create_holder(operator_keypair)
-    with pytest.raises(solana.rpc.core.RPCException, match="invalid account data for instruction"):
+    with pytest.raises(solana.rpc.core.RPCException, match="invalid owner"):
         delete_holder(holder_acc, user_account.solana_account, user_account.solana_account)
 
 
@@ -105,13 +105,13 @@ def test_write_to_not_finalized_holder(rw_lock_contract, user_account, evm_loade
     send_transaction_step_from_account(operator_keypair, evm_loader, treasury_pool, new_holder_acc,
                                        [user_account.solana_account_address,
                                         rw_lock_contract.solana_address], 1, operator_keypair)
-    account_data = solana_client.get_account_info(new_holder_acc).value.data
+    account_data = solana_client.get_account_info(new_holder_acc, commitment=Confirmed).value.data
     parsed_data = STORAGE_ACCOUNT_INFO_LAYOUT.parse(account_data)
     assert parsed_data.tag == TAG_STATE
 
     signed_tx2 = make_contract_call_trx(user_account, rw_lock_contract, "unchange_storage(uint8,uint8)", [1, 1])
 
-    with pytest.raises(solana.rpc.core.RPCException, match=r"Account .* - expected Holder or Finalized"):
+    with pytest.raises(solana.rpc.core.RPCException, match="invalid tag"):
         write_transaction_to_holder_account(signed_tx2, new_holder_acc, operator_keypair)
 
 

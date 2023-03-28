@@ -2,23 +2,13 @@
 
 #![cfg(not(feature = "no-entrypoint"))]
 
-
 use solana_program::{
-    account_info::AccountInfo,
-    entrypoint,
-    entrypoint::{ProgramResult},
-    program_error::ProgramError,
+    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, program_error::ProgramError,
     pubkey::Pubkey,
 };
 
-
 #[cfg(not(feature = "emergency"))]
-use crate::{
-    instruction,
-    instruction::EvmInstruction,
-};
-
-
+use crate::{instruction, instruction::EvmInstruction};
 
 entrypoint!(process_instruction);
 
@@ -37,18 +27,22 @@ fn process_instruction<'a>(
     accounts: &'a [AccountInfo<'a>],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let (tag, instruction) = instruction_data.split_first()
-        .ok_or_else(|| E!(ProgramError::InvalidInstructionData; "Invalid instruction - {:?}", instruction_data))?;
+    let (tag, instruction) = instruction_data.split_first().ok_or_else(
+        || E!(ProgramError::InvalidInstructionData; "Invalid instruction - {:?}", instruction_data),
+    )?;
 
     match EvmInstruction::parse(tag)? {
         EvmInstruction::HolderCreate => {
             instruction::account_holder_create::process(program_id, accounts, instruction)
+                .map_err(ProgramError::from)
         }
         EvmInstruction::HolderDelete => {
             instruction::account_holder_delete::process(program_id, accounts, instruction)
+                .map_err(ProgramError::from)
         }
         EvmInstruction::HolderWrite => {
             instruction::account_holder_write::process(program_id, accounts, instruction)
+                .map_err(ProgramError::from)
         }
         EvmInstruction::DepositV03 => {
             instruction::neon_tokens_deposit::process(program_id, accounts, instruction)
@@ -57,20 +51,40 @@ fn process_instruction<'a>(
             instruction::transaction_cancel::process(program_id, accounts, instruction)
         }
         EvmInstruction::TransactionExecuteFromInstruction => {
-            instruction::transaction_execute_from_instruction::process(program_id, accounts, instruction)
-                .map_err(ProgramError::from)
+            instruction::transaction_execute_from_instruction::process(
+                program_id,
+                accounts,
+                instruction,
+            )
+            .map_err(ProgramError::from)
+        }
+        EvmInstruction::TransactionExecuteFromAccount => {
+            instruction::transaction_execute_from_account::process(
+                program_id,
+                accounts,
+                instruction,
+            )
+            .map_err(ProgramError::from)
         }
         EvmInstruction::TransactionStepFromInstruction => {
-            instruction::transaction_step_from_instruction::process(program_id, accounts, instruction)
-                .map_err(ProgramError::from)
+            instruction::transaction_step_from_instruction::process(
+                program_id,
+                accounts,
+                instruction,
+            )
+            .map_err(ProgramError::from)
         }
         EvmInstruction::TransactionStepFromAccount => {
             instruction::transaction_step_from_account::process(program_id, accounts, instruction)
                 .map_err(ProgramError::from)
         }
         EvmInstruction::TransactionStepFromAccountNoChainId => {
-            instruction::transaction_step_from_account_no_chainid::process(program_id, accounts, instruction)
-                .map_err(ProgramError::from)
+            instruction::transaction_step_from_account_no_chainid::process(
+                program_id,
+                accounts,
+                instruction,
+            )
+            .map_err(ProgramError::from)
         }
         EvmInstruction::CreateAccountV03 => {
             instruction::account_create::process(program_id, accounts, instruction)

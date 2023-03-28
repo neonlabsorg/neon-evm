@@ -1,12 +1,13 @@
-use crate::account::{Holder, Operator, FinalizedState};
-use arrayref::{array_ref};
-use solana_program::{
-    account_info::AccountInfo,
-    entrypoint::ProgramResult,
-    pubkey::Pubkey, program_error::ProgramError,
-};
+use crate::account::{FinalizedState, Holder, Operator};
+use crate::error::{Error, Result};
+use arrayref::array_ref;
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-pub fn process<'a>(program_id: &'a Pubkey, accounts: &'a [AccountInfo<'a>], instruction: &[u8]) -> ProgramResult {
+pub fn process<'a>(
+    program_id: &'a Pubkey,
+    accounts: &'a [AccountInfo<'a>],
+    instruction: &[u8],
+) -> Result<()> {
     solana_program::msg!("Instruction: Write To Holder");
 
     let transaction_hash = *array_ref![instruction, 0, 32];
@@ -16,9 +17,7 @@ pub fn process<'a>(program_id: &'a Pubkey, accounts: &'a [AccountInfo<'a>], inst
     let holder_info = &accounts[0];
 
     let mut holder = match crate::account::tag(program_id, holder_info)? {
-        Holder::TAG => {
-            Holder::from_account(program_id, holder_info)
-        }
+        Holder::TAG => Holder::from_account(program_id, holder_info),
         FinalizedState::TAG => {
             let finalized_state = FinalizedState::from_account(program_id, holder_info)?;
             let holder_data = crate::account::holder::Data {
@@ -26,8 +25,10 @@ pub fn process<'a>(program_id: &'a Pubkey, accounts: &'a [AccountInfo<'a>], inst
                 transaction_hash,
             };
             unsafe { finalized_state.replace(holder_data) }
-        },
-        _ => Err!(ProgramError::InvalidAccountData; "Account {} - expected Holder or Finalized", holder_info.key)
+        }
+        _ => {
+            return Err(Error::AccountInvalidTag(*holder_info.key, Holder::TAG));
+        }
     }?;
 
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1]) }?;
@@ -35,13 +36,13 @@ pub fn process<'a>(program_id: &'a Pubkey, accounts: &'a [AccountInfo<'a>], inst
     holder.validate_owner(&operator)?;
 
     if holder.transaction_hash != transaction_hash {
-        holder.clear();
+        holder.clear()?;
         holder.transaction_hash = transaction_hash;
     }
 
     solana_program::log::sol_log_data(&[b"HASH", &transaction_hash]);
 
-    holder.write(offset, data);
+    holder.write(offset, data)?;
 
     Ok(())
 }

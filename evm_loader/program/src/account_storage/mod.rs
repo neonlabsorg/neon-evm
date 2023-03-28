@@ -1,27 +1,23 @@
-use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
 use crate::account::{EthereumAccount, EthereumStorage};
 use crate::executor::{Action, OwnedAccountInfo, OwnedAccountInfoPartial};
 use crate::types::Address;
 use ethnum::U256;
-use solana_program::{ pubkey::Pubkey };
 use solana_program::account_info::AccountInfo;
 use solana_program::clock::Clock;
+use solana_program::pubkey::Pubkey;
+use solana_program::slot_history::Slot;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
 
-mod base;
 mod apply;
 mod backend;
+mod base;
 
 #[derive(Debug)]
 pub enum AccountOperation {
-    Create {
-        space: usize,
-    },
+    Create { space: usize },
 
-    Resize {
-        from: usize,
-        to: usize,
-    },
+    Resize { from: usize, to: usize },
 }
 
 pub type AccountsOperations = Vec<(Address, AccountOperation)>;
@@ -42,8 +38,8 @@ pub struct ProgramAccountStorage<'a> {
     ethereum_accounts: BTreeMap<Address, EthereumAccount<'a>>,
     empty_ethereum_accounts: RefCell<BTreeSet<Address>>,
 
-    storage_accounts: BTreeMap<(Address,U256), EthereumStorage<'a>>,
-    empty_storage_accounts: RefCell<BTreeSet<(Address,U256)>>,
+    storage_accounts: BTreeMap<(Address, U256), EthereumStorage<'a>>,
+    empty_storage_accounts: RefCell<BTreeSet<(Address, U256)>>,
 }
 
 /// Account storage
@@ -90,7 +86,12 @@ pub trait AccountStorage {
     fn clone_solana_account(&self, address: &Pubkey) -> OwnedAccountInfo;
 
     /// Clone part of existing solana account
-    fn clone_solana_account_partial(&self, address: &Pubkey, offset: usize, len: usize) -> Option<OwnedAccountInfoPartial>;
+    fn clone_solana_account_partial(
+        &self,
+        address: &Pubkey,
+        offset: usize,
+        len: usize,
+    ) -> Option<OwnedAccountInfoPartial>;
 
     /// Resolve account solana address and bump seed
     fn solana_address(&self, address: &Address) -> (Pubkey, u8) {
@@ -100,10 +101,7 @@ pub trait AccountStorage {
     /// Solana account data len
     fn solana_account_space(&self, address: &Address) -> Option<usize>;
 
-    fn calc_accounts_operations(
-        &self,
-        actions: &[Action],
-    ) -> AccountsOperations {
+    fn calc_accounts_operations(&self, actions: &[Action]) -> AccountsOperations {
         let mut accounts = BTreeMap::new();
         for action in actions {
             let (address, code_size) = match action {
@@ -120,14 +118,60 @@ pub trait AccountStorage {
             accounts.insert(address, space_needed);
         }
 
-        accounts.into_iter()
-            .filter_map(|(address, space_needed)|
-                match self.solana_account_space(address) {
-                    None => Some((*address, AccountOperation::Create { space: space_needed })),
-                    Some(space_current) if space_current < space_needed =>
-                        Some((*address, AccountOperation::Resize { from: space_current, to: space_needed })),
+        accounts
+            .into_iter()
+            .filter_map(
+                |(address, space_needed)| match self.solana_account_space(address) {
+                    None => Some((
+                        *address,
+                        AccountOperation::Create {
+                            space: space_needed,
+                        },
+                    )),
+                    Some(space_current) if space_current < space_needed => Some((
+                        *address,
+                        AccountOperation::Resize {
+                            from: space_current,
+                            to: space_needed,
+                        },
+                    )),
                     _ => None,
-                }
-            ).collect()
+                },
+            )
+            .collect()
     }
+}
+
+#[must_use]
+pub fn generate_fake_block_hash(slot: Slot) -> [u8; 32] {
+    let slot_bytes: [u8; 8] = slot.to_be_bytes();
+    let mut initial = 0;
+    for b in slot_bytes {
+        if b != 0 {
+            break;
+        }
+        initial += 1;
+    }
+    let slot_slice = &slot_bytes[initial..];
+    let slot_slice_len = slot_slice.len();
+    let mut hash = [255; 32];
+    hash[32 - slot_slice_len - 1] = 0;
+    hash[(32 - slot_slice_len)..].copy_from_slice(slot_slice);
+    hash
+}
+
+#[test]
+fn test_generate_fake_block_hash() {
+    let slot = 0x46;
+    let mut expected: [u8; 32] = [255; 32];
+    expected[30] = 0;
+    expected[31] = 0x46;
+    assert_eq!(generate_fake_block_hash(slot), expected);
+
+    let slot = 0x3e8;
+    let mut expected: [u8; 32] = [255; 32];
+    expected[29] = 0;
+    expected[30] = 0x03;
+    expected[31] = 0xe8;
+    assert_eq!(generate_fake_block_hash(slot), expected);
 }

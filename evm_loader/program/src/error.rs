@@ -1,13 +1,12 @@
 //! Error types
 #![allow(clippy::use_self)]
 
-use std::{num::TryFromIntError, array::TryFromSliceError};
+use std::{array::TryFromSliceError, num::TryFromIntError};
 
-use solana_program::{
-    program_error::ProgramError, 
-    secp256k1_recover::Secp256k1RecoverError, pubkey::Pubkey
-};
 use ethnum::U256;
+use solana_program::{
+    program_error::ProgramError, pubkey::Pubkey, secp256k1_recover::Secp256k1RecoverError,
+};
 use thiserror::Error;
 
 use crate::types::Address;
@@ -45,17 +44,26 @@ pub enum Error {
     #[error("Account {0} - blocked")]
     AccountBlocked(Address),
 
-    #[error("Account {0} - invalid tag {1}, expected {2}")]
-    AccountInvalidTag(Pubkey, u8, u8),
+    #[error("Account {0} - invalid tag, expected {1}")]
+    AccountInvalidTag(Pubkey, u8),
 
-    #[error("Account {0} - invalid owner {1}, expected {2}")]
-    AccountInvalidOwner(Pubkey, Pubkey, Pubkey),
+    #[error("Account {0} - invalid owner, expected {1}")]
+    AccountInvalidOwner(Pubkey, Pubkey),
 
     #[error("Account {0} - invalid public key, expected {1}")]
     AccountInvalidKey(Pubkey, Pubkey),
 
+    #[error("Account {0} - invalid data")]
+    AccountInvalidData(Pubkey),
+
     #[error("Account {0} - not writable")]
     AccountNotWritable(Pubkey),
+
+    #[error("Account {0} - not rent exempt")]
+    AccountNotRentExempt(Pubkey),
+
+    #[error("Account {0} - already initialized")]
+    AccountAlreadyInitialized(Pubkey),
 
     #[error("Operator is not authorized")]
     UnauthorizedOperator,
@@ -122,6 +130,15 @@ pub enum Error {
 
     #[error("New contract code size exceeds 24kb (EIP-170), contract = {0}, size = {1}")]
     ContractCodeSizeLimit(Address, usize),
+
+    #[error("Checked Integer Math Overflow")]
+    IntegerOverflow,
+
+    #[error("Holder Account - invalid owner {0}, expected = {1}")]
+    HolderInvalidOwner(Pubkey, Pubkey),
+
+    #[error("Holder Account - invalid transaction hash {}, expected = {}", hex::encode(.0), hex::encode(.1))]
+    HolderInvalidHash([u8; 32], [u8; 32]),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -131,7 +148,7 @@ impl From<Error> for ProgramError {
         solana_program::msg!("{}", e);
         match e {
             Error::ProgramError(e) => e,
-            _ => Self::Custom(0)
+            _ => Self::Custom(0),
         }
     }
 }
@@ -143,22 +160,21 @@ impl From<Error> for ProgramError {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// #    return Err!(ProgramError::InvalidArgument; "Caller pubkey: {} ", &caller_info.key.to_string());
 /// ```
 ///
 macro_rules! Err {
     ( $n:expr; $($args:expr),* ) => ({
-        #[cfg(target_arch = "bpf")]
+        #[cfg(target_os = "solana")]
         solana_program::msg!("{}:{} : {}", file!(), line!(), &format!($($args),*));
 
-        #[cfg(not(target_arch = "bpf"))]
+        #[cfg(all(not(target_os = "solana"), feature = "log"))]
         log::error!("{}", &format!($($args),*));
 
         Err($n)
     });
 }
-
 
 /// Macro to log a `ProgramError` in the current transaction log.
 /// with the source file position like: file.rc:777
@@ -167,16 +183,16 @@ macro_rules! Err {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// #    map_err(|s| E!(ProgramError::InvalidArgument; "s={:?}", s))
 /// ```
 ///
 macro_rules! E {
     ( $n:expr; $($args:expr),* ) => ({
-        #[cfg(target_arch = "bpf")]
+        #[cfg(target_os = "solana")]
         solana_program::msg!("{}:{} : {}", file!(), line!(), &format!($($args),*));
 
-        #[cfg(not(target_arch = "bpf"))]
+        #[cfg(all(not(target_os = "solana"), feature = "log"))]
         log::error!("{}", &format!($($args),*));
 
         $n
@@ -185,7 +201,8 @@ macro_rules! E {
 
 #[must_use]
 pub fn format_revert_message(msg: &[u8]) -> &str {
-    if msg.starts_with(&[ 0x08, 0xc3, 0x79, 0xa0 ]) { // Error(string) function selector
+    if msg.starts_with(&[0x08, 0xc3, 0x79, 0xa0]) {
+        // Error(string) function selector
         let msg = &msg[4..];
 
         let offset = U256::from_be_bytes(*arrayref::array_ref![msg, 0, 32]);

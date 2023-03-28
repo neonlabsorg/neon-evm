@@ -1,10 +1,12 @@
+#![allow(clippy::use_self)] // Can't use generic parameter from outer function
+
 use std::cell::Ref;
 
-use arrayref::{mut_array_refs, array_refs};
 use arrayref::{array_mut_ref, array_ref};
-use solana_program::program_error::ProgramError;
+use arrayref::{array_refs, mut_array_refs};
 use solana_program::pubkey::Pubkey;
 
+use crate::error::{Error, Result};
 use crate::types::Transaction;
 
 use super::Holder;
@@ -15,7 +17,7 @@ use super::Packable;
 #[derive(Default, Debug)]
 pub struct Data {
     pub owner: Pubkey,
-    pub transaction_hash: [u8; 32]
+    pub transaction_hash: [u8; 32],
 }
 
 impl Packable for Data {
@@ -32,13 +34,12 @@ impl Packable for Data {
 
         Self {
             owner: Pubkey::new_from_array(*owner),
-            transaction_hash: *hash
+            transaction_hash: *hash,
         }
     }
 
     /// Serialize `Holder` struct into given destination
     fn pack(&self, dst: &mut [u8]) {
-        #[allow(clippy::use_self)]
         let data = array_mut_ref![dst, 0, Data::SIZE];
         let (owner, hash) = mut_array_refs![data, 32, 32];
 
@@ -47,22 +48,29 @@ impl Packable for Data {
     }
 }
 
-
 impl<'a> Holder<'a> {
-    pub fn clear(&mut self) {
+    pub fn clear(&mut self) -> Result<()> {
         self.transaction_hash.fill(0);
-        
-        let mut data = self.info.data.borrow_mut();
+
+        let mut data = self.info.try_borrow_mut_data()?;
         data[Self::SIZE..].fill(0);
+
+        Ok(())
     }
 
-    pub fn write(&mut self, offset: usize, bytes: &[u8]) {
-        let mut data = self.info.data.borrow_mut();
-        
-        let begin = Self::SIZE + offset;
-        let end = begin + bytes.len();
+    pub fn write(&mut self, offset: usize, bytes: &[u8]) -> Result<()> {
+        let mut data = self.info.try_borrow_mut_data()?;
+
+        let begin = Self::SIZE
+            .checked_add(offset)
+            .ok_or(Error::IntegerOverflow)?;
+        let end = begin
+            .checked_add(bytes.len())
+            .ok_or(Error::IntegerOverflow)?;
 
         data[begin..end].copy_from_slice(bytes);
+
+        Ok(())
     }
 
     #[must_use]
@@ -71,17 +79,17 @@ impl<'a> Holder<'a> {
         Ref::map(data, |d| &d[Self::SIZE..])
     }
 
-    pub fn validate_owner(&self, operator: &Operator) -> Result<(), ProgramError> {
+    pub fn validate_owner(&self, operator: &Operator) -> Result<()> {
         if &self.owner != operator.key {
-            return Err!(ProgramError::InvalidAccountData; "Invalid Holder account owner");
+            return Err(Error::HolderInvalidOwner(self.owner, *operator.key));
         }
 
         Ok(())
     }
 
-    pub fn validate_transaction(&self, trx: &Transaction) -> Result<(), ProgramError> {
+    pub fn validate_transaction(&self, trx: &Transaction) -> Result<()> {
         if self.transaction_hash != trx.hash {
-            return Err!(ProgramError::InvalidAccountData; "Invalid Holder transaction hash");
+            return Err(Error::HolderInvalidHash(self.transaction_hash, trx.hash));
         }
 
         Ok(())

@@ -16,6 +16,8 @@ use evm_loader::{
     types::Address,
 };
 use log::{debug, info, trace, warn};
+use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
+use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE;
 use solana_sdk::{
     account::Account,
@@ -174,6 +176,44 @@ impl<'a> EmulatorAccountStorage<'a> {
                 accounts_storage.insert(address, NeonAccount::new(address, pubkey, account, false));
             }
         }
+    }
+
+    pub fn get_account_with_commitment(
+        &self,
+        pubkey: &Pubkey,
+        commitment: CommitmentConfig,
+    ) -> RpcResult<Option<Account>> {
+        let mut accounts = self.solana_accounts.borrow_mut();
+
+        if let Some(account) = accounts.get(pubkey) {
+            if let Some(ref data) = account.data {
+                if !account.is_writable {
+                    return Ok(Response {
+                        context: RpcResponseContext {
+                            slot: self.block_number,
+                            api_version: None,
+                        },
+                        value: Some(data.clone()),
+                    });
+                }
+            }
+        }
+
+        let result = self
+            .config
+            .rpc_client
+            .get_account_with_commitment(pubkey, commitment)?;
+
+        accounts
+            .entry(*pubkey)
+            .and_modify(|a| a.data = result.value.clone())
+            .or_insert(SolanaAccount {
+                pubkey: *pubkey,
+                is_writable: false,
+                data: result.value.clone(),
+            });
+
+        Ok(result)
     }
 
     pub fn get_account_from_solana(
@@ -536,8 +576,6 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             self.add_solana_account(*storage_address.pubkey(), false);
 
             let rpc_response = self
-                .config
-                .rpc_client
                 .get_account_with_commitment(
                     storage_address.pubkey(),
                     self.config.rpc_client.commitment(),

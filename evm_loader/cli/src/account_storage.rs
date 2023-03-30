@@ -121,6 +121,7 @@ pub struct SolanaAccount {
     #[serde(serialize_with = "serde_pubkey_bs58")]
     pubkey: Pubkey,
     is_writable: bool,
+    data: Option<Account>,
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -160,7 +161,16 @@ impl<'a> EmulatorAccountStorage<'a> {
         if let Ok(accounts) = self.config.rpc_client.get_multiple_accounts(&pubkeys) {
             let entries = addresses.iter().zip(accounts).zip(pubkeys);
             let mut accounts_storage = self.accounts.borrow_mut();
+            let mut solana_accounts_storage = self.solana_accounts.borrow_mut();
             for ((&address, account), pubkey) in entries {
+                solana_accounts_storage.insert(
+                    pubkey,
+                    SolanaAccount {
+                        pubkey,
+                        is_writable: false,
+                        data: account.clone(),
+                    },
+                );
                 accounts_storage.insert(address, NeonAccount::new(address, pubkey, account, false));
             }
         }
@@ -220,9 +230,14 @@ impl<'a> EmulatorAccountStorage<'a> {
         let account = SolanaAccount {
             pubkey,
             is_writable,
+            data: None,
         };
         if is_writable {
-            solana_accounts.insert(pubkey, account);
+            solana_accounts
+                .entry(pubkey)
+                // If account is present in cache ensure the data is not lost
+                .and_modify(|a| a.is_writable = true)
+                .or_insert(account);
         } else {
             solana_accounts.entry(pubkey).or_insert(account);
         }

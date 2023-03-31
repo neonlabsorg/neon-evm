@@ -478,9 +478,8 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             return <[u8; 32]>::default();
         }
 
-        if let Ok(slot_hashes_account) = self.config.rpc_client.get_account(&slot_hashes::ID) {
-            if let Ok(recent_blockhashes_account) =
-                self.config.rpc_client.get_account(&recent_blockhashes::ID)
+        if let Ok(Some(slot_hashes_account)) = self.get_account(&slot_hashes::ID) {
+            if let Ok(Some(recent_blockhashes_account)) = self.get_account(&recent_blockhashes::ID)
             {
                 let slot_hashes_data = slot_hashes_account.data;
                 let slot_hashes_len = u64::from_le_bytes(slot_hashes_data[..8].try_into().unwrap());
@@ -636,9 +635,8 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             self.add_solana_account(*address, false);
 
             let mut account = self
-                .config
-                .rpc_client
                 .get_account(address)
+                .unwrap_or_default()
                 .unwrap_or_default();
             let info = account_info(address, &mut account);
 

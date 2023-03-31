@@ -122,6 +122,7 @@ pub struct SolanaAccount {
     #[serde(serialize_with = "serde_pubkey_bs58")]
     pubkey: Pubkey,
     is_writable: bool,
+    #[serde(skip)]
     data: Option<Account>,
 }
 

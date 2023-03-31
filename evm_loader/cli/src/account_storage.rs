@@ -16,8 +16,7 @@ use evm_loader::{
     types::Address,
 };
 use log::{debug, info, trace, warn};
-use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
-use solana_sdk::commitment_config::CommitmentConfig;
+use solana_client::client_error;
 use solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE;
 use solana_sdk::{
     account::Account,
@@ -188,23 +187,13 @@ impl<'a> EmulatorAccountStorage<'a> {
         }
     }
 
-    pub fn get_account_with_commitment(
-        &self,
-        pubkey: &Pubkey,
-        commitment: CommitmentConfig,
-    ) -> RpcResult<Option<Account>> {
+    pub fn get_account(&self, pubkey: &Pubkey) -> client_error::Result<Option<Account>> {
         let mut accounts = self.solana_accounts.borrow_mut();
 
         if let Some(account) = accounts.get(pubkey) {
             if let Some(ref data) = account.data {
                 if !account.is_writable {
-                    return Ok(Response {
-                        context: RpcResponseContext {
-                            slot: self.block_number,
-                            api_version: None,
-                        },
-                        value: Some(data.clone()),
-                    });
+                    return Ok(Some(data.clone()));
                 }
             }
         }
@@ -212,7 +201,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         let result = self
             .config
             .rpc_client
-            .get_account_with_commitment(pubkey, commitment)?;
+            .get_account_with_commitment(pubkey, self.config.commitment)?;
 
         accounts
             .entry(*pubkey)
@@ -223,7 +212,7 @@ impl<'a> EmulatorAccountStorage<'a> {
                 data: result.value.clone(),
             });
 
-        Ok(result)
+        Ok(result.value)
     }
 
     pub fn get_account_from_solana(
@@ -586,13 +575,10 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             self.add_solana_account(*storage_address.pubkey(), false);
 
             let rpc_response = self
-                .get_account_with_commitment(
-                    storage_address.pubkey(),
-                    self.config.rpc_client.commitment(),
-                )
+                .get_account(storage_address.pubkey())
                 .expect("Error querying account from Solana");
 
-            if let Some(mut account) = rpc_response.value {
+            if let Some(mut account) = rpc_response {
                 if solana_sdk::system_program::check_id(&account.owner) {
                     debug!("read storage system owned");
                     <[u8; 32]>::default()

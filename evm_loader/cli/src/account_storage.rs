@@ -193,9 +193,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         if let Some(account) = accounts.get(pubkey) {
             if let Some(ref data) = account.data {
-                if !account.is_writable {
-                    return Ok(Some(data.clone()));
-                }
+                return Ok(Some(data.clone()));
             }
         }
 

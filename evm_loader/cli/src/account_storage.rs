@@ -177,11 +177,11 @@ impl<'a> EmulatorAccountStorage<'a> {
 
             let entries = accounts.iter().skip(addresses.len()).zip(solana_accounts);
             let mut solana_accounts_storage = self.solana_accounts.borrow_mut();
-            for (account, pubkey) in entries {
+            for (account, &pubkey) in entries {
                 solana_accounts_storage.insert(
-                    *pubkey,
+                    pubkey,
                     SolanaAccount {
-                        pubkey: *pubkey,
+                        pubkey,
                         is_writable: false,
                         data: account.clone(),
                     },

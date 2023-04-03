@@ -159,7 +159,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         let pubkeys: Vec<_> = addresses
             .iter()
             .map(|address| make_solana_program_address(address, &self.config.evm_loader).0)
-            .chain(solana_accounts.iter().map(|x| *x))
+            .chain(solana_accounts.iter().copied())
             .collect();
 
         if let Ok(accounts) = self.config.rpc_client.get_multiple_accounts(&pubkeys) {

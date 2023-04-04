@@ -33,8 +33,9 @@ impl<B: Database> Machine<B> {
     pub fn opcode_add(&mut self, _backend: &mut B) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
+        let c = a.wrapping_add(b);
 
-        self.stack.push_u256(a + b)?;
+        self.stack.push_u256(c)?;
 
         Ok(Action::Continue)
     }
@@ -43,8 +44,9 @@ impl<B: Database> Machine<B> {
     pub fn opcode_mul(&mut self, _backend: &mut B) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
+        let c = a.wrapping_mul(b);
 
-        self.stack.push_u256(a * b)?;
+        self.stack.push_u256(c)?;
 
         Ok(Action::Continue)
     }
@@ -53,8 +55,9 @@ impl<B: Database> Machine<B> {
     pub fn opcode_sub(&mut self, _backend: &mut B) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
+        let c = a.wrapping_sub(b);
 
-        self.stack.push_u256(a - b)?;
+        self.stack.push_u256(c)?;
 
         Ok(Action::Continue)
     }
@@ -67,7 +70,8 @@ impl<B: Database> Machine<B> {
         if b == U256::ZERO {
             self.stack.push_zero()?;
         } else {
-            self.stack.push_u256(a / b)?;
+            let c = a.wrapping_div(b);
+            self.stack.push_u256(c)?;
         }
 
         Ok(Action::Continue)
@@ -78,10 +82,12 @@ impl<B: Database> Machine<B> {
         let a = self.stack.pop_i256()?;
         let b = self.stack.pop_i256()?;
 
-        match (a, b) {
-            (_, I256::ZERO) => self.stack.push_zero()?,
-            (I256::MIN, I256::MINUS_ONE) => self.stack.push_i256(I256::MIN)?,
-            (a, b) => self.stack.push_i256(a / b)?,
+        if b == I256::ZERO {
+            self.stack.push_zero()?;
+        } else {
+            // Wrapping occurs when dividing MIN / -1, in which case c = I256::MIN
+            let c = a.wrapping_div(b);
+            self.stack.push_i256(c)?;
         }
 
         Ok(Action::Continue)
@@ -95,7 +101,8 @@ impl<B: Database> Machine<B> {
         if b == U256::ZERO {
             self.stack.push_zero()?;
         } else {
-            self.stack.push_u256(a % b)?;
+            let c = a.wrapping_rem(b);
+            self.stack.push_u256(c)?;
         }
 
         Ok(Action::Continue)
@@ -109,7 +116,8 @@ impl<B: Database> Machine<B> {
         if b == I256::ZERO {
             self.stack.push_zero()?;
         } else {
-            self.stack.push_i256(a % b)?;
+            let c = a.wrapping_rem(b);
+            self.stack.push_i256(c)?;
         }
 
         Ok(Action::Continue)
@@ -137,7 +145,7 @@ impl<B: Database> Machine<B> {
             if a >= b {
                 a - b
             } else {
-                m - b + a
+                (m - b).wrapping_add(a)
             }
         };
 
@@ -172,19 +180,19 @@ impl<B: Database> Machine<B> {
             if (a & 1) != U256::ZERO {
                 // (result + b) % m, without overflow
                 // logic is the same as in `addmod`
-                if b >= (m - result) {
-                    result -= m;
+                if b >= m.wrapping_sub(result) {
+                    result = result.wrapping_sub(m);
                 }
-                result += b;
+                result = result.wrapping_add(b);
             }
             a >>= 1;
 
             // (b + b) % m, without overflow
             let mut temp_b = b;
-            if b >= (m - b) {
-                temp_b -= m;
+            if b >= m.wrapping_sub(b) {
+                temp_b = temp_b.wrapping_sub(m);
             }
-            b += temp_b;
+            b = b.wrapping_add(temp_b);
         }
 
         self.stack.push_u256(result)?;
@@ -203,18 +211,18 @@ impl<B: Database> Machine<B> {
         // exponentiation by squaring
         while b > 1 {
             if (b & 1) == 1 {
-                result *= a;
+                result = result.wrapping_mul(a);
             }
 
             b >>= 1;
-            a = a * a;
+            a = a.wrapping_mul(a);
         }
 
         // Deal with the final bit of the exponent separately, since
         // squaring the base afterwards is not necessary and may cause a
         // needless overflow.
         if b == 1 {
-            result *= a;
+            result = result.wrapping_mul(a);
         }
 
         self.stack.push_u256(result)?;
@@ -526,10 +534,6 @@ impl<B: Database> Machine<B> {
         let data_offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        if data_offset.saturating_add(length) > self.execution_code.len() {
-            return Err(Error::CodeCopyOffsetExceedsCodeSize(data_offset, length));
-        }
-
         self.memory
             .write_buffer(memory_offset, length, &self.execution_code, data_offset)?;
 
@@ -566,10 +570,6 @@ impl<B: Database> Machine<B> {
 
         let code = backend.code(&address)?;
 
-        if data_offset.saturating_add(length) > code.len() {
-            return Err(Error::CodeCopyOffsetExceedsCodeSize(data_offset, length));
-        }
-
         self.memory
             .write_buffer(memory_offset, length, &code, data_offset)?;
 
@@ -588,6 +588,10 @@ impl<B: Database> Machine<B> {
         let memory_offset = self.stack.pop_usize()?;
         let data_offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
+
+        if data_offset.saturating_add(length) > self.return_data.len() {
+            return Err(Error::ReturnDataCopyOverflow(data_offset, length));
+        }
 
         self.memory
             .write_buffer(memory_offset, length, &self.return_data, data_offset)?;
@@ -955,6 +959,8 @@ impl<B: Database> Machine<B> {
         length: usize,
         backend: &mut B,
     ) -> Result<Action> {
+        self.return_data = Buffer::empty();
+
         if backend.nonce(&self.context.contract)? == u64::MAX {
             return Err(Error::NonceOverflow(self.context.contract));
         }
@@ -971,6 +977,7 @@ impl<B: Database> Machine<B> {
             return Ok(Action::Continue);
         }
 
+        backend.increment_nonce(address)?;
         backend.snapshot()?;
 
         backend.increment_nonce(self.context.contract)?;
@@ -1004,6 +1011,8 @@ impl<B: Database> Machine<B> {
         // let return_offset = self.stack.pop_usize()?;
         // let return_length = self.stack.pop_usize()?;
 
+        self.return_data = Buffer::empty();
+
         if self.is_static && (value != U256::ZERO) {
             return Err(Error::StaticModeViolation(self.context.contract));
         }
@@ -1012,8 +1021,6 @@ impl<B: Database> Machine<B> {
             self.stack.discard()?; // return_offset
             self.stack.discard()?; // return_length
             self.stack.push_bool(false)?; // fail
-
-            self.return_data = Buffer::empty();
 
             return Ok(Action::Continue);
         }
@@ -1065,12 +1072,12 @@ impl<B: Database> Machine<B> {
         // let return_offset = self.stack.pop_usize()?;
         // let return_length = self.stack.pop_usize()?;
 
+        self.return_data = Buffer::empty();
+
         if backend.balance(&self.context.contract)? < value {
             self.stack.discard()?; // return_offset
             self.stack.discard()?; // return_length
             self.stack.push_bool(false)?; // fail
-
-            self.return_data = Buffer::empty();
 
             return Ok(Action::Continue);
         }
@@ -1122,6 +1129,8 @@ impl<B: Database> Machine<B> {
         // let return_offset = self.stack.pop_usize()?;
         // let return_length = self.stack.pop_usize()?;
 
+        self.return_data = Buffer::empty();
+
         let context = self.context;
         let call_data = Buffer::new(self.memory.read(args_offset, args_length)?);
 
@@ -1162,6 +1171,8 @@ impl<B: Database> Machine<B> {
         let args_length = self.stack.pop_usize()?;
         // let return_offset = self.stack.pop_usize()?;
         // let return_length = self.stack.pop_usize()?;
+
+        self.return_data = Buffer::empty();
 
         let context = Context {
             caller: self.context.contract,
@@ -1309,16 +1320,16 @@ impl<B: Database> Machine<B> {
         });
 
         let returned = self.join();
+        self.return_data = return_data;
+
         match returned.reason {
             Reason::Call => {
                 let return_offset = self.stack.pop_usize()?;
                 let return_length = self.stack.pop_usize()?;
 
                 self.memory
-                    .write_buffer(return_offset, return_length, &return_data, 0)?;
+                    .write_buffer(return_offset, return_length, &self.return_data, 0)?;
                 self.stack.push_bool(false)?; // fail
-
-                self.return_data = return_data;
             }
             Reason::Create => {
                 self.stack.push_zero()?;
@@ -1396,15 +1407,20 @@ impl<B: Database> Machine<B> {
         });
 
         let returned = self.join();
-        if returned.reason == Reason::Call {
-            let return_offset = self.stack.pop_usize()?;
-            let return_length = self.stack.pop_usize()?;
+        match returned.reason {
+            Reason::Call => {
+                let return_offset = self.stack.pop_usize()?;
+                let return_length = self.stack.pop_usize()?;
 
-            self.memory
-                .write_buffer(return_offset, return_length, &[], 0)?;
-            self.stack.push_bool(true)?; // success
+                self.memory
+                    .write_buffer(return_offset, return_length, &[], 0)?;
+                self.stack.push_bool(true)?; // success
 
-            self.return_data = Buffer::empty();
+                self.return_data = Buffer::empty();
+            }
+            Reason::Create => {
+                self.stack.push_zero()?;
+            }
         }
 
         backend.commit_snapshot()?;

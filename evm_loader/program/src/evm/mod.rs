@@ -23,6 +23,7 @@ mod precompile;
 mod stack;
 #[cfg(feature = "tracing")]
 pub mod tracing;
+mod utils;
 
 use self::{database::Database, memory::Memory, stack::Stack};
 pub use buffer::Buffer;
@@ -185,6 +186,7 @@ impl<B: Database> Machine<B> {
             return Err(Error::DeployToExistingAccount(target, origin));
         }
 
+        backend.increment_nonce(target)?;
         backend.increment_nonce(origin)?;
         backend.snapshot()?;
 

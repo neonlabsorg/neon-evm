@@ -234,7 +234,7 @@ impl<'a> ProgramAccountStorage<'a> {
         let mut accounts_readiness = AccountsReadiness::Ready;
         for (address, operation) in accounts_operations {
             let (solana_address, bump_seed) = address.find_solana_address(self.program_id);
-            let solana_account = self.solana_account(&solana_address).ok_or_else(|| {
+            let solana_account = self.solana_account(&solana_address).ok_or({
                 E!(
                     ProgramError::UninitializedAccount;
                     "Account {} - corresponding Solana account was not provided",
@@ -387,7 +387,7 @@ impl<'a> ProgramAccountStorage<'a> {
         }
 
         let (solana_address, bump_seed) = address.find_solana_address(self.program_id);
-        let info = self.solana_account(&solana_address).ok_or_else(|| {
+        let info = self.solana_account(&solana_address).ok_or({
             E!(
                 ProgramError::InvalidArgument;
                 "Account {} not found in the list of Solana accounts",

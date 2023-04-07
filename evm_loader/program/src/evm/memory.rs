@@ -67,7 +67,8 @@ impl Memory {
 
     #[inline]
     fn realloc(&mut self, offset: usize, length: usize) -> Result<(), Error> {
-        let required_size = offset.checked_add(length)
+        let required_size = offset
+            .checked_add(length)
             .ok_or(Error::MemoryAccessOutOfLimits(offset, length))?;
 
         let new_size = checked_next_multiple_of_32(required_size)
@@ -81,7 +82,8 @@ impl Memory {
             return Ok(());
         }
 
-        let new_capacity = new_size.checked_next_power_of_two()
+        let new_capacity = new_size
+            .checked_next_power_of_two()
             .ok_or(Error::MemoryAccessOutOfLimits(offset, length))?;
         if new_capacity > MAX_MEMORY_SIZE {
             return Err(Error::MemoryAccessOutOfLimits(offset, length));

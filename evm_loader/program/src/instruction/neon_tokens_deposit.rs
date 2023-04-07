@@ -172,7 +172,7 @@ fn execute(
     ethereum_account.balance = ethereum_account
         .balance
         .checked_add(deposit)
-        .ok_or_else(|| {
+        .ok_or({
             E!(
                 ProgramError::InvalidArgument;
                 "Account {} - balance overflow",

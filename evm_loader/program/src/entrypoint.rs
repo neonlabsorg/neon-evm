@@ -27,8 +27,8 @@ fn process_instruction<'a>(
     accounts: &'a [AccountInfo<'a>],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    let (tag, instruction) = instruction_data.split_first().ok_or(
-        E!(ProgramError::InvalidInstructionData; "Invalid instruction - {:?}", instruction_data),
+    let (tag, instruction) = instruction_data.split_first().ok_or_else(
+        || E!(ProgramError::InvalidInstructionData; "Invalid instruction - {:?}", instruction_data),
     )?;
 
     match EvmInstruction::parse(tag)? {

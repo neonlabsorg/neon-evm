@@ -58,7 +58,7 @@ fn get_program_upgrade_authority<'a>(
             slot: _,
             upgrade_authority_address,
         } => upgrade_authority_address
-            .ok_or(E!(ProgramError::InvalidAccountData; "Not upgradeable program" ))?,
+            .ok_or_else(|| E!(ProgramError::InvalidAccountData; "Not upgradeable program" ))?,
         _ => return Err!(ProgramError::InvalidAccountData; "Not ProgramData"),
     };
 

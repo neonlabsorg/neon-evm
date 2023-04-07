@@ -228,4 +228,6 @@ pub struct TracedCall {
     pub vm_trace: Option<VMTrace>,
     pub full_trace_data: Vec<FullTraceData>,
     pub used_gas: u64,
+    pub result: String,
+    pub exit_status: String,
 }

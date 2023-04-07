@@ -17,7 +17,7 @@ pub fn execute(
 ) -> NeonCliResult {
     let mut tracer = Tracer::new();
 
-    evm_loader::evm::tracing::using(&mut tracer, || {
+    let emulation_result = evm_loader::evm::tracing::using(&mut tracer, || {
         emulate::execute(config, tx, token, chain, steps, accounts)
     })?;
 
@@ -26,7 +26,8 @@ pub fn execute(
     let trace = TracedCall {
         vm_trace,
         full_trace_data,
-        used_gas: 0,
+        used_gas: emulation_result["used_gas"].as_u64()
+            .expect("Failed to treat `used_gas` as u64"),
     };
 
     Ok(serde_json::json!(trace))

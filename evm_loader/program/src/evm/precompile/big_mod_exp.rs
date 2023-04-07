@@ -10,14 +10,17 @@ pub fn big_mod_exp(input: &[u8]) -> Vec<u8> {
     let (exp_len, rest) = rest.split_at(32);
     let (mod_len, rest) = rest.split_at(32);
 
-    let Ok(base_len) = U256::from_be_bytes(base_len.try_into().unwrap()).try_into() else {
-        return vec![];
+    let base_len = match U256::from_be_bytes(base_len.try_into().unwrap()).try_into() {
+        Ok(value) => value,
+        Err(_) => return vec![]
     };
-    let Ok(exp_len) = U256::from_be_bytes(exp_len.try_into().unwrap()).try_into() else {
-        return vec![];
+    let exp_len = match U256::from_be_bytes(exp_len.try_into().unwrap()).try_into() {
+        Ok(value) => value,
+        Err(_) => return vec![]
     };
-    let Ok(mod_len) = U256::from_be_bytes(mod_len.try_into().unwrap()).try_into() else {
-        return vec![];
+    let mod_len = match U256::from_be_bytes(mod_len.try_into().unwrap()).try_into() {
+        Ok(value) => value,
+        Err(_) => return vec![]
     };
 
     if base_len == 0 && mod_len == 0 {

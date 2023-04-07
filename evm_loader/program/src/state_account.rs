@@ -147,14 +147,12 @@ impl<'a> State<'a> {
             .info
             .lamports()
             .checked_sub(crate::config::PAYMENT_TO_DEPOSIT)
-            .ok_or_else(
-                || E!(ProgramError::InvalidArgument; "Deposit source lamports underflow"),
-            )?;
+            .ok_or(E!(ProgramError::InvalidArgument; "Deposit source lamports underflow"))?;
 
         let target_lamports = target
             .lamports()
             .checked_add(crate::config::PAYMENT_TO_DEPOSIT)
-            .ok_or_else(|| E!(ProgramError::InvalidArgument; "Deposit target lamports overflow"))?;
+            .ok_or(E!(ProgramError::InvalidArgument; "Deposit target lamports overflow"))?;
 
         **self.info.lamports.borrow_mut() = source_lamports;
         **target.lamports.borrow_mut() = target_lamports;

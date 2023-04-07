@@ -188,8 +188,9 @@ impl<'a> ProgramAccountStorage<'a> {
                                 contract.info.key,
                                 &index,
                             );
-                            let storage_account = self.solana_accounts.get(&storage_address.pubkey())
-                                .ok_or_else(|| E!(ProgramError::InvalidArgument; "Account {} - storage account not found", storage_address.pubkey()))?;
+                            let storage_account = self.solana_accounts.get(&storage_address.pubkey()).ok_or(
+                                E!(ProgramError::InvalidArgument; "Account {} - storage account not found", storage_address.pubkey())
+                            )?;
 
                             if !solana_program::system_program::check_id(storage_account.owner) {
                                 return Err!(ProgramError::InvalidAccountData; "Account {} - expected system or program owned", storage_address.pubkey());
@@ -303,8 +304,9 @@ impl<'a> ProgramAccountStorage<'a> {
 
         assert_eq!(account.balance, U256::ZERO); // balance should be moved by executor
         account.trx_count = 0;
-        account.generation = account.generation.checked_add(1)
-            .ok_or_else(|| E!(ProgramError::InvalidInstructionData; "Account {} - generation overflow", address))?;
+        account.generation = account.generation.checked_add(1).ok_or(
+            E!(ProgramError::InvalidInstructionData; "Account {} - generation overflow", address),
+        )?;
 
         if let Some(contract) = account.contract_data() {
             contract.extension_borrow_mut().fill(0);
@@ -316,8 +318,8 @@ impl<'a> ProgramAccountStorage<'a> {
     }
 
     fn deploy_contract(&mut self, address: Address, code: &[u8]) -> ProgramResult {
-        let account = self.ethereum_accounts.get_mut(&address).ok_or_else(
-            || E!(ProgramError::UninitializedAccount; "Account {} - is not initialized", address),
+        let account = self.ethereum_accounts.get_mut(&address).ok_or(
+            E!(ProgramError::UninitializedAccount; "Account {} - is not initialized", address),
         )?;
 
         assert_eq!(

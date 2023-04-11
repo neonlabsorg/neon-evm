@@ -76,126 +76,122 @@ where
     }
 }
 
-macro_rules! trx_params {
-    ($cmd:expr, $desc:expr) => {
-        SubCommand::with_name($cmd)
-            .about($desc)
-            .arg(
-                Arg::with_name("sender")
-                    .value_name("SENDER")
-                    .takes_value(true)
-                    .index(1)
-                    .required(true)
-                    .validator(is_valid_address)
-                    .help("The sender of the transaction"),
-            )
-            .arg(
-                Arg::with_name("contract")
-                    .value_name("CONTRACT")
-                    .takes_value(true)
-                    .index(2)
-                    .required(true)
-                    .validator(is_valid_address_or_deploy)
-                    .help("The contract that executes the transaction or 'deploy'"),
-            )
-            .arg(
-                Arg::with_name("value")
-                    .value_name("VALUE")
-                    .takes_value(true)
-                    .index(3)
-                    .required(false)
-                    .validator(is_valid_u256)
-                    .help("Transaction value"),
-            )
-            .arg(
-                Arg::with_name("token_mint")
-                    .long("token_mint")
-                    .value_name("TOKEN_MINT")
-                    .takes_value(true)
-                    .global(true)
-                    .validator(is_valid_pubkey)
-                    .help("Pubkey for token_mint"),
-            )
-            .arg(
-                Arg::with_name("chain_id")
-                    .long("chain_id")
-                    .value_name("CHAIN_ID")
-                    .takes_value(true)
-                    .required(false)
-                    .help("Network chain_id"),
-            )
-            .arg(
-                Arg::with_name("max_steps_to_execute")
-                    .long("max_steps_to_execute")
-                    .value_name("NUMBER_OF_STEPS")
-                    .takes_value(true)
-                    .required(false)
-                    .default_value("100000")
-                    .help("Maximal number of steps to execute in a single run"),
-            )
-            .arg(
-                Arg::with_name("gas_limit")
-                    .short("G")
-                    .long("gas_limit")
-                    .value_name("GAS_LIMIT")
-                    .takes_value(true)
-                    .required(false)
-                    .validator(is_valid_u256)
-                    .help("Gas limit"),
-            )
-            .arg(
-                Arg::with_name("cached_accounts")
-                    .value_name("CACHED_ACCOUNTS")
-                    .long("cached_accounts")
-                    .takes_value(true)
-                    .required(false)
-                    .multiple(true)
-                    .validator(is_valid_address)
-                    .help("List of cached account addresses"),
-            )
-    };
+fn trx_params<'a, 'b>(cmd: &'static str, desc: &'static str) -> App<'a, 'b> {
+    SubCommand::with_name(cmd)
+        .about(desc)
+        .arg(
+            Arg::with_name("sender")
+                .value_name("SENDER")
+                .takes_value(true)
+                .index(1)
+                .required(true)
+                .validator(is_valid_address)
+                .help("The sender of the transaction"),
+        )
+        .arg(
+            Arg::with_name("contract")
+                .value_name("CONTRACT")
+                .takes_value(true)
+                .index(2)
+                .required(true)
+                .validator(is_valid_address_or_deploy)
+                .help("The contract that executes the transaction or 'deploy'"),
+        )
+        .arg(
+            Arg::with_name("value")
+                .value_name("VALUE")
+                .takes_value(true)
+                .index(3)
+                .required(false)
+                .validator(is_valid_u256)
+                .help("Transaction value"),
+        )
+        .arg(
+            Arg::with_name("token_mint")
+                .long("token_mint")
+                .value_name("TOKEN_MINT")
+                .takes_value(true)
+                .global(true)
+                .validator(is_valid_pubkey)
+                .help("Pubkey for token_mint"),
+        )
+        .arg(
+            Arg::with_name("chain_id")
+                .long("chain_id")
+                .value_name("CHAIN_ID")
+                .takes_value(true)
+                .required(false)
+                .help("Network chain_id"),
+        )
+        .arg(
+            Arg::with_name("max_steps_to_execute")
+                .long("max_steps_to_execute")
+                .value_name("NUMBER_OF_STEPS")
+                .takes_value(true)
+                .required(false)
+                .default_value("100000")
+                .help("Maximal number of steps to execute in a single run"),
+        )
+        .arg(
+            Arg::with_name("gas_limit")
+                .short("G")
+                .long("gas_limit")
+                .value_name("GAS_LIMIT")
+                .takes_value(true)
+                .required(false)
+                .validator(is_valid_u256)
+                .help("Gas limit"),
+        )
+        .arg(
+            Arg::with_name("cached_accounts")
+                .value_name("CACHED_ACCOUNTS")
+                .long("cached_accounts")
+                .takes_value(true)
+                .required(false)
+                .multiple(true)
+                .validator(is_valid_address)
+                .help("List of cached account addresses"),
+        )
 }
 
-macro_rules! trx_hash {
-    ($cmd:expr, $desc:expr) => {
-        SubCommand::with_name($cmd)
-            .about($desc)
-            .arg(
-                Arg::with_name("hash")
-                    .index(1)
-                    .value_name("hash")
-                    .takes_value(true)
-                    .required(true)
-                    .validator(is_valid_h256)
-                    .help("Neon transaction hash"),
-            )
-            .arg(
-                Arg::with_name("token_mint")
-                    .long("token_mint")
-                    .value_name("TOKEN_MINT")
-                    .takes_value(true)
-                    .global(true)
-                    .validator(is_valid_pubkey)
-                    .help("Pubkey for token_mint"),
-            )
-            .arg(
-                Arg::with_name("chain_id")
-                    .long("chain_id")
-                    .value_name("CHAIN_ID")
-                    .takes_value(true)
-                    .required(false)
-                    .help("Network chain_id"),
-            )
-            .arg(
-                Arg::with_name("max_steps_to_execute")
-                    .long("max_steps_to_execute")
-                    .value_name("NUMBER_OF_STEPS")
-                    .takes_value(true)
-                    .required(false)
-                    .default_value("100000")
-                    .help("Maximal number of steps to execute in a single run"),
-            )
-    };
+fn trx_hash<'a, 'b>(cmd: &'static str, desc: &'static str) -> App<'a, 'b> {
+    SubCommand::with_name(cmd)
+        .about(desc)
+        .arg(
+            Arg::with_name("hash")
+                .index(1)
+                .value_name("hash")
+                .takes_value(true)
+                .required(true)
+                .validator(is_valid_h256)
+                .help("Neon transaction hash"),
+        )
+        .arg(
+            Arg::with_name("token_mint")
+                .long("token_mint")
+                .value_name("TOKEN_MINT")
+                .takes_value(true)
+                .global(true)
+                .validator(is_valid_pubkey)
+                .help("Pubkey for token_mint"),
+        )
+        .arg(
+            Arg::with_name("chain_id")
+                .long("chain_id")
+                .value_name("CHAIN_ID")
+                .takes_value(true)
+                .required(false)
+                .help("Network chain_id"),
+        )
+        .arg(
+            Arg::with_name("max_steps_to_execute")
+                .long("max_steps_to_execute")
+                .value_name("NUMBER_OF_STEPS")
+                .takes_value(true)
+                .required(false)
+                .default_value("100000")
+                .help("Maximal number of steps to execute in a single run"),
+        )
 }
 
 #[allow(clippy::too_many_lines)]
@@ -309,16 +305,26 @@ pub fn parse<'a>() -> ArgMatches<'a> {
                 .help("Logging level"),
         )
         .subcommand(
-            trx_params!("emulate", "Emulation transaction")
+            trx_params("emulate", "Emulation transaction")
         )
         .subcommand(
-            trx_params!("trace", "Emulation transaction to collecting traces")
+            trx_params("trace", "Emulation transaction to collecting traces")
+                .arg(
+                    Arg::with_name("enable_return_data")
+                        .value_name("ENABLE_RETURN_DATA")
+                        .help("Collect returned data from each step during the trace"),
+                )
         )
         .subcommand(
-            trx_hash!("emulate_hash", "Emulation transaction by hash")
+            trx_hash("emulate_hash", "Emulation transaction by hash")
         )
         .subcommand(
-            trx_hash!("trace_hash", "Emulation transaction by hash to collecting traces")
+            trx_hash("trace_hash", "Emulation transaction by hash to collecting traces")
+                .arg(
+                    Arg::with_name("enable_return_data")
+                        .value_name("ENABLE_RETURN_DATA")
+                        .help("Collect returned data from each step during the trace"),
+                )
         )
         .subcommand(
             SubCommand::with_name("create-ether-account")

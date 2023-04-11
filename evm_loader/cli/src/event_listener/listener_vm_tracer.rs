@@ -7,7 +7,7 @@ pub trait ListenerVmTracer {
     fn begin_vm(&mut self, context: Context, code: Vec<u8>);
     fn end_vm(&mut self, status: ExitStatus);
     fn begin_step(&mut self, opcode: u8, pc: usize);
-    fn end_step(&mut self, gas_used: u64);
+    fn end_step(&mut self, gas_used: u64, return_data: Option<Vec<u8>>);
     fn storage_access(&mut self, index: U256, value: [u8; 32]);
     fn storage_set(&mut self, index: U256, value: [u8; 32]);
     fn stack_push(&mut self, value: [u8; 32]);
@@ -37,12 +37,17 @@ impl ListenerVmTracer for VmTracer {
         self.tracer.trace_prepare_execute(pc, opcode);
     }
 
-    fn end_step(&mut self, gas_used: u64) {
+    fn end_step(&mut self, gas_used: u64, return_data: Option<Vec<u8>>) {
         let gas_used = U256::from(gas_used);
         let diff = self.step_diff().clone();
 
-        self.tracer
-            .trace_executed(gas_used, diff.stack_push, diff.memory_set, diff.storage_set);
+        self.tracer.trace_executed(
+            gas_used,
+            diff.stack_push,
+            diff.memory_set,
+            diff.storage_set,
+            return_data,
+        );
     }
 
     fn storage_access(&mut self, index: U256, value: [u8; 32]) {

@@ -46,12 +46,12 @@ pub fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonC
         ("trace", Some(params)) => {
             let tx = parse_tx(params);
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            trace::execute(config, tx, token, chain, steps, &accounts)
+            trace::execute(config, tx, token, chain, steps, &accounts, parse_enable_return_data(params))
         }
         ("trace_hash", Some(params)) => {
             let tx = config.rpc_client.get_transaction_data()?;
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            trace::execute(config, tx, token, chain, steps, &accounts)
+            trace::execute(config, tx, token, chain, steps, &accounts, parse_enable_return_data(params))
         }
         ("create-ether-account", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
@@ -205,4 +205,8 @@ pub fn parse_tx_params(config: &Config, params: &ArgMatches) -> (Pubkey, u64, u6
     let accounts = values_of::<Address>(params, "cached_accounts").unwrap_or_default();
 
     (token, chain, max_steps, accounts)
+}
+
+fn parse_enable_return_data(params: &ArgMatches) -> bool {
+    value_of(params, "enable_return_data").unwrap_or_default()
 }

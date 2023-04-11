@@ -14,8 +14,9 @@ pub fn execute(
     chain: u64,
     steps: u64,
     accounts: &[Address],
+    enable_return_data: bool,
 ) -> NeonCliResult {
-    let mut tracer = Tracer::new();
+    let mut tracer = Tracer::new(enable_return_data);
 
     let emulation_result = evm_loader::evm::tracing::using(&mut tracer, || {
         emulate::execute(config, tx, token, chain, steps, accounts)

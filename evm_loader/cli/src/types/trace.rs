@@ -96,6 +96,7 @@ pub struct VMTrace {
 pub struct TraceData {
     pub mem_written: Option<(usize, usize)>,
     pub store_written: Option<(U256, [u8; 32])>,
+    pub return_data: Option<Vec<u8>>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -156,10 +157,12 @@ impl VMTracer for ExecutiveVMTracer {
         stack_push: Vec<[u8; 32]>,
         mem_diff: Option<MemoryDiff>,
         store_diff: Option<StorageDiff>,
+        return_data: Option<Vec<u8>>,
     ) {
         self.trace_stack.push(TraceData {
             mem_written: mem_diff.as_ref().map(|d| (d.offset, d.data.len())),
             store_written: store_diff.as_ref().map(|d| (d.location, d.value)),
+            return_data,
         });
 
         Self::with_trace_in_depth(&mut self.data, self.depth, move |trace| {
@@ -210,6 +213,7 @@ pub trait VMTracer: Send {
         _stack_push: Vec<[u8; 32]>,
         _mem_diff: Option<MemoryDiff>,
         _storage_diff: Option<StorageDiff>,
+        _return_data: Option<Vec<u8>>,
     ) {
     }
 

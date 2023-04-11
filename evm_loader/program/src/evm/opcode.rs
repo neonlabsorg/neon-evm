@@ -5,7 +5,7 @@ use solana_program::log::sol_log_data;
 use super::{database::Database, tracing_event, Context, Machine, Reason};
 use crate::{
     error::{build_revert_message, Error, Result},
-    evm::Buffer,
+    evm::{Buffer, trace_end_step},
     types::Address,
 };
 
@@ -1268,7 +1268,7 @@ impl<B: Database> Machine<B> {
             }
         }
 
-        tracing_event!(super::tracing::Event::EndStep { gas_used: 0_u64 });
+        trace_end_step!(Some(return_data.to_vec()));
         tracing_event!(super::tracing::Event::EndVM {
             status: super::ExitStatus::Return(return_data.to_vec())
         });
@@ -1314,7 +1314,7 @@ impl<B: Database> Machine<B> {
             return Ok(Action::Revert(return_data.to_vec()));
         }
 
-        tracing_event!(super::tracing::Event::EndStep { gas_used: 0_u64 });
+        trace_end_step!(Some(return_data.to_vec()));
         tracing_event!(super::tracing::Event::EndVM {
             status: super::ExitStatus::Revert(return_data.to_vec())
         });
@@ -1366,7 +1366,7 @@ impl<B: Database> Machine<B> {
             return Ok(Action::Suicide);
         }
 
-        tracing_event!(super::tracing::Event::EndStep { gas_used: 0_u64 });
+        trace_end_step!(None);
         tracing_event!(super::tracing::Event::EndVM {
             status: super::ExitStatus::Suicide
         });
@@ -1401,7 +1401,7 @@ impl<B: Database> Machine<B> {
             return Ok(Action::Stop);
         }
 
-        tracing_event!(super::tracing::Event::EndStep { gas_used: 0_u64 });
+        trace_end_step!(None);
         tracing_event!(super::tracing::Event::EndVM {
             status: super::ExitStatus::Stop
         });

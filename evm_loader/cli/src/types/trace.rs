@@ -47,8 +47,6 @@ pub struct VMExecutedOperation {
     pub mem_diff: Option<MemoryDiff>,
     /// The altered storage value, if any.
     pub store_diff: Option<StorageDiff>,
-    /// Data returned by operation execution
-    pub return_data: Option<Vec<u8>>,
 }
 
 #[derive(
@@ -105,6 +103,7 @@ pub struct FullTraceData {
     pub stack: Vec<[u8; 32]>,
     pub memory: Vec<u8>,
     pub storage: HashMap<U256, [u8; 32]>,
+    pub return_data: Option<Vec<u8>>,
 }
 
 /// Simple VM tracer. Traces all operations.
@@ -158,7 +157,6 @@ impl VMTracer for ExecutiveVMTracer {
         stack_push: Vec<[u8; 32]>,
         mem_diff: Option<MemoryDiff>,
         store_diff: Option<StorageDiff>,
-        return_data: Option<Vec<u8>>,
     ) {
         self.trace_stack.push(TraceData {
             mem_written: mem_diff.as_ref().map(|d| (d.offset, d.data.len())),
@@ -172,7 +170,6 @@ impl VMTracer for ExecutiveVMTracer {
                 stack_push,
                 mem_diff,
                 store_diff,
-                return_data,
             });
         });
     }
@@ -214,7 +211,6 @@ pub trait VMTracer: Send {
         _stack_push: Vec<[u8; 32]>,
         _mem_diff: Option<MemoryDiff>,
         _storage_diff: Option<StorageDiff>,
-        _return_data: Option<Vec<u8>>,
     ) {
     }
 

@@ -1,5 +1,5 @@
 use super::block;
-use clickhouse::Client;
+use clickhouse::{Client, Row};
 use solana_sdk::clock::{Slot, UnixTimestamp};
 use std::sync::Arc;
 use thiserror::Error;
@@ -17,6 +17,12 @@ pub type ChResult<T> = std::result::Result<T, ChError>;
 #[allow(dead_code)]
 pub struct ClickHouseDb {
     client: Arc<Client>,
+}
+
+#[derive(Row, serde::Deserialize)]
+pub struct SlotParent{
+    pub slot: u64,
+    pub parent: Option<u64>,
 }
 
 #[allow(dead_code)]
@@ -58,5 +64,55 @@ impl ClickHouseDb {
                 .await
                 .map_err(std::convert::Into::into)
         })
+    }
+
+    fn get_branch_slots(&self, slot: Slot) -> ChResult<Vec<u64>>{
+        let max_rooted_slot: u64 = block(|| async {
+            let query = "SELECT max(slot) from events.update_slot_local WHERE slot_status = 2";
+            self.client
+                .query(query)
+                .fetch_one::<u64>()
+                .await
+        })?;
+
+        let rows: Vec<SlotParent> =  block(|| async {
+            let query = "SELECT distinct ?fields FROM events.update_slot_distributed \
+                WHERE slot > ?\
+                ORDER BY slot desc";
+            self.client
+                .query(query)
+                .bind(max_rooted_slot)
+                .fetch_all::<SlotParent>()
+                .await
+        })?;
+
+        let mut branch: Vec<u64> = vec![];
+        let mut parent = 0;
+        let mut found_branch = false;
+
+        for row in rows {
+            if !found_branch {
+                if row.slot == slot {
+                    if let Some(parent_) = row.parent {
+                        parent = parent_;
+                        branch.push(row.slot);
+                        found_branch = true;
+                    }
+                }
+            } else {
+                if row.slot == parent {
+                    if let Some(parent_) = row.parent {
+                        branch.push(row.slot);
+                        parent = parent_;
+                    }
+                }
+            }
+        }
+        if parent == max_rooted_slot {
+            Ok(branch)
+        } else {
+            let err = clickhouse::error::Error::Custom(format!("requested slot is not on working branch {}", slot));
+            Err(ChError::Db(err))
+        }
     }
 }

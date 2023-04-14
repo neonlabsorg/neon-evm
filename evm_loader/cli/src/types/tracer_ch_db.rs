@@ -1,7 +1,7 @@
 use super::block;
 use clickhouse::{Client, Row};
 use solana_sdk::clock::{Slot, UnixTimestamp};
-use std::sync::Arc;
+use std::{sync::Arc, cmp::{Ord, Ordering::{Less, Equal, Greater}}};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -19,10 +19,10 @@ pub struct ClickHouseDb {
     client: Arc<Client>,
 }
 
-#[derive(Row, serde::Deserialize)]
+#[derive(Row, serde::Deserialize, Clone)]
 pub struct SlotParent{
     pub slot: u64,
-    pub parent: Option<u64>,
+    pub parent: u64,
 }
 
 #[allow(dead_code)]
@@ -66,53 +66,71 @@ impl ClickHouseDb {
         })
     }
 
-    fn get_branch_slots(&self, slot: Slot) -> ChResult<Vec<u64>>{
-        let max_rooted_slot: u64 = block(|| async {
-            let query = "SELECT max(slot) from events.update_slot_local WHERE slot_status = 2";
-            self.client
-                .query(query)
-                .fetch_one::<u64>()
-                .await
-        })?;
+    fn get_branch_slots(&self, slot: Slot) -> ChResult<(u64, Vec<u64>)>{
 
         let rows: Vec<SlotParent> =  block(|| async {
-            let query = "SELECT distinct ?fields FROM events.update_slot_distributed \
-                WHERE slot > ?\
-                ORDER BY slot desc";
+            let query = "SELECT distinct on slot, ?fields FROM events.update_slot \
+                WHERE slot >= (SELECT slot FROM events.update_slot WHERE status = 'Rooted' ORDER BY slot DESC LIMIT 1) \
+                 and parent is not NULL \
+                ORDER BY slot DESC, status DESC";
             self.client
                 .query(query)
-                .bind(max_rooted_slot)
                 .fetch_all::<SlotParent>()
                 .await
         })?;
 
-        let mut branch: Vec<u64> = vec![];
-        let mut parent = 0;
-        let mut found_branch = false;
+        let (root, rows) = rows.split_last().ok_or_else(|| {
+            let err = clickhouse::error::Error::Custom(format!("Rooted slot not found"));
+            ChError::Db(err)
+        })?;
 
-        for row in rows {
-            if !found_branch {
-                if row.slot == slot {
-                    if let Some(parent_) = row.parent {
-                        parent = parent_;
-                        branch.push(row.slot);
-                        found_branch = true;
+
+        match slot.cmp(&root.slot) {
+            Less => {
+                let count = block (|| async {
+                    let query = "SELECT count(*) FROM events.update_slot WHERE slot = ? ands status = 'Rooted'";
+                    self.client
+                        .query(query)
+                        .fetch_one::<u64>()
+                        .await
+                })?;
+
+                if count == 0 {
+                    let err = clickhouse::error::Error::Custom(format!("requested slot is not on working branch {}", slot));
+                    Err(ChError::Db(err))
+                } else {
+                    Ok((root.slot, vec![]))
+                }
+            }
+            Equal => {
+                Ok((root.slot, vec![]))
+            }
+            Greater => {
+                let mut branch: Vec<SlotParent> = vec![];
+
+                for row in rows {
+                    if branch.is_empty() && (row.slot == slot) {
+                        branch.push(row.clone());
+                    } else {
+                        if row.slot == branch.last().unwrap().parent{
+                            branch.push(row.clone());
+                        }
                     }
                 }
-            } else {
-                if row.slot == parent {
-                    if let Some(parent_) = row.parent {
-                        branch.push(row.slot);
-                        parent = parent_;
+
+                if branch.is_empty() {
+                    let err = clickhouse::error::Error::Custom(format!("requested slot not found {}", slot));
+                    Err(ChError::Db(err))
+                } else {
+                    if branch.last().unwrap().parent == root.slot {
+                        let branch = branch.iter().map(|row| row.slot).collect();
+                        Ok((root.slot, branch))  //todo: check ordering
+                    } else {
+                        let err = clickhouse::error::Error::Custom(format!("requested slot is not on working branch {}", slot));
+                        Err(ChError::Db(err))
                     }
                 }
             }
-        }
-        if parent == max_rooted_slot {
-            Ok(branch)
-        } else {
-            let err = clickhouse::error::Error::Custom(format!("requested slot is not on working branch {}", slot));
-            Err(ChError::Db(err))
         }
     }
 }

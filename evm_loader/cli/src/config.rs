@@ -1,8 +1,8 @@
 use crate::{
-    program_options::truncate,
+    parsing::truncate_0x,
     rpc,
     rpc::{CallDbClient, TrxDbClient},
-    NeonCliError,
+    errors::NeonCliError,
 };
 use clap::ArgMatches;
 use hex::FromHex;
@@ -100,7 +100,7 @@ pub fn create(options: &ArgMatches) -> Config {
     let rpc_client: Box<dyn rpc::Rpc> = match (cmd, params) {
         ("emulate_hash" | "trace_hash", Some(params)) => {
             let hash = params.value_of("hash").expect("hash not found");
-            let hash = <[u8; 32]>::from_hex(truncate(hash)).expect("hash cast error");
+            let hash = <[u8; 32]>::from_hex(truncate_0x(hash)).expect("hash cast error");
 
             Box::new(TrxDbClient::new(
                 &db_config.expect("db-config not found"),

@@ -1,17 +1,11 @@
+use std::fmt::Display;
 use clap::{crate_description, crate_name, App, AppSettings, Arg, ArgMatches, SubCommand};
 use ethnum::U256;
-use evm_loader::types::Address;
 use hex::FromHex;
 use solana_clap_utils::input_validators::{is_url_or_moniker, is_valid_pubkey};
-use std::fmt::Display;
+use evm_loader::types::Address;
+use neon_cli::parsing::truncate_0x;
 
-pub fn truncate(in_str: &str) -> &str {
-    if &in_str[..2] == "0x" {
-        &in_str[2..]
-    } else {
-        in_str
-    }
-}
 
 // Return an error if string cannot be parsed as a Address address
 fn is_valid_address<T>(string: T) -> Result<(), String>
@@ -55,7 +49,7 @@ fn is_valid_h256<T>(string: T) -> Result<(), String>
 where
     T: AsRef<str>,
 {
-    let str = truncate(string.as_ref());
+    let str = truncate_0x(string.as_ref());
     <[u8; 32]>::from_hex(str)
         .map(|_| ())
         .map_err(|e| e.to_string())

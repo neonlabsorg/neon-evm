@@ -8,6 +8,7 @@ pub use indexer_db::IndexerDb;
 pub use tracer_pg_db::TracerDb;
 
 use {
+    crate::errors::NeonCliError,
     ethnum::U256,
     evm_loader::types::Address,
     postgres::NoTls,
@@ -16,6 +17,7 @@ use {
     tokio_postgres::{connect, Client},
 };
 
+pub type NeonCliResult = Result<serde_json::Value, NeonCliError>;
 type Bytes = Vec<u8>;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]

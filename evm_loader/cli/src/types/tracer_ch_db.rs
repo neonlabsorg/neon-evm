@@ -67,7 +67,6 @@ impl ClickHouseDb {
     }
 
     fn get_branch_slots(&self, slot: Slot) -> ChResult<(u64, Vec<u64>)>{
-
         let rows: Vec<SlotParent> =  block(|| async {
             let query = "SELECT distinct on slot, ?fields FROM events.update_slot \
                 WHERE slot >= (SELECT slot FROM events.update_slot WHERE status = 'Rooted' ORDER BY slot DESC LIMIT 1) \
@@ -91,6 +90,7 @@ impl ClickHouseDb {
                     let query = "SELECT count(*) FROM events.update_slot WHERE slot = ? ands status = 'Rooted'";
                     self.client
                         .query(query)
+                        .bind(slot)
                         .fetch_one::<u64>()
                         .await
                 })?;

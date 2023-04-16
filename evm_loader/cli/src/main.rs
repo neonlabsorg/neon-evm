@@ -72,22 +72,22 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
         ("emulate", Some(params)) => {
             let tx = parse_tx(params);
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            emulate::execute(config, tx, token, chain, steps, &accounts)
+            emulate::execute(config, tx, token, chain, steps, &accounts, None, None)
         }
         ("emulate_hash", Some(params)) => {
             let tx = config.rpc_client.get_transaction_data()?;
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            emulate::execute(config, tx, token, chain, steps, &accounts)
+            emulate::execute(config, tx, token, chain, steps, &accounts, None, None)
         }
         ("trace", Some(params)) => {
             let tx = parse_tx(params);
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            trace::execute(config, tx, token, chain, steps, &accounts, parse_enable_return_data(params))
+            trace::execute(config, tx, token, chain, steps, &accounts, parse_enable_return_data(params), None, None)
         }
         ("trace_hash", Some(params)) => {
             let tx = config.rpc_client.get_transaction_data()?;
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            trace::execute(config, tx, token, chain, steps, &accounts, parse_enable_return_data(params))
+            trace::execute(config, tx, token, chain, steps, &accounts, parse_enable_return_data(params), None, None)
         }
         ("create-ether-account", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
@@ -144,6 +144,7 @@ fn parse_tx(params: &ArgMatches) -> TxParams {
     }
 }
 
+#[must_use]
 pub fn parse_tx_params(config: &Config, params: &ArgMatches) -> (Pubkey, u64, u64, Vec<Address>) {
     // Read ELF params only if token_mint or chain_id is not set.
     let mut token = pubkey_of(params, "token_mint");

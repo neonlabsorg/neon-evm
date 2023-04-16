@@ -123,6 +123,53 @@ pub struct SolanaAccount {
     is_writable: bool,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct BlockOverrides {
+    pub number: Option<u64>,
+    #[allow(unused)]
+    pub difficulty: Option<U256>,  // NOT SUPPORTED by Neon EVM
+    pub time: Option<i64>,
+    #[allow(unused)]
+    pub gas_limit: Option<u64>,    // NOT SUPPORTED BY Neon EVM
+    #[allow(unused)]
+    pub coinbase: Option<Address>, // NOT SUPPORTED BY Neon EVM
+    #[allow(unused)]
+    pub random: Option<U256>,      // NOT SUPPORTED BY Neon EVM
+    #[allow(unused)]
+    pub base_fee: Option<U256>,    // NOT SUPPORTED BY Neon EVM
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub enum StateOverride {
+    NoOverride,
+    State(HashMap<U256, [u8; 32]>),
+    StateDiff(HashMap<U256, [u8; 32]>),
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct AccountOverride {
+    pub nonce: Option<u64>,
+    pub code: Option<Vec<u8>>,
+    pub balance: Option<u64>,
+    pub state_override: StateOverride,
+}
+
+impl AccountOverride {
+    pub fn apply(&self, ether_account: &mut EthereumAccount) {
+        if let Some(nonce) = self.nonce {
+            ether_account.trx_count = nonce;
+        }
+        if let Some(balance) = self.balance {
+            ether_account.balance = U256::from(balance);
+        }
+        if let Some(code) = &self.code {
+            ether_account.code_size = code.len() as u32;
+        }
+    }
+}
+
+pub type AccountOverrides = HashMap<Address, AccountOverride>;
+
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'a> {
     pub accounts: RefCell<HashMap<Address, NeonAccount>>,
@@ -132,23 +179,36 @@ pub struct EmulatorAccountStorage<'a> {
     block_timestamp: i64,
     neon_token_mint: Pubkey,
     chain_id: u64,
+    state_override: Option<AccountOverrides>,
 }
 
 impl<'a> EmulatorAccountStorage<'a> {
-    pub fn new(config: &'a Config, token_mint: Pubkey, chain_id: u64) -> EmulatorAccountStorage {
+    pub fn new(
+        config: &'a Config,
+        token_mint: Pubkey,
+        chain_id: u64,
+        block_overrides: Option<BlockOverrides>,
+        state_override: Option<AccountOverrides>,
+    ) -> EmulatorAccountStorage {
         trace!("backend::new");
 
-        let slot = config.rpc_client.get_slot().unwrap_or_default();
-        let timestamp = config.rpc_client.get_block_time(slot).unwrap_or_default();
+        let block_number = block_overrides.as_ref()
+            .and_then(|overrides| overrides.number)
+            .unwrap_or_else(|| config.rpc_client.get_slot().unwrap_or_default());
+
+        let block_timestamp = block_overrides.as_ref()
+            .and_then(|overrides| overrides.time)
+            .unwrap_or_else(|| config.rpc_client.get_block_time(block_number).unwrap_or_default());
 
         Self {
             accounts: RefCell::new(HashMap::new()),
             solana_accounts: RefCell::new(HashMap::new()),
             config,
-            block_number: slot,
-            block_timestamp: timestamp,
+            block_number,
+            block_timestamp,
             neon_token_mint: token_mint,
             chain_id,
+            state_override,
         }
     }
 
@@ -358,7 +418,16 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         if let Some(account_data) = &mut solana_account.data {
             let info = account_info(&solana_account.account, account_data);
-            EthereumAccount::from_account(&self.config.evm_loader, &info).map_or(default, |a| f(&a))
+            EthereumAccount::from_account(&self.config.evm_loader, &info)
+                .map(|mut ether_account| {
+                    if let Some(account_overrides) = &self.state_override {
+                        if let Some(account_override) = account_overrides.get(address) {
+                            account_override.apply(&mut ether_account);
+                        }
+                    }
+                    ether_account
+                })
+                .map_or(default, |a| f(&a))
         } else {
             default
         }
@@ -477,17 +546,14 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
 
     fn code_size(&self, address: &Address) -> usize {
         info!("code_size {address}");
+
         self.ethereum_account_map_or(address, 0, |a| a.code_size as usize)
     }
 
     fn code_hash(&self, address: &Address) -> [u8; 32] {
-        use solana_sdk::keccak::hash;
-
         info!("code_hash {address}");
 
-        self.ethereum_contract_map_or(address, <[u8; 32]>::default(), |c| {
-            hash(&c.code()).to_bytes()
-        })
+        solana_sdk::keccak::hash(&self.code(address)).to_bytes()
     }
 
     fn code(&self, address: &Address) -> evm_loader::evm::Buffer {
@@ -495,7 +561,16 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
 
         info!("code {address}");
 
-        self.ethereum_contract_map_or(address, Buffer::empty(), |c| Buffer::new(&c.code()))
+        self.ethereum_contract_map_or(address, Buffer::empty(), |c| {
+            if let Some(account_overrides) = &self.state_override {
+                if let Some(account_override) = account_overrides.get(address) {
+                    if let Some(code) = &account_override.code {
+                        return Buffer::new(code);
+                    }
+                }
+            }
+            Buffer::new(&c.code())
+        })
     }
 
     fn generation(&self, address: &Address) -> u32 {
@@ -506,6 +581,21 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     }
 
     fn storage(&self, address: &Address, index: &U256) -> [u8; 32] {
+        if let Some(account_overrides) = &self.state_override {
+            if let Some(account_override) = account_overrides.get(address) {
+                match &account_override.state_override {
+                    StateOverride::NoOverride => (),
+                    StateOverride::State(state) =>
+                        return state.get(index)
+                            .cloned()
+                            .unwrap_or_default(),
+                    StateOverride::StateDiff(state_diff) =>
+                        if let Some(value) = state_diff.get(index) {
+                            return *value;
+                        }
+                }
+            }
+        }
         let value = if *index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT) {
             let index: usize = index.as_usize() * 32;
             self.ethereum_contract_map_or(address, <[u8; 32]>::default(), |c| {

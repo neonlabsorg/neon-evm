@@ -2,11 +2,12 @@ use crate::{
     commands::emulate,
     event_listener::tracer::Tracer,
     types::{trace::TracedCall, TxParams},
-    Config, NeonCliResult,
+    Config, NeonCliResult, BlockOverrides, AccountOverrides,
 };
 use evm_loader::types::Address;
 use solana_sdk::pubkey::Pubkey;
 
+#[allow(clippy::too_many_arguments)]
 pub fn execute(
     config: &Config,
     tx: TxParams,
@@ -15,11 +16,13 @@ pub fn execute(
     steps: u64,
     accounts: &[Address],
     enable_return_data: bool,
+    block_overrides: Option<BlockOverrides>,
+    state_override: Option<AccountOverrides>,
 ) -> NeonCliResult {
     let mut tracer = Tracer::new(enable_return_data);
 
     let emulation_result = evm_loader::evm::tracing::using(&mut tracer, || {
-        emulate::execute(config, tx, token, chain, steps, accounts)
+        emulate::execute(config, tx, token, chain, steps, accounts, block_overrides, state_override)
     })?;
 
     let (vm_trace, full_trace_data) = tracer.into_traces();

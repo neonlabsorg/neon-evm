@@ -8,5 +8,8 @@ pub mod rpc;
 mod syscall_stubs;
 pub mod types;
 
-pub use config::Config;
-pub use types::NeonCliResult;
+pub use {
+    config::Config,
+    types::NeonCliResult,
+    account_storage::{BlockOverrides, StateOverride, AccountOverride, AccountOverrides},
+};

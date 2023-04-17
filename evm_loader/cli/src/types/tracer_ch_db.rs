@@ -13,6 +13,7 @@ use std::{
     sync::Arc,
 };
 use thiserror::Error;
+use std::convert::TryInto;
 
 #[derive(Error, Debug)]
 pub enum ChError {
@@ -33,6 +34,15 @@ pub struct ClickHouseDb {
 pub struct SlotParent {
     pub slot: u64,
     pub parent: u64,
+}
+
+#[derive(Row, serde::Deserialize, Clone)]
+pub struct AccountRow {
+    owner: Vec<u8>,
+    lamports: u64,
+    executable: bool,
+    rent_epoch: u64,
+    data: Vec<u8>,
 }
 
 #[allow(dead_code)]
@@ -142,4 +152,113 @@ impl ClickHouseDb {
             }
         }
     }
+
+
+    pub fn get_account_at_slot(&self, key: &Pubkey, slot: u64) -> ChResult<Option<Account>> {
+        let (root, branch) = self.get_branch_slots(slot)?;
+
+
+        let mut row: Option<AccountRow> = if !branch.is_empty() {
+            let mut branch_slots = format!("{}", branch.first().unwrap());
+            for slot in &branch[1..] {
+                branch_slots = format!("{}, {}", branch_slots, slot);
+            }
+
+            let result = block(|| async {
+                let query = r#"
+                SELECT
+                    uad.owner,
+                    uad.lamports,
+                    uad.executable,
+                    uad.rent_epoch,
+                    uad.data,
+                FROM events.update_account_distributed AS uad
+                WHERE
+                    uad.pubkey = ?
+                    AND uad.slot IN (SELECT slot FROM arrayJoin([?]))
+                ORDER BY uad.slot DESC, uad.pubkey DESC, uad.write_version DESC
+                LIMIT 1
+            "#;
+                self.client.query(query).bind(key).bind(branch_slots).fetch_one::<AccountRow>().await
+            });
+
+            match result {
+                Ok(row) => Some(row),
+                Err(clickhouse::error::Error::RowNotFound) => None,
+                Err(e) => return Err(ChError::Db(e))
+            }
+        } else {
+            None
+        };
+
+        if row.is_none() {
+            let result = block(|| async {
+                let query =  r#"
+                SELECT
+                    uad.owner,
+                    uad.lamports,
+                    uad.executable,
+                    uad.rent_epoch,
+                    uad.data,
+                FROM events.update_account_distributed uad
+                INNER JOIN events.update_slot us
+                ON uad.slot = us.slot AND us.status = 'Rooted'
+                WHERE uad.pubkey = ? AND uad.slot <= ?
+                ORDER BY uad.slot DESC, uad.pubkey DESC, uad.write_version DESC
+                LIMIT 1
+                "#;
+                self.client.query(query).bind(key).bind(root).fetch_one::<AccountRow>().await
+            });
+
+             row = match result {
+                 Ok(row) => Some(row),
+                 Err(clickhouse::error::Error::RowNotFound) => None,
+                 Err(e) => return Err(ChError::Db(e))
+             };
+        }
+
+        if row.is_none() {
+            let result = block(|| async {
+                let query =  r#"
+                SELECT
+                    uad.owner,
+                    uad.lamports,
+                    uad.executable,
+                    uad.rent_epoch,
+                    uad.data,
+                FROM events.older_account_distributed oad
+                WHERE oad.pubkey = ?
+                "#;
+                self.client.query(query).bind(key).bind(root).fetch_one::<AccountRow>().await
+            });
+
+            row = match result {
+                Ok(row) => Some(row),
+                Err(clickhouse::error::Error::RowNotFound) => None,
+                Err(e) => return Err(ChError::Db(e))
+            };
+        }
+
+        if let Some(acc) = row {
+            let owner: [u8; 32] = acc.owner.as_slice().try_into().map_err(|_| {
+                let err = clickhouse::error::Error::Custom(format!(
+                    "error convert owner of key: {}",
+                    key
+                ));
+                ChError::Db(err)
+            })?;
+
+            Ok(Some(Account {
+                lamports: acc.lamports,
+                data: acc.data,
+                owner: Pubkey::from(owner),
+                rent_epoch: acc.rent_epoch,
+                executable: acc.executable,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+
 }

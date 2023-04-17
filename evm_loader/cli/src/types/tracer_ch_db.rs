@@ -90,7 +90,6 @@ impl ClickHouseDb {
             ChError::Db(err)
         })?;
 
-
         match slot.cmp(&root.slot) {
             Less => {
                 let count = block(|| async {

@@ -166,7 +166,7 @@ impl ClickHouseDb {
                 FROM events.update_account_distributed
                 WHERE
                     pubkey = ?
-                    AND slot IN (SELECT slot FROM arrayJoin(?))
+                    AND slot IN (SELECT arrayJoin(?))
                 ORDER BY slot DESC, pubkey DESC, write_version DESC
                 LIMIT 1
             "#;
@@ -188,15 +188,12 @@ impl ClickHouseDb {
         if row.is_none() {
             let result = block(|| async {
                 let query = r#"
-                SELECT uad.owner, uad.lamports, uad.executable, uad.rent_epoch, uad.data
-                FROM events.update_account_distributed uad
-                INNER JOIN events.update_slot us
-                ON
-                    uad.slot = us.slot
-                    AND us.status = 'Rooted'
+                SELECT owner, lamports, executable, rent_epoch, data
+                FROM events.update_account_local
                 WHERE
-                    uad.pubkey = ? AND uad.slot <= ?
-                ORDER BY uad.slot DESC, uad.pubkey DESC, uad.write_version DESC
+                    pubkey = ?
+                    AND slot in (SELECT slot FROM events.update_slot WHERE status = 'Rooted' AND slot <= ?)
+                ORDER BY slot DESC, pubkey DESC, write_version DESC
                 LIMIT 1
                 "#;
                 self.client

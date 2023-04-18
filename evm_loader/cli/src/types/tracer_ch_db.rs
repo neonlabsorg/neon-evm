@@ -1,6 +1,10 @@
 use super::block;
 use clickhouse::{Client, Row};
-use solana_sdk::clock::{Slot, UnixTimestamp};
+use solana_sdk::{
+    account::Account,
+    clock::{Slot, UnixTimestamp},
+    pubkey::Pubkey,
+};
 use std::{
     cmp::{
         Ord,
@@ -151,22 +155,19 @@ impl ClickHouseDb {
         let (root, branch) = self.get_branch_slots(slot)?;
         let key_ = format!("{:?}", key.to_bytes());
 
-        let mut row: Option<AccountRow> = if !branch.is_empty() {
+        let mut row: Option<AccountRow> = if branch.is_empty() {
+            None
+        } else {
             let branch = format!("{:?}", branch);
 
             let result = block(|| async {
                 let query = r#"
-                SELECT
-                    uad.owner,
-                    uad.lamports,
-                    uad.executable,
-                    uad.rent_epoch,
-                    uad.data,
-                FROM events.update_account_distributed AS uad
+                SELECT owner, lamports, executable, rent_epoch, data
+                FROM events.update_account_distributed
                 WHERE
-                    uad.pubkey = ?
-                    AND uad.slot IN (SELECT slot FROM arrayJoin(?))
-                ORDER BY uad.slot DESC, uad.pubkey DESC, uad.write_version DESC
+                    pubkey = ?
+                    AND slot IN (SELECT slot FROM arrayJoin(?))
+                ORDER BY slot DESC, pubkey DESC, write_version DESC
                 LIMIT 1
             "#;
                 self.client
@@ -182,23 +183,19 @@ impl ClickHouseDb {
                 Err(clickhouse::error::Error::RowNotFound) => None,
                 Err(e) => return Err(ChError::Db(e)),
             }
-        } else {
-            None
         };
 
         if row.is_none() {
             let result = block(|| async {
                 let query = r#"
-                SELECT
-                    uad.owner,
-                    uad.lamports,
-                    uad.executable,
-                    uad.rent_epoch,
-                    uad.data,
+                SELECT uad.owner, uad.lamports, uad.executable, uad.rent_epoch, uad.data
                 FROM events.update_account_distributed uad
                 INNER JOIN events.update_slot us
-                ON uad.slot = us.slot AND us.status = 'Rooted'
-                WHERE uad.pubkey = ? AND uad.slot <= ?
+                ON
+                    uad.slot = us.slot
+                    AND us.status = 'Rooted'
+                WHERE
+                    uad.pubkey = ? AND uad.slot <= ?
                 ORDER BY uad.slot DESC, uad.pubkey DESC, uad.write_version DESC
                 LIMIT 1
                 "#;
@@ -220,14 +217,9 @@ impl ClickHouseDb {
         if row.is_none() {
             let result = block(|| async {
                 let query = r#"
-                SELECT
-                    uad.owner,
-                    uad.lamports,
-                    uad.executable,
-                    uad.rent_epoch,
-                    uad.data,
-                FROM events.older_account_distributed oad
-                WHERE oad.pubkey = ?
+                SELECT owner, lamports, executable, rent_epoch, data
+                FROM events.older_account_distributed
+                WHERE pubkey = ?
                 "#;
                 self.client
                     .query(query)
@@ -255,7 +247,7 @@ impl ClickHouseDb {
             Ok(Some(Account {
                 lamports: acc.lamports,
                 data: acc.data,
-                owner: owner,
+                owner,
                 rent_epoch: acc.rent_epoch,
                 executable: acc.executable,
             }))

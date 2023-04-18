@@ -1,10 +1,6 @@
 use super::block;
 use clickhouse::{Client, Row};
-use solana_sdk::{
-    account::Account,
-    clock::{Slot, UnixTimestamp},
-    pubkey::Pubkey,
-};
+use solana_sdk::clock::{Slot, UnixTimestamp};
 use std::{
     cmp::{
         Ord,
@@ -96,7 +92,7 @@ impl ClickHouseDb {
         })?;
 
         let (root, rows) = rows.split_last().ok_or_else(|| {
-            let err = clickhouse::error::Error::Custom(format!("Rooted slot not found"));
+            let err = clickhouse::error::Error::Custom("Rooted slot not found".to_string());
             ChError::Db(err)
         })?;
 
@@ -122,12 +118,12 @@ impl ClickHouseDb {
                 let mut branch: Vec<SlotParent> = vec![];
 
                 for row in rows {
-                    if branch.is_empty() && (row.slot == slot) {
-                        branch.push(row.clone());
-                    } else {
-                        if row.slot == branch.last().unwrap().parent {
+                    if branch.is_empty() {
+                        if row.slot == slot {
                             branch.push(row.clone());
                         }
+                    } else if row.slot == branch.last().unwrap().parent {
+                        branch.push(row.clone());
                     }
                 }
 
@@ -137,17 +133,15 @@ impl ClickHouseDb {
                         slot
                     ));
                     Err(ChError::Db(err))
+                } else if branch.last().unwrap().parent == root.slot {
+                    let branch = branch.iter().map(|row| row.slot).collect();
+                    Ok((root.slot, branch)) //todo: check ordering
                 } else {
-                    if branch.last().unwrap().parent == root.slot {
-                        let branch = branch.iter().map(|row| row.slot).collect();
-                        Ok((root.slot, branch)) //todo: check ordering
-                    } else {
-                        let err = clickhouse::error::Error::Custom(format!(
-                            "requested slot is not on working branch {}",
-                            slot
-                        ));
-                        Err(ChError::Db(err))
-                    }
+                    let err = clickhouse::error::Error::Custom(format!(
+                        "requested slot is not on working branch {}",
+                        slot
+                    ));
+                    Err(ChError::Db(err))
                 }
             }
         }

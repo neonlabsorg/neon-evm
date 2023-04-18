@@ -3,10 +3,11 @@ use crate::{
     event_listener::tracer::Tracer,
     rpc::Rpc,
     types::{trace::TracedCall, TxParams},
-    NeonCliResult, BlockOverrides, AccountOverrides,
+    BlockOverrides, AccountOverrides,
 };
 use evm_loader::types::Address;
 use solana_sdk::pubkey::Pubkey;
+use crate::errors::NeonCliError;
 
 #[allow(clippy::too_many_arguments)]
 pub fn execute(
@@ -20,7 +21,7 @@ pub fn execute(
     enable_return_data: bool,
     block_overrides: Option<BlockOverrides>,
     state_override: Option<AccountOverrides>,
-) -> NeonCliResult {
+) -> Result<TracedCall, NeonCliError> {
     let mut tracer = Tracer::new(enable_return_data);
 
     let emulation_result = evm_loader::evm::tracing::using(&mut tracer, || {
@@ -29,21 +30,11 @@ pub fn execute(
 
     let (vm_trace, full_trace_data) = tracer.into_traces();
 
-    let trace = TracedCall {
+    Ok(TracedCall {
         vm_trace,
         full_trace_data,
-        used_gas: emulation_result["used_gas"]
-            .as_u64()
-            .expect("Failed to treat `used_gas` as u64"),
-        result: emulation_result["result"]
-            .as_str()
-            .expect("Failed to treat `result` as string")
-            .to_owned(),
-        exit_status: emulation_result["exit_status"]
-            .as_str()
-            .expect("Failed to treat `exit_status` as string")
-            .to_owned(),
-    };
-
-    Ok(serde_json::json!(trace))
+        used_gas: emulation_result.used_gas,
+        result: emulation_result.result,
+        exit_status: emulation_result.exit_status,
+    })
 }

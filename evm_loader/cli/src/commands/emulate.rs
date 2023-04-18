@@ -5,7 +5,7 @@ use evm_loader::{
     account_storage::AccountStorage,
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
-    executor::ExecutorState,
+    executor::{ExecutorState, Action},
     gasometer::LAMPORTS_PER_SIGNATURE,
     types::{Address, Transaction},
 };
@@ -18,9 +18,29 @@ use crate::{
     syscall_stubs::Stubs,
     types::TxParams,
     rpc::Rpc,
-    NeonCliResult, BlockOverrides, AccountOverrides,
+    BlockOverrides, AccountOverrides,
 };
 use solana_sdk::pubkey::Pubkey;
+
+#[derive(serde::Serialize)]
+pub struct EmulationResult {
+    pub accounts: Vec<NeonAccount>,
+    pub solana_accounts: Vec<SolanaAccount>,
+    pub token_accounts: Vec<SolanaAccount>,
+    #[serde(serialize_with = "serde_hex")]
+    pub result: Vec<u8>,
+    pub exit_status: &'static str,
+    pub steps_executed: u64,
+    pub used_gas: u64,
+    pub actions: Vec<Action>,
+}
+
+fn serde_hex<S>(value: &[u8], s: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    s.serialize_str(&hex::encode(value))
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn execute(
@@ -33,7 +53,7 @@ pub fn execute(
     accounts: &[Address],
     block_overrides: Option<BlockOverrides>,
     state_override: Option<AccountOverrides>,
-) -> NeonCliResult {
+) -> Result<EmulationResult, NeonCliError> {
     let syscall_stubs = Stubs::new(rpc_client)?;
     solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
 
@@ -95,16 +115,14 @@ pub fn execute(
     let solana_accounts: Vec<SolanaAccount> =
         storage.solana_accounts.borrow().values().cloned().collect();
 
-    let json = serde_json::json!({
-        "accounts": accounts,
-        "solana_accounts": solana_accounts,
-        "token_accounts": [],
-        "result": hex::encode(result),
-        "exit_status": status,
-        "steps_executed": steps_executed,
-        "used_gas": steps_gas + begin_end_gas + actions_gas + accounts_gas,
-        "actions": actions
-    });
-
-    Ok(json)
+    Ok(EmulationResult {
+        accounts,
+        solana_accounts,
+        token_accounts: vec![],
+        result,
+        exit_status: status,
+        steps_executed,
+        used_gas: steps_gas + begin_end_gas + actions_gas + accounts_gas,
+        actions,
+    })
 }

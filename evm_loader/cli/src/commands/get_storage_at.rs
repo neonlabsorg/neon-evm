@@ -12,11 +12,16 @@ use evm_loader::{
 
 use crate::{
     account_storage::{account_info, EmulatorAccountStorage},
-    NeonCliResult,
+    errors::NeonCliError,
+    rpc::Rpc,
 };
-use crate::rpc::Rpc;
 
-pub fn execute(rpc_client: &dyn Rpc, evm_loader: &Pubkey, ether_address: Address, index: &U256) -> NeonCliResult {
+pub fn execute(
+    rpc_client: &dyn Rpc,
+    evm_loader: &Pubkey,
+    ether_address: Address,
+    index: &U256,
+) -> Result<[u8; 32], NeonCliError> {
     let value = if let (solana_address, Some(mut account)) =
         EmulatorAccountStorage::get_account_from_solana(rpc_client, evm_loader, &ether_address)
     {
@@ -61,5 +66,5 @@ pub fn execute(rpc_client: &dyn Rpc, evm_loader: &Pubkey, ether_address: Address
         <[u8; 32]>::default()
     };
 
-    Ok(serde_json::json!(hex::encode(value)))
+    Ok(value)
 }

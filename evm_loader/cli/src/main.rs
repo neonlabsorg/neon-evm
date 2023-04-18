@@ -9,6 +9,7 @@ use std::str::FromStr;
 
 use clap::ArgMatches;
 use ethnum::U256;
+use serde_json::json;
 use solana_clap_utils::input_parsers::{pubkey_of, value_of, values_of};
 use solana_sdk::pubkey::Pubkey;
 
@@ -43,7 +44,7 @@ async fn main() {
 
     let (result, exit_code) = match result {
         Ok(result) => (
-            serde_json::json!({
+            json!({
                 "result": "success",
                 "value": result,
                 "logs": logs
@@ -53,7 +54,7 @@ async fn main() {
         Err(e) => {
             let error_code = e.error_code();
             (
-                serde_json::json!({
+                json!({
                     "result": "error",
                     "error": e.to_string(),
                     "logs": logs
@@ -73,21 +74,25 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
             let tx = parse_tx(params);
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
             emulate::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, None, None)
+                .map(|result| json!(result))
         }
         ("emulate_hash", Some(params)) => {
             let tx = config.rpc_client.get_transaction_data()?;
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
             emulate::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, None, None)
+                .map(|result| json!(result))
         }
         ("trace", Some(params)) => {
             let tx = parse_tx(params);
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
             trace::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, parse_enable_return_data(params), None, None)
+                .map(|trace| json!(trace))
         }
         ("trace_hash", Some(params)) => {
             let tx = config.rpc_client.get_transaction_data()?;
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
             trace::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, parse_enable_return_data(params), None, None)
+                .map(|trace| json!(trace))
         }
         ("create-ether-account", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
@@ -123,6 +128,7 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
             let contract_id = address_of(params, "contract_id").expect("contract_it parse error");
             let index = u256_of(params, "index").expect("index parse error");
             get_storage_at::execute(config.rpc_client.as_ref(), &config.evm_loader, contract_id, &index)
+                .map(|hash| json!(hex::encode(hash)))
         }
         _ => unreachable!(),
     }

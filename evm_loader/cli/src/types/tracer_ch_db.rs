@@ -10,10 +10,10 @@ use std::{
         Ord,
         Ordering::{Equal, Greater, Less},
     },
+    convert::TryFrom,
     sync::Arc,
 };
 use thiserror::Error;
-use std::convert::TryInto;
 
 #[derive(Error, Debug)]
 pub enum ChError {
@@ -153,16 +153,12 @@ impl ClickHouseDb {
         }
     }
 
-
     pub fn get_account_at_slot(&self, key: &Pubkey, slot: u64) -> ChResult<Option<Account>> {
         let (root, branch) = self.get_branch_slots(slot)?;
-
+        let key_ = format!("{:?}", key.to_bytes());
 
         let mut row: Option<AccountRow> = if !branch.is_empty() {
-            let mut branch_slots = format!("{}", branch.first().unwrap());
-            for slot in &branch[1..] {
-                branch_slots = format!("{}, {}", branch_slots, slot);
-            }
+            let branch = format!("{:?}", branch);
 
             let result = block(|| async {
                 let query = r#"
@@ -175,17 +171,22 @@ impl ClickHouseDb {
                 FROM events.update_account_distributed AS uad
                 WHERE
                     uad.pubkey = ?
-                    AND uad.slot IN (SELECT slot FROM arrayJoin([?]))
+                    AND uad.slot IN (SELECT slot FROM arrayJoin(?))
                 ORDER BY uad.slot DESC, uad.pubkey DESC, uad.write_version DESC
                 LIMIT 1
             "#;
-                self.client.query(query).bind(key).bind(branch_slots).fetch_one::<AccountRow>().await
+                self.client
+                    .query(query)
+                    .bind(key_.clone())
+                    .bind(branch)
+                    .fetch_one::<AccountRow>()
+                    .await
             });
 
             match result {
                 Ok(row) => Some(row),
                 Err(clickhouse::error::Error::RowNotFound) => None,
-                Err(e) => return Err(ChError::Db(e))
+                Err(e) => return Err(ChError::Db(e)),
             }
         } else {
             None
@@ -193,7 +194,7 @@ impl ClickHouseDb {
 
         if row.is_none() {
             let result = block(|| async {
-                let query =  r#"
+                let query = r#"
                 SELECT
                     uad.owner,
                     uad.lamports,
@@ -207,19 +208,24 @@ impl ClickHouseDb {
                 ORDER BY uad.slot DESC, uad.pubkey DESC, uad.write_version DESC
                 LIMIT 1
                 "#;
-                self.client.query(query).bind(key).bind(root).fetch_one::<AccountRow>().await
+                self.client
+                    .query(query)
+                    .bind(key_.clone())
+                    .bind(root)
+                    .fetch_one::<AccountRow>()
+                    .await
             });
 
-             row = match result {
-                 Ok(row) => Some(row),
-                 Err(clickhouse::error::Error::RowNotFound) => None,
-                 Err(e) => return Err(ChError::Db(e))
-             };
+            row = match result {
+                Ok(row) => Some(row),
+                Err(clickhouse::error::Error::RowNotFound) => None,
+                Err(e) => return Err(ChError::Db(e)),
+            };
         }
 
         if row.is_none() {
             let result = block(|| async {
-                let query =  r#"
+                let query = r#"
                 SELECT
                     uad.owner,
                     uad.lamports,
@@ -229,18 +235,22 @@ impl ClickHouseDb {
                 FROM events.older_account_distributed oad
                 WHERE oad.pubkey = ?
                 "#;
-                self.client.query(query).bind(key).bind(root).fetch_one::<AccountRow>().await
+                self.client
+                    .query(query)
+                    .bind(key_)
+                    .fetch_one::<AccountRow>()
+                    .await
             });
 
             row = match result {
                 Ok(row) => Some(row),
                 Err(clickhouse::error::Error::RowNotFound) => None,
-                Err(e) => return Err(ChError::Db(e))
+                Err(e) => return Err(ChError::Db(e)),
             };
         }
 
         if let Some(acc) = row {
-            let owner: [u8; 32] = acc.owner.as_slice().try_into().map_err(|_| {
+            let owner = Pubkey::try_from(acc.owner).map_err(|_| {
                 let err = clickhouse::error::Error::Custom(format!(
                     "error convert owner of key: {}",
                     key
@@ -251,7 +261,7 @@ impl ClickHouseDb {
             Ok(Some(Account {
                 lamports: acc.lamports,
                 data: acc.data,
-                owner: Pubkey::from(owner),
+                owner: owner,
                 rent_epoch: acc.rent_epoch,
                 executable: acc.executable,
             }))
@@ -259,6 +269,4 @@ impl ClickHouseDb {
             Ok(None)
         }
     }
-
-
 }

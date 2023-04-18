@@ -10,20 +10,22 @@ use evm_loader::{
     types::{Address, Transaction},
 };
 
-use crate::types::TxParams;
 use crate::{
     account_storage::{
         EmulatorAccountStorage, NeonAccount, SolanaAccount,
     },
     errors::NeonCliError,
     syscall_stubs::Stubs,
-    Config, NeonCliResult, BlockOverrides, AccountOverrides,
+    types::TxParams,
+    rpc::Rpc,
+    NeonCliResult, BlockOverrides, AccountOverrides,
 };
 use solana_sdk::pubkey::Pubkey;
 
 #[allow(clippy::too_many_arguments)]
 pub fn execute(
-    config: &Config,
+    rpc_client: &dyn Rpc,
+    evm_loader: Pubkey,
     tx_params: TxParams,
     token: Pubkey,
     chain: u64,
@@ -32,11 +34,12 @@ pub fn execute(
     block_overrides: Option<BlockOverrides>,
     state_override: Option<AccountOverrides>,
 ) -> NeonCliResult {
-    let syscall_stubs = Stubs::new(config)?;
+    let syscall_stubs = Stubs::new(rpc_client)?;
     solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
 
     let storage = EmulatorAccountStorage::new(
-        config,
+        rpc_client,
+        evm_loader,
         token,
         chain,
         block_overrides,

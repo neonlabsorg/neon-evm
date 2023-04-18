@@ -26,7 +26,7 @@ use solana_sdk::{
     sysvar::{recent_blockhashes, slot_hashes, Sysvar},
 };
 
-use crate::Config;
+use crate::rpc::Rpc;
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
@@ -107,11 +107,11 @@ impl NeonAccount {
         }
     }
 
-    pub fn rpc_load(config: &Config, address: Address, writable: bool) -> Self {
-        let (key, _) = make_solana_program_address(&address, &config.evm_loader);
+    pub fn rpc_load(rpc_client: &dyn Rpc, evm_loader: &Pubkey, address: Address, writable: bool) -> Self {
+        let (key, _) = make_solana_program_address(&address,  evm_loader);
         info!("get_account_from_solana {} => {}", address, key);
 
-        let account = config.rpc_client.get_account(&key).ok();
+        let account = rpc_client.get_account(&key).ok();
         Self::new(address, key, account, writable)
     }
 }
@@ -174,7 +174,8 @@ pub type AccountOverrides = HashMap<Address, AccountOverride>;
 pub struct EmulatorAccountStorage<'a> {
     pub accounts: RefCell<HashMap<Address, NeonAccount>>,
     pub solana_accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
-    config: &'a Config,
+    rpc_client: &'a dyn Rpc,
+    evm_loader: Pubkey,
     block_number: u64,
     block_timestamp: i64,
     neon_token_mint: Pubkey,
@@ -184,7 +185,8 @@ pub struct EmulatorAccountStorage<'a> {
 
 impl<'a> EmulatorAccountStorage<'a> {
     pub fn new(
-        config: &'a Config,
+        rpc_client: &'a dyn Rpc,
+        evm_loader: Pubkey,
         token_mint: Pubkey,
         chain_id: u64,
         block_overrides: Option<BlockOverrides>,
@@ -194,16 +196,17 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         let block_number = block_overrides.as_ref()
             .and_then(|overrides| overrides.number)
-            .unwrap_or_else(|| config.rpc_client.get_slot().unwrap_or_default());
+            .unwrap_or_else(|| rpc_client.get_slot().unwrap_or_default());
 
         let block_timestamp = block_overrides.as_ref()
             .and_then(|overrides| overrides.time)
-            .unwrap_or_else(|| config.rpc_client.get_block_time(block_number).unwrap_or_default());
+            .unwrap_or_else(|| rpc_client.get_block_time(block_number).unwrap_or_default());
 
         Self {
             accounts: RefCell::new(HashMap::new()),
             solana_accounts: RefCell::new(HashMap::new()),
-            config,
+            rpc_client,
+            evm_loader,
             block_number,
             block_timestamp,
             neon_token_mint: token_mint,
@@ -215,9 +218,9 @@ impl<'a> EmulatorAccountStorage<'a> {
     pub fn initialize_cached_accounts(&self, addresses: &[Address]) {
         let pubkeys: Vec<_> = addresses
             .iter()
-            .map(|address| make_solana_program_address(address, &self.config.evm_loader).0)
+            .map(|address| make_solana_program_address(address, &self.evm_loader).0)
             .collect();
-        if let Ok(accounts) = self.config.rpc_client.get_multiple_accounts(&pubkeys) {
+        if let Ok(accounts) = self.rpc_client.get_multiple_accounts(&pubkeys) {
             let entries = addresses.iter().zip(accounts).zip(pubkeys);
             let mut accounts_storage = self.accounts.borrow_mut();
             for ((&address, account), pubkey) in entries {
@@ -227,14 +230,15 @@ impl<'a> EmulatorAccountStorage<'a> {
     }
 
     pub fn get_account_from_solana(
-        config: &'a Config,
+        rpc_client: &dyn Rpc,
+        evm_loader: &Pubkey,
         address: &Address,
     ) -> (Pubkey, Option<Account>) {
         let (solana_address, _solana_nonce) =
-            make_solana_program_address(address, &config.evm_loader);
+            make_solana_program_address(address, evm_loader);
         info!("get_account_from_solana {} => {}", address, solana_address);
 
-        if let Ok(acc) = config.rpc_client.get_account(&solana_address) {
+        if let Ok(acc) = rpc_client.get_account(&solana_address) {
             trace!("Account found");
             trace!("Account data len {}", acc.data.len());
             trace!("Account owner {}", acc.owner);
@@ -259,7 +263,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
             true
         } else {
-            let account = NeonAccount::rpc_load(self.config, *address, writable);
+            let account = NeonAccount::rpc_load(self.rpc_client, &self.evm_loader, *address, writable);
             accounts.insert(*address, account);
 
             false
@@ -418,7 +422,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         if let Some(account_data) = &mut solana_account.data {
             let info = account_info(&solana_account.account, account_data);
-            EthereumAccount::from_account(&self.config.evm_loader, &info)
+            EthereumAccount::from_account(&self.evm_loader, &info)
                 .map(|mut ether_account| {
                     if let Some(account_overrides) = &self.state_override {
                         if let Some(account_override) = account_overrides.get(address) {
@@ -444,7 +448,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         if let Some(account_data) = &mut solana_account.data {
             let info = account_info(&solana_account.account, account_data);
-            let account = EthereumAccount::from_account(&self.config.evm_loader, &info);
+            let account = EthereumAccount::from_account(&self.evm_loader, &info);
             match &account {
                 Ok(a) => a.contract_data().map_or(default, f),
                 Err(_) => default,
@@ -468,7 +472,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
 
     fn program_id(&self) -> &Pubkey {
         debug!("program_id");
-        &self.config.evm_loader
+        &self.evm_loader
     }
 
     fn block_number(&self) -> U256 {
@@ -493,9 +497,9 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             return <[u8; 32]>::default();
         }
 
-        if let Ok(slot_hashes_account) = self.config.rpc_client.get_account(&slot_hashes::ID) {
+        if let Ok(slot_hashes_account) = self.rpc_client.get_account(&slot_hashes::ID) {
             if let Ok(recent_blockhashes_account) =
-                self.config.rpc_client.get_account(&recent_blockhashes::ID)
+                self.rpc_client.get_account(&recent_blockhashes::ID)
             {
                 let slot_hashes_data = slot_hashes_account.data;
                 let slot_hashes_len = u64::from_le_bytes(slot_hashes_data[..8].try_into().unwrap());
@@ -514,7 +518,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             }
         }
 
-        if let Ok(timestamp) = self.config.rpc_client.get_block(number) {
+        if let Ok(timestamp) = self.rpc_client.get_block(number) {
             let hash = bs58::decode(timestamp.blockhash).into_vec().unwrap();
             hash.try_into().unwrap()
         } else {
@@ -611,11 +615,10 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             self.add_solana_account(*storage_address.pubkey(), false);
 
             let rpc_response = self
-                .config
                 .rpc_client
                 .get_account_with_commitment(
                     storage_address.pubkey(),
-                    self.config.rpc_client.commitment(),
+                    self.rpc_client.commitment(),
                 )
                 .expect("Error querying account from Solana");
 
@@ -626,7 +629,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
                 } else {
                     let account_info = account_info(storage_address.pubkey(), &mut account);
                     let storage =
-                        EthereumStorage::from_account(&self.config.evm_loader, &account_info)
+                        EthereumStorage::from_account(&self.evm_loader, &account_info)
                             .expect("EthereumAccount ctor error");
                     if (storage.address != *address)
                         || (storage.index != index)
@@ -677,7 +680,6 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             self.add_solana_account(*address, false);
 
             let mut account = self
-                .config
                 .rpc_client
                 .get_account(address)
                 .unwrap_or_default();

@@ -37,7 +37,7 @@ async fn main() {
 
     let result = execute(cmd, params, &config);
     let logs = {
-        let context = crate::logs::CONTEXT.lock().unwrap();
+        let context = logs::CONTEXT.lock().unwrap();
         context.clone()
     };
 
@@ -72,22 +72,22 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
         ("emulate", Some(params)) => {
             let tx = parse_tx(params);
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            emulate::execute(config, tx, token, chain, steps, &accounts, None, None)
+            emulate::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, None, None)
         }
         ("emulate_hash", Some(params)) => {
             let tx = config.rpc_client.get_transaction_data()?;
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            emulate::execute(config, tx, token, chain, steps, &accounts, None, None)
+            emulate::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, None, None)
         }
         ("trace", Some(params)) => {
             let tx = parse_tx(params);
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            trace::execute(config, tx, token, chain, steps, &accounts, parse_enable_return_data(params), None, None)
+            trace::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, parse_enable_return_data(params), None, None)
         }
         ("trace_hash", Some(params)) => {
             let tx = config.rpc_client.get_transaction_data()?;
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            trace::execute(config, tx, token, chain, steps, &accounts, parse_enable_return_data(params), None, None)
+            trace::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, parse_enable_return_data(params), None, None)
         }
         ("create-ether-account", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
@@ -100,7 +100,7 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
         }
         ("get-ether-account-data", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
-            get_ether_account_data::execute(config, &ether)
+            get_ether_account_data::execute(config.rpc_client.as_ref(), &config.evm_loader, &ether)
         }
         ("cancel-trx", Some(params)) => {
             let storage_account =
@@ -122,7 +122,7 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
         ("get-storage-at", Some(params)) => {
             let contract_id = address_of(params, "contract_id").expect("contract_it parse error");
             let index = u256_of(params, "index").expect("index parse error");
-            get_storage_at::execute(config, contract_id, &index)
+            get_storage_at::execute(config.rpc_client.as_ref(), &config.evm_loader, contract_id, &index)
         }
         _ => unreachable!(),
     }

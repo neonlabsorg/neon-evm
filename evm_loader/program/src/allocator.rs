@@ -40,11 +40,11 @@ pub struct SolanaAllocator;
 unsafe impl std::alloc::GlobalAlloc for SolanaAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         if let Ok(non_null) = heap().allocate_first_fit(layout) {
-            non_null.as_ptr()
-        } else {
-            solana_program::log::sol_log("EVM Allocator out of memory");
-            std::ptr::null_mut()
+            return non_null.as_ptr();
         }
+
+        solana_program::log::sol_log("EVM Allocator out of memory");
+        std::ptr::null_mut()
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {

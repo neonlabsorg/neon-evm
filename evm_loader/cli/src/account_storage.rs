@@ -61,7 +61,7 @@ where
     deserializer.deserialize_any(StringVisitor)
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct NeonAccount {
     address: Address,
     #[serde(serialize_with = "serde_pubkey_bs58")]
@@ -116,7 +116,7 @@ impl NeonAccount {
     }
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct SolanaAccount {
     #[serde(serialize_with = "serde_pubkey_bs58")]
     pubkey: Pubkey,

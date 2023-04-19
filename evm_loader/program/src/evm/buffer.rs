@@ -6,6 +6,7 @@ use std::{
 
 const BUFFER_ALIGN: usize = 1;
 
+#[derive(Debug)]
 pub struct Buffer {
     ptr: NonNull<u8>,
     len: usize,

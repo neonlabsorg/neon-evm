@@ -22,7 +22,7 @@ use crate::{
 };
 use solana_sdk::pubkey::Pubkey;
 
-#[derive(serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct EmulationResult {
     pub accounts: Vec<NeonAccount>,
     pub solana_accounts: Vec<SolanaAccount>,

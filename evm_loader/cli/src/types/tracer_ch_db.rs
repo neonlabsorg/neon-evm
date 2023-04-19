@@ -79,7 +79,7 @@ impl ClickHouseDb {
     pub fn get_block_time(&self, slot: Slot) -> ChResult<UnixTimestamp> {
         block(|| async {
             let query =
-                "SELECT JSONExtractInt(notify_block_json, 'block_time') FROM events.notify_block_local WHERE (slot = toUInt64(?))";
+                "SELECT JSONExtractInt(notify_block_json, 'block_time') FROM events.notify_block_local WHERE slot = ?)";
             self.client
                 .query(query)
                 .bind(slot)
@@ -129,7 +129,7 @@ impl ClickHouseDb {
         match slot.cmp(&root.slot) {
             Less => {
                 let count = block(|| async {
-                    let query = "SELECT count(*) FROM events.update_slot WHERE slot = ? ands status = 'Rooted'";
+                    let query = "SELECT count(*) FROM events.update_slot WHERE slot = ? and status = 'Rooted'";
                     self.client.query(query).bind(slot).fetch_one::<u64>().await
                 })?;
 
@@ -184,22 +184,24 @@ impl ClickHouseDb {
         let mut row: Option<AccountRow> = if branch.is_empty() {
             None
         } else {
-            let branch = format!("{:?}", branch);
-
+            let mut slots = format!("toUInt64({})", branch.first().unwrap());
+            for slot in &branch[1..] {
+                slots = format!("{}, toUInt64({})", slots, slot);
+            }
             let result = block(|| async {
                 let query = r#"
                 SELECT owner, lamports, executable, rent_epoch, data
                 FROM events.update_account_distributed
                 WHERE
                     pubkey = ?
-                    AND slot IN (SELECT arrayJoin(?))
+                    AND slot IN (SELECT arrayJoin([?]))
                 ORDER BY slot DESC, pubkey DESC, write_version DESC
                 LIMIT 1
-            "#;
+                "#;
                 self.client
                     .query(query)
                     .bind(key_.clone())
-                    .bind(branch)
+                    .bind(slots)
                     .fetch_one::<AccountRow>()
                     .await
             });

@@ -1,17 +1,19 @@
 use {
-    super::{block, do_connect, DbConfig, PgError, PgResult},
+    super::{block, do_connect, PgDbConfig, PgError, PgResult},
     solana_sdk::{account::Account, pubkey::Pubkey},
     std::{convert::TryFrom, sync::Arc},
     tokio_postgres::Client,
 };
 
-#[derive(Debug, Clone)]
+#[allow(dead_code)]
+#[derive(Clone)]
 pub struct TracerDb {
     pub client: Arc<Client>,
 }
 
+#[allow(dead_code)]
 impl TracerDb {
-    pub fn new(config: &DbConfig) -> Self {
+    pub fn new(config: &PgDbConfig) -> Self {
         let client = do_connect(
             &config.tracer_host,
             &config.tracer_port,

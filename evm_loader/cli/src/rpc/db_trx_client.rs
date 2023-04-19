@@ -1,5 +1,5 @@
 use super::{e, Rpc};
-use crate::types::{DbConfig, IndexerDb, TracerDb, TxParams};
+use crate::types::{ChDbConfig, IndexerDb, TracerDb, TxParams};
 use solana_client::{
     client_error::Result as ClientResult,
     client_error::{ClientError, ClientErrorKind},
@@ -20,7 +20,6 @@ use solana_transaction_status::{
 };
 use std::any::Any;
 
-#[derive(Debug)]
 pub struct TrxDbClient {
     pub hash: [u8; 32],
     sol_sig: [u8; 64],
@@ -29,7 +28,7 @@ pub struct TrxDbClient {
 }
 
 impl TrxDbClient {
-    pub fn new(config: &DbConfig, hash: [u8; 32]) -> Self {
+    pub fn new(config: &ChDbConfig, hash: [u8; 32]) -> Self {
         let tracer_db = TracerDb::new(config);
         let indexer_db = IndexerDb::new(config);
         let sol_sig = indexer_db

@@ -1,4 +1,4 @@
-use super::block;
+use super::{block, ChDbConfig};
 use clickhouse::{Client, Row};
 use solana_sdk::{
     account::Account,
@@ -47,12 +47,14 @@ pub struct AccountRow {
 
 #[allow(dead_code)]
 impl ClickHouseDb {
-    pub fn _new(server_url: &str, username: Option<&str>, password: Option<&str>) -> ClickHouseDb {
-        let client = match (username, password) {
-            (None, None | Some(_)) => Client::default().with_url(server_url),
-            (Some(user), None) => Client::default().with_url(server_url).with_user(user),
+    pub fn new(config: &ChDbConfig) -> Self {
+        let client = match (&config.clickhouse_user, &config.clickhouse_password) {
+            (None, None | Some(_)) => Client::default().with_url(&config.clickhouse_url),
+            (Some(user), None) => Client::default()
+                .with_url(&config.clickhouse_url)
+                .with_user(user),
             (Some(user), Some(password)) => Client::default()
-                .with_url(server_url)
+                .with_url(&config.clickhouse_url)
                 .with_user(user)
                 .with_password(password),
         };
@@ -62,9 +64,22 @@ impl ClickHouseDb {
         }
     }
 
+    pub fn get_block_hash(&self, slot: u64) -> ChResult<String> {
+        block(|| async {
+            let query = "SELECT hash FROM events.notify_block_local where slot = ? ";
+            self.client
+                .query(query)
+                .bind(slot)
+                .fetch_one::<String>()
+                .await
+                .map_err(std::convert::Into::into)
+        })
+    }
+
     pub fn get_block_time(&self, slot: Slot) -> ChResult<UnixTimestamp> {
         block(|| async {
-            let query = "SELECT JSONExtractInt(notify_block_json, 'block_time') FROM events.notify_block_local WHERE (slot = toUInt64(?))";
+            let query =
+                "SELECT JSONExtractInt(notify_block_json, 'block_time') FROM events.notify_block_local WHERE (slot = toUInt64(?))";
             self.client
                 .query(query)
                 .bind(slot)
@@ -81,6 +96,17 @@ impl ClickHouseDb {
             self.client
                 .query(query)
                 .fetch_one::<String>()
+                .await
+                .map_err(std::convert::Into::into)
+        })
+    }
+
+    pub fn get_latest_block(&self) -> ChResult<u64> {
+        block(|| async {
+            let query = "SELECT max(slot) FROM events.update_slot";
+            self.client
+                .query(query)
+                .fetch_one::<u64>()
                 .await
                 .map_err(std::convert::Into::into)
         })
@@ -139,7 +165,7 @@ impl ClickHouseDb {
                     Err(ChError::Db(err))
                 } else if branch.last().unwrap().parent == root.slot {
                     let branch = branch.iter().map(|row| row.slot).collect();
-                    Ok((root.slot, branch)) //todo: check ordering
+                    Ok((root.slot, branch))
                 } else {
                     let err = clickhouse::error::Error::Custom(format!(
                         "requested slot is not on working branch {}",
@@ -151,7 +177,7 @@ impl ClickHouseDb {
         }
     }
 
-    pub fn get_account_at_slot(&self, key: &Pubkey, slot: u64) -> ChResult<Option<Account>> {
+    pub fn get_account_at(&self, key: &Pubkey, slot: u64) -> ChResult<Option<Account>> {
         let (root, branch) = self.get_branch_slots(slot)?;
         let key_ = format!("{:?}", key.to_bytes());
 
@@ -251,5 +277,16 @@ impl ClickHouseDb {
         } else {
             Ok(None)
         }
+    }
+
+    #[allow(clippy::unused_self)]
+    pub fn get_account_by_sol_sig(
+        &self,
+        _pubkey: &Pubkey,
+        _sol_sig: &[u8; 64],
+    ) -> ChResult<Option<Account>> {
+        let err =
+            clickhouse::error::Error::Custom("get_account_by_sol_sig not implemented".to_string());
+        Err(ChError::Db(err))
     }
 }

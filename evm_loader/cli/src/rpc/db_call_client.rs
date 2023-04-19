@@ -1,5 +1,5 @@
 use super::{e, Rpc};
-use crate::types::{DbConfig, TracerDb, TxParams};
+use crate::types::{ChDbConfig, TracerDb, TxParams};
 use solana_client::{
     client_error::Result as ClientResult,
     client_error::{ClientError, ClientErrorKind},
@@ -20,14 +20,13 @@ use solana_transaction_status::{
 };
 use std::any::Any;
 
-#[derive(Debug)]
 pub struct CallDbClient {
     pub slot: u64,
     tracer_db: TracerDb,
 }
 
 impl CallDbClient {
-    pub fn new(config: &DbConfig, slot: u64) -> Self {
+    pub fn new(config: &ChDbConfig, slot: u64) -> Self {
         let db = TracerDb::new(config);
         Self {
             slot,

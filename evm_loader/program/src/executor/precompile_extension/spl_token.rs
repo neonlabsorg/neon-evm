@@ -256,33 +256,22 @@ fn create_account<B: AccountStorage>(
     let rent = Rent::get()?;
     let minimum_balance = rent.minimum_balance(space);
 
-    if account.lamports > 0 {
-        let required_lamports = minimum_balance.saturating_sub(account.lamports);
+    let required_lamports = minimum_balance.saturating_sub(account.lamports);
 
-        if required_lamports > 0 {
-            let transfer = system_instruction::transfer(
-                state.backend.operator(),
-                &account.key,
-                required_lamports,
-            );
-            state.queue_external_instruction(transfer, vec![], 0);
-        }
-
-        let allocate = system_instruction::allocate(&account.key, space.try_into().unwrap());
-        state.queue_external_instruction(allocate, seeds.clone(), space);
-
-        let assign = system_instruction::assign(&account.key, &spl_token::ID);
-        state.queue_external_instruction(assign, seeds, 0);
-    } else {
-        let create_account = system_instruction::create_account(
+    if required_lamports > 0 {
+        let transfer = system_instruction::transfer(
             state.backend.operator(),
             &account.key,
-            minimum_balance,
-            space.try_into().unwrap(),
-            &spl_token::ID,
+            required_lamports,
         );
-        state.queue_external_instruction(create_account, seeds, space);
+        state.queue_external_instruction(transfer, vec![], 0);
     }
+
+    let allocate = system_instruction::allocate(&account.key, space.try_into().unwrap());
+    state.queue_external_instruction(allocate, seeds.clone(), space);
+
+    let assign = system_instruction::assign(&account.key, &spl_token::ID);
+    state.queue_external_instruction(assign, seeds, 0);
 
     Ok(())
 }

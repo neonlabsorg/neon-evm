@@ -28,7 +28,7 @@ pub type ChResult<T> = std::result::Result<T, ChError>;
 #[allow(dead_code)]
 #[derive(Clone)]
 pub struct ClickHouseDb {
-    client: Arc<Client>,
+    pub client: Arc<Client>,
 }
 
 #[derive(Row, serde::Deserialize, Clone)]

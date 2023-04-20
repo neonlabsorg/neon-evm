@@ -180,7 +180,7 @@ pub struct EmulatorAccountStorage<'a> {
     block_timestamp: i64,
     neon_token_mint: Pubkey,
     chain_id: u64,
-    state_override: Option<AccountOverrides>,
+    state_overrides: Option<AccountOverrides>,
 }
 
 impl<'a> EmulatorAccountStorage<'a> {
@@ -190,7 +190,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         token_mint: Pubkey,
         chain_id: u64,
         block_overrides: Option<BlockOverrides>,
-        state_override: Option<AccountOverrides>,
+        state_overrides: Option<AccountOverrides>,
     ) -> EmulatorAccountStorage {
         trace!("backend::new");
 
@@ -211,7 +211,7 @@ impl<'a> EmulatorAccountStorage<'a> {
             block_timestamp,
             neon_token_mint: token_mint,
             chain_id,
-            state_override,
+            state_overrides,
         }
     }
 
@@ -424,7 +424,7 @@ impl<'a> EmulatorAccountStorage<'a> {
             let info = account_info(&solana_account.account, account_data);
             EthereumAccount::from_account(&self.evm_loader, &info)
                 .map(|mut ether_account| {
-                    if let Some(account_overrides) = &self.state_override {
+                    if let Some(account_overrides) = &self.state_overrides {
                         if let Some(account_override) = account_overrides.get(address) {
                             account_override.apply(&mut ether_account);
                         }
@@ -566,7 +566,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         info!("code {address}");
 
         self.ethereum_contract_map_or(address, Buffer::empty(), |c| {
-            if let Some(account_overrides) = &self.state_override {
+            if let Some(account_overrides) = &self.state_overrides {
                 if let Some(account_override) = account_overrides.get(address) {
                     if let Some(code) = &account_override.code {
                         return Buffer::new(code);
@@ -585,7 +585,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     }
 
     fn storage(&self, address: &Address, index: &U256) -> [u8; 32] {
-        if let Some(account_overrides) = &self.state_override {
+        if let Some(account_overrides) = &self.state_overrides {
             if let Some(account_override) = account_overrides.get(address) {
                 match &account_override.state_override {
                     StateOverride::NoOverride => (),

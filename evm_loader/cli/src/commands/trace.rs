@@ -20,12 +20,12 @@ pub fn execute(
     accounts: &[Address],
     enable_return_data: bool,
     block_overrides: Option<BlockOverrides>,
-    state_override: Option<AccountOverrides>,
+    state_overrides: Option<AccountOverrides>,
 ) -> Result<TracedCall, NeonCliError> {
     let mut tracer = Tracer::new(enable_return_data);
 
     let emulation_result = evm_loader::evm::tracing::using(&mut tracer, || {
-        emulate::execute(rpc_client, evm_loader, tx, token, chain, steps, accounts, block_overrides, state_override)
+        emulate::execute(rpc_client, evm_loader, tx, token, chain, steps, accounts, block_overrides, state_overrides)
     })?;
 
     let (vm_trace, full_trace_data) = tracer.into_traces();

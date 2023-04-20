@@ -52,7 +52,7 @@ pub fn execute(
     steps: u64,
     accounts: &[Address],
     block_overrides: Option<BlockOverrides>,
-    state_override: Option<AccountOverrides>,
+    state_overrides: Option<AccountOverrides>,
 ) -> Result<EmulationResult, NeonCliError> {
     let syscall_stubs = Stubs::new(rpc_client)?;
     solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
@@ -63,7 +63,7 @@ pub fn execute(
         token,
         chain,
         block_overrides,
-        state_override,
+        state_overrides,
     );
     storage.initialize_cached_accounts(accounts);
 

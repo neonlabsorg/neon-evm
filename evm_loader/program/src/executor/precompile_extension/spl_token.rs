@@ -67,7 +67,7 @@ pub fn spl_token<B: AccountStorage>(
             }
 
             let seed = read_salt(input);
-            let decimals = read_u8(&input[32..]);
+            let decimals = read_u8(&input[32..])?;
 
             initialize_mint(context, state, seed, decimals, None, None)
         }
@@ -78,7 +78,7 @@ pub fn spl_token<B: AccountStorage>(
             }
 
             let seed = read_salt(input);
-            let decimals = read_u8(&input[32..]);
+            let decimals = read_u8(&input[32..])?;
             let mint_authority = read_pubkey(&input[64..]);
             let freeze_authority = read_pubkey(&input[96..]);
             initialize_mint(
@@ -129,7 +129,7 @@ pub fn spl_token<B: AccountStorage>(
 
             let source = read_pubkey(input);
             let target = read_pubkey(&input[32..]);
-            let amount = read_u64(&input[64..]);
+            let amount = read_u64(&input[64..])?;
             approve(context, state, source, target, amount)
         }
         [0xb7, 0x5c, 0x7d, 0xc6] => {
@@ -149,7 +149,7 @@ pub fn spl_token<B: AccountStorage>(
 
             let source = read_pubkey(input);
             let target = read_pubkey(&input[32..]);
-            let amount = read_u64(&input[64..]);
+            let amount = read_u64(&input[64..])?;
             transfer(context, state, source, target, amount)
         }
         [0x7c, 0x0e, 0xb8, 0x10] => {
@@ -161,7 +161,7 @@ pub fn spl_token<B: AccountStorage>(
             let seed = arrayref::array_ref![input, 0, 32];
             let source = read_pubkey(&input[32..]);
             let target = read_pubkey(&input[64..]);
-            let amount = read_u64(&input[96..]);
+            let amount = read_u64(&input[96..])?;
 
             transfer_with_seed(context, state, seed, source, target, amount)
         }
@@ -172,7 +172,7 @@ pub fn spl_token<B: AccountStorage>(
             }
 
             let account = read_pubkey(input);
-            let amount = read_u64(&input[32..]);
+            let amount = read_u64(&input[32..])?;
             mint(context, state, account, amount)
         }
         [0xe3, 0x41, 0x08, 0x55] => {
@@ -182,7 +182,7 @@ pub fn spl_token<B: AccountStorage>(
             }
 
             let account = read_pubkey(input);
-            let amount = read_u64(&input[32..]);
+            let amount = read_u64(&input[32..])?;
             burn(context, state, account, amount)
         }
         [0xec, 0x13, 0xcc, 0x7b] => {
@@ -228,13 +228,17 @@ pub fn spl_token<B: AccountStorage>(
 }
 
 #[inline]
-fn read_u8(input: &[u8]) -> u8 {
-    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32]).as_u8()
+fn read_u8(input: &[u8]) -> Result<u8> {
+    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32])
+        .try_into()
+        .map_err(|_| Error::IntegerOverflow)
 }
 
 #[inline]
-fn read_u64(input: &[u8]) -> u64 {
-    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32]).as_u64()
+fn read_u64(input: &[u8]) -> Result<u64> {
+    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32])
+        .try_into()
+        .map_err(|_| Error::IntegerOverflow)
 }
 
 #[inline]
@@ -259,11 +263,8 @@ fn create_account<B: AccountStorage>(
     let required_lamports = minimum_balance.saturating_sub(account.lamports);
 
     if required_lamports > 0 {
-        let transfer = system_instruction::transfer(
-            state.backend.operator(),
-            &account.key,
-            required_lamports,
-        );
+        let transfer =
+            system_instruction::transfer(state.backend.operator(), &account.key, required_lamports);
         state.queue_external_instruction(transfer, vec![], 0);
     }
 

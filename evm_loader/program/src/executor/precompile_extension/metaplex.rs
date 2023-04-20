@@ -98,7 +98,9 @@ pub fn metaplex<B: AccountStorage>(
 
 #[inline]
 fn read_u64(input: &[u8]) -> Result<u64> {
-    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32]).try_into().map_err(|_| Error::IntegerOverflow)
+    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32])
+        .try_into()
+        .map_err(|_| Error::IntegerOverflow)
 }
 
 #[inline]
@@ -109,9 +111,11 @@ fn read_pubkey(input: &[u8]) -> Pubkey {
 #[inline]
 fn read_string(input: &[u8], offset_position: usize) -> Result<String> {
     let offset = U256::from_be_bytes(*arrayref::array_ref![input, offset_position, 32])
-        .try_into().map_err(|_| Error::IntegerOverflow)?;
+        .try_into()
+        .map_err(|_| Error::IntegerOverflow)?;
     let length = U256::from_be_bytes(*arrayref::array_ref![input, offset, 32])
-        .try_into().map_err(|_| Error::IntegerOverflow)?;
+        .try_into()
+        .map_err(|_| Error::IntegerOverflow)?;
 
     let begin = offset.saturating_add(32);
     let end = begin.saturating_add(length);

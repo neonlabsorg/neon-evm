@@ -6,7 +6,7 @@ mod tracer_pg_db;
 
 pub use indexer_db::IndexerDb;
 // pub use tracer_pg_db::TracerDb;
-pub use tracer_ch_db::{ChResult, ClickHouseDb as TracerDb};
+pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use {
     ethnum::U256,

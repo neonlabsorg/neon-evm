@@ -50,9 +50,9 @@ pub fn metaplex<B: AccountStorage>(
             }
 
             let mint = read_pubkey(input);
-            let name = read_string(input, 32);
-            let symbol = read_string(input, 64);
-            let uri = read_string(input, 96);
+            let name = read_string(input, 32)?;
+            let symbol = read_string(input, 64)?;
+            let uri = read_string(input, 96)?;
 
             create_metadata(context, state, mint, name, symbol, uri)
         }
@@ -63,7 +63,7 @@ pub fn metaplex<B: AccountStorage>(
             }
 
             let mint = read_pubkey(input);
-            let max_supply = read_u64(&input[32..]);
+            let max_supply = read_u64(&input[32..])?;
 
             create_master_edition(context, state, mint, Some(max_supply))
         }
@@ -97,8 +97,8 @@ pub fn metaplex<B: AccountStorage>(
 }
 
 #[inline]
-fn read_u64(input: &[u8]) -> u64 {
-    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32]).as_u64()
+fn read_u64(input: &[u8]) -> Result<u64> {
+    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32]).try_into().map_err(|_| Error::IntegerOverflow)
 }
 
 #[inline]
@@ -107,15 +107,17 @@ fn read_pubkey(input: &[u8]) -> Pubkey {
 }
 
 #[inline]
-fn read_string(input: &[u8], offset_position: usize) -> String {
-    let offset = U256::from_be_bytes(*arrayref::array_ref![input, offset_position, 32]).as_usize();
-    let length = U256::from_be_bytes(*arrayref::array_ref![input, offset, 32]).as_usize();
+fn read_string(input: &[u8], offset_position: usize) -> Result<String> {
+    let offset = U256::from_be_bytes(*arrayref::array_ref![input, offset_position, 32])
+        .try_into().map_err(|_| Error::IntegerOverflow)?;
+    let length = U256::from_be_bytes(*arrayref::array_ref![input, offset, 32])
+        .try_into().map_err(|_| Error::IntegerOverflow)?;
 
-    let begin = offset + 32;
-    let end = begin + length;
+    let begin = offset.saturating_add(32);
+    let end = begin.saturating_add(length);
 
     let data = input[begin..end].to_vec();
-    unsafe { String::from_utf8_unchecked(data) }
+    String::from_utf8(data).map_err(|_| Error::Custom("Invalid utf8 string".to_string()))
 }
 
 fn create_metadata<B: AccountStorage>(

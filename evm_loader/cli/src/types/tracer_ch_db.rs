@@ -26,6 +26,7 @@ pub enum ChError {
 pub type ChResult<T> = std::result::Result<T, ChError>;
 
 #[allow(dead_code)]
+#[derive(Clone)]
 pub struct ClickHouseDb {
     client: Arc<Client>,
 }

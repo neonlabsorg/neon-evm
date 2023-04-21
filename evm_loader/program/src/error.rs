@@ -119,6 +119,9 @@ pub enum Error {
 
     #[error("New contract code size exceeds 24kb (EIP-170), contract = {0}, size = {1}")]
     ContractCodeSizeLimit(Address, usize),
+
+    #[error("Checked Integer Math Overflow")]
+    IntegerOverflow,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

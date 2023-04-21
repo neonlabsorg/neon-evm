@@ -133,7 +133,7 @@ contract ERC20ForSpl {
     function claimTo(bytes32 from, address to, uint64 amount) public returns (bool) {
         bytes32 toSolana = _solanaAccount(to);
 
-        if (!_splToken.exists(toSolana)) {
+        if (_splToken.isSystemAccount(toSolana)) {
             _splToken.initializeAccount(_salt(to), tokenMint);
         }
 
@@ -182,7 +182,7 @@ contract ERC20ForSpl {
         require(amount <= type(uint64).max, "ERC20: transfer amount exceeds uint64 max");
         require(_splToken.getAccount(fromSolana).amount >= amount, "ERC20: transfer amount exceeds balance");
 
-        if (!_splToken.exists(toSolana)) {
+        if (_splToken.isSystemAccount(toSolana)) {
             _splToken.initializeAccount(_salt(to), tokenMint);
         }
 
@@ -223,7 +223,7 @@ contract ERC20ForSplMintable is ERC20ForSpl {
         require(totalSupply() + amount <= type(uint64).max, "ERC20: total mint amount exceeds uint64 max");
 
         bytes32 toSolana = _solanaAccount(to);
-        if (!_splToken.exists(toSolana)) {
+        if (_splToken.isSystemAccount(toSolana)) {
             _splToken.initializeAccount(_salt(to), tokenMint);
         }
 

@@ -31,7 +31,7 @@ interface SPLToken {
 
     function findAccount(bytes32 salt) external pure returns(bytes32);
 
-    function exists(bytes32 account) external view returns(bool);
+    function isSystemAccount(bytes32 account) external view returns(bool);
     function getAccount(bytes32 account) external view returns(Account memory);
     function getMint(bytes32 account) external view returns(Mint memory);
 

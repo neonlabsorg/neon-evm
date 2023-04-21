@@ -17,7 +17,7 @@ use crate::{
 // [0xa9, 0xc1, 0x58, 0x06] : "approve(bytes32,bytes32,uint64)",
 // [0xe3, 0x41, 0x08, 0x55] : "burn(bytes32,uint64)",
 // [0x57, 0x82, 0xa0, 0x43] : "closeAccount(bytes32)",
-// [0x38, 0xa6, 0x99, 0xa4] : "exists(bytes32)",
+// [0x6d, 0xa9, 0xde, 0x75] : "isSystemAccount(bytes32)",
 // [0xeb, 0x7d, 0xa7, 0x8c] : "findAccount(bytes32)",
 // [0xec, 0x13, 0xcc, 0x7b] : "freeze(bytes32)",
 // [0xd1, 0xde, 0x50, 0x11] : "getAccount(bytes32)",
@@ -208,10 +208,10 @@ pub fn spl_token<B: AccountStorage>(
             let seed = read_salt(input);
             find_account(context, state, seed)
         }
-        [0x38, 0xa6, 0x99, 0xa4] => {
-            // exists(bytes32 account)
+        [0x6d, 0xa9, 0xde, 0x75] => {
+            // isSystemAccount(bytes32 account)
             let account = read_pubkey(input);
-            exists(context, state, account)
+            is_system_account(context, state, account)
         }
         [0xd1, 0xde, 0x50, 0x11] => {
             // getAccount(bytes32 account)
@@ -662,19 +662,19 @@ fn find_account<B: AccountStorage>(
     Ok(account_key.to_bytes().to_vec())
 }
 
-fn exists<B: AccountStorage>(
+fn is_system_account<B: AccountStorage>(
     _context: &crate::evm::Context,
     state: &mut ExecutorState<B>,
     account: Pubkey,
 ) -> Result<Vec<u8>> {
     let account = state.external_account(account)?;
     if system_program::check_id(&account.owner) {
-        Ok(vec![0_u8; 32])
-    } else {
         let mut result = vec![0_u8; 32];
         result[31] = 1; // return true
 
         Ok(result)
+    } else {
+        Ok(vec![0_u8; 32])
     }
 }
 

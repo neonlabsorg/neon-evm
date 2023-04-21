@@ -90,7 +90,7 @@ contract ERC721ForMetaplex is IERC165, IERC721, IERC721Metadata {
 
         bytes32 seed = keccak256(abi.encode(account.mint, msg.sender));
         bytes32 toSolana = _splToken.findAccount(seed);
-        if (!_splToken.exists(toSolana)) {
+        if (_splToken.isSystemAccount(toSolana)) {
             _splToken.initializeAccount(seed, account.mint);
         }
 
@@ -254,7 +254,7 @@ contract ERC721ForMetaplex is IERC165, IERC721, IERC721Metadata {
         bytes32 toSeed = keccak256(abi.encode(tokenId, to));
         bytes32 toSolana = _splToken.findAccount(toSeed);
 
-        if (!_splToken.exists(toSolana)) {
+        if (_splToken.isSystemAccount(toSolana)) {
             _splToken.initializeAccount(toSeed, bytes32(tokenId));
         }
 

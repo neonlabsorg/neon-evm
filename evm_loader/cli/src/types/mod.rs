@@ -9,6 +9,7 @@ pub use tracer_pg_db::TracerDb;
 
 use {
     crate::errors::NeonCliError,
+    crate::types::trace::{TraceCallConfig, TraceConfig},
     ethnum::U256,
     evm_loader::types::Address,
     hex::FromHex,
@@ -126,6 +127,18 @@ pub struct TxParams {
     pub value: Option<U256>,
     pub gas_limit: Option<U256>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionParams {
+    pub data: Option<Bytes>,
+    pub trace_config: Option<TraceCallConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionHashParams {
+    pub trace_config: Option<TraceConfig>,
+}
+
 
 pub fn do_connect(
     host: &String,

@@ -4,13 +4,11 @@
 mod logs;
 mod program_options;
 
-use std::fmt::Debug;
 use std::process::exit;
 use std::str::FromStr;
 
 use clap::ArgMatches;
 use ethnum::U256;
-use serde::Deserialize;
 use serde_json::json;
 use solana_clap_utils::input_parsers::{pubkey_of, value_of, values_of};
 use solana_sdk::pubkey::Pubkey;
@@ -25,7 +23,7 @@ use neon_cli::{
     rpc::Rpc,
     types::{
         trace::{TraceCallConfig, TraceConfig},
-        Bytes, TxParams,
+        TransactionHashParams, TransactionParams, TxParams,
     },
     config, NeonCliResult,
 };
@@ -231,15 +229,4 @@ fn u256_of(matches: &ArgMatches<'_>, name: &str) -> Option<U256> {
 
         U256::from_str_prefixed(value).unwrap()
     })
-}
-
-#[derive(Debug, Clone, serde::Serialize, Deserialize)]
-struct TransactionParams {
-    data: Option<Bytes>,
-    trace_config: Option<TraceCallConfig>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, Deserialize)]
-struct TransactionHashParams {
-    trace_config: Option<TraceConfig>,
 }

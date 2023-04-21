@@ -4,11 +4,13 @@
 mod logs;
 mod program_options;
 
+use std::fmt::Debug;
 use std::process::exit;
 use std::str::FromStr;
 
 use clap::ArgMatches;
 use ethnum::U256;
+use serde::Deserialize;
 use serde_json::json;
 use solana_clap_utils::input_parsers::{pubkey_of, value_of, values_of};
 use solana_sdk::pubkey::Pubkey;
@@ -20,10 +22,12 @@ use neon_cli::{
         get_neon_elf::CachedElfParams, cancel_trx, collect_treasury, create_ether_account, deposit,
         emulate, get_ether_account_data, get_neon_elf, get_storage_at, init_environment, trace,
     },
-    config,
-    NeonCliResult,
-    parsing::truncate_0x,
-    types::TxParams,
+    rpc::Rpc,
+    types::{
+        trace::{TraceCallConfig, TraceConfig},
+        Bytes, TxParams,
+    },
+    config, NeonCliResult,
 };
 
 #[tokio::main]
@@ -71,27 +75,27 @@ async fn main() {
 fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliResult {
     match (cmd, params) {
         ("emulate", Some(params)) => {
-            let tx = parse_tx(params);
+            let (tx, trace_call_config) = parse_tx(params);
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            emulate::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, None, None)
+            emulate::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_call_config)
                 .map(|result| json!(result))
         }
         ("emulate_hash", Some(params)) => {
-            let tx = config.rpc_client.get_transaction_data()?;
+            let (tx, trace_config) = parse_tx_hash(config.rpc_client.as_ref());
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            emulate::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, None, None)
+            emulate::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_config.into())
                 .map(|result| json!(result))
         }
         ("trace", Some(params)) => {
-            let tx = parse_tx(params);
+            let (tx, trace_call_config) = parse_tx(params);
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            trace::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, parse_enable_return_data(params), None, None)
+            trace::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_call_config)
                 .map(|trace| json!(trace))
         }
         ("trace_hash", Some(params)) => {
-            let tx = config.rpc_client.get_transaction_data()?;
+            let (tx, trace_config) = parse_tx_hash(config.rpc_client.as_ref());
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            trace::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, parse_enable_return_data(params), None, None)
+            trace::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_config.into())
                 .map(|trace| json!(trace))
         }
         ("create-ether-account", Some(params)) => {
@@ -134,20 +138,38 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
     }
 }
 
-fn parse_tx(params: &ArgMatches) -> TxParams {
+fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
     let from = address_of(params, "sender").expect("sender parse error");
     let to = address_or_deploy_of(params, "contract");
-    let data = read_stdin();
+    let transaction_params: Option<TransactionParams> = serde_json::from_reader(std::io::BufReader::new(std::io::stdin()))
+        .unwrap_or_else(|err| panic!("Unable to parse `TransactionParams` from STDIN, error: {err:?}"));
+    let (data, trace_config) = transaction_params
+        .map(|params| (params.data.map(Into::into), params.trace_config.unwrap_or_default()))
+        .unwrap_or_default();
     let value = u256_of(params, "value");
     let gas_limit = u256_of(params, "gas_limit");
 
-    TxParams {
+    let tx_params = TxParams {
         from,
         to,
         data,
         value,
         gas_limit,
-    }
+    };
+
+    (tx_params, trace_config)
+}
+
+fn parse_tx_hash(rpc_client: &dyn Rpc) -> (TxParams, TraceConfig) {
+    let tx = rpc_client.get_transaction_data().unwrap();
+    let transaction_params: Option<TransactionHashParams> = serde_json::from_reader(std::io::BufReader::new(std::io::stdin()))
+        .unwrap_or_else(|err| panic!("Unable to parse `TransactionHashParams` from STDIN, error: {err:?}"));
+
+    let trace_config = transaction_params
+        .map(|params| params.trace_config.unwrap_or_default())
+        .unwrap_or_default();
+
+    (tx, trace_config)
 }
 
 #[must_use]
@@ -188,10 +210,6 @@ pub fn parse_tx_params(config: &Config, params: &ArgMatches) -> (Pubkey, u64, u6
     (token, chain, max_steps, accounts)
 }
 
-fn parse_enable_return_data(params: &ArgMatches) -> bool {
-    value_of(params, "enable_return_data").unwrap_or_default()
-}
-
 fn address_or_deploy_of(matches: &ArgMatches<'_>, name: &str) -> Option<Address> {
     if matches.value_of(name) == Some("deploy") {
         return None;
@@ -215,17 +233,13 @@ fn u256_of(matches: &ArgMatches<'_>, name: &str) -> Option<U256> {
     })
 }
 
-fn read_stdin() -> Option<Vec<u8>> {
-    let mut data = String::new();
+#[derive(Debug, Clone, serde::Serialize, Deserialize)]
+struct TransactionParams {
+    data: Option<Bytes>,
+    trace_config: Option<TraceCallConfig>,
+}
 
-    if let Ok(len) = std::io::stdin().read_line(&mut data) {
-        if len == 0 {
-            return None;
-        }
-        let data = truncate_0x(data.as_str());
-        let bin = hex::decode(data).expect("data hex::decore error");
-        Some(bin)
-    } else {
-        None
-    }
+#[derive(Debug, Clone, serde::Serialize, Deserialize)]
+struct TransactionHashParams {
+    trace_config: Option<TraceConfig>,
 }

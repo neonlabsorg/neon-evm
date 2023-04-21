@@ -1,13 +1,15 @@
 use crate::{
     commands::emulate,
     event_listener::tracer::Tracer,
+    errors::NeonCliError,
     rpc::Rpc,
-    types::{trace::TracedCall, TxParams},
-    BlockOverrides, AccountOverrides,
+    types::{
+        trace::{TracedCall, TraceCallConfig},
+        TxParams,
+    },
 };
 use evm_loader::types::Address;
 use solana_sdk::pubkey::Pubkey;
-use crate::errors::NeonCliError;
 
 #[allow(clippy::too_many_arguments)]
 pub fn execute(
@@ -18,14 +20,12 @@ pub fn execute(
     chain: u64,
     steps: u64,
     accounts: &[Address],
-    enable_return_data: bool,
-    block_overrides: Option<BlockOverrides>,
-    state_overrides: Option<AccountOverrides>,
+    trace_call_config: TraceCallConfig,
 ) -> Result<TracedCall, NeonCliError> {
-    let mut tracer = Tracer::new(enable_return_data);
+    let mut tracer = Tracer::new(trace_call_config.trace_config.enable_return_data);
 
     let emulation_result = evm_loader::evm::tracing::using(&mut tracer, || {
-        emulate::execute(rpc_client, evm_loader, tx, token, chain, steps, accounts, block_overrides, state_overrides)
+        emulate::execute(rpc_client, evm_loader, tx, token, chain, steps, accounts, trace_call_config)
     })?;
 
     let (vm_trace, full_trace_data) = tracer.into_traces();

@@ -65,6 +65,6 @@ impl ListenerVmTracer for VmTracer {
     }
 
     fn memory_set(&mut self, offset: usize, data: Vec<u8>) {
-        self.step_diff().memory_set = Some(MemoryDiff { offset, data });
+        self.step_diff().memory_set = Some(MemoryDiff { offset, data: data.into() });
     }
 }

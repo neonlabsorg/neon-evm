@@ -25,8 +25,7 @@ use solana_sdk::{
     rent::Rent,
     sysvar::{recent_blockhashes, slot_hashes, Sysvar},
 };
-
-use crate::rpc::Rpc;
+use crate::{rpc::Rpc, AccountOverrides, BlockOverrides};
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
@@ -122,53 +121,6 @@ pub struct SolanaAccount {
     pubkey: Pubkey,
     is_writable: bool,
 }
-
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct BlockOverrides {
-    pub number: Option<u64>,
-    #[allow(unused)]
-    pub difficulty: Option<U256>,  // NOT SUPPORTED by Neon EVM
-    pub time: Option<i64>,
-    #[allow(unused)]
-    pub gas_limit: Option<u64>,    // NOT SUPPORTED BY Neon EVM
-    #[allow(unused)]
-    pub coinbase: Option<Address>, // NOT SUPPORTED BY Neon EVM
-    #[allow(unused)]
-    pub random: Option<U256>,      // NOT SUPPORTED BY Neon EVM
-    #[allow(unused)]
-    pub base_fee: Option<U256>,    // NOT SUPPORTED BY Neon EVM
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-pub enum StateOverride {
-    NoOverride,
-    State(HashMap<U256, [u8; 32]>),
-    StateDiff(HashMap<U256, [u8; 32]>),
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct AccountOverride {
-    pub nonce: Option<u64>,
-    pub code: Option<Vec<u8>>,
-    pub balance: Option<u64>,
-    pub state_override: StateOverride,
-}
-
-impl AccountOverride {
-    pub fn apply(&self, ether_account: &mut EthereumAccount) {
-        if let Some(nonce) = self.nonce {
-            ether_account.trx_count = nonce;
-        }
-        if let Some(balance) = self.balance {
-            ether_account.balance = U256::from(balance);
-        }
-        if let Some(code) = &self.code {
-            ether_account.code_size = code.len() as u32;
-        }
-    }
-}
-
-pub type AccountOverrides = HashMap<Address, AccountOverride>;
 
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'a> {
@@ -569,7 +521,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             if let Some(account_overrides) = &self.state_overrides {
                 if let Some(account_override) = account_overrides.get(address) {
                     if let Some(code) = &account_override.code {
-                        return Buffer::new(code);
+                        return Buffer::new(&code.0);
                     }
                 }
             }
@@ -587,15 +539,16 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     fn storage(&self, address: &Address, index: &U256) -> [u8; 32] {
         if let Some(account_overrides) = &self.state_overrides {
             if let Some(account_override) = account_overrides.get(address) {
-                match &account_override.state_override {
-                    StateOverride::NoOverride => (),
-                    StateOverride::State(state) =>
+                match (&account_override.state, &account_override.state_diff) {
+                    (None, None) => (),
+                    (Some(_), Some(_)) => panic!("Account {address} has both `state` and `stateDiff` overrides"),
+                    (Some(state), None) =>
                         return state.get(index)
-                            .cloned()
+                            .map(|value| value.to_be_bytes())
                             .unwrap_or_default(),
-                    StateOverride::StateDiff(state_diff) =>
+                    (None, Some(state_diff)) =>
                         if let Some(value) = state_diff.get(index) {
-                            return *value;
+                            return value.to_be_bytes();
                         }
                 }
             }

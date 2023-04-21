@@ -1,4 +1,5 @@
 use {crate::types::Bytes, ethnum::U256, std::collections::HashMap};
+use evm_loader::{account::EthereumAccount, types::Address};
 
 #[derive(
     serde::Serialize,
@@ -119,7 +120,7 @@ impl ExecutiveVMTracer {
         ExecutiveVMTracer {
             data: VMTrace {
                 parent_step: 0,
-                code: vec![],
+                code: Bytes::default(),
                 operations: vec![VMOperation::default()], // prefill with a single entry so that prepare_subtrace can get the parent_step
                 subs: vec![],
             },
@@ -179,7 +180,7 @@ impl VMTracer for ExecutiveVMTracer {
             let parent_step = trace.operations.len() - 1; // won't overflow since we must already have pushed an operation in trace_prepare_execute.
             trace.subs.push(VMTrace {
                 parent_step,
-                code,
+                code: code.into(),
                 operations: vec![],
                 subs: vec![],
             });
@@ -231,4 +232,84 @@ pub struct TracedCall {
     pub used_gas: u64,
     pub result: Vec<u8>,
     pub exit_status: &'static str,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockOverrides {
+    pub number: Option<u64>,
+    #[allow(unused)]
+    pub difficulty: Option<U256>,  // NOT SUPPORTED by Neon EVM
+    pub time: Option<i64>,
+    #[allow(unused)]
+    pub gas_limit: Option<u64>,    // NOT SUPPORTED BY Neon EVM
+    #[allow(unused)]
+    pub coinbase: Option<Address>, // NOT SUPPORTED BY Neon EVM
+    #[allow(unused)]
+    pub random: Option<U256>,      // NOT SUPPORTED BY Neon EVM
+    #[allow(unused)]
+    pub base_fee: Option<U256>,    // NOT SUPPORTED BY Neon EVM
+}
+
+// #[derive(Debug, Clone, serde::Deserialize)]
+// pub enum StateOverride {
+//     NoOverride,
+//     State(HashMap<U256, [u8; 32]>),
+//     StateDiff(HashMap<U256, [u8; 32]>),
+// }
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountOverride {
+    pub nonce: Option<u64>,
+    pub code: Option<Bytes>,
+    pub balance: Option<U256>,
+    pub state: Option<HashMap<U256, U256>>,
+    pub state_diff: Option<HashMap<U256, U256>>,
+}
+
+impl AccountOverride {
+    pub fn apply(&self, ether_account: &mut EthereumAccount) {
+        if let Some(nonce) = self.nonce {
+            ether_account.trx_count = nonce;
+        }
+        if let Some(balance) = self.balance {
+            ether_account.balance = U256::from(balance);
+        }
+        if let Some(code) = &self.code {
+            ether_account.code_size = code.len() as u32;
+        }
+    }
+}
+
+pub type AccountOverrides = HashMap<Address, AccountOverride>;
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceConfig {
+    #[serde(default)]
+    pub enable_memory: bool,
+    #[serde(default)]
+    pub disable_storage: bool,
+    #[serde(default)]
+    pub disable_stack: bool,
+    #[serde(default)]
+    pub enable_return_data: bool,
+    pub tracer: Option<String>,
+    pub timeout: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceCallConfig {
+    #[serde(flatten)]
+    pub trace_config: TraceConfig,
+    pub block_overrides: Option<BlockOverrides>,
+    pub state_overrides: Option<AccountOverrides>,
+}
+
+impl From<TraceConfig> for TraceCallConfig {
+    fn from(trace_config: TraceConfig) -> Self {
+        Self { trace_config, ..Self::default() }
+    }
 }

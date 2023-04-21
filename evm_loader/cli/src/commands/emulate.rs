@@ -18,9 +18,9 @@ use crate::{
     syscall_stubs::Stubs,
     types::TxParams,
     rpc::Rpc,
-    BlockOverrides, AccountOverrides,
 };
 use solana_sdk::pubkey::Pubkey;
+use crate::types::trace::TraceCallConfig;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct EmulationResult {
@@ -51,8 +51,7 @@ pub fn execute(
     chain: u64,
     steps: u64,
     accounts: &[Address],
-    block_overrides: Option<BlockOverrides>,
-    state_overrides: Option<AccountOverrides>,
+    trace_call_config: TraceCallConfig,
 ) -> Result<EmulationResult, NeonCliError> {
     let syscall_stubs = Stubs::new(rpc_client)?;
     solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
@@ -62,8 +61,8 @@ pub fn execute(
         evm_loader,
         token,
         chain,
-        block_overrides,
-        state_overrides,
+        trace_call_config.block_overrides,
+        trace_call_config.state_overrides,
     );
     storage.initialize_cached_accounts(accounts);
 

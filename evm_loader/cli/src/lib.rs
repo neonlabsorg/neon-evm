@@ -10,7 +10,9 @@ pub mod types;
 
 pub use {
     config::Config,
-    types::NeonCliResult,
+    types::{
+        trace::{BlockOverrides, AccountOverride, AccountOverrides},
+        NeonCliResult,
+    },
     errors::NeonCliError,
-    account_storage::{BlockOverrides, StateOverride, AccountOverride, AccountOverrides},
 };

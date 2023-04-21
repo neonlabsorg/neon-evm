@@ -303,22 +303,12 @@ pub fn parse<'a>() -> ArgMatches<'a> {
         )
         .subcommand(
             trx_params("trace", "Emulation transaction to collecting traces")
-                .arg(
-                    Arg::with_name("enable_return_data")
-                        .value_name("ENABLE_RETURN_DATA")
-                        .help("Collect returned data from each step during the trace"),
-                )
         )
         .subcommand(
             trx_hash("emulate_hash", "Emulation transaction by hash")
         )
         .subcommand(
             trx_hash("trace_hash", "Emulation transaction by hash to collecting traces")
-                .arg(
-                    Arg::with_name("enable_return_data")
-                        .value_name("ENABLE_RETURN_DATA")
-                        .help("Collect returned data from each step during the trace"),
-                )
         )
         .subcommand(
             SubCommand::with_name("create-ether-account")

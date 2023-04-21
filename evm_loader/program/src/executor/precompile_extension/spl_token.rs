@@ -44,15 +44,9 @@ pub fn spl_token<B: AccountStorage>(
         return Err(Error::Custom("SplToken: value != 0".to_string()));
     }
 
-    if context.contract == context.caller {
-        return Err(Error::Custom(
-            "SplToken: callcode is not allowed".to_string(),
-        ));
-    }
-
     if &context.contract != address {
         return Err(Error::Custom(
-            "SplToken: delegatecall is not allowed".to_string(),
+            "SplToken: callcode or delegatecall is not allowed".to_string(),
         ));
     }
 

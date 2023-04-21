@@ -29,7 +29,7 @@ pub struct EmulationResult {
     pub token_accounts: Vec<SolanaAccount>,
     #[serde(serialize_with = "serde_hex")]
     pub result: Vec<u8>,
-    pub exit_status: &'static str,
+    pub exit_status: String,
     pub steps_executed: u64,
     pub used_gas: u64,
     pub actions: Vec<Action>,
@@ -119,7 +119,7 @@ pub fn execute(
         solana_accounts,
         token_accounts: vec![],
         result,
-        exit_status: status,
+        exit_status: status.to_owned(),
         steps_executed,
         used_gas: steps_gas + begin_end_gas + actions_gas + accounts_gas,
         actions,

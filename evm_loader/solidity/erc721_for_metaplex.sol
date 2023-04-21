@@ -114,7 +114,7 @@ contract ERC721ForMetaplex is IERC165, IERC721, IERC721Metadata {
         bytes32 tokenSeed = keccak256(abi.encode(mintId, to));
         bytes32 account = _splToken.initializeAccount(tokenSeed, mintId);
 
-        _splToken.mintTo(account, 1);
+        _splToken.mintTo(mintId, account, 1);
 
         _metaplex.createMetadata(mintId, _name, _symbol, uri);
         _metaplex.createMasterEdition(mintId, 0);

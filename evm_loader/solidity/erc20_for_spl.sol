@@ -167,7 +167,7 @@ contract ERC20ForSpl {
         bytes32 fromSolana = _solanaAccount(from);
 
         require(_splToken.getAccount(fromSolana).amount >= amount, "ERC20: burn amount exceeds balance");
-        _splToken.burn(fromSolana, uint64(amount));
+        _splToken.burn(tokenMint, fromSolana, uint64(amount));
 
         emit Transfer(from, address(0), amount);
     }
@@ -227,7 +227,7 @@ contract ERC20ForSplMintable is ERC20ForSpl {
             _splToken.initializeAccount(_salt(to), tokenMint);
         }
 
-        _splToken.mintTo(toSolana, uint64(amount));
+        _splToken.mintTo(tokenMint, toSolana, uint64(amount));
 
         emit Transfer(address(0), to, amount);
     }

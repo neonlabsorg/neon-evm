@@ -15,20 +15,20 @@ use crate::{
 };
 
 // [0xa9, 0xc1, 0x58, 0x06] : "approve(bytes32,bytes32,uint64)",
-// [0xe3, 0x41, 0x08, 0x55] : "burn(bytes32,uint64)",
+// [0xc0, 0x67, 0xee, 0xbb] : "burn(bytes32,bytes32,uint64)",
 // [0x57, 0x82, 0xa0, 0x43] : "closeAccount(bytes32)",
 // [0x6d, 0xa9, 0xde, 0x75] : "isSystemAccount(bytes32)",
 // [0xeb, 0x7d, 0xa7, 0x8c] : "findAccount(bytes32)",
-// [0xec, 0x13, 0xcc, 0x7b] : "freeze(bytes32)",
+// [0x44, 0xef, 0x32, 0x44] : "freeze(bytes32)",
 // [0xd1, 0xde, 0x50, 0x11] : "getAccount(bytes32)",
 // [0xa2, 0xce, 0x9c, 0x1f] : "getMint(bytes32)",
 // [0xda, 0xa1, 0x2c, 0x5c] : "initializeAccount(bytes32,bytes32)",
 // [0xfc, 0x86, 0xb7, 0x17] : "initializeAccount(bytes32,bytes32,bytes32)",
 // [0xb1, 0x1e, 0xcc, 0x50] : "initializeMint(bytes32,uint8)",
 // [0xc3, 0xf3, 0xf2, 0xf2] : "initializeMint(bytes32,uint8,bytes32,bytes32)",
-// [0xa9, 0x05, 0x74, 0x01] : "mintTo(bytes32,uint64)",
+// [0xc9, 0xd0, 0xe2, 0xfd] : "mintTo(bytes32,bytes32,uint64)",
 // [0xb7, 0x5c, 0x7d, 0xc6] : "revoke(bytes32)",
-// [0xc2, 0x59, 0xdd, 0xfe] : "thaw(bytes32)",
+// [0x3d, 0x71, 0x8c, 0x9a] : "thaw(bytes32,bytes32)",
 // [0x78, 0x42, 0x3b, 0xcf] : "transfer(bytes32,bytes32,uint64)"
 // [0x7c, 0x0e, 0xb8, 0x10] : "transferWithSeed(bytes32,bytes32,bytes32,uint64)"
 
@@ -165,43 +165,47 @@ pub fn spl_token<B: AccountStorage>(
 
             transfer_with_seed(context, state, seed, source, target, amount)
         }
-        [0xa9, 0x05, 0x74, 0x01] => {
-            // mintTo(bytes32 account, uint64 amount)
+        [0xc9, 0xd0, 0xe2, 0xfd] => {
+            // mintTo(bytes32 mint, bytes32 account, uint64 amount)
             if is_static {
                 return Err(Error::StaticModeViolation(*address));
             }
 
-            let account = read_pubkey(input);
-            let amount = read_u64(&input[32..])?;
-            mint(context, state, account, amount)
+            let mint = read_pubkey(input);
+            let account = read_pubkey(&input[32..]);
+            let amount = read_u64(&input[64..])?;
+            mint_to(context, state, mint, account, amount)
         }
-        [0xe3, 0x41, 0x08, 0x55] => {
-            // burn(bytes32 account, uint64 amount)
+        [0xc0, 0x67, 0xee, 0xbb] => {
+            // burn(bytes32 mint, bytes32 account, uint64 amount)
             if is_static {
                 return Err(Error::StaticModeViolation(*address));
             }
 
-            let account = read_pubkey(input);
-            let amount = read_u64(&input[32..])?;
-            burn(context, state, account, amount)
+            let mint = read_pubkey(input);
+            let account = read_pubkey(&input[32..]);
+            let amount = read_u64(&input[64..])?;
+            burn(context, state, mint, account, amount)
         }
-        [0xec, 0x13, 0xcc, 0x7b] => {
-            // freeze(bytes32 account)
+        [0x44, 0xef, 0x32, 0x44] => {
+            // freeze(bytes32 mint, bytes32 account)
             if is_static {
                 return Err(Error::StaticModeViolation(*address));
             }
 
-            let account = read_pubkey(input);
-            freeze(context, state, account)
+            let mint = read_pubkey(input);
+            let account = read_pubkey(&input[32..]);
+            freeze(context, state, mint, account)
         }
-        [0xc2, 0x59, 0xdd, 0xfe] => {
-            // thaw(bytes32 account)
+        [0x3d, 0x71, 0x8c, 0x9a] => {
+            // thaw(bytes32 mint, bytes32 account)
             if is_static {
                 return Err(Error::StaticModeViolation(*address));
             }
 
-            let account = read_pubkey(input);
-            thaw(context, state, account)
+            let mint = read_pubkey(input);
+            let account = read_pubkey(&input[32..]);
+            thaw(context, state, mint, account)
         }
         [0xeb, 0x7d, 0xa7, 0x8c] => {
             // findAccount(bytes32 seed)
@@ -513,19 +517,15 @@ fn transfer_with_seed<B: AccountStorage>(
     Ok(vec![])
 }
 
-fn mint<B: AccountStorage>(
+fn mint_to<B: AccountStorage>(
     context: &crate::evm::Context,
     state: &mut ExecutorState<B>,
+    mint: Pubkey,
     target: Pubkey,
     amount: u64,
 ) -> Result<Vec<u8>> {
     let signer = context.caller;
     let (signer_pubkey, bump_seed) = state.backend.solana_address(&signer);
-
-    let account = state.external_account(target)?;
-    spl_token::check_program_account(&account.owner)?;
-
-    let token_account = spl_token::state::Account::unpack(&account.data)?;
 
     let seeds = vec![
         vec![ACCOUNT_SEED_VERSION],
@@ -535,7 +535,7 @@ fn mint<B: AccountStorage>(
 
     let mint_to = spl_token::instruction::mint_to(
         &spl_token::ID,
-        &token_account.mint,
+        &mint,
         &target,
         &signer_pubkey,
         &[],
@@ -549,16 +549,12 @@ fn mint<B: AccountStorage>(
 fn burn<B: AccountStorage>(
     context: &crate::evm::Context,
     state: &mut ExecutorState<B>,
+    mint: Pubkey,
     source: Pubkey,
     amount: u64,
 ) -> Result<Vec<u8>> {
     let signer = context.caller;
     let (signer_pubkey, bump_seed) = state.backend.solana_address(&signer);
-
-    let account = state.external_account(source)?;
-    spl_token::check_program_account(&account.owner)?;
-
-    let token_account = spl_token::state::Account::unpack(&account.data)?;
 
     let seeds = vec![
         vec![ACCOUNT_SEED_VERSION],
@@ -566,14 +562,8 @@ fn burn<B: AccountStorage>(
         vec![bump_seed],
     ];
 
-    let burn = spl_token::instruction::burn(
-        &spl_token::ID,
-        &source,
-        &token_account.mint,
-        &signer_pubkey,
-        &[],
-        amount,
-    )?;
+    let burn =
+        spl_token::instruction::burn(&spl_token::ID, &source, &mint, &signer_pubkey, &[], amount)?;
     state.queue_external_instruction(burn, seeds, 0);
 
     Ok(vec![])
@@ -582,15 +572,11 @@ fn burn<B: AccountStorage>(
 fn freeze<B: AccountStorage>(
     context: &crate::evm::Context,
     state: &mut ExecutorState<B>,
+    mint: Pubkey,
     target: Pubkey,
 ) -> Result<Vec<u8>> {
     let signer = context.caller;
     let (signer_pubkey, bump_seed) = state.backend.solana_address(&signer);
-
-    let account = state.external_account(target)?;
-    spl_token::check_program_account(&account.owner)?;
-
-    let token_account = spl_token::state::Account::unpack(&account.data)?;
 
     let seeds = vec![
         vec![ACCOUNT_SEED_VERSION],
@@ -601,7 +587,7 @@ fn freeze<B: AccountStorage>(
     let freeze = spl_token::instruction::freeze_account(
         &spl_token::ID,
         &target,
-        &token_account.mint,
+        &mint,
         &signer_pubkey,
         &[],
     )?;
@@ -613,15 +599,11 @@ fn freeze<B: AccountStorage>(
 fn thaw<B: AccountStorage>(
     context: &crate::evm::Context,
     state: &mut ExecutorState<B>,
+    mint: Pubkey,
     target: Pubkey,
 ) -> Result<Vec<u8>> {
     let signer = context.caller;
     let (signer_pubkey, bump_seed) = state.backend.solana_address(&signer);
-
-    let account = state.external_account(target)?;
-    spl_token::check_program_account(&account.owner)?;
-
-    let token_account = spl_token::state::Account::unpack(&account.data)?;
 
     let seeds = vec![
         vec![ACCOUNT_SEED_VERSION],
@@ -629,13 +611,8 @@ fn thaw<B: AccountStorage>(
         vec![bump_seed],
     ];
 
-    let thaw = spl_token::instruction::thaw_account(
-        &spl_token::ID,
-        &target,
-        &token_account.mint,
-        &signer_pubkey,
-        &[],
-    )?;
+    let thaw =
+        spl_token::instruction::thaw_account(&spl_token::ID, &target, &mint, &signer_pubkey, &[])?;
     state.queue_external_instruction(thaw, seeds, 0);
 
     Ok(vec![])

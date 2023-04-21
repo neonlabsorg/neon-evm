@@ -2,8 +2,8 @@ use std::convert::TryInto;
 
 use ethnum::U256;
 use solana_program::{
-    program_pack::Pack, pubkey::Pubkey, rent::Rent, system_instruction, system_program,
-    sysvar::Sysvar,
+    program_error::ProgramError, program_pack::Pack, pubkey::Pubkey, rent::Rent,
+    system_instruction, system_program, sysvar::Sysvar,
 };
 
 use crate::{
@@ -685,9 +685,9 @@ fn get_account<B: AccountStorage>(
 ) -> Result<Vec<u8>> {
     let account = state.external_account(account)?;
     let token = if spl_token::check_id(&account.owner) {
-        spl_token::state::Account::unpack_unchecked(&account.data)?
+        spl_token::state::Account::unpack(&account.data)?
     } else {
-        spl_token::state::Account::default()
+        return Err(ProgramError::IllegalOwner.into());
     };
 
     debug_print!("spl_token get_account: {:?}", token);
@@ -717,9 +717,9 @@ fn get_mint<B: AccountStorage>(
 ) -> Result<Vec<u8>> {
     let account = state.external_account(account)?;
     let mint = if spl_token::check_id(&account.owner) {
-        spl_token::state::Mint::unpack_unchecked(&account.data)?
+        spl_token::state::Mint::unpack(&account.data)?
     } else {
-        spl_token::state::Mint::default()
+        return Err(ProgramError::IllegalOwner.into());
     };
 
     debug_print!("spl_token get_mint: {:?}", mint);

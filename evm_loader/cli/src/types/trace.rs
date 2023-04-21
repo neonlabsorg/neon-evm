@@ -226,12 +226,12 @@ pub trait VMTracer: Send {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
-pub struct TracedCall {
+pub struct TracedCall<'a> {
     pub vm_trace: Option<VMTrace>,
     pub full_trace_data: Vec<FullTraceData>,
     pub used_gas: u64,
     pub result: Vec<u8>,
-    pub exit_status: &'static str,
+    pub exit_status: &'a str,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

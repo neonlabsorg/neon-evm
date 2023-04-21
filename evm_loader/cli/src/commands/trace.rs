@@ -21,7 +21,7 @@ pub fn execute(
     steps: u64,
     accounts: &[Address],
     trace_call_config: TraceCallConfig,
-) -> Result<TracedCall, NeonCliError> {
+) -> Result<TracedCall<'static>, NeonCliError> {
     let mut tracer = Tracer::new(trace_call_config.trace_config.enable_return_data);
 
     let emulation_result = evm_loader::evm::tracing::using(&mut tracer, || {

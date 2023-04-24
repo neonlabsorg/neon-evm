@@ -32,6 +32,9 @@ interface SPLToken {
     function findAccount(bytes32 salt) external pure returns(bytes32);
 
     function isSystemAccount(bytes32 account) external view returns(bool);
+
+    // Return spl_token account data. This function checks the account is owned by correct spl_token.
+    // Return default not initialized spl_token account data if corresponded Solana account doesn't exist.
     function getAccount(bytes32 account) external view returns(Account memory);
     function getMint(bytes32 account) external view returns(Mint memory);
 

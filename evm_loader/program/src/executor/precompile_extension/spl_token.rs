@@ -657,6 +657,8 @@ fn get_account<B: AccountStorage>(
     let account = state.external_account(account)?;
     let token = if spl_token::check_id(&account.owner) {
         spl_token::state::Account::unpack(&account.data)?
+    } else if system_program::check_id(&account.owner) {
+        spl_token::state::Account::default()
     } else {
         return Err(ProgramError::IllegalOwner.into());
     };

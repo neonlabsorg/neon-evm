@@ -122,6 +122,9 @@ pub enum Error {
 
     #[error("Checked Integer Math Overflow")]
     IntegerOverflow,
+
+    #[error("Precompile Contract {0} - is not implemented")]
+    UnimplementedPrecompile(Address),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -119,9 +119,9 @@ fn read_string(input: &[u8], offset_position: usize, max_length: usize) -> Resul
     if input.len() < offset_position + 32 {
         return Err(Error::OutOfBounds);
     }
-    let offset =
+    let offset: usize =
         U256::from_be_bytes(*arrayref::array_ref![input, offset_position, 32]).try_into()?;
-    if input.len() < offset + 32 {
+    if input.len() < offset.saturating_add(32) {
         return Err(Error::OutOfBounds);
     }
     let length = U256::from_be_bytes(*arrayref::array_ref![input, offset, 32]).try_into()?;

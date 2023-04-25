@@ -141,7 +141,7 @@ impl ClickHouseDb {
                     ));
                     Err(ChError::Db(err))
                 } else {
-                    Ok((root.slot, vec![]))
+                    Ok((slot, vec![]))
                 }
             }
             Equal => Ok((root.slot, vec![])),

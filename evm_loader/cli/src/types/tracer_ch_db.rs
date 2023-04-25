@@ -49,7 +49,6 @@ pub struct AccountRow {
 #[allow(dead_code)]
 impl ClickHouseDb {
     pub fn new(config: &ChDbConfig) -> Self {
-        println!("{:?}", config);
         let client = match (&config.clickhouse_user, &config.clickhouse_password) {
             (None, None | Some(_)) => Client::default().with_url(&config.clickhouse_url),
             (Some(user), None) => Client::default()

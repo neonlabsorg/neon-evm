@@ -122,13 +122,10 @@ impl ClickHouseDb {
             "#;
         let mut cursor = self.client.query(query).fetch::<SlotParent>()?;
 
-        let rows = block(||  async {
+        let rows = block(|| async {
             let mut rows = vec![];
-            loop {
-                match cursor.next().await {
-                    Ok(Some(row)) => rows.push(row),
-                    _ => break,
-                }
+            while let Ok(Some(row)) = cursor.next().await {
+                rows.push(row);
             }
             rows
         });
@@ -227,8 +224,8 @@ impl ClickHouseDb {
                 Err(clickhouse::error::Error::RowNotFound) => None,
                 Err(e) => {
                     println!("get_account_at error: {}", e);
-                    return Err(ChError::Db(e))
-                },
+                    return Err(ChError::Db(e));
+                }
             }
         };
 

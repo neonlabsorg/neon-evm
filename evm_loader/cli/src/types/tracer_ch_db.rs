@@ -114,13 +114,24 @@ impl ClickHouseDb {
     }
 
     fn get_branch_slots(&self, slot: u64) -> ChResult<(u64, Vec<u64>)> {
-        let rows: Vec<SlotParent> = block(|| async {
-            let query = "SELECT distinct on (slot) ?fields FROM events.update_slot \
-                WHERE slot >= (SELECT slot FROM events.update_slot WHERE status = 'Rooted' ORDER BY slot DESC LIMIT 1) \
-                 and parent is not NULL \
-                ORDER BY slot DESC, status DESC";
-            self.client.query(query).fetch_all::<SlotParent>().await
-        })?;
+        let query = r#"
+            SELECT distinct on (slot) slot, parent FROM events.update_slot
+            WHERE slot >= (SELECT slot FROM events.update_slot WHERE status = 'Rooted' ORDER BY slot DESC LIMIT 1)
+                and isNotNull(parent)
+            ORDER BY slot DESC, status DESC
+            "#;
+        let mut cursor = self.client.query(query).fetch::<SlotParent>()?;
+
+        let rows = block(||  async {
+            let mut rows = vec![];
+            loop {
+                match cursor.next().await {
+                    Ok(Some(row)) => rows.push(row),
+                    _ => break,
+                }
+            }
+            rows
+        });
 
         let (root, rows) = rows.split_last().ok_or_else(|| {
             let err = clickhouse::error::Error::Custom("Rooted slot not found".to_string());
@@ -179,7 +190,11 @@ impl ClickHouseDb {
     }
 
     pub fn get_account_at(&self, key: &Pubkey, slot: u64) -> ChResult<Option<Account>> {
-        let (root, branch) = self.get_branch_slots(slot)?;
+        let (root, branch) = self.get_branch_slots(slot).map_err(|e| {
+            println!("get_branch_slots error: {:?}", e);
+            e
+        })?;
+
         let key_ = format!("{:?}", key.to_bytes());
 
         let mut row: Option<AccountRow> = if branch.is_empty() {
@@ -210,7 +225,10 @@ impl ClickHouseDb {
             match result {
                 Ok(row) => Some(row),
                 Err(clickhouse::error::Error::RowNotFound) => None,
-                Err(e) => return Err(ChError::Db(e)),
+                Err(e) => {
+                    println!("get_account_at {}", e);
+                    return Err(ChError::Db(e))
+                },
             }
         };
 

@@ -6,7 +6,6 @@ use crate::{
 };
 use clap::ArgMatches;
 use hex::FromHex;
-use log::error;
 use solana_clap_utils::{
     input_parsers::pubkey_of,
     input_validators::normalize_to_url_if_moniker,
@@ -63,7 +62,7 @@ pub fn create(options: &ArgMatches) -> Config {
         value
     } else {
         let e = NeonCliError::EvmLoaderNotSpecified;
-        error!("{}", e);
+        println!("{}", e);
         exit(e.error_code());
     };
 
@@ -79,7 +78,7 @@ pub fn create(options: &ArgMatches) -> Config {
     )
     .unwrap_or_else(|_| {
         let e = NeonCliError::KeypairNotSpecified;
-        error!("{}", e);
+        println!("{}", e);
         exit(e.error_code());
     });
 

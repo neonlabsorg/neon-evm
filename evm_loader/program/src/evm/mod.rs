@@ -98,15 +98,16 @@ pub struct Machine<B: Database> {
 }
 
 impl<B: Database> Machine<B> {
-    pub fn serialize_into<W>(self, writer: &mut W) -> Result<()>
-    where
-        W: std::io::Write,
-    {
-        bincode::serialize_into(writer, &self).map_err(Error::from)
+    pub fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize> {
+        let mut cursor = std::io::Cursor::new(buffer);
+
+        bincode::serialize_into(&mut cursor, &self)?;
+
+        cursor.position().try_into().map_err(Error::from)
     }
 
-    pub fn deserialize_from(buffer: &mut &[u8], _backend: &B) -> Result<Self> {
-        bincode::deserialize_from(buffer).map_err(Error::from)
+    pub fn deserialize_from(buffer: &[u8], _backend: &B) -> Result<Self> {
+        bincode::deserialize(buffer).map_err(Error::from)
     }
 
     pub fn new(trx: Transaction, origin: Address, backend: &mut B) -> Result<Self> {
@@ -207,7 +208,7 @@ impl<B: Database> Machine<B> {
             return_data: Buffer::empty(),
             return_range: 0..0,
             stack: Stack::new(),
-            memory: Memory::with_capacity(trx.call_data.len()),
+            memory: Memory::new(),
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,

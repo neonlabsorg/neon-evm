@@ -226,7 +226,7 @@ impl ClickHouseDb {
                 Ok(row) => Some(row),
                 Err(clickhouse::error::Error::RowNotFound) => None,
                 Err(e) => {
-                    println!("get_account_at {}", e);
+                    println!("get_account_at error: {}", e);
                     return Err(ChError::Db(e))
                 },
             }

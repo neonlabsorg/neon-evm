@@ -38,6 +38,12 @@ pub struct SlotParent {
 }
 
 #[derive(Row, serde::Deserialize, Clone)]
+pub struct SlotParentNullable {
+    pub slot: u64,
+    pub parent: Option<u64>,
+}
+
+#[derive(Row, serde::Deserialize, Clone)]
 pub struct AccountRow {
     owner: Vec<u8>,
     lamports: u64,
@@ -120,7 +126,7 @@ impl ClickHouseDb {
                 and isNotNull(parent)
             ORDER BY slot DESC, status DESC
             "#;
-        let mut cursor = self.client.query(query).fetch::<SlotParent>()?;
+        let mut cursor = self.client.query(query).fetch::<SlotParentNullable>()?;
 
         let rows = block(|| async {
             let mut rows = vec![];
@@ -132,7 +138,7 @@ impl ClickHouseDb {
                     Err(e) => {println!("error get_branch_slot: {:?}", e); break;}
                 }
             }
-
+            let rows: Vec<SlotParent> = vec![];
             // while let Ok(Some(row)) = cursor.next().await {
             //     rows.push(row);
             // }

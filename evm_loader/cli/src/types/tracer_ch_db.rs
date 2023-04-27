@@ -95,9 +95,7 @@ impl ClickHouseDb {
                 and isNotNull(parent)
             ORDER BY slot DESC, status DESC
             "#;
-        let rows = block (|| async {
-            self.client.query(query).fetch_all::<SlotParent>().await
-        })?;
+        let rows = block(|| async { self.client.query(query).fetch_all::<SlotParent>().await })?;
 
         let (root, rows) = rows.split_last().ok_or_else(|| {
             let err = clickhouse::error::Error::Custom("Rooted slot not found".to_string());
@@ -155,6 +153,7 @@ impl ClickHouseDb {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn get_account_at(&self, key: &Pubkey, slot: u64) -> ChResult<Option<Account>> {
         let (root, branch) = self.get_branch_slots(slot).map_err(|e| {
             println!("get_branch_slots error: {:?}", e);
@@ -222,8 +221,8 @@ impl ClickHouseDb {
                 Err(clickhouse::error::Error::RowNotFound) => None,
                 Err(e) => {
                     println!("get_account_at error: {}", e);
-                    return Err(ChError::Db(e))
-                },
+                    return Err(ChError::Db(e));
+                }
             };
         }
 
@@ -247,8 +246,8 @@ impl ClickHouseDb {
                 Err(clickhouse::error::Error::RowNotFound) => None,
                 Err(e) => {
                     println!("get_account_at error: {}", e);
-                    return Err(ChError::Db(e))
-                },
+                    return Err(ChError::Db(e));
+                }
             };
         }
 

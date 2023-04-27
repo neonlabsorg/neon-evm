@@ -95,9 +95,7 @@ impl Rpc for CallDbClient {
     }
 
     fn get_block(&self, _slot: Slot) -> ClientResult<EncodedConfirmedBlock> {
-        Err(e!(
-            "get_block() not implemented for db_call_client"
-        ))
+        Err(e!("get_block() not implemented for db_call_client"))
     }
 
     fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp> {

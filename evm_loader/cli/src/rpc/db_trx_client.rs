@@ -109,9 +109,7 @@ impl Rpc for TrxDbClient {
     }
 
     fn get_block(&self, _slot: Slot) -> ClientResult<EncodedConfirmedBlock> {
-        Err(e!(
-            "get_block() not implemented for db_trx_client"
-        ))
+        Err(e!("get_block() not implemented for db_trx_client"))
     }
 
     fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp> {

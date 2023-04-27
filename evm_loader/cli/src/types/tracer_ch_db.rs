@@ -34,12 +34,6 @@ pub struct ClickHouseDb {
 #[derive(Row, serde::Deserialize, Clone)]
 pub struct SlotParent {
     pub slot: u64,
-    pub parent: u64,
-}
-
-#[derive(Row, serde::Deserialize, Clone)]
-pub struct SlotParentNullable {
-    pub slot: u64,
     pub parent: Option<u64>,
 }
 
@@ -126,7 +120,7 @@ impl ClickHouseDb {
                 and isNotNull(parent)
             ORDER BY slot DESC, status DESC
             "#;
-        let mut cursor = self.client.query(query).fetch::<SlotParentNullable>()?;
+        let mut cursor = self.client.query(query).fetch::<SlotParent>()?;
 
         let rows = block(|| async {
             let mut rows = vec![];
@@ -138,10 +132,6 @@ impl ClickHouseDb {
                     Err(e) => {println!("error get_branch_slot: {:?}", e); break;}
                 }
             }
-            let rows: Vec<SlotParent> = vec![];
-            // while let Ok(Some(row)) = cursor.next().await {
-            //     rows.push(row);
-            // }
             rows
         });
 
@@ -176,7 +166,7 @@ impl ClickHouseDb {
                         if row.slot == slot {
                             branch.push(row.clone());
                         }
-                    } else if row.slot == branch.last().unwrap().parent {
+                    } else if row.slot == branch.last().unwrap().parent.unwrap() {
                         branch.push(row.clone());
                     }
                 }
@@ -187,7 +177,7 @@ impl ClickHouseDb {
                         slot
                     ));
                     Err(ChError::Db(err))
-                } else if branch.last().unwrap().parent == root.slot {
+                } else if branch.last().unwrap().parent.unwrap() == root.slot {
                     let branch = branch.iter().map(|row| row.slot).collect();
                     Ok((root.slot, branch))
                 } else {
@@ -266,7 +256,10 @@ impl ClickHouseDb {
             row = match result {
                 Ok(row) => Some(row),
                 Err(clickhouse::error::Error::RowNotFound) => None,
-                Err(e) => return Err(ChError::Db(e)),
+                Err(e) => {
+                    println!("get_account_at error: {}", e);
+                    return Err(ChError::Db(e))
+                },
             };
         }
 
@@ -288,7 +281,10 @@ impl ClickHouseDb {
             row = match result {
                 Ok(row) => Some(row),
                 Err(clickhouse::error::Error::RowNotFound) => None,
-                Err(e) => return Err(ChError::Db(e)),
+                Err(e) => {
+                    println!("get_account_at error: {}", e);
+                    return Err(ChError::Db(e))
+                },
             };
         }
 
@@ -298,6 +294,7 @@ impl ClickHouseDb {
                     "error convert owner of key: {}",
                     key
                 ));
+                println!("get_account_at error: {}", err);
                 ChError::Db(err)
             })?;
 

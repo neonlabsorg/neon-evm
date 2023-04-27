@@ -116,16 +116,10 @@ impl ClickHouseDb {
     fn get_branch_slots(&self, slot: u64) -> ChResult<(u64, Vec<u64>)> {
         let query = r#"
             SELECT distinct on (slot) slot, parent FROM events.update_slot FINAL
-            WHERE slot >= (SELECT slot FROM events.update_slot FINAL WHERE status = 'Rooted')
+            WHERE slot >= (SELECT slot FROM events.update_slot FINAL WHERE status = 'Rooted' ORDER BY slot DESC LIMIT 1)
                 and isNotNull(parent)
             ORDER BY slot DESC, status DESC
             "#;
-        // let query = r#"
-        //     SELECT distinct on (slot) slot, parent FROM events.update_slot FINAL
-        //     WHERE slot >= (SELECT slot FROM events.update_slot FINAL WHERE status = 'Rooted' ORDER BY slot DESC LIMIT 1)
-        //         and isNotNull(parent)
-        //     ORDER BY slot DESC, status DESC
-        //     "#;
         let mut cursor = self.client.query(query).fetch::<SlotParent>()?;
 
         let rows = block(|| async {

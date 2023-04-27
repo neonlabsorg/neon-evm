@@ -124,9 +124,18 @@ impl ClickHouseDb {
 
         let rows = block(|| async {
             let mut rows = vec![];
-            while let Ok(Some(row)) = cursor.next().await {
-                rows.push(row);
+
+            loop {
+                match cursor.next().await {
+                    Ok(Some(row)) => rows.push(row),
+                    Ok(None) => {println!("None"); break;},
+                    Err(e) => {println!("error get_branch_slot: {:?}", e); break;}
+                }
             }
+
+            // while let Ok(Some(row)) = cursor.next().await {
+            //     rows.push(row);
+            // }
             rows
         });
 

@@ -19,8 +19,6 @@ use thiserror::Error;
 pub enum ChError {
     #[error("clickhouse: {}", .0)]
     Db(#[from] clickhouse::error::Error),
-    // #[error("Custom: {0}")]
-    // Custom (String),
 }
 
 pub type ChResult<T> = std::result::Result<T, ChError>;
@@ -65,38 +63,15 @@ impl ClickHouseDb {
         }
     }
 
-    pub fn get_block_hash(&self, slot: u64) -> ChResult<String> {
-        block(|| async {
-            let query = "SELECT hash FROM events.notify_block_local where slot = ? ";
-            self.client
-                .query(query)
-                .bind(slot)
-                .fetch_one::<String>()
-                .await
-                .map_err(std::convert::Into::into)
-        })
-    }
-
+    // return valus is not used for tracer methods
     pub fn get_block_time(&self, slot: Slot) -> ChResult<UnixTimestamp> {
         block(|| async {
             let query =
-                "SELECT JSONExtractInt(notify_block_json, 'block_time') FROM events.notify_block_local WHERE slot = ?)";
+                "SELECT JSONExtractInt(notify_block_json, 'block_time') FROM events.notify_block_distributed WHERE slot = ? LIMIT 1";
             self.client
                 .query(query)
                 .bind(slot)
                 .fetch_one::<UnixTimestamp>()
-                .await
-                .map_err(std::convert::Into::into)
-        })
-    }
-
-    pub fn get_latest_blockhash(&self) -> ChResult<String> {
-        block(|| async {
-            let query =
-                "SELECT hash FROM events.notify_block_local ORDER BY retrieved_time DESC LIMIT 1";
-            self.client
-                .query(query)
-                .fetch_one::<String>()
                 .await
                 .map_err(std::convert::Into::into)
         })
@@ -123,20 +98,6 @@ impl ClickHouseDb {
         let rows = block (|| async {
             self.client.query(query).fetch_all::<SlotParent>().await
         })?;
-
-
-        // let rows = block(|| async {
-        //     let mut rows = vec![];
-        //
-        //     loop {
-        //         match cursor.next().await {
-        //             Ok(Some(row)) => {println!("Some"); rows.push(row)},
-        //             Ok(None) => {println!("None"); break;},
-        //             Err(e) => {println!("error get_branch_slot: {:?}", e); break;}
-        //         }
-        //     }
-        //     rows
-        // });
 
         let (root, rows) = rows.split_last().ok_or_else(|| {
             let err = clickhouse::error::Error::Custom("Rooted slot not found".to_string());
@@ -241,7 +202,7 @@ impl ClickHouseDb {
             let result = block(|| async {
                 let query = r#"
                 SELECT owner, lamports, executable, rent_epoch, data
-                FROM events.update_account_local
+                FROM events.update_account_distributed
                 WHERE
                     pubkey = ?
                     AND slot in (SELECT slot FROM events.update_slot WHERE status = 'Rooted' AND slot <= ?)
@@ -319,8 +280,6 @@ impl ClickHouseDb {
         _pubkey: &Pubkey,
         _sol_sig: &[u8; 64],
     ) -> ChResult<Option<Account>> {
-        let err =
-            clickhouse::error::Error::Custom("get_account_by_sol_sig not implemented".to_string());
-        Err(ChError::Db(err))
+        panic!("get_account_by_sol_sig() is not implemented for ClickHouse usage");
     }
 }

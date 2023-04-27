@@ -2,10 +2,8 @@ mod indexer_db;
 #[allow(clippy::all)]
 pub mod trace;
 mod tracer_ch_db;
-mod tracer_pg_db;
 
 pub use indexer_db::IndexerDb;
-// pub use tracer_pg_db::TracerDb;
 pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use {
@@ -18,21 +16,6 @@ use {
 };
 
 type Bytes = Vec<u8>;
-
-#[allow(dead_code)]
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
-pub struct PgDbConfig {
-    pub tracer_host: String,
-    pub tracer_port: String,
-    pub tracer_database: String,
-    pub tracer_user: String,
-    pub tracer_password: String,
-    pub indexer_host: String,
-    pub indexer_port: String,
-    pub indexer_database: String,
-    pub indexer_user: String,
-    pub indexer_password: String,
-}
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct ChDbConfig {

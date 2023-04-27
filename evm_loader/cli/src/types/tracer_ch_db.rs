@@ -170,19 +170,21 @@ impl ClickHouseDb {
                 slots = format!("{}, toUInt64({})", slots, slot);
             }
             let result = block(|| async {
-                let query = r#"
-                SELECT owner, lamports, executable, rent_epoch, data
-                FROM events.update_account_distributed
-                WHERE
-                    pubkey = ?
-                    AND slot IN (SELECT arrayJoin([?]))
-                ORDER BY slot DESC, pubkey DESC, write_version DESC
-                LIMIT 1
-                "#;
+                let query = format!(
+                    r#"
+                    SELECT owner, lamports, executable, rent_epoch, data
+                    FROM events.update_account_distributed
+                    WHERE
+                        pubkey = ?
+                        AND slot IN (SELECT arrayJoin([{}]))
+                    ORDER BY slot DESC, pubkey DESC, write_version DESC
+                    LIMIT 1
+                    "#,
+                    slots
+                );
                 self.client
-                    .query(query)
+                    .query(query.as_str())
                     .bind(key_.clone())
-                    .bind(slots)
                     .fetch_one::<AccountRow>()
                     .await
             });

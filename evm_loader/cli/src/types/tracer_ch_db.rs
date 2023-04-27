@@ -120,20 +120,23 @@ impl ClickHouseDb {
                 and isNotNull(parent)
             ORDER BY slot DESC, status DESC
             "#;
-        let mut cursor = self.client.query(query).fetch::<SlotParent>()?;
+        let rows = block (|| async {
+            self.client.query(query).fetch_all::<SlotParent>().await
+        })?;
 
-        let rows = block(|| async {
-            let mut rows = vec![];
 
-            loop {
-                match cursor.next().await {
-                    Ok(Some(row)) => {println!("Some"); rows.push(row)},
-                    Ok(None) => {println!("None"); break;},
-                    Err(e) => {println!("error get_branch_slot: {:?}", e); break;}
-                }
-            }
-            rows
-        });
+        // let rows = block(|| async {
+        //     let mut rows = vec![];
+        //
+        //     loop {
+        //         match cursor.next().await {
+        //             Ok(Some(row)) => {println!("Some"); rows.push(row)},
+        //             Ok(None) => {println!("None"); break;},
+        //             Err(e) => {println!("error get_branch_slot: {:?}", e); break;}
+        //         }
+        //     }
+        //     rows
+        // });
 
         let (root, rows) = rows.split_last().ok_or_else(|| {
             let err = clickhouse::error::Error::Custom("Rooted slot not found".to_string());

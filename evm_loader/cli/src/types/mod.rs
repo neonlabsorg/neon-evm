@@ -121,6 +121,7 @@ pub struct DbConfig {
 
 #[derive(Clone)]
 pub struct TxParams {
+    pub nonce: Option<u64>,
     pub from: Address,
     pub to: Option<Address>,
     pub data: Option<Vec<u8>>,
@@ -138,7 +139,6 @@ pub struct TransactionParams {
 pub struct TransactionHashParams {
     pub trace_config: Option<TraceConfig>,
 }
-
 
 pub fn do_connect(
     host: &String,

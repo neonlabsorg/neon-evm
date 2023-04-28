@@ -76,6 +76,7 @@ pub trait Rpc {
         commitment: CommitmentConfig,
     ) -> ClientResult<(Hash, u64)>;
     fn get_transaction_data(&self) -> ClientResult<TxParams>;
+    fn get_block_transactions(&self, slot: u64) -> ClientResult<Vec<TxParams>>;
     fn as_any(&self) -> &dyn Any;
 }
 

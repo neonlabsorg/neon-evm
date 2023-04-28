@@ -143,7 +143,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         chain_id: u64,
         block_overrides: Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
-    ) -> EmulatorAccountStorage {
+    ) -> Self {
         trace!("backend::new");
 
         let block_number = block_overrides.as_ref()
@@ -165,6 +165,28 @@ impl<'a> EmulatorAccountStorage<'a> {
             chain_id,
             state_overrides,
         }
+    }
+
+    pub fn with_accounts(
+        rpc_client: &'a dyn Rpc,
+        evm_loader: Pubkey,
+        token_mint: Pubkey,
+        chain_id: u64,
+        block_overrides: Option<BlockOverrides>,
+        state_overrides: Option<AccountOverrides>,
+        accounts: &[Address],
+    ) -> Self {
+        let storage = Self::new(
+            rpc_client,
+            evm_loader,
+            token_mint,
+            chain_id,
+            block_overrides,
+            state_overrides,
+        );
+        storage.initialize_cached_accounts(accounts);
+
+        storage
     }
 
     pub fn initialize_cached_accounts(&self, addresses: &[Address]) {

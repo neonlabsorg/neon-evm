@@ -87,13 +87,13 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
         ("trace", Some(params)) => {
             let (tx, trace_call_config) = parse_tx(params);
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            trace::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_call_config)
+            trace::trace_transaction(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_call_config)
                 .map(|trace| json!(trace))
         }
         ("trace_hash", Some(params)) => {
             let (tx, trace_config) = parse_tx_hash(config.rpc_client.as_ref());
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            trace::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_config.into())
+            trace::trace_transaction(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_config.into())
                 .map(|trace| json!(trace))
         }
         ("create-ether-account", Some(params)) => {
@@ -148,6 +148,7 @@ fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
     let gas_limit = u256_of(params, "gas_limit");
 
     let tx_params = TxParams {
+        nonce: None,
         from,
         to,
         data,

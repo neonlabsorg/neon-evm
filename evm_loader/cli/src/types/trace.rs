@@ -251,13 +251,6 @@ pub struct BlockOverrides {
     pub base_fee: Option<U256>,    // NOT SUPPORTED BY Neon EVM
 }
 
-// #[derive(Debug, Clone, serde::Deserialize)]
-// pub enum StateOverride {
-//     NoOverride,
-//     State(HashMap<U256, [u8; 32]>),
-//     StateDiff(HashMap<U256, [u8; 32]>),
-// }
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountOverride {

@@ -1,5 +1,5 @@
 use super::{e, Rpc};
-use crate::types::{DbConfig, TracerDb, TxParams};
+use crate::types::{DbConfig, IndexerDb, TracerDb, TxParams};
 use solana_client::{
     client_error::Result as ClientResult,
     client_error::{ClientError, ClientErrorKind},
@@ -24,14 +24,17 @@ use std::any::Any;
 pub struct CallDbClient {
     pub slot: u64,
     tracer_db: TracerDb,
+    indexer_db: IndexerDb,
 }
 
 impl CallDbClient {
     pub fn new(config: &DbConfig, slot: u64) -> Self {
-        let db = TracerDb::new(config);
+        let tracer_db = TracerDb::new(config);
+        let indexer_db = IndexerDb::new(config);
         Self {
             slot,
-            tracer_db: db,
+            tracer_db,
+            indexer_db,
         }
     }
 }
@@ -47,9 +50,7 @@ impl Rpc for CallDbClient {
         _recent_blockhash: &Hash,
         _commitment_config: CommitmentConfig,
     ) -> ClientResult<()> {
-        Err(e!(
-            "confirm_transaction_with_spinner() not implemented for db_call_client"
-        ))
+        Err(e!("confirm_transaction_with_spinner() not implemented for db_call_client"))
     }
 
     fn get_account(&self, key: &Pubkey) -> ClientResult<Account> {
@@ -128,9 +129,7 @@ impl Rpc for CallDbClient {
     }
 
     fn get_minimum_balance_for_rent_exemption(&self, _data_len: usize) -> ClientResult<u64> {
-        Err(e!(
-            "get_minimum_balance_for_rent_exemption() not implemented for db_call_client"
-        ))
+        Err(e!("get_minimum_balance_for_rent_exemption() not implemented for db_call_client"))
     }
 
     fn get_slot(&self) -> ClientResult<Slot> {
@@ -151,9 +150,7 @@ impl Rpc for CallDbClient {
         _signature: &Signature,
         _config: RpcTransactionConfig,
     ) -> ClientResult<EncodedConfirmedTransactionWithStatusMeta> {
-        Err(e!(
-            "get_transaction_with_config() not implemented for db_call_client"
-        ))
+        Err(e!("get_transaction_with_config() not implemented for db_call_client"))
     }
 
     fn send_transaction(&self, _transaction: &Transaction) -> ClientResult<Signature> {
@@ -164,9 +161,7 @@ impl Rpc for CallDbClient {
         &self,
         _transaction: &Transaction,
     ) -> ClientResult<Signature> {
-        Err(e!(
-            "send_and_confirm_transaction_with_spinner() not implemented for db_call_client"
-        ))
+        Err(e!("send_and_confirm_transaction_with_spinner() not implemented for db_call_client"))
     }
 
     fn send_and_confirm_transaction_with_spinner_and_commitment(
@@ -190,15 +185,16 @@ impl Rpc for CallDbClient {
         &self,
         _commitment: CommitmentConfig,
     ) -> ClientResult<(Hash, u64)> {
-        Err(e!(
-            "get_latest_blockhash_with_commitment() not implemented for db_call_client"
-        ))
+        Err(e!("get_latest_blockhash_with_commitment() not implemented for db_call_client"))
     }
 
     fn get_transaction_data(&self) -> ClientResult<TxParams> {
-        Err(e!(
-            "get_transaction_data() not implemented for db_call_client"
-        ))
+        Err(e!("get_transaction_data() not implemented for db_call_client"))
+    }
+
+    fn get_block_transactions(&self, slot: u64) -> ClientResult<Vec<TxParams>> {
+        self.indexer_db.get_block_transactions(slot)
+            .map_err(|e| e!("get_block_transactions error", e))
     }
 
     fn as_any(&self) -> &dyn Any {

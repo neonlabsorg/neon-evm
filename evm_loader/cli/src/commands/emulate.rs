@@ -24,15 +24,21 @@ use crate::types::trace::TraceCallConfig;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct EmulationResult {
-    pub accounts: Vec<NeonAccount>,
-    pub solana_accounts: Vec<SolanaAccount>,
-    pub token_accounts: Vec<SolanaAccount>,
     #[serde(serialize_with = "serde_hex")]
     pub result: Vec<u8>,
     pub exit_status: String,
     pub steps_executed: u64,
     pub used_gas: u64,
     pub actions: Vec<Action>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct EmulationResultWithAccounts {
+    pub accounts: Vec<NeonAccount>,
+    pub solana_accounts: Vec<SolanaAccount>,
+    pub token_accounts: Vec<SolanaAccount>,
+    #[serde(flatten)]
+    pub emulation_result: EmulationResult,
 }
 
 fn serde_hex<S>(value: &[u8], s: S) -> Result<S::Ok, S::Error>
@@ -47,41 +53,81 @@ pub fn execute(
     rpc_client: &dyn Rpc,
     evm_loader: Pubkey,
     tx_params: TxParams,
-    token: Pubkey,
-    chain: u64,
-    steps: u64,
+    token_mint: Pubkey,
+    chain_id: u64,
+    step_limit: u64,
     accounts: &[Address],
     trace_call_config: TraceCallConfig,
-) -> Result<EmulationResult, NeonCliError> {
-    let syscall_stubs = Stubs::new(rpc_client)?;
-    solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
-
-    let storage = EmulatorAccountStorage::new(
+) -> Result<EmulationResultWithAccounts, NeonCliError> {
+    let (emulation_result, storage) = emulate_transaction(
         rpc_client,
         evm_loader,
-        token,
-        chain,
+        tx_params,
+        token_mint,
+        chain_id,
+        step_limit,
+        accounts,
+        trace_call_config,
+    )?;
+    let accounts = storage.accounts.borrow().values().cloned().collect();
+    let solana_accounts = storage.solana_accounts.borrow().values().cloned().collect();
+
+    Ok(EmulationResultWithAccounts {
+        accounts,
+        solana_accounts,
+        token_accounts: vec![],
+        emulation_result,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn emulate_transaction<'a>(
+    rpc_client: &'a dyn Rpc,
+    evm_loader: Pubkey,
+    tx_params: TxParams,
+    token_mint: Pubkey,
+    chain_id: u64,
+    step_limit: u64,
+    accounts: &[Address],
+    trace_call_config: TraceCallConfig,
+) -> Result<(EmulationResult, EmulatorAccountStorage<'a>), NeonCliError> {
+    setup_syscall_stubs(rpc_client)?;
+
+    let storage = EmulatorAccountStorage::with_accounts(
+        rpc_client,
+        evm_loader,
+        token_mint,
+        chain_id,
         trace_call_config.block_overrides,
         trace_call_config.state_overrides,
+        accounts,
     );
-    storage.initialize_cached_accounts(accounts);
 
-    let trx = Transaction {
-        nonce: storage.nonce(&tx_params.from),
-        gas_price: U256::ZERO,
-        gas_limit: U256::MAX,
-        target: tx_params.to,
-        value: tx_params.value.unwrap_or_default(),
-        call_data: evm_loader::evm::Buffer::new(&tx_params.data.unwrap_or_default()),
-        chain_id: Some(chain.into()),
-        ..Transaction::default()
-    };
+    emulate_trx(tx_params, &storage, chain_id, step_limit)
+        .map(move |result| (result, storage))
+}
 
+pub(crate) fn emulate_trx(
+    tx_params: TxParams,
+    storage: &EmulatorAccountStorage,
+    chain_id: u64,
+    step_limit: u64,
+) -> Result<EmulationResult, NeonCliError> {
     let (exit_status, actions, steps_executed) = {
-        let mut backend = ExecutorState::new(&storage);
+        let mut backend = ExecutorState::new(storage);
+        let trx = Transaction {
+            nonce: tx_params.nonce.unwrap_or_else(|| storage.nonce(&tx_params.from)),
+            gas_price: U256::ZERO,
+            gas_limit: tx_params.gas_limit.unwrap_or_default(),
+            target: tx_params.to,
+            value: tx_params.value.unwrap_or_default(),
+            call_data: evm_loader::evm::Buffer::new(&tx_params.data.unwrap_or_default()),
+            chain_id: Some(chain_id.into()),
+            ..Transaction::default()
+        };
         let mut evm = Machine::new(trx, tx_params.from, &mut backend)?;
 
-        let (result, steps_executed) = evm.execute(steps, &mut backend)?;
+        let (result, steps_executed) = evm.execute(step_limit, &mut backend)?;
         let actions = backend.into_actions();
         (result, actions, steps_executed)
     };
@@ -109,19 +155,50 @@ pub fn execute(
         ExitStatus::StepLimit => unreachable!(),
     };
 
-    let accounts: Vec<NeonAccount> = storage.accounts.borrow().values().cloned().collect();
-
-    let solana_accounts: Vec<SolanaAccount> =
-        storage.solana_accounts.borrow().values().cloned().collect();
-
     Ok(EmulationResult {
-        accounts,
-        solana_accounts,
-        token_accounts: vec![],
         result,
         exit_status: status.to_owned(),
         steps_executed,
         used_gas: steps_gas + begin_end_gas + actions_gas + accounts_gas,
         actions,
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn emulate_block<'a>(
+    rpc_client: &'a dyn Rpc,
+    evm_loader: Pubkey,
+    token_mint: Pubkey,
+    chain_id: u64,
+    step_limit: u64,
+    accounts: &[Address],
+    trace_call_config: TraceCallConfig,
+    transactions: Vec<TxParams>,
+) -> Result<(Vec<EmulationResult>, EmulatorAccountStorage<'a>), NeonCliError> {
+    setup_syscall_stubs(rpc_client)?;
+
+    let storage = EmulatorAccountStorage::with_accounts(
+        rpc_client,
+        evm_loader,
+        token_mint,
+        chain_id,
+        trace_call_config.block_overrides,
+        trace_call_config.state_overrides,
+        accounts,
+    );
+
+    let mut results = vec![];
+    for tx_params in transactions {
+        let result = emulate_trx(tx_params, &storage, chain_id, step_limit)?;
+        results.push(result);
+    }
+
+    Ok((results, storage))
+}
+
+pub(crate) fn setup_syscall_stubs(rpc_client: &dyn Rpc) -> Result<(), NeonCliError> {
+    let syscall_stubs = Stubs::new(rpc_client)?;
+    solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
+
+    Ok(())
 }

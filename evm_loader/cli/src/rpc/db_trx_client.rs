@@ -217,6 +217,11 @@ impl Rpc for TrxDbClient {
             .map_err(|e| e!("load transaction error", self.hash, e))
     }
 
+    fn get_block_transactions(&self, slot: u64) -> ClientResult<Vec<TxParams>> {
+        self.indexer_db.get_block_transactions(slot)
+            .map_err(|e| e!("get_block_transactions error", e))
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }

@@ -1,10 +1,11 @@
 use crate::error::Error;
 use ethnum::U256;
 use std::convert::TryInto;
+use crate::types::u256;
 
 use super::Address;
 
-#[derive(Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Transaction {
     pub nonce: u64,
     pub gas_price: U256,
@@ -43,21 +44,6 @@ impl Transaction {
 
 impl rlp::Decodable for Transaction {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
-        #[inline]
-        fn u256(rlp: &rlp::Rlp) -> Result<U256, rlp::DecoderError> {
-            rlp.decoder().decode_value(|bytes| {
-                if !bytes.is_empty() && bytes[0] == 0 {
-                    Err(rlp::DecoderError::RlpInvalidIndirection)
-                } else if bytes.len() <= 32 {
-                    let mut buffer = [0_u8; 32];
-                    buffer[(32 - bytes.len())..].copy_from_slice(bytes);
-                    Ok(U256::from_be_bytes(buffer))
-                } else {
-                    Err(rlp::DecoderError::RlpIsTooBig)
-                }
-            })
-        }
-
         let info = rlp.payload_info()?;
         let payload_size = info.header_len + info.value_len;
 

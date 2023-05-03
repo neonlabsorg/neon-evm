@@ -16,15 +16,15 @@ use solana_program::{
     pubkey::Pubkey, program_error::ProgramError,
     program_pack::Pack
 };
-use mpl_token_metadata::instruction::{MetadataInstruction, CreateMasterEditionArgs, CreateMetadataAccountArgsV3};
-use mpl_token_metadata::state::{Metadata, TokenMetadataAccount, MAX_MASTER_EDITION_LEN, MasterEditionV2, Key, TokenStandard, MAX_METADATA_LEN, CollectionDetails};
+use mpl_token_metadata::instruction::{MetadataInstruction, CreateMasterEditionArgs, CreateMetadataAccountArgsV2};
+use mpl_token_metadata::state::{Metadata, TokenMetadataAccount, MAX_MASTER_EDITION_LEN, MasterEditionV2, Key, TokenStandard, MAX_METADATA_LEN};
 
 
 pub fn emulate(instruction: &[u8], meta: &[AccountMeta], accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>) -> ProgramResult {
 
     match MetadataInstruction::try_from_slice(instruction)? {
-        MetadataInstruction::CreateMetadataAccountV3(args) => {
-            create_metadata_accounts_v3(meta, accounts, &args)
+        MetadataInstruction::CreateMetadataAccountV2(args) => {
+            create_metadata_accounts_v2(meta, accounts, &args)
         },
         MetadataInstruction::CreateMasterEditionV3(args) => {
             create_master_edition_v3(meta, accounts, &args)
@@ -34,7 +34,7 @@ pub fn emulate(instruction: &[u8], meta: &[AccountMeta], accounts: &mut BTreeMap
 }
 
 
-fn create_metadata_accounts_v3(meta: &[AccountMeta], accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>, args: &CreateMetadataAccountArgsV3) -> ProgramResult {
+fn create_metadata_accounts_v2(meta: &[AccountMeta], accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>, args: &CreateMetadataAccountArgsV2) -> ProgramResult {
     let metadata_account_key = &meta[0].pubkey;
     let mint_key = &meta[1].pubkey;
     // let _mint_authority_key = &meta[2].pubkey;
@@ -76,15 +76,16 @@ fn create_metadata_accounts_v3(meta: &[AccountMeta], accounts: &mut BTreeMap<Pub
     assert_collection_update_is_valid(false, &None, &args.data.collection)?;
     metadata.collection = args.data.collection.clone();
 
-    if let Some(details) = &args.collection_details {
-        match details {
-            CollectionDetails::V1 { size: _size } => {
-                metadata.collection_details = Some(CollectionDetails::V1 { size: 0 });
-            }
-        }
-    } else {
-        metadata.collection_details = None;
-    }
+    // if let Some(details) = &args.collection_details {
+    //     match details {
+    //         CollectionDetails::V1 { size: _size } => {
+    //             metadata.collection_details = Some(CollectionDetails::V1 { size: 0 });
+    //         }
+    //     }
+    // } else {
+    //     metadata.collection_details = None;
+    // }
+    metadata.collection_details = None;
 
     let token_standard = if mint.decimals == 0 { TokenStandard::FungibleAsset } else { TokenStandard::Fungible };
     metadata.token_standard = Some(token_standard);

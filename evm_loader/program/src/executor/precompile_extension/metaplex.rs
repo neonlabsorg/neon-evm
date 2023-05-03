@@ -146,7 +146,7 @@ fn create_metadata<B: AccountStorage>(
     
     let (metadata_pubkey, _) = mpl_token_metadata::pda::find_metadata_account(&mint);
 
-    let instruction = mpl_token_metadata::instruction::create_metadata_accounts_v3(
+    let instruction = mpl_token_metadata::instruction::create_metadata_accounts_v2(
         mpl_token_metadata::ID,
         metadata_pubkey,
         mint,
@@ -165,7 +165,7 @@ fn create_metadata<B: AccountStorage>(
         false, // Is Mutable
         None,  // Collection
         None,  // Uses
-        None,  // Collection Details
+        //None,  // Collection Details
     );
     state.queue_external_instruction(instruction, seeds, mpl_token_metadata::state::MAX_METADATA_LEN);
 

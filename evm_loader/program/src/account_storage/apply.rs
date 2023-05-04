@@ -78,7 +78,9 @@ impl<'a> ProgramAccountStorage<'a> {
         for action in &actions {
             let address = match action {
                 Action::NeonTransfer { target, .. } => target,
-                Action::EvmSetCode { address, .. } => address,
+                Action::EvmSelfDestruct { address, .. } | Action::EvmSetCode { address, .. } => {
+                    address
+                }
                 _ => continue,
             };
             self.create_account_if_not_exists(address)?;
@@ -172,21 +174,22 @@ impl<'a> ProgramAccountStorage<'a> {
             .collect();
 
         // For accounts scheduled to Self Destroy only leave NeonTransfer and NeonWithdraw actions
-        let mut rearranged_actions = Vec::new();
+        let mut rearranged_actions = Vec::with_capacity(actions.len());
         let mut evm_self_destruct_actions = Vec::new();
         for action in actions {
             match action {
-                // Ignoring ExternalInstruction for Solana accounts
-                Action::ExternalInstruction { .. } => { /* ignore */ }
-                // We always apply NeonTransfer and NeonWithdraw
-                Action::NeonTransfer { .. } | Action::NeonWithdraw { .. } => {
+                // We always apply ExternalInstruction for Solana accounts
+                // and NeonTransfer + NeonWithdraw
+                Action::ExternalInstruction { .. }
+                | Action::NeonTransfer { .. }
+                | Action::NeonWithdraw { .. } => {
                     rearranged_actions.push(action);
                 }
                 // We remove EvmSetStorage|EvmIncrementNonce|EvmSetCode
-                // if account is scheduled for SelfDestruct
+                // if account is scheduled for destroy
                 Action::EvmSetStorage { address, .. }
-                | Action::EvmIncrementNonce { address }
-                | Action::EvmSetCode { address, .. } => {
+                | Action::EvmSetCode { address, .. }
+                | Action::EvmIncrementNonce { address } => {
                     if !accounts_to_destroy.contains(&address) {
                         rearranged_actions.push(action);
                     }

@@ -57,9 +57,7 @@ impl ClickHouseDb {
 
         let client = match (&config.clickhouse_user, &config.clickhouse_password) {
             (None, None | Some(_)) => Client::default().with_url(url),
-            (Some(user), None) => Client::default()
-                .with_url(url)
-                .with_user(user),
+            (Some(user), None) => Client::default().with_url(url).with_user(user),
             (Some(user), Some(password)) => Client::default()
                 .with_url(url)
                 .with_user(user)

@@ -3,7 +3,6 @@ use crate::{
     rpc,
     rpc::{CallDbClient, TrxDbClient},
     errors::NeonCliError,
-    types::IndexerDb,
 };
 use clap::ArgMatches;
 use hex::FromHex;
@@ -102,17 +101,6 @@ pub fn create(options: &ArgMatches) -> Result<Config, NeonCliError> {
                 &db_config.expect("db-config not found"),
                 hash,
             ))
-        }
-        ("trace-block-by-hash", Some(params)) => {
-            let block_hash = params.value_of("hash")
-                .expect("Solana block hash is required");
-            let block_hash = <[u8; 32]>::from_hex(truncate_0x(block_hash))
-                .expect("Block hash cast error");
-            let config = db_config.expect("db-config not found");
-            let indexer_db = IndexerDb::new(&config);
-            let slot = indexer_db.get_slot_by_block_hash(&block_hash)
-                .unwrap_or_else(|err| panic!("Error getting slot by block hash from Indexer DB: {err:?}"));
-            Box::new(CallDbClient::new(&config, slot))
         }
         _ => {
             if let Some(slot) = options.value_of("slot") {

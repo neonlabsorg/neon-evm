@@ -139,10 +139,25 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
         ("trace-block-by-slot", Some(params)) => {
             let slot = params.value_of("slot").expect("SLOT argument is not provided");
             let slot: u64 = slot.parse().expect("slot parse error");
-            trace_block_by_slot(config, params, slot)
+            let trace_block_params: Option<TraceBlockBySlotParams> = serde_json::from_reader(std::io::BufReader::new(std::io::stdin()))
+                .unwrap_or_else(|err| panic!("Unable to parse `TraceBlockBySlotParams` from STDIN, error: {err:?}"));
+            let trace_config = trace_block_params
+                .map(|params| params.trace_config.unwrap_or_default())
+                .unwrap_or_default();
+            let (token, chain, steps, accounts, solana_accounts) = parse_tx_params(config, params);
+            let transactions = config.rpc_client.get_block_transactions(slot)?;
+            trace::trace_block(
+                config.rpc_client.as_ref(),
+                config.evm_loader,
+                transactions,
+                token,
+                chain,
+                steps, config.commitment,
+                &accounts,
+                &solana_accounts,
+                trace_config,
+            ).map(|traces| json!(traces))
         }
-        ("trace-block-by-hash", Some(params)) =>
-            trace_block_by_slot(config, params, config.rpc_client.get_slot()?),
         ("create-ether-account", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
             create_ether_account::execute(config, &ether)
@@ -181,27 +196,6 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
         }
         _ => unreachable!(),
     }
-}
-
-fn trace_block_by_slot(config: &Config, params: &ArgMatches, slot: u64) -> NeonCliResult {
-    let trace_block_params: Option<TraceBlockBySlotParams> = serde_json::from_reader(std::io::BufReader::new(std::io::stdin()))
-        .unwrap_or_else(|err| panic!("Unable to parse `TraceBlockBySlotParams` from STDIN, error: {err:?}"));
-    let trace_config = trace_block_params
-        .map(|params| params.trace_config.unwrap_or_default())
-        .unwrap_or_default();
-    let (token, chain, steps, accounts, solana_accounts) = parse_tx_params(config, params);
-    let transactions = config.rpc_client.get_block_transactions(slot)?;
-    trace::trace_block(
-        config.rpc_client.as_ref(),
-        config.evm_loader,
-        transactions,
-        token,
-        chain,
-        steps, config.commitment,
-        &accounts,
-        &solana_accounts,
-        trace_config,
-    ).map(|traces| json!(traces))
 }
 
 fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {

@@ -324,24 +324,6 @@ pub fn parse<'a>() -> ArgMatches<'a> {
                 .arg(max_steps_arg())
         )
         .subcommand(
-            SubCommand::with_name("trace-block-by-hash")
-                .about("Tracing all transactions in the block with a given block hash. \
-                    Additional `TraceConfig` can be provided via STDIN in a JSON object.")
-                .arg(
-                    Arg::with_name("hash")
-                        .index(1)
-                        .value_name("hash")
-                        .takes_value(true)
-                        .required(true)
-                        .validator(is_valid_h256)
-                        .conflicts_with("slot")
-                        .help("Solana block hash"),
-                )
-                .arg(token_mint_arg())
-                .arg(chain_id_arg())
-                .arg(max_steps_arg())
-        )
-        .subcommand(
             SubCommand::with_name("create-ether-account")
                 .about("Create ethereum account")
                 .arg(ether_arg(1))

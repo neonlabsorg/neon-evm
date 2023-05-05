@@ -1,11 +1,9 @@
 use ethnum::U256;
 
 pub use address::Address;
-pub use block::{Block, BlockHeader};
 pub use transaction::Transaction;
 
 mod address;
-mod block;
 mod transaction;
 
 #[inline]

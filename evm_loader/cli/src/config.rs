@@ -3,6 +3,7 @@ use crate::{
     rpc,
     rpc::{CallDbClient, TrxDbClient},
     errors::NeonCliError,
+    types::IndexerDb,
 };
 use clap::ArgMatches;
 use hex::FromHex;
@@ -93,22 +94,34 @@ pub fn create(options: &ArgMatches) -> Config {
 
     let db_config = options
         .value_of("db_config")
-        .map(|path| solana_cli_config::load_config_file(path).expect("load db-config error"));
-    let slot = options.value_of("slot");
+        .map(|path| solana_cli_config::load_config_file(path)
+            .expect("load db-config error"));
 
     let (cmd, params) = options.subcommand();
     let rpc_client: Box<dyn rpc::Rpc> = match (cmd, params) {
-        ("emulate_hash" | "trace_hash", Some(params)) => {
+        ("emulate-hash" | "trace-hash", Some(params)) => {
             let hash = params.value_of("hash").expect("hash not found");
-            let hash = <[u8; 32]>::from_hex(truncate_0x(hash)).expect("hash cast error");
+            let hash = <[u8; 32]>::from_hex(truncate_0x(hash))
+                .expect("hash cast error");
 
             Box::new(TrxDbClient::new(
                 &db_config.expect("db-config not found"),
                 hash,
             ))
         }
+        ("trace-block-by-hash", Some(params)) => {
+            let block_hash = params.value_of("hash")
+                .expect("Solana block hash is required");
+            let block_hash = <[u8; 32]>::from_hex(truncate_0x(block_hash))
+                .expect("Block hash cast error");
+            let config = db_config.expect("db-config not found");
+            let indexer_db = IndexerDb::new(&config);
+            let slot = indexer_db.get_slot_by_block_hash(&block_hash)
+                .unwrap_or_else(|err| panic!("Error getting slot by block hash from Indexer DB: {err:?}"));
+            Box::new(CallDbClient::new(&config, slot))
+        }
         _ => {
-            if let Some(slot) = slot {
+            if let Some(slot) = options.value_of("slot") {
                 let slot: u64 = slot.parse().expect("slot parse error");
                 Box::new(CallDbClient::new(
                     &db_config.expect("db-config not found"),

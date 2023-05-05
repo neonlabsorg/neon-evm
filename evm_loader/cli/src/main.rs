@@ -23,7 +23,7 @@ use neon_cli::{
     rpc::Rpc,
     types::{
         trace::{TraceCallConfig, TraceConfig},
-        TransactionHashParams, TransactionParams, TxParams,
+        TraceBlockBySlotParams, TransactionHashParams, TransactionParams, TxParams,
     },
     config, NeonCliResult,
 };
@@ -78,7 +78,7 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
             emulate::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_call_config)
                 .map(|result| json!(result))
         }
-        ("emulate_hash", Some(params)) => {
+        ("emulate-hash", Some(params)) => {
             let (tx, trace_config) = parse_tx_hash(config.rpc_client.as_ref());
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
             emulate::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_config.into())
@@ -90,12 +90,19 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
             trace::trace_transaction(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_call_config)
                 .map(|trace| json!(trace))
         }
-        ("trace_hash", Some(params)) => {
+        ("trace-hash", Some(params)) => {
             let (tx, trace_config) = parse_tx_hash(config.rpc_client.as_ref());
             let (token, chain, steps, accounts) = parse_tx_params(config, params);
             trace::trace_transaction(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_config.into())
                 .map(|trace| json!(trace))
         }
+        ("trace-block-by-slot", Some(params)) => {
+            let slot = params.value_of("slot").expect("SLOT argument is not provided");
+            let slot: u64 = slot.parse().expect("slot parse error");
+            trace_block_by_slot(config, params, slot)
+        }
+        ("trace-block-by-hash", Some(params)) =>
+            trace_block_by_slot(config, params, config.rpc_client.get_slot()?),
         ("create-ether-account", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
             create_ether_account::execute(config, &ether)
@@ -134,6 +141,18 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
         }
         _ => unreachable!(),
     }
+}
+
+fn trace_block_by_slot(config: &Config, params: &ArgMatches, slot: u64) -> NeonCliResult {
+    let trace_block_params: Option<TraceBlockBySlotParams> = serde_json::from_reader(std::io::BufReader::new(std::io::stdin()))
+        .unwrap_or_else(|err| panic!("Unable to parse `TraceBlockBySlotParams` from STDIN, error: {err:?}"));
+    let trace_config = trace_block_params
+        .map(|params| params.trace_config.unwrap_or_default())
+        .unwrap_or_default();
+    let (token, chain, steps, accounts) = parse_tx_params(config, params);
+    let transactions = config.rpc_client.get_block_transactions(slot)?;
+    trace::trace_block(config.rpc_client.as_ref(), config.evm_loader, transactions, token, chain, steps, &accounts, trace_config)
+        .map(|traces| json!(traces))
 }
 
 fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {

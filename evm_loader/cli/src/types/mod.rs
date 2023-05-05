@@ -140,6 +140,11 @@ pub struct TransactionHashParams {
     pub trace_config: Option<TraceConfig>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TraceBlockBySlotParams {
+    pub trace_config: Option<TraceConfig>,
+}
+
 pub fn do_connect(
     host: &String,
     port: &String,

@@ -4,7 +4,7 @@ use crate::{
     errors::NeonCliError,
     rpc::Rpc,
     types::{
-        trace::{TracedCall, TraceCallConfig},
+        trace::{TracedCall, TraceCallConfig, TraceConfig},
         TxParams,
     },
     account_storage::EmulatorAccountStorage,
@@ -40,14 +40,46 @@ pub fn trace_transaction(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn trace_block(
+    rpc_client: &dyn Rpc,
+    evm_loader: Pubkey,
+    transactions: Vec<TxParams>,
+    token: Pubkey,
+    chain_id: u64,
+    steps: u64,
+    accounts: &[Address],
+    trace_config: TraceConfig,
+) -> Result<Vec<TracedCall>, NeonCliError> {
+    setup_syscall_stubs(rpc_client)?;
+
+    let storage = EmulatorAccountStorage::with_accounts(
+        rpc_client,
+        evm_loader,
+        token,
+        chain_id,
+        None,
+        None,
+        accounts,
+    );
+
+    let mut results = vec![];
+    for tx_params in transactions {
+        let result = trace_trx(tx_params, &storage, chain_id, steps, trace_config.clone())?;
+        results.push(result);
+    }
+
+    Ok(results)
+}
+
 fn trace_trx(
     tx_params: TxParams,
     storage: &EmulatorAccountStorage,
     chain_id: u64,
     steps: u64,
-    trace_call_config: TraceCallConfig,
+    trace_config: TraceConfig,
 ) -> Result<TracedCall, NeonCliError> {
-    let mut tracer = Tracer::new(trace_call_config.trace_config.enable_return_data);
+    let mut tracer = Tracer::new(trace_config.enable_return_data);
 
     let emulation_result = evm_loader::evm::tracing::using(
         &mut tracer,
@@ -63,37 +95,4 @@ fn trace_trx(
         result: emulation_result.result,
         exit_status: emulation_result.exit_status,
     })
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn trace_block(
-    rpc_client: &dyn Rpc,
-    evm_loader: Pubkey,
-    slot: u64,
-    token: Pubkey,
-    chain_id: u64,
-    steps: u64,
-    accounts: &[Address],
-    trace_call_config: TraceCallConfig,
-) -> Result<Vec<TracedCall>, NeonCliError> {
-    setup_syscall_stubs(rpc_client)?;
-
-    let storage = EmulatorAccountStorage::with_accounts(
-        rpc_client,
-        evm_loader,
-        token,
-        chain_id,
-        trace_call_config.block_overrides.clone(),
-        trace_call_config.state_overrides.clone(),
-        accounts,
-    );
-
-    let transactions = rpc_client.get_block_transactions(slot)?;
-    let mut results = vec![];
-    for tx_params in transactions {
-        let result = trace_trx(tx_params, &storage, chain_id, steps, trace_call_config.clone())?;
-        results.push(result);
-    }
-
-    Ok(results)
 }

@@ -162,6 +162,16 @@ fn trx_params<'a, 'b>(cmd: &'static str, desc: &'static str) -> App<'a, 'b> {
                 .validator(is_valid_address)
                 .help("List of cached account addresses"),
         )
+        .arg(
+            Arg::with_name("solana_accounts")
+                .value_name("SOLANA_ACCOUNTS")
+                .long("solana_accounts")
+                .takes_value(true)
+                .required(false)
+                .multiple(true)
+                .validator(is_valid_address)
+                .help("List of cached solana account pubkeys"),
+        )
 }
 
 fn trx_hash<'a, 'b>(cmd: &'static str, alias: &'static str, desc: &'static str) -> App<'a, 'b> {

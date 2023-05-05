@@ -1,12 +1,14 @@
 use solana_program::program_memory::{sol_memcpy, sol_memset};
 use std::alloc::{GlobalAlloc, Layout};
+use std::ops::Range;
 
-use super::tracing_event;
 use super::utils::checked_next_multiple_of_32;
+use super::{tracing_event, Buffer};
 use crate::error::Error;
 
 const MAX_MEMORY_SIZE: usize = 64 * 1024;
-const MEMORY_ALIGN: usize = 32;
+const MEMORY_CAPACITY: usize = 1024;
+const MEMORY_ALIGN: usize = 1;
 
 static_assertions::const_assert!(MEMORY_ALIGN.is_power_of_two());
 
@@ -18,9 +20,7 @@ pub struct Memory {
 
 impl Memory {
     pub fn new() -> Self {
-        const DEFAULT_CAPACITY: usize = 1024;
-
-        Self::with_capacity(DEFAULT_CAPACITY)
+        Self::with_capacity(MEMORY_CAPACITY)
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
@@ -40,7 +40,7 @@ impl Memory {
     }
 
     pub fn from_buffer(v: &[u8]) -> Self {
-        let capacity = v.len().next_power_of_two();
+        let capacity = v.len().next_power_of_two().max(MEMORY_CAPACITY);
 
         unsafe {
             let layout = Layout::from_size_align_unchecked(capacity, MEMORY_ALIGN);
@@ -67,12 +67,12 @@ impl Memory {
 
     #[inline]
     fn realloc(&mut self, offset: usize, length: usize) -> Result<(), Error> {
-        let Some(required_size) = offset.checked_add(length) else {
-            return Err(Error::MemoryAccessOutOfLimits(offset, length));
-        };
-        let Some(new_size) = checked_next_multiple_of_32(required_size) else {
-            return Err(Error::MemoryAccessOutOfLimits(offset, length));
-        };
+        let required_size = offset
+            .checked_add(length)
+            .ok_or(Error::MemoryAccessOutOfLimits(offset, length))?;
+
+        let new_size = checked_next_multiple_of_32(required_size)
+            .ok_or(Error::MemoryAccessOutOfLimits(offset, length))?;
 
         if new_size > self.size {
             self.size = new_size;
@@ -82,26 +82,27 @@ impl Memory {
             return Ok(());
         }
 
-        let Some(new_capacity) = new_size.checked_next_power_of_two() else {
-            return Err(Error::MemoryAccessOutOfLimits(offset, length));
-        };
+        let new_capacity = new_size
+            .checked_next_power_of_two()
+            .ok_or(Error::MemoryAccessOutOfLimits(offset, length))?;
         if new_capacity > MAX_MEMORY_SIZE {
             return Err(Error::MemoryAccessOutOfLimits(offset, length));
         }
 
         unsafe {
             let old_layout = Layout::from_size_align_unchecked(self.capacity, MEMORY_ALIGN);
-            self.data = crate::allocator::EVM.realloc(self.data, old_layout, new_capacity);
-            if self.data.is_null() {
+            let new_data = crate::allocator::EVM.realloc(self.data, old_layout, new_capacity);
+            if new_data.is_null() {
                 let layout = Layout::from_size_align_unchecked(new_capacity, MEMORY_ALIGN);
                 std::alloc::handle_alloc_error(layout);
             }
 
-            let slice = core::slice::from_raw_parts_mut(self.data, new_capacity);
+            let slice = core::slice::from_raw_parts_mut(new_data, new_capacity);
             sol_memset(&mut slice[self.capacity..], 0, new_capacity - self.capacity);
-        }
 
-        self.capacity = new_capacity;
+            self.data = new_data;
+            self.capacity = new_capacity;
+        }
 
         Ok(())
     }
@@ -225,6 +226,17 @@ impl Memory {
         }
 
         Ok(())
+    }
+
+    #[inline]
+    pub fn write_range(&mut self, range: &Range<usize>, source: &[u8]) -> Result<(), Error> {
+        self.write_buffer(range.start, range.len(), source, 0)
+    }
+
+    #[inline]
+    pub fn read_buffer(&mut self, offset: usize, length: usize) -> Result<Buffer, Error> {
+        let slice = self.read(offset, length)?;
+        Ok(Buffer::new(slice))
     }
 }
 

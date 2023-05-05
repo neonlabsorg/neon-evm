@@ -21,12 +21,23 @@ pub fn trace_transaction(
     chain_id: u64,
     steps: u64,
     accounts: &[Address],
+    solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
 ) -> Result<TracedCall, NeonCliError> {
     let mut tracer = Tracer::new(trace_call_config.trace_config.enable_return_data);
 
     let (emulation_result, _storage) = evm_loader::evm::tracing::using(&mut tracer, || {
-        emulate_transaction(rpc_client, evm_loader, tx, token, chain_id, steps, accounts, trace_call_config)
+        emulate_transaction(
+            rpc_client,
+            evm_loader,
+            tx,
+            token,
+            chain_id,
+            steps,
+            accounts,
+            solana_accounts,
+            trace_call_config,
+        )
     })?;
 
     let (vm_trace, full_trace_data) = tracer.into_traces();

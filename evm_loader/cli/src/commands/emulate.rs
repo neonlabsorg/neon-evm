@@ -57,6 +57,7 @@ pub fn execute(
     chain_id: u64,
     step_limit: u64,
     accounts: &[Address],
+    solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
 ) -> Result<EmulationResultWithAccounts, NeonCliError> {
     let (emulation_result, storage) = emulate_transaction(
@@ -67,6 +68,7 @@ pub fn execute(
         chain_id,
         step_limit,
         accounts,
+        solana_accounts,
         trace_call_config,
     )?;
     let accounts = storage.accounts.borrow().values().cloned().collect();
@@ -89,6 +91,7 @@ pub fn emulate_transaction<'a>(
     chain_id: u64,
     step_limit: u64,
     accounts: &[Address],
+    solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
 ) -> Result<(EmulationResult, EmulatorAccountStorage<'a>), NeonCliError> {
     setup_syscall_stubs(rpc_client)?;
@@ -101,6 +104,7 @@ pub fn emulate_transaction<'a>(
         trace_call_config.block_overrides,
         trace_call_config.state_overrides,
         accounts,
+        solana_accounts,
     );
 
     emulate_trx(tx_params, &storage, chain_id, step_limit)

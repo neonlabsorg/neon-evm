@@ -129,10 +129,6 @@ impl Rpc for RpcClient {
         Err(e!("get_transaction_data() not implemented for validator_client"))
     }
 
-    fn get_block_transactions(&self, _slot: u64) -> ClientResult<Vec<TxParams>> {
-        Err(e!("get_block_transactions() not implemented for validator_client"))
-    }
-
     fn as_any(&self) -> &dyn Any {
         self
     }

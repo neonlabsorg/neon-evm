@@ -1,5 +1,5 @@
 use super::{e, Rpc};
-use crate::types::{DbConfig, IndexerDb, TracerDb, TxParams};
+use crate::types::{DbConfig, TracerDb, TxParams};
 use solana_client::{
     client_error::Result as ClientResult,
     client_error::{ClientError, ClientErrorKind},
@@ -24,17 +24,14 @@ use std::any::Any;
 pub struct CallDbClient {
     pub slot: u64,
     tracer_db: TracerDb,
-    indexer_db: IndexerDb,
 }
 
 impl CallDbClient {
     pub fn new(config: &DbConfig, slot: u64) -> Self {
         let tracer_db = TracerDb::new(config);
-        let indexer_db = IndexerDb::new(config);
         Self {
             slot,
             tracer_db,
-            indexer_db,
         }
     }
 }
@@ -190,11 +187,6 @@ impl Rpc for CallDbClient {
 
     fn get_transaction_data(&self) -> ClientResult<TxParams> {
         Err(e!("get_transaction_data() not implemented for db_call_client"))
-    }
-
-    fn get_block_transactions(&self, slot: u64) -> ClientResult<Vec<TxParams>> {
-        self.indexer_db.get_block_transactions(slot)
-            .map_err(|e| e!("get_block_transactions error", e))
     }
 
     fn as_any(&self) -> &dyn Any {

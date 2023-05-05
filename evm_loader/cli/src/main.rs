@@ -10,6 +10,7 @@ pub use config::Config;
 use ethnum::U256;
 use serde_json::json;
 use solana_clap_utils::input_parsers::{pubkey_of, value_of, values_of};
+use solana_client::client_error::{ClientError, ClientErrorKind};
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 
@@ -19,7 +20,7 @@ use neon_cli::{commands::{
     emulate, get_ether_account_data, get_neon_elf, get_storage_at, init_environment, trace,
 }, rpc::Rpc, types::{
     trace::{TraceCallConfig, TraceConfig},
-    TraceBlockBySlotParams, TransactionHashParams, TransactionParams, TxParams,
+    IndexerDb, TraceBlockBySlotParams, TransactionHashParams, TransactionParams, TxParams,
 }, config, NeonCliResult, NeonCliError};
 
 fn run(options: &ArgMatches) -> NeonCliResult {
@@ -145,7 +146,9 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
                 .map(|params| params.trace_config.unwrap_or_default())
                 .unwrap_or_default();
             let (token, chain, steps, accounts, solana_accounts) = parse_tx_params(config, params);
-            let transactions = config.rpc_client.get_block_transactions(slot)?;
+            let indexer_db = IndexerDb::new(config.db_config.as_ref().expect("db-config is required"));
+            let transactions = indexer_db.get_block_transactions(slot)
+                .map_err(|e| ClientError::from(ClientErrorKind::Custom(format!("get_block_transactions error: {e}"))))?;
             trace::trace_block(
                 config.rpc_client.as_ref(),
                 config.evm_loader,

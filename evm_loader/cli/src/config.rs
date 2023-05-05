@@ -3,6 +3,7 @@ use crate::{
     rpc,
     rpc::{CallDbClient, TrxDbClient},
     errors::NeonCliError,
+    types::DbConfig,
 };
 use clap::ArgMatches;
 use hex::FromHex;
@@ -21,6 +22,7 @@ use std::{fmt, fmt::Debug, str::FromStr};
 
 pub struct Config {
     pub rpc_client: Box<dyn rpc::Rpc>,
+    pub db_config: Option<DbConfig>,
     pub evm_loader: Pubkey,
     pub signer: Box<dyn Signer>,
     pub fee_payer: Option<Keypair>,
@@ -87,8 +89,10 @@ pub fn create(options: &ArgMatches) -> Result<Config, NeonCliError> {
 
     let db_config = options
         .value_of("db_config")
-        .map(|path| solana_cli_config::load_config_file(path)
-            .expect("load db-config error"));
+        .map(|path|
+            solana_cli_config::load_config_file(path)
+                .expect("load db-config error")
+        );
 
     let (cmd, params) = options.subcommand();
     let rpc_client: Box<dyn rpc::Rpc> = match (cmd, params) {
@@ -98,7 +102,7 @@ pub fn create(options: &ArgMatches) -> Result<Config, NeonCliError> {
                 .expect("hash cast error");
 
             Box::new(TrxDbClient::new(
-                &db_config.expect("db-config not found"),
+                db_config.as_ref().expect("db-config not found"),
                 hash,
             ))
         }
@@ -106,7 +110,7 @@ pub fn create(options: &ArgMatches) -> Result<Config, NeonCliError> {
             if let Some(slot) = options.value_of("slot") {
                 let slot: u64 = slot.parse().expect("slot parse error");
                 Box::new(CallDbClient::new(
-                    &db_config.expect("db-config not found"),
+                    db_config.as_ref().expect("db-config not found"),
                     slot,
                 ))
             } else {
@@ -117,6 +121,7 @@ pub fn create(options: &ArgMatches) -> Result<Config, NeonCliError> {
 
     Ok(Config {
         rpc_client,
+        db_config,
         evm_loader,
         signer,
         fee_payer,

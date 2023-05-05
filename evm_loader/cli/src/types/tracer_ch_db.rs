@@ -1,6 +1,7 @@
 use super::{block, ChDbConfig};
 use clickhouse::{Client, Row};
 use log::info;
+use rand::Rng;
 use solana_sdk::{
     account::Account,
     clock::{Slot, UnixTimestamp},
@@ -49,13 +50,18 @@ pub struct AccountRow {
 #[allow(dead_code)]
 impl ClickHouseDb {
     pub fn new(config: &ChDbConfig) -> Self {
+        let url_id = rand::thread_rng().gen_range(0..config.clickhouse_url.len());
+        let url = config.clickhouse_url.get(url_id).unwrap();
+        info!("clickhouse_url {:?}", &config.clickhouse_url);
+        info!("url {}", &url);
+
         let client = match (&config.clickhouse_user, &config.clickhouse_password) {
-            (None, None | Some(_)) => Client::default().with_url(&config.clickhouse_url),
+            (None, None | Some(_)) => Client::default().with_url(url),
             (Some(user), None) => Client::default()
-                .with_url(&config.clickhouse_url)
+                .with_url(url)
                 .with_user(user),
             (Some(user), Some(password)) => Client::default()
-                .with_url(&config.clickhouse_url)
+                .with_url(url)
                 .with_user(user)
                 .with_password(password),
         };
@@ -207,7 +213,7 @@ impl ClickHouseDb {
                     WHERE
                         pubkey = ?
                         AND slot IN (SELECT arrayJoin([{}]))
-                    ORDER BY slot DESC, pubkey DESC, write_version DESC
+                    ORDER BY pubkey DESC, slot DESC, write_version DESC
                     LIMIT 1
                     "#,
                     slots
@@ -243,7 +249,7 @@ impl ClickHouseDb {
                 WHERE
                     pubkey = ?
                     AND slot in (SELECT slot FROM events.update_slot WHERE status = 'Rooted' AND slot <= ?)
-                ORDER BY slot DESC, pubkey DESC, write_version DESC
+                ORDER BY pubkey DESC, slot DESC, write_version DESC
                 LIMIT 1
                 "#;
                 self.client

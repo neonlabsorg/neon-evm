@@ -19,7 +19,7 @@ type Bytes = Vec<u8>;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
 pub struct ChDbConfig {
-    pub clickhouse_url: String,
+    pub clickhouse_url: Vec<String>,
     pub clickhouse_user: Option<String>,
     pub clickhouse_password: Option<String>,
     pub indexer_host: String,

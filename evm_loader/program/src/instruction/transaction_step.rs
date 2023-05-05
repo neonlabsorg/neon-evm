@@ -195,8 +195,8 @@ pub fn log_return_value(status: &ExitStatus) {
     sol_log_data(&[b"RETURN", &[code]]);
 }
 
-fn serialize_evm_state<'a>(
-    state: &mut State<'a>,
+fn serialize_evm_state(
+    state: &mut State,
     backend: &EvmBackend,
     machine: &Evm,
 ) -> Result<()> {

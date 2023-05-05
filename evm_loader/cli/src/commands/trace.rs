@@ -10,7 +10,10 @@ use crate::{
     account_storage::EmulatorAccountStorage,
 };
 use evm_loader::types::Address;
-use solana_sdk::pubkey::Pubkey;
+use solana_sdk::{
+    commitment_config::CommitmentConfig,
+    pubkey::Pubkey,
+};
 
 #[allow(clippy::too_many_arguments)]
 pub fn trace_transaction(
@@ -20,6 +23,7 @@ pub fn trace_transaction(
     token: Pubkey,
     chain_id: u64,
     steps: u64,
+    commitment: CommitmentConfig,
     accounts: &[Address],
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
@@ -34,6 +38,7 @@ pub fn trace_transaction(
             token,
             chain_id,
             steps,
+            commitment,
             accounts,
             solana_accounts,
             trace_call_config,
@@ -59,7 +64,9 @@ pub fn trace_block(
     token: Pubkey,
     chain_id: u64,
     steps: u64,
+    commitment: CommitmentConfig,
     accounts: &[Address],
+    solana_accounts: &[Pubkey],
     trace_config: TraceConfig,
 ) -> Result<Vec<TracedCall>, NeonCliError> {
     setup_syscall_stubs(rpc_client)?;
@@ -69,9 +76,11 @@ pub fn trace_block(
         evm_loader,
         token,
         chain_id,
-        None,
-        None,
+        commitment,
         accounts,
+        solana_accounts,
+        None,
+        None,
     );
 
     let mut results = vec![];

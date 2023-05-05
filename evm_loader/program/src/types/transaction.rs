@@ -1,7 +1,6 @@
 use crate::error::Error;
 use ethnum::U256;
 use std::convert::TryInto;
-use crate::types::u256;
 
 use super::Address;
 

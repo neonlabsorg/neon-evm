@@ -7,34 +7,26 @@ mod program_options;
 use clap::ArgMatches;
 pub use config::Config;
 
-use crate::errors::NeonCliError;
-
 use ethnum::U256;
 use serde_json::json;
 use solana_clap_utils::input_parsers::{pubkey_of, value_of, values_of};
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 
-pub use config::Config;
 use evm_loader::types::Address;
-use neon_cli::{
-    commands::{
-        get_neon_elf::CachedElfParams, cancel_trx, collect_treasury, create_ether_account, deposit,
-        emulate, get_ether_account_data, get_neon_elf, get_storage_at, init_environment, trace,
-    },
-    rpc::Rpc,
-    types::{
-        trace::{TraceCallConfig, TraceConfig},
-        TraceBlockBySlotParams, TransactionHashParams, TransactionParams, TxParams,
-    },
-    config, NeonCliResult,
-};
+use neon_cli::{commands::{
+    get_neon_elf::CachedElfParams, cancel_trx, collect_treasury, create_ether_account, deposit,
+    emulate, get_ether_account_data, get_neon_elf, get_storage_at, init_environment, trace,
+}, rpc::Rpc, types::{
+    trace::{TraceCallConfig, TraceConfig},
+    TraceBlockBySlotParams, TransactionHashParams, TransactionParams, TxParams,
+}, config, NeonCliResult, NeonCliError};
 
 fn run(options: &ArgMatches) -> NeonCliResult {
     let (cmd, params) = options.subcommand();
     let config = config::create(options)?;
 
-    commands::execute(cmd, params, &config)
+    execute(cmd, params, &config)
 }
 
 fn print_result(result: &NeonCliResult) {
@@ -65,7 +57,7 @@ async fn main() {
 
     logs::init(&options).expect("logs init error");
     std::panic::set_hook(Box::new(|info| {
-        let message = std::format!("Panic: {}", info);
+        let message = std::format!("Panic: {info}");
         print_result(&Err(NeonCliError::Panic(message)));
     }));
 
@@ -77,31 +69,72 @@ async fn main() {
     };
 }
 
+#[allow(clippy::too_many_lines)]
 fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliResult {
     match (cmd, params) {
         ("emulate", Some(params)) => {
             let (tx, trace_call_config) = parse_tx(params);
-            let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            emulate::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_call_config)
-                .map(|result| json!(result))
+            let (token, chain, steps, accounts, solana_accounts) = parse_tx_params(config, params);
+            emulate::execute(
+                config.rpc_client.as_ref(),
+                config.evm_loader,
+                tx,
+                token,
+                chain,
+                steps,
+                config.commitment,
+                &accounts,
+                &solana_accounts,
+                trace_call_config,
+            ).map(|result| json!(result))
         }
         ("emulate-hash", Some(params)) => {
             let (tx, trace_config) = parse_tx_hash(config.rpc_client.as_ref());
-            let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            emulate::execute(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_config.into())
-                .map(|result| json!(result))
+            let (token, chain, steps, accounts, solana_accounts, ) = parse_tx_params(config, params);
+            emulate::execute(
+                config.rpc_client.as_ref(),
+                config.evm_loader,
+                tx,
+                token,
+                chain,
+                steps,
+                config.commitment,
+                &accounts,
+                &solana_accounts,
+                trace_config.into(),
+            ).map(|result| json!(result))
         }
         ("trace", Some(params)) => {
             let (tx, trace_call_config) = parse_tx(params);
-            let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            trace::trace_transaction(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_call_config)
-                .map(|trace| json!(trace))
+            let (token, chain, steps, accounts, solana_accounts) = parse_tx_params(config, params);
+            trace::trace_transaction(
+                config.rpc_client.as_ref(),
+                config.evm_loader,
+                tx,
+                token,
+                chain,
+                steps,
+                config.commitment,
+                &accounts,
+                &solana_accounts,
+                trace_call_config,
+            ).map(|trace| json!(trace))
         }
         ("trace-hash", Some(params)) => {
             let (tx, trace_config) = parse_tx_hash(config.rpc_client.as_ref());
-            let (token, chain, steps, accounts) = parse_tx_params(config, params);
-            trace::trace_transaction(config.rpc_client.as_ref(), config.evm_loader, tx, token, chain, steps, &accounts, trace_config.into())
-                .map(|trace| json!(trace))
+            let (token, chain, steps, accounts, solana_accounts) = parse_tx_params(config, params);
+            trace::trace_transaction(
+                config.rpc_client.as_ref(),
+                config.evm_loader,
+                tx,
+                token,
+                chain,
+                steps,
+                config.commitment,
+                &accounts,
+                &solana_accounts,
+                trace_config.into(),
+            ).map(|trace| json!(trace))
         }
         ("trace-block-by-slot", Some(params)) => {
             let slot = params.value_of("slot").expect("SLOT argument is not provided");
@@ -156,10 +189,19 @@ fn trace_block_by_slot(config: &Config, params: &ArgMatches, slot: u64) -> NeonC
     let trace_config = trace_block_params
         .map(|params| params.trace_config.unwrap_or_default())
         .unwrap_or_default();
-    let (token, chain, steps, accounts) = parse_tx_params(config, params);
+    let (token, chain, steps, accounts, solana_accounts) = parse_tx_params(config, params);
     let transactions = config.rpc_client.get_block_transactions(slot)?;
-    trace::trace_block(config.rpc_client.as_ref(), config.evm_loader, transactions, token, chain, steps, &accounts, trace_config)
-        .map(|traces| json!(traces))
+    trace::trace_block(
+        config.rpc_client.as_ref(),
+        config.evm_loader,
+        transactions,
+        token,
+        chain,
+        steps, config.commitment,
+        &accounts,
+        &solana_accounts,
+        trace_config,
+    ).map(|traces| json!(traces))
 }
 
 fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
@@ -198,7 +240,7 @@ fn parse_tx_hash(rpc_client: &dyn Rpc) -> (TxParams, TraceConfig) {
 }
 
 #[must_use]
-pub fn parse_tx_params(config: &Config, params: &ArgMatches) -> (Pubkey, u64, u64, Vec<Address>) {
+pub fn parse_tx_params(config: &Config, params: &ArgMatches) -> (Pubkey, u64, u64, Vec<Address>, Vec<Pubkey>) {
     // Read ELF params only if token_mint or chain_id is not set.
     let mut token = pubkey_of(params, "token_mint");
     let mut chain = value_of(params, "chain_id");
@@ -231,8 +273,9 @@ pub fn parse_tx_params(config: &Config, params: &ArgMatches) -> (Pubkey, u64, u6
         value_of::<u64>(params, "max_steps_to_execute").expect("max_steps_to_execute parse error");
 
     let accounts = values_of::<Address>(params, "cached_accounts").unwrap_or_default();
+    let solana_accounts = values_of::<Pubkey>(params, "solana_accounts").unwrap_or_default();
 
-    (token, chain, max_steps, accounts)
+    (token, chain, max_steps, accounts, solana_accounts)
 }
 
 fn address_or_deploy_of(matches: &ArgMatches<'_>, name: &str) -> Option<Address> {

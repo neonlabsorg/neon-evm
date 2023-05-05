@@ -20,6 +20,7 @@ use solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE;
 use solana_sdk::{
     account::Account,
     account_info::AccountInfo,
+    commitment_config::CommitmentConfig,
     pubkey,
     pubkey::Pubkey,
     rent::Rent,
@@ -134,6 +135,7 @@ pub struct EmulatorAccountStorage<'a> {
     block_timestamp: i64,
     neon_token_mint: Pubkey,
     chain_id: u64,
+    commitment: CommitmentConfig,
     state_overrides: Option<AccountOverrides>,
 }
 
@@ -143,6 +145,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         evm_loader: Pubkey,
         token_mint: Pubkey,
         chain_id: u64,
+        commitment: CommitmentConfig,
         block_overrides: Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
     ) -> Self {
@@ -165,28 +168,33 @@ impl<'a> EmulatorAccountStorage<'a> {
             block_timestamp,
             neon_token_mint: token_mint,
             chain_id,
+            commitment,
             state_overrides,
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn with_accounts(
         rpc_client: &'a dyn Rpc,
         evm_loader: Pubkey,
         token_mint: Pubkey,
         chain_id: u64,
+        commitment: CommitmentConfig,
+        accounts: &[Address],
+        solana_accounts: &[Pubkey],
         block_overrides: Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
-        accounts: &[Address],
     ) -> Self {
         let storage = Self::new(
             rpc_client,
             evm_loader,
             token_mint,
             chain_id,
+            commitment,
             block_overrides,
             state_overrides,
         );
-        storage.initialize_cached_accounts(accounts);
+        storage.initialize_cached_accounts(accounts, solana_accounts);
 
         storage
     }
@@ -236,9 +244,8 @@ impl<'a> EmulatorAccountStorage<'a> {
         }
 
         let result = self
-            .config
             .rpc_client
-            .get_account_with_commitment(pubkey, self.config.commitment)?;
+            .get_account_with_commitment(pubkey, self.commitment)?;
 
         accounts
             .entry(*pubkey)

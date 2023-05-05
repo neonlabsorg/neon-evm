@@ -19,7 +19,10 @@ use crate::{
     types::TxParams,
     rpc::Rpc,
 };
-use solana_sdk::pubkey::Pubkey;
+use solana_sdk::{
+    commitment_config::CommitmentConfig,
+    pubkey::Pubkey,
+};
 use crate::types::trace::TraceCallConfig;
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -56,6 +59,7 @@ pub fn execute(
     token_mint: Pubkey,
     chain_id: u64,
     step_limit: u64,
+    commitment: CommitmentConfig,
     accounts: &[Address],
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
@@ -67,6 +71,7 @@ pub fn execute(
         token_mint,
         chain_id,
         step_limit,
+        commitment,
         accounts,
         solana_accounts,
         trace_call_config,
@@ -90,6 +95,7 @@ pub fn emulate_transaction<'a>(
     token_mint: Pubkey,
     chain_id: u64,
     step_limit: u64,
+    commitment: CommitmentConfig,
     accounts: &[Address],
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
@@ -101,10 +107,11 @@ pub fn emulate_transaction<'a>(
         evm_loader,
         token_mint,
         chain_id,
-        trace_call_config.block_overrides,
-        trace_call_config.state_overrides,
+        commitment,
         accounts,
         solana_accounts,
+        trace_call_config.block_overrides,
+        trace_call_config.state_overrides,
     );
 
     emulate_trx(tx_params, &storage, chain_id, step_limit)
@@ -175,7 +182,9 @@ pub fn emulate_block<'a>(
     token_mint: Pubkey,
     chain_id: u64,
     step_limit: u64,
+    commitment: CommitmentConfig,
     accounts: &[Address],
+    solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
     transactions: Vec<TxParams>,
 ) -> Result<(Vec<EmulationResult>, EmulatorAccountStorage<'a>), NeonCliError> {
@@ -186,9 +195,11 @@ pub fn emulate_block<'a>(
         evm_loader,
         token_mint,
         chain_id,
+        commitment,
+        accounts,
+        solana_accounts,
         trace_call_config.block_overrides,
         trace_call_config.state_overrides,
-        accounts,
     );
 
     let mut results = vec![];

@@ -302,12 +302,18 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
-    fn block_hash(&self, number: U256) -> Result<[u8; 32]> {
-        let origin_block = self.cache.borrow().block_number;
-        let current_block = self.backend.block_number();
-        let offset = current_block.saturating_sub(origin_block);
+    fn block_hash(&self, number: u64) -> Result<[u8; 32]> {
+        let block_slot = self.cache.borrow().block_number.as_u64();
+        let lower_block_slot = if block_slot < 257 {
+            0
+        } else {
+            block_slot - 256
+        };
 
-        let number = number.saturating_add(offset);
+        if number > block_slot || lower_block_slot > number {
+            return Ok(<[u8; 32]>::default());
+        }
+
         let block_hash = self.backend.block_hash(number);
 
         Ok(block_hash)

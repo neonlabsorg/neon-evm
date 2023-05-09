@@ -1,5 +1,5 @@
-use {crate::types::Bytes, ethnum::U256, std::collections::HashMap};
 use evm_loader::{account::EthereumAccount, types::Address};
+use {crate::types::Bytes, ethnum::U256, std::collections::HashMap};
 
 #[derive(
     serde::Serialize,
@@ -239,16 +239,16 @@ pub struct TracedCall {
 pub struct BlockOverrides {
     pub number: Option<u64>,
     #[allow(unused)]
-    pub difficulty: Option<U256>,  // NOT SUPPORTED by Neon EVM
+    pub difficulty: Option<U256>, // NOT SUPPORTED by Neon EVM
     pub time: Option<i64>,
     #[allow(unused)]
-    pub gas_limit: Option<u64>,    // NOT SUPPORTED BY Neon EVM
+    pub gas_limit: Option<u64>, // NOT SUPPORTED BY Neon EVM
     #[allow(unused)]
     pub coinbase: Option<Address>, // NOT SUPPORTED BY Neon EVM
     #[allow(unused)]
-    pub random: Option<U256>,      // NOT SUPPORTED BY Neon EVM
+    pub random: Option<U256>, // NOT SUPPORTED BY Neon EVM
     #[allow(unused)]
-    pub base_fee: Option<U256>,    // NOT SUPPORTED BY Neon EVM
+    pub base_fee: Option<U256>, // NOT SUPPORTED BY Neon EVM
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -303,6 +303,9 @@ pub struct TraceCallConfig {
 
 impl From<TraceConfig> for TraceCallConfig {
     fn from(trace_config: TraceConfig) -> Self {
-        Self { trace_config, ..Self::default() }
+        Self {
+            trace_config,
+            ..Self::default()
+        }
     }
 }

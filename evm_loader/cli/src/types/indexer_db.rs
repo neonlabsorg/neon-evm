@@ -15,7 +15,8 @@ pub struct IndexerDb {
     pub client: Arc<Client>,
 }
 
-const TXPARAMS_FIELDS: &str = "from_addr, COALESCE(to_addr, contract), calldata, value, gas_limit, nonce";
+const TXPARAMS_FIELDS: &str =
+    "from_addr, COALESCE(to_addr, contract), calldata, value, gas_limit, nonce";
 
 impl IndexerDb {
     pub fn new(config: &DbConfig) -> Self {
@@ -74,15 +75,20 @@ impl IndexerDb {
     pub fn get_slot_by_block_hash(&self, block_hash: &[u8; 32]) -> PgResult<u64> {
         let hex = format!("0x{}", hex::encode(block_hash));
         let row = block(|| async {
-            self.client.query_one(
-                "SELECT block_slot FROM solana_blocks WHERE block_hash = $1 AND is_active",
-                &[&hex],
-            ).await
+            self.client
+                .query_one(
+                    "SELECT block_slot FROM solana_blocks WHERE block_hash = $1 AND is_active",
+                    &[&hex],
+                )
+                .await
         })?;
 
-        let slot: i64 = row.try_get(0).map_err(std::convert::Into::<PgError>::into)?;
+        let slot: i64 = row
+            .try_get(0)
+            .map_err(std::convert::Into::<PgError>::into)?;
 
-        slot.try_into().map_err(|e| PgError::Custom(format!("slot cast error: {e}")))
+        slot.try_into()
+            .map_err(|e| PgError::Custom(format!("slot cast error: {e}")))
     }
 
     pub fn get_transaction_data(&self, hash: &[u8; 32]) -> PgResult<TxParams> {
@@ -112,16 +118,20 @@ impl IndexerDb {
             .map_err(|e| PgError::Custom(format!("slot cast error: {e}")))?;
 
         let rows = block(|| async {
-            self.client.query(&format!(
-                "\
+            self.client
+                .query(
+                    &format!(
+                        "\
                     SELECT {TXPARAMS_FIELDS} \
                     FROM neon_transactions t \
                         INNER JOIN solana_blocks b ON t.block_slot = b.block_slot \
                     WHERE b.is_active AND t.block_slot = $1 \
                     ORDER BY tx_idx\
-                "),
-                &[&slot],
-            ).await
+                "
+                    ),
+                    &[&slot],
+                )
+                .await
         })?;
 
         let mut transactions = vec![];

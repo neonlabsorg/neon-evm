@@ -1,8 +1,8 @@
 use crate::{
+    errors::NeonCliError,
     parsing::truncate_0x,
     rpc,
     rpc::{CallDbClient, TrxDbClient},
-    errors::NeonCliError,
     types::DbConfig,
 };
 use clap::ArgMatches;
@@ -89,17 +89,13 @@ pub fn create(options: &ArgMatches) -> Result<Config, NeonCliError> {
 
     let db_config = options
         .value_of("db_config")
-        .map(|path|
-            solana_cli_config::load_config_file(path)
-                .expect("load db-config error")
-        );
+        .map(|path| solana_cli_config::load_config_file(path).expect("load db-config error"));
 
     let (cmd, params) = options.subcommand();
     let rpc_client: Box<dyn rpc::Rpc> = match (cmd, params) {
         ("emulate-hash" | "trace-hash", Some(params)) => {
             let hash = params.value_of("hash").expect("hash not found");
-            let hash = <[u8; 32]>::from_hex(truncate_0x(hash))
-                .expect("hash cast error");
+            let hash = <[u8; 32]>::from_hex(truncate_0x(hash)).expect("hash cast error");
 
             Box::new(TrxDbClient::new(
                 db_config.as_ref().expect("db-config not found"),

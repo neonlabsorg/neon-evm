@@ -28,7 +28,10 @@ impl EventListener for Tracer {
                 self.begin_step(stack, memory);
                 self.vm.begin_step(opcode, pc);
             }
-            Event::EndStep { gas_used, return_data } => {
+            Event::EndStep {
+                gas_used,
+                return_data,
+            } => {
                 self.end_step(return_data);
                 self.vm.end_step(gas_used);
             }

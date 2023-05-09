@@ -1,5 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc, str::FromStr};
 
+use crate::{rpc::Rpc, AccountOverrides, BlockOverrides};
 use ethnum::U256;
 use evm_loader::account::ether_contract;
 use evm_loader::account_storage::{generate_fake_block_hash, AccountOperation, AccountsOperations};
@@ -26,7 +27,6 @@ use solana_sdk::{
     rent::Rent,
     sysvar::{recent_blockhashes, slot_hashes, Sysvar},
 };
-use crate::{rpc::Rpc, AccountOverrides, BlockOverrides};
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
@@ -107,8 +107,13 @@ impl NeonAccount {
         }
     }
 
-    pub fn rpc_load(rpc_client: &dyn Rpc, evm_loader: &Pubkey, address: Address, writable: bool) -> Self {
-        let (key, _) = make_solana_program_address(&address,  evm_loader);
+    pub fn rpc_load(
+        rpc_client: &dyn Rpc,
+        evm_loader: &Pubkey,
+        address: Address,
+        writable: bool,
+    ) -> Self {
+        let (key, _) = make_solana_program_address(&address, evm_loader);
         info!("get_account_from_solana {} => {}", address, key);
 
         let account = rpc_client.get_account(&key).ok();
@@ -151,11 +156,13 @@ impl<'a> EmulatorAccountStorage<'a> {
     ) -> Self {
         trace!("backend::new");
 
-        let block_number = block_overrides.as_ref()
+        let block_number = block_overrides
+            .as_ref()
             .and_then(|overrides| overrides.number)
             .unwrap_or_else(|| rpc_client.get_slot().unwrap_or_default());
 
-        let block_timestamp = block_overrides.as_ref()
+        let block_timestamp = block_overrides
+            .as_ref()
             .and_then(|overrides| overrides.time)
             .unwrap_or_else(|| rpc_client.get_block_time(block_number).unwrap_or_default());
 
@@ -264,8 +271,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         evm_loader: &Pubkey,
         address: &Address,
     ) -> (Pubkey, Option<Account>) {
-        let (solana_address, _solana_nonce) =
-            make_solana_program_address(address, evm_loader);
+        let (solana_address, _solana_nonce) = make_solana_program_address(address, evm_loader);
         info!("get_account_from_solana {} => {}", address, solana_address);
 
         if let Ok(acc) = rpc_client.get_account(&solana_address) {
@@ -289,7 +295,8 @@ impl<'a> EmulatorAccountStorage<'a> {
 
             true
         } else {
-            let account = NeonAccount::rpc_load(self.rpc_client, &self.evm_loader, *address, writable);
+            let account =
+                NeonAccount::rpc_load(self.rpc_client, &self.evm_loader, *address, writable);
             accounts.insert(*address, account);
 
             false
@@ -619,15 +626,20 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             if let Some(account_override) = account_overrides.get(address) {
                 match (&account_override.state, &account_override.state_diff) {
                     (None, None) => (),
-                    (Some(_), Some(_)) => panic!("Account {address} has both `state` and `stateDiff` overrides"),
-                    (Some(state), None) =>
-                        return state.get(index)
+                    (Some(_), Some(_)) => {
+                        panic!("Account {address} has both `state` and `stateDiff` overrides")
+                    }
+                    (Some(state), None) => {
+                        return state
+                            .get(index)
                             .map(|value| value.to_be_bytes())
-                            .unwrap_or_default(),
-                    (None, Some(state_diff)) =>
+                            .unwrap_or_default()
+                    }
+                    (None, Some(state_diff)) => {
                         if let Some(value) = state_diff.get(index) {
                             return value.to_be_bytes();
                         }
+                    }
                 }
             }
         }
@@ -655,9 +667,8 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
                     <[u8; 32]>::default()
                 } else {
                     let account_info = account_info(storage_address.pubkey(), &mut account);
-                    let storage =
-                        EthereumStorage::from_account(&self.evm_loader, &account_info)
-                            .expect("EthereumAccount ctor error");
+                    let storage = EthereumStorage::from_account(&self.evm_loader, &account_info)
+                        .expect("EthereumAccount ctor error");
                     if (storage.address != *address)
                         || (storage.index != index)
                         || (storage.generation != self.generation(address))

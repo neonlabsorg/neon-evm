@@ -44,8 +44,7 @@ pub fn execute(
                         <[u8; 32]>::default()
                     } else {
                         let account_info = account_info(address.pubkey(), &mut account);
-                        let storage =
-                            EthereumStorage::from_account(evm_loader, &account_info)?;
+                        let storage = EthereumStorage::from_account(evm_loader, &account_info)?;
                         if (storage.address != ether_address)
                             || (storage.index != index)
                             || (storage.generation != account_data.generation)

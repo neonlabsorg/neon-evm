@@ -5,7 +5,7 @@ use solana_program::log::sol_log_data;
 use super::{database::Database, tracing_event, Context, Machine, Reason};
 use crate::{
     error::{Error, Result},
-    evm::{Buffer, trace_end_step},
+    evm::{trace_end_step, Buffer},
     types::Address,
 };
 

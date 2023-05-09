@@ -1,19 +1,16 @@
 use crate::{
+    account_storage::EmulatorAccountStorage,
     commands::emulate::{emulate_transaction, emulate_trx, setup_syscall_stubs},
-    event_listener::tracer::Tracer,
     errors::NeonCliError,
+    event_listener::tracer::Tracer,
     rpc::Rpc,
     types::{
-        trace::{TracedCall, TraceCallConfig, TraceConfig},
+        trace::{TraceCallConfig, TraceConfig, TracedCall},
         TxParams,
     },
-    account_storage::EmulatorAccountStorage,
 };
 use evm_loader::types::Address;
-use solana_sdk::{
-    commitment_config::CommitmentConfig,
-    pubkey::Pubkey,
-};
+use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
 #[allow(clippy::too_many_arguments)]
 pub fn trace_transaction(
@@ -101,10 +98,9 @@ fn trace_trx(
 ) -> Result<TracedCall, NeonCliError> {
     let mut tracer = Tracer::new(trace_config.enable_return_data);
 
-    let emulation_result = evm_loader::evm::tracing::using(
-        &mut tracer,
-        || emulate_trx(tx_params, storage, chain_id, steps),
-    )?;
+    let emulation_result = evm_loader::evm::tracing::using(&mut tracer, || {
+        emulate_trx(tx_params, storage, chain_id, steps)
+    })?;
 
     let (vm_trace, full_trace_data) = tracer.into_traces();
 

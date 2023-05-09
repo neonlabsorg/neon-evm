@@ -5,25 +5,19 @@ use evm_loader::{
     account_storage::AccountStorage,
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
-    executor::{ExecutorState, Action},
+    executor::{Action, ExecutorState},
     gasometer::LAMPORTS_PER_SIGNATURE,
     types::{Address, Transaction},
 };
 
 use crate::{
-    account_storage::{
-        EmulatorAccountStorage, NeonAccount, SolanaAccount,
-    },
+    account_storage::{EmulatorAccountStorage, NeonAccount, SolanaAccount},
     errors::NeonCliError,
-    syscall_stubs::Stubs,
-    types::TxParams,
     rpc::Rpc,
+    syscall_stubs::Stubs,
+    types::{trace::TraceCallConfig, TxParams},
 };
-use solana_sdk::{
-    commitment_config::CommitmentConfig,
-    pubkey::Pubkey,
-};
-use crate::types::trace::TraceCallConfig;
+use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct EmulationResult {
@@ -114,8 +108,7 @@ pub fn emulate_transaction<'a>(
         trace_call_config.state_overrides,
     );
 
-    emulate_trx(tx_params, &storage, chain_id, step_limit)
-        .map(move |result| (result, storage))
+    emulate_trx(tx_params, &storage, chain_id, step_limit).map(move |result| (result, storage))
 }
 
 pub(crate) fn emulate_trx(
@@ -127,7 +120,9 @@ pub(crate) fn emulate_trx(
     let (exit_status, actions, steps_executed) = {
         let mut backend = ExecutorState::new(storage);
         let trx = Transaction {
-            nonce: tx_params.nonce.unwrap_or_else(|| storage.nonce(&tx_params.from)),
+            nonce: tx_params
+                .nonce
+                .unwrap_or_else(|| storage.nonce(&tx_params.from)),
             gas_price: U256::ZERO,
             gas_limit: tx_params.gas_limit.unwrap_or_default(),
             target: tx_params.to,

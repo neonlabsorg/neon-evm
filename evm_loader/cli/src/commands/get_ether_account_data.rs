@@ -1,5 +1,5 @@
-use solana_sdk::pubkey::Pubkey;
 use evm_loader::{account::EthereumAccount, types::Address};
+use solana_sdk::pubkey::Pubkey;
 
 use crate::{
     account_storage::{account_info, EmulatorAccountStorage},
@@ -8,12 +8,15 @@ use crate::{
     NeonCliResult,
 };
 
-pub fn execute(rpc_client: &dyn Rpc, evm_loader: &Pubkey, ether_address: &Address) -> NeonCliResult {
+pub fn execute(
+    rpc_client: &dyn Rpc,
+    evm_loader: &Pubkey,
+    ether_address: &Address,
+) -> NeonCliResult {
     match EmulatorAccountStorage::get_account_from_solana(rpc_client, evm_loader, ether_address) {
         (solana_address, Some(mut acc)) => {
             let acc_info = account_info(&solana_address, &mut acc);
-            let account_data =
-                EthereumAccount::from_account(evm_loader, &acc_info).unwrap();
+            let account_data = EthereumAccount::from_account(evm_loader, &acc_info).unwrap();
             let contract_code = account_data
                 .contract_data()
                 .map_or_else(Vec::new, |c| c.code().to_vec());

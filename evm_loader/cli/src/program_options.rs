@@ -1,11 +1,10 @@
-use std::fmt::Display;
 use clap::{crate_description, crate_name, App, AppSettings, Arg, ArgMatches, SubCommand};
 use ethnum::U256;
-use hex::FromHex;
-use solana_clap_utils::input_validators::{is_url_or_moniker, is_valid_pubkey};
 use evm_loader::types::Address;
+use hex::FromHex;
 use neon_cli::parsing::truncate_0x;
-
+use solana_clap_utils::input_validators::{is_url_or_moniker, is_valid_pubkey};
+use std::fmt::Display;
 
 // Return an error if string cannot be parsed as a Address address
 fn is_valid_address<T>(string: T) -> Result<(), String>

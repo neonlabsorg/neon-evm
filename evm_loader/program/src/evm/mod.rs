@@ -45,23 +45,19 @@ macro_rules! tracing_event {
 macro_rules! trace_end_step {
     ($return_data_vec:expr) => {
         #[cfg(feature = "tracing")]
-        crate::evm::tracing::with(|listener|
+        crate::evm::tracing::with(|listener| {
             if listener.enable_return_data() {
-                listener.event(
-                    crate::evm::tracing::Event::EndStep {
-                        gas_used: 0_u64,
-                        return_data: $return_data_vec,
-                    },
-                )
+                listener.event(crate::evm::tracing::Event::EndStep {
+                    gas_used: 0_u64,
+                    return_data: $return_data_vec,
+                })
             } else {
-                listener.event(
-                    crate::evm::tracing::Event::EndStep {
-                        gas_used: 0_u64,
-                        return_data: None,
-                    },
-                )
+                listener.event(crate::evm::tracing::Event::EndStep {
+                    gas_used: 0_u64,
+                    return_data: None,
+                })
             }
-        )
+        })
     };
 
     ($condition:expr; $return_data_vec:expr) => {
@@ -72,8 +68,8 @@ macro_rules! trace_end_step {
     };
 }
 
-pub(crate) use tracing_event;
 pub(crate) use trace_end_step;
+pub(crate) use tracing_event;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ExitStatus {

@@ -366,10 +366,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             let slot_hashes_data = slot_hashes_account.data.as_slice();
             find_slot_hash(slot, slot_hashes_data)
         } else {
-            panic!(
-                "Trying to get slot hash info without providing sysvar account: {}",
-                slot_hashes::ID
-            )
+            panic!("Error querying account {} from Solana", slot_hashes::ID)
         }
     }
 

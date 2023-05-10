@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-use ethnum::U256;
+use ethnum::{AsU256, U256};
 use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 
@@ -302,7 +302,17 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
-    fn block_hash(&self, number: u64) -> Result<[u8; 32]> {
+    fn block_hash(&self, number: U256) -> Result<[u8; 32]> {
+        // geth:
+        //  - checks the overflow
+        //  - converts to u64
+        //  - checks on last 256 blocks
+
+        if number >= u64::MAX.as_u256() {
+            return Ok(<[u8; 32]>::default());
+        }
+
+        let number = number.as_u64();
         let block_slot = self.cache.borrow().block_number.as_u64();
         let lower_block_slot = if block_slot < 257 {
             0
@@ -314,9 +324,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             return Ok(<[u8; 32]>::default());
         }
 
-        let block_hash = self.backend.block_hash(number);
-
-        Ok(block_hash)
+        Ok(self.backend.block_hash(number))
     }
 
     fn block_number(&self) -> Result<U256> {

@@ -34,20 +34,13 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
             .expect("Timestamp is positive")
     }
 
-    fn block_hash(&self, slot: u64) -> [u8; 32] {
-        let slot_hashes_account = self
-            .solana_accounts
+    fn block_hash(&self, slot: u64) -> Option<[u8; 32]> {
+        self.solana_accounts
             .get(&slot_hashes::ID)
-            .unwrap_or_else(|| {
-                panic!(
-                    "Trying to get slot hash info without providing sysvar account: {}",
-                    slot_hashes::ID
-                )
-            });
-
-        let slot_hashes_data = slot_hashes_account.data.borrow();
-
-        find_slot_hash(slot, &slot_hashes_data[..])
+            .map(|slot_hashes_account| {
+                let slot_hashes_data = slot_hashes_account.data.borrow();
+                find_slot_hash(slot, &slot_hashes_data[..])
+            })
     }
 
     fn exists(&self, address: &Address) -> bool {

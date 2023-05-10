@@ -134,6 +134,9 @@ pub enum Error {
     #[error("Index out of bounds")]
     OutOfBounds,
 
+    #[error("Failed to get blockhash from Solana")]
+    BlockHashNotFound,
+
     #[error("Holder Account - invalid owner {0}, expected = {1}")]
     HolderInvalidOwner(Pubkey, Pubkey),
 

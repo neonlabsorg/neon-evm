@@ -60,7 +60,7 @@ pub trait AccountStorage {
     /// Get block timestamp
     fn block_timestamp(&self) -> U256;
     /// Get block hash
-    fn block_hash(&self, number: u64) -> [u8; 32];
+    fn block_hash(&self, number: u64) -> Option<[u8; 32]>;
     /// Get chain id
     fn chain_id(&self) -> u64;
 

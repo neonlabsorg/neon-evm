@@ -6,7 +6,7 @@ use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 
 use crate::account_storage::AccountStorage;
-use crate::error::{Error, Error::BlockHashNotFound, Result};
+use crate::error::{Error, Result};
 use crate::evm::database::Database;
 use crate::evm::{Context, ExitStatus};
 use crate::types::Address;
@@ -365,9 +365,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             return Ok(<[u8; 32]>::default());
         }
 
-        let block_hash = self.backend.block_hash(number).ok_or(BlockHashNotFound)?;
-
-        Ok(block_hash)
+        Ok(self.backend.block_hash(number))
     }
 
     fn block_number(&self) -> Result<U256> {

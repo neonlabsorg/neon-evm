@@ -462,16 +462,16 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         self.block_timestamp.try_into().unwrap()
     }
 
-    fn block_hash(&self, slot: u64) -> Option<[u8; 32]> {
+    fn block_hash(&self, slot: u64) -> [u8; 32] {
         info!("block_hash {slot}");
 
         self.add_solana_account(slot_hashes::ID, false);
 
         if let Ok(Some(slot_hashes_account)) = self.get_account(&slot_hashes::ID) {
             let slot_hashes_data = slot_hashes_account.data.as_slice();
-            Some(find_slot_hash(slot, slot_hashes_data))
+            find_slot_hash(slot, slot_hashes_data)
         } else {
-            None
+            panic!("Error querying account {} from Solana", slot_hashes::ID)
         }
     }
 

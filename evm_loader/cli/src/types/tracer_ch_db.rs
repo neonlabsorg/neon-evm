@@ -18,6 +18,8 @@ use std::{
 };
 use thiserror::Error;
 
+const ROOT_BLOCK_DELAY: u8 = 100;
+
 #[derive(Error, Debug)]
 pub enum ChError {
     #[error("clickhouse: {}", .0)]
@@ -111,12 +113,19 @@ impl ClickHouseDb {
     fn get_branch_slots(&self, slot: u64) -> ChResult<(u64, Vec<u64>)> {
         let query = r#"
             SELECT distinct on (slot) slot, parent FROM events.update_slot
-            WHERE slot >= (SELECT slot FROM events.update_slot WHERE status = 'Rooted' ORDER BY slot DESC LIMIT 1)
+            WHERE slot >=
+                (
+                    SELECT slot from events.update_slot WHERE status = 'Rooted' and slot <=
+                    (
+	                    SELECT slot - {} FROM events.update_slot WHERE status = 'Rooted' ORDER BY slot DESC LIMIT 1
+                    )
+                    ORDER BY slot DESC LIMIT 1
+                )
                 and isNotNull(parent)
             ORDER BY slot DESC, status DESC
             "#;
         let time_start = Instant::now();
-        let rows = block(|| async { self.client.query(query).fetch_all::<SlotParent>().await })?;
+        let rows = block(|| async { self.client.query(query).bind(ROOT_BLOCK_DELAY).fetch_all::<SlotParent>().await })?;
         let execution_time = Instant::now().duration_since(time_start);
         info!(
             "get_branch_slot sql(1) time: {} sec",
@@ -129,29 +138,7 @@ impl ClickHouseDb {
         })?;
 
         match slot.cmp(&root.slot) {
-            Less => {
-                let time_start = Instant::now();
-                let count = block(|| async {
-                    let query = "SELECT count(*) FROM events.update_slot WHERE slot = ? and status = 'Rooted'";
-                    self.client.query(query).bind(slot).fetch_one::<u64>().await
-                })?;
-                let execution_time = Instant::now().duration_since(time_start);
-                info!(
-                    "get_branch_slot sql(2) time: {} sec",
-                    execution_time.as_secs_f64()
-                );
-
-                if count == 0 {
-                    let err = clickhouse::error::Error::Custom(format!(
-                        "requested slot is not on working branch {}",
-                        slot
-                    ));
-                    Err(ChError::Db(err))
-                } else {
-                    Ok((slot, vec![]))
-                }
-            }
-            Equal => Ok((root.slot, vec![])),
+            Less | Equal =>  Ok((slot, vec![])),
             Greater => {
                 let mut branch: Vec<SlotParent> = vec![];
 

@@ -39,7 +39,7 @@ impl IndexerDb {
                 .query_one(
                     "SELECT S.sol_sig from solana_neon_transactions S, solana_blocks B \
                 where S.block_slot = B.block_slot \
-                and B.is_active =  true \
+                and B.is_active = true \
                 and S.neon_sig = $1",
                     &[&hex],
                 )
@@ -63,7 +63,7 @@ impl IndexerDb {
                 self.client.query_one(
                 "SELECT min(S.block_slot) from solana_neon_transactions S, solana_blocks B \
                 where S.block_slot = B.block_slot \
-                and B.is_active =  true \
+                and B.is_active = true \
                 and S.neon_sig = $1",
                 &[&hex]
             ).await
@@ -102,7 +102,7 @@ impl IndexerDb {
                         from neon_transactions as t, solana_blocks as b \
                         where t.block_slot = b.block_slot \
                             and b.is_active = TRUE \
-                            and (t.neon_sig = $1)"
+                            and t.neon_sig = $1"
                     ),
                     &[&hex],
                 )
@@ -113,7 +113,7 @@ impl IndexerDb {
     }
 
     pub fn get_block_transactions(&self, slot: u64) -> PgResult<Vec<TxParams>> {
-        let slot: i32 = slot
+        let slot: i64 = slot
             .try_into()
             .map_err(|e| PgError::Custom(format!("slot cast error: {e}")))?;
 
@@ -125,7 +125,7 @@ impl IndexerDb {
                     SELECT {TXPARAMS_FIELDS} \
                     FROM neon_transactions t \
                         INNER JOIN solana_blocks b ON t.block_slot = b.block_slot \
-                    WHERE b.is_active = TRUE AND (t.block_slot = $1) \
+                    WHERE b.is_active = TRUE AND t.block_slot = $1 \
                     ORDER BY tx_idx\
                 "
                     ),

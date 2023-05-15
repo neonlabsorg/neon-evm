@@ -31,10 +31,12 @@ use neon_cli::{
 };
 
 fn run(options: &ArgMatches) -> NeonCliResult {
+    let slot: Option<u64> = options.value_of("slot")
+        .map(|slot_str| slot_str.parse().expect("slot parse error"));
     let (cmd, params) = options.subcommand();
-    let config = config::create(options)?;
+    let config = config::create(options, &slot)?;
 
-    execute(cmd, params, &config)
+    execute(cmd, params, &config, slot)
 }
 
 fn print_result(result: &NeonCliResult) {
@@ -78,7 +80,7 @@ async fn main() {
 }
 
 #[allow(clippy::too_many_lines)]
-fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliResult {
+fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config, slot: Option<u64>) -> NeonCliResult {
     match (cmd, params) {
         ("emulate", Some(params)) => {
             let (tx, trace_call_config) = parse_tx(params);
@@ -149,10 +151,7 @@ fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config) -> NeonCliRe
             .map(|trace| json!(trace))
         }
         ("trace-block-by-slot", Some(params)) => {
-            let slot = params
-                .value_of("slot")
-                .expect("SLOT argument is not provided");
-            let slot: u64 = slot.parse().expect("slot parse error");
+            let slot = slot.expect("SLOT argument is not provided");
             let trace_block_params: Option<TraceBlockBySlotParams> = serde_json::from_reader(
                 std::io::BufReader::new(std::io::stdin()),
             )

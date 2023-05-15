@@ -43,7 +43,7 @@ impl Debug for Config {
 /// # Errors
 /// `EvmLoaderNotSpecified` - if `evm_loader` is not specified
 /// `KeypairNotSpecified` - if `signer` is not specified
-pub fn create(options: &ArgMatches) -> Result<Config, NeonCliError> {
+pub fn create(options: &ArgMatches, slot: &Option<u64>) -> Result<Config, NeonCliError> {
     let cli_config = options
         .value_of("config_file")
         .map_or_else(solana_cli_config::Config::default, |config_file| {
@@ -103,11 +103,10 @@ pub fn create(options: &ArgMatches) -> Result<Config, NeonCliError> {
             ))
         }
         _ => {
-            if let Some(slot) = options.value_of("slot") {
-                let slot: u64 = slot.parse().expect("slot parse error");
+            if let Some(slot) = slot {
                 Box::new(CallDbClient::new(
                     db_config.as_ref().expect("db-config not found"),
-                    slot,
+                    *slot,
                 ))
             } else {
                 Box::new(RpcClient::new_with_commitment(json_rpc_url, commitment))

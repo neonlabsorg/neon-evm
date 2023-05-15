@@ -77,7 +77,7 @@ impl IndexerDb {
         let row = block(|| async {
             self.client
                 .query_one(
-                    "SELECT block_slot FROM solana_blocks WHERE block_hash = $1 AND is_active",
+                    "SELECT block_slot FROM solana_blocks WHERE block_hash = $1 AND is_active = TRUE",
                     &[&hex],
                 )
                 .await
@@ -101,8 +101,8 @@ impl IndexerDb {
                         "select distinct {TXPARAMS_FIELDS} \
                         from neon_transactions as t, solana_blocks as b \
                         where t.block_slot = b.block_slot \
-                            and b.is_active \
-                            and t.neon_sig = $1"
+                            and b.is_active = TRUE \
+                            and (t.neon_sig = $1)"
                     ),
                     &[&hex],
                 )
@@ -125,7 +125,7 @@ impl IndexerDb {
                     SELECT {TXPARAMS_FIELDS} \
                     FROM neon_transactions t \
                         INNER JOIN solana_blocks b ON t.block_slot = b.block_slot \
-                    WHERE b.is_active AND t.block_slot = $1 \
+                    WHERE b.is_active = TRUE AND (t.block_slot = $1) \
                     ORDER BY tx_idx\
                 "
                     ),

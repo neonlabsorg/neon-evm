@@ -38,6 +38,7 @@ pub struct ClickHouseDb {
 pub struct SlotParent {
     pub slot: u64,
     pub parent: Option<u64>,
+    pub status: String,
 }
 
 #[derive(Row, serde::Deserialize, Clone)]
@@ -112,7 +113,7 @@ impl ClickHouseDb {
 
     fn get_branch_slots(&self, slot: u64) -> ChResult<(u64, Vec<u64>)> {
         let query = r#"
-            SELECT distinct on (slot) slot, parent FROM events.update_slot
+            SELECT distinct on (slot) slot, parent, status FROM events.update_slot
             WHERE slot >=
                 (
                     SELECT slot from events.update_slot WHERE status = 'Rooted' and slot <=
@@ -125,7 +126,13 @@ impl ClickHouseDb {
             ORDER BY slot DESC, status DESC
             "#;
         let time_start = Instant::now();
-        let rows = block(|| async { self.client.query(query).bind(ROOT_BLOCK_DELAY).fetch_all::<SlotParent>().await })?;
+        let rows = block(|| async {
+            self.client
+                .query(query)
+                .bind(ROOT_BLOCK_DELAY)
+                .fetch_all::<SlotParent>()
+                .await
+        })?;
         let execution_time = Instant::now().duration_since(time_start);
         info!(
             "get_branch_slot sql(1) time: {} sec",
@@ -138,11 +145,29 @@ impl ClickHouseDb {
         })?;
 
         match slot.cmp(&root.slot) {
-            Less | Equal =>  Ok((slot, vec![])),
+            Less | Equal => Ok((slot, vec![])),
             Greater => {
                 let mut branch: Vec<SlotParent> = vec![];
 
+                let mut parent_finalized: Option<u64> = None;
+
                 for row in rows {
+                    if parent_finalized.is_some() {
+                        if row.slot == parent_finalized.unwrap() {
+                            parent_finalized = row.parent;
+                        } else {
+                            if row.status == "Rooted" {
+                                let err = clickhouse::error::Error::Custom(
+                                    "There are several branchs with rooted slots".to_string(),
+                                );
+                                return Err(ChError::Db(err));
+                            }
+                            continue;
+                        }
+                    } else if row.status == "Rooted" {
+                        parent_finalized = row.parent;
+                    }
+
                     if branch.is_empty() {
                         if row.slot == slot {
                             branch.push(row.clone());

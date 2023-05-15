@@ -575,7 +575,8 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         info!("code {address}");
 
         self.ethereum_contract_map_or(address, Buffer::empty(), |c| {
-            self.state_overrides.as_ref()
+            self.state_overrides
+                .as_ref()
                 .and_then(|account_overrides| account_overrides.get(address)?.code.as_ref())
                 .map(|code| Buffer::new(&code.0))
                 .unwrap_or_else(|| Buffer::new(&c.code()))

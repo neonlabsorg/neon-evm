@@ -31,7 +31,8 @@ use neon_cli::{
 };
 
 fn run(options: &ArgMatches) -> NeonCliResult {
-    let slot: Option<u64> = options.value_of("slot")
+    let slot: Option<u64> = options
+        .value_of("slot")
         .map(|slot_str| slot_str.parse().expect("slot parse error"));
     let (cmd, params) = options.subcommand();
     let config = config::create(options, &slot)?;
@@ -80,7 +81,12 @@ async fn main() {
 }
 
 #[allow(clippy::too_many_lines)]
-fn execute(cmd: &str, params: Option<&ArgMatches>, config: &Config, slot: Option<u64>) -> NeonCliResult {
+fn execute(
+    cmd: &str,
+    params: Option<&ArgMatches>,
+    config: &Config,
+    slot: Option<u64>,
+) -> NeonCliResult {
     match (cmd, params) {
         ("emulate", Some(params)) => {
             let (tx, trace_call_config) = parse_tx(params);

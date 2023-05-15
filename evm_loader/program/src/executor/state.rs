@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-use ethnum::U256;
+use ethnum::{AsU256, U256};
 use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 
@@ -64,6 +64,8 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     }
 
     pub fn into_actions(self) -> Vec<Action> {
+        assert!(self.stack.is_empty());
+
         self.actions
     }
 
@@ -344,14 +346,28 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     fn block_hash(&self, number: U256) -> Result<[u8; 32]> {
-        let origin_block = self.cache.borrow().block_number;
-        let current_block = self.backend.block_number();
-        let offset = current_block.saturating_sub(origin_block);
+        // geth:
+        //  - checks the overflow
+        //  - converts to u64
+        //  - checks on last 256 blocks
 
-        let number = number.saturating_add(offset);
-        let block_hash = self.backend.block_hash(number);
+        if number >= u64::MAX.as_u256() {
+            return Ok(<[u8; 32]>::default());
+        }
 
-        Ok(block_hash)
+        let number = number.as_u64();
+        let block_slot = self.cache.borrow().block_number.as_u64();
+        let lower_block_slot = if block_slot < 257 {
+            0
+        } else {
+            block_slot - 256
+        };
+
+        if number >= block_slot || lower_block_slot > number {
+            return Ok(<[u8; 32]>::default());
+        }
+
+        Ok(self.backend.block_hash(number))
     }
 
     fn block_number(&self) -> Result<U256> {
@@ -364,13 +380,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(cache.block_timestamp)
     }
 
-    fn snapshot(&mut self) -> Result<()> {
+    fn snapshot(&mut self) {
         self.stack.push(self.actions.len());
-
-        Ok(())
     }
 
-    fn revert_snapshot(&mut self) -> Result<()> {
+    fn revert_snapshot(&mut self) {
         let actions_len = self
             .stack
             .pop()
@@ -378,15 +392,17 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
         self.actions.truncate(actions_len);
 
-        Ok(())
+        if self.stack.is_empty() {
+            // sanity check
+            assert_eq!(self.actions.len(), 1);
+            assert!(matches!(self.actions[0], Action::EvmIncrementNonce { .. }));
+        }
     }
 
-    fn commit_snapshot(&mut self) -> Result<()> {
+    fn commit_snapshot(&mut self) {
         self.stack
             .pop()
             .expect("Fatal Error: Inconsistent EVM Call Stack");
-
-        Ok(())
     }
 
     fn precompile_extension(

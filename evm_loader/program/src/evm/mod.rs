@@ -177,7 +177,7 @@ impl<B: Database> Machine<B> {
         sol_log_data(&[b"ENTER", b"CALL", target.as_bytes()]);
 
         backend.increment_nonce(origin)?;
-        backend.snapshot()?;
+        backend.snapshot();
 
         backend.transfer(origin, target, trx.value)?;
 
@@ -217,10 +217,10 @@ impl<B: Database> Machine<B> {
             return Err(Error::DeployToExistingAccount(target, origin));
         }
 
-        backend.increment_nonce(target)?;
         backend.increment_nonce(origin)?;
-        backend.snapshot()?;
+        backend.snapshot();
 
+        backend.increment_nonce(target)?;
         backend.transfer(origin, target, trx.value)?;
 
         Ok(Self {

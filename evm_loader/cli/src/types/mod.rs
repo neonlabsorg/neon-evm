@@ -141,7 +141,7 @@ pub struct TransactionHashParams {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TraceBlockBySlotParams {
+pub struct TraceNextBlockParams {
     pub trace_config: Option<TraceConfig>,
 }
 

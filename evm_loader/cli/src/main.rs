@@ -25,7 +25,7 @@ use neon_cli::{
     rpc::Rpc,
     types::{
         trace::{TraceCallConfig, TraceConfig},
-        IndexerDb, TraceBlockBySlotParams, TransactionHashParams, TransactionParams, TxParams,
+        IndexerDb, TraceNextBlockParams, TransactionHashParams, TransactionParams, TxParams,
     },
     NeonCliError, NeonCliResult,
 };
@@ -156,9 +156,9 @@ fn execute(
             )
             .map(|trace| json!(trace))
         }
-        ("trace-block-by-slot", Some(params)) => {
+        ("trace-next-block", Some(params)) => {
             let slot = slot.expect("SLOT argument is not provided");
-            let trace_block_params: Option<TraceBlockBySlotParams> = serde_json::from_reader(
+            let trace_block_params: Option<TraceNextBlockParams> = serde_json::from_reader(
                 std::io::BufReader::new(std::io::stdin()),
             )
             .unwrap_or_else(|err| {
@@ -170,7 +170,7 @@ fn execute(
             let (token, chain, steps, accounts, solana_accounts) = parse_tx_params(config, params);
             let indexer_db =
                 IndexerDb::new(config.db_config.as_ref().expect("db-config is required"));
-            let transactions = indexer_db.get_block_transactions(slot).map_err(|e| {
+            let transactions = indexer_db.get_block_transactions(slot + 1).map_err(|e| {
                 ClientError::from(ClientErrorKind::Custom(format!(
                     "get_block_transactions error: {e}"
                 )))

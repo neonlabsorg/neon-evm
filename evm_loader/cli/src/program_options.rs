@@ -302,22 +302,36 @@ pub fn parse<'a>() -> ArgMatches<'a> {
                 .help("Logging level"),
         )
         .subcommand(
-            trx_params("emulate", "Emulation transaction")
+            trx_params(
+                "emulate",
+                "Emulation transaction. Additional `TransactionParams` can be provided via STDIN as a JSON object.",
+            )
         )
         .subcommand(
-            trx_params("trace", "Emulation transaction to collecting traces")
+            trx_params(
+                "trace",
+                "Emulation transaction to collecting traces. Additional `TransactionParams` can be provided via STDIN as a JSON object.",
+            )
         )
         .subcommand(
-            trx_hash("emulate-hash", "emulate_hash", "Emulation transaction by hash")
+            trx_hash(
+                "emulate-hash",
+                "emulate_hash",
+                "Emulation transaction by hash. Additional `TransactionHashParams` can be provided via STDIN as a JSON object.",
+            )
         )
         .subcommand(
-            trx_hash("trace-hash", "trace_hash", "Emulation transaction by hash to collecting traces")
+            trx_hash(
+                "trace-hash",
+                "trace_hash",
+                "Emulation transaction by hash to collecting traces. Additional `TransactionHashParams` can be provided via STDIN as a JSON object.",
+            )
         )
         .subcommand(
-            SubCommand::with_name("trace-block-by-slot")
-                .about("Tracing all transactions in the block with a given block (slot) number. \
+            SubCommand::with_name("trace-next-block")
+                .about("Tracing all transactions in the block next to a given block (slot) number. \
                     For this command, SLOT argument is required. \
-                    Additional `TraceConfig` can be provided via STDIN in a JSON object.")
+                    Additional `TraceNextBlockParams` can be provided via STDIN as a JSON object.")
                 .arg(token_mint_arg())
                 .arg(chain_id_arg())
                 .arg(max_steps_arg())

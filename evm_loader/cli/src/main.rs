@@ -16,7 +16,6 @@ use clap::ArgMatches;
 pub use config::Config;
 
 use crate::errors::NeonCliError;
-use std::time::Instant;
 
 type NeonCliResult = Result<serde_json::Value, NeonCliError>;
 
@@ -51,8 +50,6 @@ fn print_result(result: &NeonCliResult) {
 
 #[tokio::main]
 async fn main() {
-    let time_start = Instant::now();
-
     let options = program_options::parse();
 
     logs::init(&options).expect("logs init error");
@@ -63,8 +60,6 @@ async fn main() {
 
     let result = run(&options);
 
-    let execution_time = Instant::now().duration_since(time_start);
-    log::info!("execution time: {} sec", execution_time.as_secs_f64());
     print_result(&result);
     if let Err(e) = result {
         std::process::exit(e.error_code());

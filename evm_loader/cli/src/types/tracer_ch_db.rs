@@ -55,8 +55,6 @@ impl ClickHouseDb {
     pub fn new(config: &ChDbConfig) -> Self {
         let url_id = rand::thread_rng().gen_range(0..config.clickhouse_url.len());
         let url = config.clickhouse_url.get(url_id).unwrap();
-        info!("clickhouse_url {:?}", &config.clickhouse_url);
-        info!("url {}", &url);
 
         let client = match (&config.clickhouse_user, &config.clickhouse_password) {
             (None, None | Some(_)) => Client::default().with_url(url),
@@ -72,7 +70,7 @@ impl ClickHouseDb {
         }
     }
 
-    // return valus is not used for tracer methods
+    // return value is not used for tracer methods
     pub fn get_block_time(&self, slot: Slot) -> ChResult<UnixTimestamp> {
         let time_start = Instant::now();
         let result = block(|| async {

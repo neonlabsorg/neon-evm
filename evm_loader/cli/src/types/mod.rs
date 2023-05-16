@@ -4,9 +4,7 @@ pub mod trace;
 mod tracer_ch_db;
 
 pub use indexer_db::IndexerDb;
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use tokio::runtime::Runtime;
 pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use {
@@ -14,7 +12,7 @@ use {
     evm_loader::types::Address,
     postgres::NoTls,
     thiserror::Error,
-    // tokio::task::block_in_place,
+    tokio::task::block_in_place,
     tokio_postgres::{connect, Client},
 };
 
@@ -71,16 +69,15 @@ pub fn do_connect(
     client
 }
 
-lazy_static! {
-    pub static ref RT: Runtime = tokio::runtime::Runtime::new().unwrap();
-}
-
 pub fn block<F, Fu, R>(f: F) -> R
 where
     F: FnOnce() -> Fu,
     Fu: std::future::Future<Output = R>,
 {
-    RT.block_on(f())
+    block_in_place(|| {
+        let handle = tokio::runtime::Handle::current();
+        handle.block_on(f())
+    })
 }
 
 #[derive(Error, Debug)]

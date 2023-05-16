@@ -2,10 +2,12 @@ mod indexer_db;
 #[allow(clippy::all)]
 pub mod trace;
 mod tracer_ch_db;
-mod tracer_pg_db;
 
 pub use indexer_db::IndexerDb;
-pub use tracer_pg_db::TracerDb;
+use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
+use tokio::runtime::Runtime;
+pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use {
     crate::errors::NeonCliError,
@@ -17,7 +19,7 @@ use {
     serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer},
     std::{fmt, ops::Deref},
     thiserror::Error,
-    tokio::task::block_in_place,
+    // tokio::task::block_in_place,
     tokio_postgres::{connect, Client},
 };
 
@@ -105,13 +107,11 @@ impl<'a> Visitor<'a> for BytesVisitor {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone)]
-pub struct DbConfig {
-    pub tracer_host: String,
-    pub tracer_port: String,
-    pub tracer_database: String,
-    pub tracer_user: String,
-    pub tracer_password: String,
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone, Default)]
+pub struct ChDbConfig {
+    pub clickhouse_url: Vec<String>,
+    pub clickhouse_user: Option<String>,
+    pub clickhouse_password: Option<String>,
     pub indexer_host: String,
     pub indexer_port: String,
     pub indexer_database: String,
@@ -119,7 +119,7 @@ pub struct DbConfig {
     pub indexer_password: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct TxParams {
     pub nonce: Option<u64>,
     pub from: Address,
@@ -175,15 +175,16 @@ pub fn do_connect(
     client
 }
 
+lazy_static! {
+    pub static ref RT: Runtime = tokio::runtime::Runtime::new().unwrap();
+}
+
 pub fn block<F, Fu, R>(f: F) -> R
 where
     F: FnOnce() -> Fu,
     Fu: std::future::Future<Output = R>,
 {
-    block_in_place(|| {
-        let handle = tokio::runtime::Handle::current();
-        handle.block_on(f())
-    })
+    RT.block_on(f())
 }
 
 #[derive(Error, Debug)]

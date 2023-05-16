@@ -6,6 +6,7 @@ mod program_options;
 
 use clap::ArgMatches;
 pub use config::Config;
+pub use context::Context;
 
 use ethnum::U256;
 use serde_json::json;
@@ -36,8 +37,9 @@ fn run(options: &ArgMatches) -> NeonCliResult {
         .map(|slot_str| slot_str.parse().expect("slot parse error"));
     let (cmd, params) = options.subcommand();
     let config = config::create(options, &slot)?;
+    let context = context::create_from_config_and_options(options, &config)?;
 
-    execute(cmd, params, &config, slot)
+    execute(cmd, params, &config, &context, slot)
 }
 
 fn print_result(result: &NeonCliResult) {
@@ -64,6 +66,8 @@ fn print_result(result: &NeonCliResult) {
 
 #[tokio::main]
 async fn main() {
+    let time_start = Instant::now();
+
     let options = program_options::parse();
 
     logs::init(&options).expect("logs init error");
@@ -74,6 +78,8 @@ async fn main() {
 
     let result = run(&options);
 
+    let execution_time = Instant::now().duration_since(time_start);
+    log::info!("execution time: {} sec", execution_time.as_secs_f64());
     print_result(&result);
     if let Err(e) = result {
         std::process::exit(e.error_code());

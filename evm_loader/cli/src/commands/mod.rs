@@ -10,7 +10,7 @@ pub mod init_environment;
 pub mod trace;
 mod transaction_executor;
 
-use crate::Config;
+use crate::rpc::Rpc;
 use solana_client::{
     client_error::Result as SolanaClientResult, rpc_config::RpcSendTransactionConfig,
 };
@@ -19,22 +19,24 @@ use solana_sdk::{
     instruction::Instruction,
     message::Message,
     signature::Signature,
+    signer::Signer,
     transaction::Transaction,
 };
 
 pub fn send_transaction(
-    config: &Config,
+    rpc_client: &dyn Rpc,
+    signer: &dyn Signer,
     instructions: &[Instruction],
 ) -> SolanaClientResult<Signature> {
-    let message = Message::new(instructions, Some(&config.signer.pubkey()));
+    let message = Message::new(instructions, Some(&context.signer.pubkey()));
     let mut transaction = Transaction::new_unsigned(message);
-    let signers = [&*config.signer];
-    let (blockhash, _last_valid_slot) = config
+    let signers = [&*context.signer];
+    let (blockhash, _last_valid_slot) = context
         .rpc_client
         .get_latest_blockhash_with_commitment(CommitmentConfig::confirmed())?;
     transaction.try_sign(&signers, blockhash)?;
 
-    config
+    context
         .rpc_client
         .send_and_confirm_transaction_with_spinner_and_config(
             &transaction,

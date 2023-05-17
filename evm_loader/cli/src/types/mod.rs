@@ -6,7 +6,7 @@ mod tracer_ch_db;
 pub use indexer_db::IndexerDb;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use tokio::{runtime::Runtime, task::block_in_place};
+use tokio::runtime::Runtime;
 pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use {

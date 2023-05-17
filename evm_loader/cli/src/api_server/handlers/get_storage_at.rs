@@ -3,6 +3,7 @@ use crate::{
     context,
 };
 use evm_loader::types::Address;
+use serde_json::json;
 use tide::{Request, Result};
 
 use crate::commands::get_storage_at as GetStorageAtCommand;
@@ -39,10 +40,13 @@ pub async fn get_storage_at(req: Request<State>) -> Result<serde_json::Value> {
 
     let context = context::create(rpc_client, signer);
 
-    process_result(&GetStorageAtCommand::execute(
-        &state.config,
-        &context,
-        address,
-        &index,
-    ))
+    process_result(
+        &GetStorageAtCommand::execute(
+            context.rpc_client.as_ref(),
+            &state.config.evm_loader,
+            address,
+            &index,
+        )
+        .map(|hash| json!(hex::encode(hash))),
+    )
 }

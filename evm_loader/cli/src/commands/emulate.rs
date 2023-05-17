@@ -170,42 +170,6 @@ pub(crate) fn emulate_trx(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn emulate_block<'a>(
-    rpc_client: &'a dyn Rpc,
-    evm_loader: Pubkey,
-    token_mint: Pubkey,
-    chain_id: u64,
-    step_limit: u64,
-    commitment: CommitmentConfig,
-    accounts: &[Address],
-    solana_accounts: &[Pubkey],
-    trace_call_config: TraceCallConfig,
-    transactions: Vec<TxParams>,
-) -> Result<(Vec<EmulationResult>, EmulatorAccountStorage<'a>), NeonCliError> {
-    setup_syscall_stubs(rpc_client)?;
-
-    let storage = EmulatorAccountStorage::with_accounts(
-        rpc_client,
-        evm_loader,
-        token_mint,
-        chain_id,
-        commitment,
-        accounts,
-        solana_accounts,
-        trace_call_config.block_overrides,
-        trace_call_config.state_overrides,
-    );
-
-    let mut results = vec![];
-    for tx_params in transactions {
-        let result = emulate_trx(tx_params, &storage, chain_id, step_limit)?;
-        results.push(result);
-    }
-
-    Ok((results, storage))
-}
-
 pub(crate) fn setup_syscall_stubs(rpc_client: &dyn Rpc) -> Result<(), NeonCliError> {
     let syscall_stubs = Stubs::new(rpc_client)?;
     solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);

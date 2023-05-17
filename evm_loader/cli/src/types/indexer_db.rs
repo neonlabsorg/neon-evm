@@ -72,6 +72,7 @@ impl IndexerDb {
         u64::try_from(slot).map_err(|e| PgError::Custom(format!("slot cast error: {e}")))
     }
 
+    #[allow(unused)]
     pub fn get_slot_by_block_hash(&self, block_hash: &[u8; 32]) -> PgResult<u64> {
         let hex = format!("0x{}", hex::encode(block_hash));
         let row = block(|| async {

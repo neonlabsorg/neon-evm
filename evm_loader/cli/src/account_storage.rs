@@ -1,6 +1,9 @@
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc, str::FromStr};
 
-use crate::{rpc::Rpc, AccountOverrides, BlockOverrides};
+use crate::{
+    rpc::Rpc,
+    types::trace::{AccountOverrides, BlockOverrides},
+};
 use ethnum::U256;
 use evm_loader::account::ether_contract;
 use evm_loader::account_storage::{find_slot_hash, AccountOperation, AccountsOperations};

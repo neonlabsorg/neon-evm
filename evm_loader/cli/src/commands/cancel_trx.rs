@@ -45,7 +45,11 @@ pub fn execute(config: &Config, context: &Context, storage_account: &Pubkey) -> 
 
     let instructions = vec![cancel_with_nonce_instruction];
 
-    let signature = send_transaction(context, &instructions)?;
+    let signature = send_transaction(
+        context.rpc_client.as_ref(),
+        context.signer.as_ref(),
+        &instructions,
+    )?;
 
     Ok(serde_json::json!({ "transaction": signature }))
 }

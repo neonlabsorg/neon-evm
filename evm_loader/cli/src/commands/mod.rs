@@ -28,22 +28,19 @@ pub fn send_transaction(
     signer: &dyn Signer,
     instructions: &[Instruction],
 ) -> SolanaClientResult<Signature> {
-    let message = Message::new(instructions, Some(&context.signer.pubkey()));
+    let message = Message::new(instructions, Some(&signer.pubkey()));
     let mut transaction = Transaction::new_unsigned(message);
-    let signers = [&*context.signer];
-    let (blockhash, _last_valid_slot) = context
-        .rpc_client
-        .get_latest_blockhash_with_commitment(CommitmentConfig::confirmed())?;
+    let signers = [signer];
+    let (blockhash, _last_valid_slot) =
+        rpc_client.get_latest_blockhash_with_commitment(CommitmentConfig::confirmed())?;
     transaction.try_sign(&signers, blockhash)?;
 
-    context
-        .rpc_client
-        .send_and_confirm_transaction_with_spinner_and_config(
-            &transaction,
-            CommitmentConfig::confirmed(),
-            RpcSendTransactionConfig {
-                preflight_commitment: Some(CommitmentLevel::Confirmed),
-                ..RpcSendTransactionConfig::default()
-            },
-        )
+    rpc_client.send_and_confirm_transaction_with_spinner_and_config(
+        &transaction,
+        CommitmentConfig::confirmed(),
+        RpcSendTransactionConfig {
+            preflight_commitment: Some(CommitmentLevel::Confirmed),
+            ..RpcSendTransactionConfig::default()
+        },
+    )
 }

@@ -5,12 +5,10 @@ mod tracer_ch_db;
 
 pub use indexer_db::IndexerDb;
 use lazy_static::lazy_static;
-use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use {
-    crate::errors::NeonCliError,
     crate::types::trace::{TraceCallConfig, TraceConfig},
     ethnum::U256,
     evm_loader::types::Address,
@@ -23,7 +21,6 @@ use {
     tokio_postgres::{connect, Client},
 };
 
-pub type NeonCliResult = Result<serde_json::Value, NeonCliError>;
 /// Wrapper structure around vector of bytes.
 #[derive(Debug, PartialEq, Eq, Default, Hash, Clone)]
 pub struct Bytes(pub Vec<u8>);

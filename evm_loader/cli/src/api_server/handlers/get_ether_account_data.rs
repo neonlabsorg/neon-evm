@@ -34,8 +34,8 @@ pub async fn get_ether_account_data(req: Request<State>) -> Result<serde_json::V
     let context = context::create(rpc_client, signer);
 
     process_result(&GetEtherAccountDataCommand::execute(
-        &state.config,
-        &context,
+        context.rpc_client.as_ref(),
+        &state.config.evm_loader,
         &address,
     ))
 }

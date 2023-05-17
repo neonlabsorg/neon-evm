@@ -1,4 +1,4 @@
 pub mod handlers;
-pub mod request_models;
+pub(crate) mod request_models;
 pub mod routes;
 pub mod state;

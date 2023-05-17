@@ -2,7 +2,7 @@ use ethnum::U256;
 use evm_loader::types::Address;
 use solana_sdk::pubkey::Pubkey;
 
-use crate::api_server::request_models::TxParamsRequest;
+use crate::api_server::request_models::{EmulationParamsRequestModel, TxParamsRequestModel};
 use crate::commands::get_neon_elf::CachedElfParams;
 use crate::types::TxParams;
 use crate::{Config, Context, NeonCliResult};
@@ -15,6 +15,7 @@ pub mod get_ether_account_data;
 pub mod get_storage_at;
 pub mod trace;
 pub mod trace_hash;
+pub mod trace_next_block;
 
 pub fn u256_of(index: &str) -> Option<U256> {
     if index.is_empty() {
@@ -24,7 +25,7 @@ pub fn u256_of(index: &str) -> Option<U256> {
     U256::from_str_prefixed(index).map(Some).unwrap_or(None)
 }
 
-pub(crate) fn parse_tx(model: &TxParamsRequest) -> TxParams {
+pub(crate) fn parse_tx(model: &TxParamsRequestModel) -> TxParams {
     let from = model.sender;
     let to = match Address::from_hex(model.contract.clone().unwrap_or_default().as_str()) {
         Ok(address) => Some(address),
@@ -43,6 +44,7 @@ pub(crate) fn parse_tx(model: &TxParamsRequest) -> TxParams {
         .unwrap_or_default();
 
     TxParams {
+        nonce: None,
         from,
         to,
         data,
@@ -51,10 +53,10 @@ pub(crate) fn parse_tx(model: &TxParamsRequest) -> TxParams {
     }
 }
 
-pub(crate) fn parse_tx_params(
+pub(crate) fn parse_emulation_params(
     config: &Config,
     context: &Context,
-    params: &TxParamsRequest,
+    params: &EmulationParamsRequestModel,
 ) -> (Pubkey, u64, u64, Vec<Address>, Vec<Pubkey>) {
     // Read ELF params only if token_mint or chain_id is not set.
     let mut token: Option<Pubkey> =
@@ -86,9 +88,7 @@ pub(crate) fn parse_tx_params(
     }
     let token = token.expect("token_mint get error");
     let chain = chain.expect("chain_id get error");
-    let max_steps = params
-        .max_steps_to_execute
-        .expect("max_steps_to_execute parse error");
+    let max_steps = params.max_steps_to_execute;
 
     let accounts = params.cached_accounts.clone().unwrap_or_default();
 

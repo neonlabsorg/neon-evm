@@ -1,5 +1,5 @@
 use crate::{
-    program_options::truncate,
+    program_options::truncate_0x,
     rpc,
     rpc::{CallDbClient, TrxDbClient},
     Config, NeonCliError,
@@ -24,15 +24,14 @@ pub fn create(rpc_client: Box<dyn rpc::Rpc>, signer: Box<dyn Signer>) -> Context
 pub fn create_from_config_and_options(
     options: &ArgMatches,
     config: &Config,
+    slot: &Option<u64>,
 ) -> Result<Context, NeonCliError> {
     let (cmd, params) = options.subcommand();
-
-    let slot = options.value_of("slot");
 
     let rpc_client: Box<dyn rpc::Rpc> = match (cmd, params) {
         ("emulate_hash" | "trace_hash", Some(params)) => {
             let hash = params.value_of("hash").expect("hash not found");
-            let hash = <[u8; 32]>::from_hex(truncate(hash)).expect("hash cast error");
+            let hash = <[u8; 32]>::from_hex(truncate_0x(hash)).expect("hash cast error");
 
             Box::new(TrxDbClient::new(
                 config.db_config.as_ref().expect("db-config not found"),
@@ -41,10 +40,9 @@ pub fn create_from_config_and_options(
         }
         _ => {
             if let Some(slot) = slot {
-                let slot = slot.parse().expect("incorrect slot");
                 Box::new(CallDbClient::new(
                     config.db_config.as_ref().expect("db-config not found"),
-                    slot,
+                    *slot,
                 ))
             } else {
                 Box::new(RpcClient::new_with_commitment(
@@ -87,7 +85,7 @@ pub fn build_hash_rpc_client(
     config: &Config,
     hash: &str,
 ) -> Result<Box<dyn rpc::Rpc>, NeonCliError> {
-    let hash = <[u8; 32]>::from_hex(truncate(hash))?;
+    let hash = <[u8; 32]>::from_hex(truncate_0x(hash))?;
 
     Ok(Box::new(TrxDbClient::new(
         config.db_config.as_ref().expect("db-config not found"),

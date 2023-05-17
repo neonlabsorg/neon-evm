@@ -9,7 +9,6 @@ mod config;
 mod context;
 mod errors;
 mod event_listener;
-mod logs;
 mod program_options;
 mod rpc;
 mod syscall_stubs;

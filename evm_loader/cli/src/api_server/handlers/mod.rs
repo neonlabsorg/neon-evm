@@ -105,31 +105,7 @@ pub(crate) fn parse_tx_params(
     (token, chain, max_steps, accounts, solana_accounts)
 }
 
-fn print_result(result: &NeonCliResult) {
-    let logs = {
-        let context = crate::logs::CONTEXT.lock().unwrap();
-        context.clone()
-    };
-
-    let result = match result {
-        Ok(value) => serde_json::json!({
-            "result": "success",
-            "value": value,
-            "logs": logs
-        }),
-        Err(e) => serde_json::json!({
-            "result": "error",
-            "error": e.to_string(),
-            "logs": logs
-        }),
-    };
-
-    println!("{}", serde_json::to_string_pretty(&result).unwrap());
-}
-
 fn process_result(result: &NeonCliResult) -> tide::Result<serde_json::Value> {
-    print_result(&result);
-
     match result {
         Ok(value) => Ok(serde_json::json!({
             "result": "success",

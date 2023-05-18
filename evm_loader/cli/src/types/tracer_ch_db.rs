@@ -177,7 +177,7 @@ impl ClickHouseDb {
                       ORDER BY a.pubkey, a.slot DESC
                       LIMIT 1000))
               AND (b.status = 'Rooted')
-            ORDER BY b.slot
+            ORDER BY b.slot DESC
             LIMIT 1
         "#;
 

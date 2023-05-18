@@ -45,8 +45,6 @@ pub struct EmulateRequestModel {
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct EmulateHashRequestModel {
     #[serde(flatten)]
-    pub tx_params: TxParamsRequestModel,
-    #[serde(flatten)]
     pub emulation_params: EmulationParamsRequestModel,
     pub hash: String,
 }

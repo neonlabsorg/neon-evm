@@ -1,4 +1,5 @@
 mod indexer_db;
+pub mod request_models;
 #[allow(clippy::all)]
 pub mod trace;
 mod tracer_ch_db;

@@ -1,12 +1,8 @@
-use crate::{
-    api_server::{request_models, state::State},
-    context,
-};
+use crate::{api_server::state::State, context, types::request_models::GetEtherRequest};
 use evm_loader::types::Address;
 use tide::{Request, Result};
 
 use crate::commands::get_ether_account_data as GetEtherAccountDataCommand;
-use request_models::GetEtherRequest;
 
 use super::process_result;
 

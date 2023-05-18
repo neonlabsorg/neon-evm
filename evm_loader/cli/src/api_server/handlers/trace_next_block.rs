@@ -2,13 +2,13 @@ use serde_json::json;
 use tide::{Request, Result};
 
 use crate::{
-    api_server::{request_models::TraceNextBlockParamsRequest, state::State},
+    api_server::state::State,
     commands::trace::trace_block,
     context,
+    types::{request_models::TraceNextBlockParamsRequest, IndexerDb},
 };
 
 use super::{parse_emulation_params, process_result};
-use crate::types::IndexerDb;
 
 #[allow(clippy::unused_async)]
 pub async fn trace_next_block(mut req: Request<State>) -> Result<serde_json::Value> {

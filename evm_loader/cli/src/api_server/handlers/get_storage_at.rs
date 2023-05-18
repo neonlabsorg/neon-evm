@@ -1,7 +1,4 @@
-use crate::{
-    api_server::{request_models::GetStorageAtRequest, state::State},
-    context,
-};
+use crate::{api_server::state::State, context, types::request_models::GetStorageAtRequest};
 use evm_loader::types::Address;
 use serde_json::json;
 use tide::{Request, Result};

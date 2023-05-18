@@ -1,8 +1,10 @@
 use serde_json::json;
 use tide::{Request, Result};
 
-use crate::api_server::request_models::TraceHashRequestModel;
-use crate::{api_server::state::State, commands::trace::trace_transaction, context};
+use crate::{
+    api_server::state::State, commands::trace::trace_transaction, context,
+    types::request_models::TraceHashRequestModel,
+};
 
 use super::{parse_emulation_params, process_result};
 

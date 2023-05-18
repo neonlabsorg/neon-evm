@@ -2,10 +2,10 @@ use serde_json::json;
 use tide::{Request, Result};
 
 use crate::{
-    api_server::{request_models::EmulateRequestModel, state::State},
+    api_server::state::State,
     commands::emulate as EmulateCommand,
     context,
-    types::trace::TraceCallConfig,
+    types::{request_models::EmulateRequestModel, trace::TraceCallConfig},
 };
 
 use super::{parse_emulation_params, parse_tx, process_result};

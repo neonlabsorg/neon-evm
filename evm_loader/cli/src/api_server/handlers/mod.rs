@@ -2,9 +2,11 @@ use ethnum::U256;
 use evm_loader::types::Address;
 use solana_sdk::pubkey::Pubkey;
 
-use crate::api_server::request_models::{EmulationParamsRequestModel, TxParamsRequestModel};
 use crate::commands::get_neon_elf::CachedElfParams;
-use crate::types::TxParams;
+use crate::types::{
+    request_models::{EmulationParamsRequestModel, TxParamsRequestModel},
+    TxParams,
+};
 use crate::{Config, Context, NeonCliResult};
 
 use std::str::FromStr;

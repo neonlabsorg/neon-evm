@@ -73,7 +73,7 @@ async fn main() -> tide::Result<()> {
             |_| env::var("NEON_API_LISTENER_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_owned()),
         );
 
-    println!("API Server will be started on {}", listener_addr);
+    println!("API Server will be started on {listener_addr}");
 
     app.listen(listener_addr).await?;
 

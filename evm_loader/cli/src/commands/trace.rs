@@ -13,7 +13,7 @@ use evm_loader::types::Address;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
 #[allow(clippy::too_many_arguments)]
-pub fn trace_transaction(
+pub(crate) fn trace_transaction(
     rpc_client: &dyn Rpc,
     evm_loader: Pubkey,
     tx: TxParams,
@@ -54,7 +54,7 @@ pub fn trace_transaction(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn trace_block(
+pub(crate) fn trace_block(
     rpc_client: &dyn Rpc,
     evm_loader: Pubkey,
     transactions: Vec<TxParams>,
@@ -64,7 +64,7 @@ pub fn trace_block(
     commitment: CommitmentConfig,
     accounts: &[Address],
     solana_accounts: &[Pubkey],
-    trace_config: TraceConfig,
+    trace_config: &TraceConfig,
 ) -> Result<Vec<TracedCall>, NeonCliError> {
     setup_syscall_stubs(rpc_client)?;
 
@@ -76,13 +76,13 @@ pub fn trace_block(
         commitment,
         accounts,
         solana_accounts,
-        None,
+        &None,
         None,
     );
 
     let mut results = vec![];
     for tx_params in transactions {
-        let result = trace_trx(tx_params, &storage, chain_id, steps, trace_config.clone())?;
+        let result = trace_trx(tx_params, &storage, chain_id, steps, trace_config)?;
         results.push(result);
     }
 
@@ -94,7 +94,7 @@ fn trace_trx(
     storage: &EmulatorAccountStorage,
     chain_id: u64,
     steps: u64,
-    trace_config: TraceConfig,
+    trace_config: &TraceConfig,
 ) -> Result<TracedCall, NeonCliError> {
     let mut tracer = Tracer::new(trace_config.enable_return_data);
 

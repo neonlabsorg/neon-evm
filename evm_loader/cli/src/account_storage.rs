@@ -121,7 +121,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         token_mint: Pubkey,
         chain_id: u64,
         commitment: CommitmentConfig,
-        block_overrides: Option<BlockOverrides>,
+        block_overrides: &Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
     ) -> Self {
         trace!("backend::new");
@@ -159,7 +159,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         commitment: CommitmentConfig,
         accounts: &[Address],
         solana_accounts: &[Pubkey],
-        block_overrides: Option<BlockOverrides>,
+        block_overrides: &Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
     ) -> Self {
         let storage = Self::new(
@@ -548,8 +548,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             self.state_overrides
                 .as_ref()
                 .and_then(|account_overrides| account_overrides.get(address)?.code.as_ref())
-                .map(|code| Buffer::new(&code.0))
-                .unwrap_or_else(|| Buffer::new(&c.code()))
+                .map_or_else(|| Buffer::new(&c.code()), |code| Buffer::new(&code.0))
         })
     }
 

@@ -90,7 +90,7 @@ impl<'a> Visitor<'a> for BytesVisitor {
     {
         if value.len() >= 2 && value.starts_with("0x") && value.len() & 1 == 0 {
             Ok(Bytes::new(FromHex::from_hex(&value[2..]).map_err(|e| {
-                serde::de::Error::custom(format!("Invalid hex: {}", e))
+                serde::de::Error::custom(format!("Invalid hex: {e}"))
             })?))
         } else {
             Err(serde::de::Error::custom(

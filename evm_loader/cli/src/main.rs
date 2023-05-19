@@ -208,7 +208,7 @@ fn execute(
                 config.commitment,
                 &accounts,
                 &solana_accounts,
-                trace_config,
+                &trace_config,
             )
             .map(|traces| json!(traces))
         }

@@ -82,7 +82,7 @@ pub fn execute(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn emulate_transaction<'a>(
+pub(crate) fn emulate_transaction<'a>(
     rpc_client: &'a dyn Rpc,
     evm_loader: Pubkey,
     tx_params: TxParams,
@@ -104,7 +104,7 @@ pub fn emulate_transaction<'a>(
         commitment,
         accounts,
         solana_accounts,
-        trace_call_config.block_overrides,
+        &trace_call_config.block_overrides,
         trace_call_config.state_overrides,
     );
 

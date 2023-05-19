@@ -68,7 +68,7 @@ pub async fn trace_next_block(mut req: Request<State>) -> Result<serde_json::Val
             state.config.commitment,
             &accounts,
             &solana_accounts,
-            trace_next_block_request.trace_config.unwrap_or_default(),
+            &trace_next_block_request.trace_config.unwrap_or_default(),
         )
         .map(|result| json!(result)),
     )

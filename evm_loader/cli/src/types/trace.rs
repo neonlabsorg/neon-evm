@@ -269,6 +269,7 @@ impl AccountOverride {
         if let Some(balance) = self.balance {
             ether_account.balance = U256::from(balance);
         }
+        #[allow(clippy::cast_possible_truncation)]
         if let Some(code) = &self.code {
             ether_account.code_size = code.len() as u32;
         }
@@ -279,6 +280,7 @@ pub type AccountOverrides = HashMap<Address, AccountOverride>;
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::module_name_repetitions, clippy::struct_excessive_bools)]
 pub struct TraceConfig {
     #[serde(default)]
     pub enable_memory: bool,
@@ -294,6 +296,7 @@ pub struct TraceConfig {
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::module_name_repetitions)]
 pub struct TraceCallConfig {
     #[serde(flatten)]
     pub trace_config: TraceConfig,

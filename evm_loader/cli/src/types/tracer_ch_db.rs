@@ -177,8 +177,7 @@ impl ClickHouseDb {
 
                 if branch.is_empty() {
                     let err = clickhouse::error::Error::Custom(format!(
-                        "requested slot not found {}",
-                        slot
+                        "requested slot not found {slot}",
                     ));
                     Err(ChError::Db(err))
                 } else if branch.last().unwrap().parent.unwrap() == root.slot {
@@ -186,8 +185,7 @@ impl ClickHouseDb {
                     Ok((root.slot, branch))
                 } else {
                     let err = clickhouse::error::Error::Custom(format!(
-                        "requested slot is not on working branch {}",
-                        slot
+                        "requested slot is not on working branch {slot}",
                     ));
                     Err(ChError::Db(err))
                 }
@@ -198,7 +196,7 @@ impl ClickHouseDb {
     #[allow(clippy::too_many_lines)]
     pub fn get_account_at(&self, key: &Pubkey, slot: u64) -> ChResult<Option<Account>> {
         let (root, branch) = self.get_branch_slots(slot).map_err(|e| {
-            println!("get_branch_slots error: {:?}", e);
+            println!("get_branch_slots error: {e:?}");
             e
         })?;
 
@@ -209,7 +207,7 @@ impl ClickHouseDb {
         } else {
             let mut slots = format!("toUInt64({})", branch.first().unwrap());
             for slot in &branch[1..] {
-                slots = format!("{}, toUInt64({})", slots, slot);
+                slots = format!("{slots}, toUInt64({slot})");
             }
 
             let time_start = Instant::now();
@@ -220,11 +218,10 @@ impl ClickHouseDb {
                     FROM events.update_account_distributed
                     WHERE
                         pubkey = ?
-                        AND slot IN (SELECT arrayJoin([{}]))
+                        AND slot IN (SELECT arrayJoin([{slots}]))
                     ORDER BY pubkey DESC, slot DESC, write_version DESC
                     LIMIT 1
                     "#,
-                    slots
                 );
                 self.client
                     .query(query.as_str())
@@ -242,7 +239,7 @@ impl ClickHouseDb {
                 Ok(row) => Some(row),
                 Err(clickhouse::error::Error::RowNotFound) => None,
                 Err(e) => {
-                    println!("get_account_at error: {}", e);
+                    println!("get_account_at error: {e}");
                     return Err(ChError::Db(e));
                 }
             }
@@ -286,7 +283,7 @@ impl ClickHouseDb {
                 Ok(row) => Some(row),
                 Err(clickhouse::error::Error::RowNotFound) => None,
                 Err(e) => {
-                    println!("get_account_at error: {}", e);
+                    println!("get_account_at error: {e}");
                     return Err(ChError::Db(e));
                 }
             };
@@ -317,7 +314,7 @@ impl ClickHouseDb {
                 Ok(row) => Some(row),
                 Err(clickhouse::error::Error::RowNotFound) => None,
                 Err(e) => {
-                    println!("get_account_at error: {}", e);
+                    println!("get_account_at error: {e}");
                     return Err(ChError::Db(e));
                 }
             };
@@ -325,11 +322,9 @@ impl ClickHouseDb {
 
         if let Some(acc) = row {
             let owner = Pubkey::try_from(acc.owner).map_err(|_| {
-                let err = clickhouse::error::Error::Custom(format!(
-                    "error convert owner of key: {}",
-                    key
-                ));
-                println!("get_account_at error: {}", err);
+                let err =
+                    clickhouse::error::Error::Custom(format!("error convert owner of key: {key}",));
+                println!("get_account_at error: {err}");
                 ChError::Db(err)
             })?;
 

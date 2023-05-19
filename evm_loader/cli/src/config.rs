@@ -31,6 +31,7 @@ pub struct Config {
 /// # Errors
 /// `EvmLoaderNotSpecified` - if `evm_loader` is not specified
 /// `KeypairNotSpecified` - if `signer` is not specified
+#[allow(clippy::manual_let_else)] // Remove and fix, when Rust on CI is updated
 pub fn create(options: &ArgMatches) -> Result<Config, NeonCliError> {
     let solana_cli_config = options
         .value_of("config_file")
@@ -47,7 +48,9 @@ pub fn create(options: &ArgMatches) -> Result<Config, NeonCliError> {
             .unwrap_or(&solana_cli_config.json_rpc_url),
     );
 
-    let Some(evm_loader) = pubkey_of(options, "evm_loader") else {
+    let evm_loader = if let Some(value) = pubkey_of(options, "evm_loader") {
+        value
+    } else {
         return Err(NeonCliError::EvmLoaderNotSpecified);
     };
 

@@ -1,39 +1,25 @@
-use tide::{Request, Result};
+use axum::{http::StatusCode, Json};
 
-use crate::{api_server::state::State, context, types::request_models::TraceRequestModel};
+use crate::{api_server::request_models::TxParamsRequest, context, NeonApiState};
 
-use super::{parse_emulation_params, process_result};
+use super::{parse_emulation_params, process_error, process_result};
 
 #[allow(clippy::unused_async)]
-pub async fn trace(mut req: Request<State>) -> Result<serde_json::Value> {
-    let trace_request: TraceRequestModel = req.body_json().await.map_err(|e| {
-        tide::Error::from_str(
-            400,
-            format!(
-                "Error on parsing transaction parameters request: {:?}",
-                e.to_string()
-            ),
-        )
-    })?;
+pub async fn trace(
+    axum::extract::State(state): axum::extract::State<NeonApiState>,
+    Json(tx_params_request): Json<TraceRequestModel>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let tx: crate::types::TxParams = parse_tx(&tx_params_request);
 
-    let state = req.state();
+    let signer = match context::build_singer(&state.config) {
+        Ok(singer) => singer,
+        Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
+    };
 
-    let tx = trace_request.emulate_request.tx_params.into();
-
-    let signer = context::build_singer(&state.config).map_err(|e| {
-        tide::Error::from_str(
-            400,
-            format!("Error on creating singer: {:?}", e.to_string()),
-        )
-    })?;
-
-    let rpc_client = context::build_rpc_client(&state.config, trace_request.emulate_request.slot)
-        .map_err(|e| {
-        tide::Error::from_str(
-            400,
-            format!("Error on creating rpc client: {:?}", e.to_string()),
-        )
-    })?;
+    let rpc_client = match context::build_rpc_client(&state.config, tx_params_request.slot) {
+        Ok(rpc_client) => rpc_client,
+        Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
+    };
 
     let context = context::create(rpc_client, signer);
 

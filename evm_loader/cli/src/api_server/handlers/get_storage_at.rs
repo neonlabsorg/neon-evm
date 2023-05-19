@@ -1,16 +1,20 @@
-use crate::{api_server::state::State, context, types::request_models::GetStorageAtRequest};
-use tide::{Request, Result};
+use crate::{api_server::request_models::GetStorageAtRequest, context, NeonApiState};
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    Json,
+};
+use evm_loader::types::Address;
 
 use crate::commands::get_storage_at as GetStorageAtCommand;
 
-use super::process_result;
+use super::{process_error, process_result};
 
 #[allow(clippy::unused_async)]
-pub async fn get_storage_at(req: Request<State>) -> Result<serde_json::Value> {
-    let state = req.state();
-
-    let req_params: GetStorageAtRequest = req.query().unwrap_or_default();
-
+pub async fn get_storage_at(
+    Query(req_params): Query<GetStorageAtRequest>,
+    State(state): State<NeonApiState>,
+) -> (StatusCode, Json<serde_json::Value>) {
     let signer = context::build_singer(&state.config).map_err(|e| {
         tide::Error::from_str(
             400,
@@ -18,12 +22,10 @@ pub async fn get_storage_at(req: Request<State>) -> Result<serde_json::Value> {
         )
     })?;
 
-    let rpc_client = context::build_rpc_client(&state.config, req_params.slot).map_err(|e| {
-        tide::Error::from_str(
-            400,
-            format!("Error on creating rpc client: {:?}", e.to_string()),
-        )
-    })?;
+    let rpc_client = match context::build_rpc_client(&state.config, req_params.slot) {
+        Ok(rpc_client) => rpc_client,
+        Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
+    };
 
     let context = context::create(rpc_client, signer);
 

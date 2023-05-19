@@ -31,7 +31,6 @@ pub struct Config {
 /// # Errors
 /// `EvmLoaderNotSpecified` - if `evm_loader` is not specified
 /// `KeypairNotSpecified` - if `signer` is not specified
-#[allow(clippy::manual_let_else)] // Remove and fix, when Rust on CI is updated
 pub fn create(options: &ArgMatches) -> Result<Config, NeonCliError> {
     let solana_cli_config = options
         .value_of("config_file")

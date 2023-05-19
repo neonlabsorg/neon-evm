@@ -4,7 +4,6 @@ use solana_program::keccak;
 use solana_program::secp256k1_recover::secp256k1_recover;
 
 #[must_use]
-#[allow(clippy::manual_let_else)] // Remove and fix, when Rust on CI is updated
 pub fn ecrecover(input: &[u8]) -> Vec<u8> {
     debug_print!("ecrecover");
 

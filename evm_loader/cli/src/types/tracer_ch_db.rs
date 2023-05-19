@@ -38,7 +38,7 @@ pub struct ClickHouseDb {
 pub struct SlotParent {
     pub slot: u64,
     pub parent: Option<u64>,
-    pub status: String,
+    pub status: u8,
 }
 
 #[derive(Row, serde::Deserialize, Clone)]
@@ -116,7 +116,7 @@ impl ClickHouseDb {
                 (
                     SELECT slot from events.update_slot WHERE status = 'Rooted' and slot <=
                     (
-	                    SELECT slot - {} FROM events.update_slot WHERE status = 'Rooted' ORDER BY slot DESC LIMIT 1
+	                    SELECT slot - ? FROM events.update_slot WHERE status = 'Rooted' ORDER BY slot DESC LIMIT 1
                     )
                     ORDER BY slot DESC LIMIT 1
                 )
@@ -154,7 +154,7 @@ impl ClickHouseDb {
                         if row.slot == parent_finalized.unwrap() {
                             parent_finalized = row.parent;
                         } else {
-                            if row.status == "Rooted" {
+                            if row.status == 3 {
                                 let err = clickhouse::error::Error::Custom(
                                     "There are several branchs with rooted slots".to_string(),
                                 );
@@ -162,7 +162,7 @@ impl ClickHouseDb {
                             }
                             continue;
                         }
-                    } else if row.status == "Rooted" {
+                    } else if row.status == 3 {
                         parent_finalized = row.parent;
                     }
 

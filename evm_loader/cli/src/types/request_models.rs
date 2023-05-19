@@ -3,6 +3,7 @@ use crate::types::{PubkeyBase58, TxParams};
 use ethnum::U256;
 use evm_loader::types::Address;
 use serde::{Deserialize, Serialize};
+use solana_sdk::pubkey::Pubkey;
 
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct GetEtherRequest {
@@ -46,6 +47,28 @@ pub struct EmulationParamsRequestModel {
     pub max_steps_to_execute: u64,
     pub cached_accounts: Option<Vec<Address>>,
     pub solana_accounts: Option<Vec<PubkeyBase58>>,
+}
+
+impl EmulationParamsRequestModel {
+    #[allow(unused)]
+    pub fn new(
+        token_mint: Option<Pubkey>,
+        chain_id: Option<u64>,
+        max_steps_to_execute: u64,
+        cached_accounts: Option<Vec<Address>>,
+        solana_accounts: Option<Vec<Pubkey>>,
+    ) -> EmulationParamsRequestModel {
+        let token_mint = token_mint.map(Into::into);
+        let solana_accounts = solana_accounts.map(|vec| vec.into_iter().map(Into::into).collect());
+
+        Self {
+            token_mint,
+            chain_id,
+            max_steps_to_execute,
+            cached_accounts,
+            solana_accounts,
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Default)]

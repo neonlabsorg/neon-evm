@@ -102,7 +102,7 @@ pub struct TraceHashRequestModel {
 }
 
 #[derive(Deserialize, Serialize, Debug, Default)]
-pub struct TraceNextBlockParamsRequest {
+pub struct TraceNextBlockRequestModel {
     #[serde(flatten)]
     pub emulation_params: EmulationParamsRequestModel,
     pub slot: u64,

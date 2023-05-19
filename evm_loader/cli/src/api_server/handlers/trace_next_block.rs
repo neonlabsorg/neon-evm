@@ -5,14 +5,14 @@ use crate::{
     api_server::state::State,
     commands::trace::trace_block,
     context,
-    types::{request_models::TraceNextBlockParamsRequest, IndexerDb},
+    types::{request_models::TraceNextBlockRequestModel, IndexerDb},
 };
 
 use super::{parse_emulation_params, process_result};
 
 #[allow(clippy::unused_async)]
 pub async fn trace_next_block(mut req: Request<State>) -> Result<serde_json::Value> {
-    let trace_next_block_request: TraceNextBlockParamsRequest =
+    let trace_next_block_request: TraceNextBlockRequestModel =
         req.body_json().await.map_err(|e| {
             tide::Error::from_str(
                 400,

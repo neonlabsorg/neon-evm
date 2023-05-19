@@ -16,6 +16,7 @@ mod types;
 use clap::ArgMatches;
 pub use config::Config;
 pub use context::Context;
+use std::io::Read;
 
 use ethnum::U256;
 use serde_json::json;
@@ -180,12 +181,10 @@ fn execute(
         }
         ("trace-next-block", Some(params)) => {
             let slot = slot.expect("SLOT argument is not provided");
-            let trace_block_params: Option<TraceNextBlockParams> = serde_json::from_reader(
-                std::io::BufReader::new(std::io::stdin()),
-            )
-            .unwrap_or_else(|err| {
-                panic!("Unable to parse `TraceBlockBySlotParams` from STDIN, error: {err:?}")
-            });
+            let trace_block_params: Option<TraceNextBlockParams> = read_from_stdin()
+                .unwrap_or_else(|err| {
+                    panic!("Unable to parse `TraceBlockBySlotParams` from STDIN, error: {err:?}")
+                });
             let trace_config = trace_block_params
                 .map(|params| params.trace_config.unwrap_or_default())
                 .unwrap_or_default();
@@ -260,10 +259,9 @@ fn execute(
 fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
     let from = address_of(params, "sender").expect("sender parse error");
     let to = address_or_deploy_of(params, "contract");
-    let transaction_params: Option<TransactionParams> =
-        serde_json::from_reader(std::io::BufReader::new(std::io::stdin())).unwrap_or_else(|err| {
-            panic!("Unable to parse `TransactionParams` from STDIN, error: {err:?}")
-        });
+    let transaction_params: Option<TransactionParams> = read_from_stdin().unwrap_or_else(|err| {
+        panic!("Unable to parse `TransactionParams` from STDIN, error: {err:?}")
+    });
     let (data, trace_config) = transaction_params
         .map(|params| {
             (
@@ -290,7 +288,7 @@ fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
 fn parse_tx_hash(rpc_client: &dyn Rpc) -> (TxParams, TraceConfig) {
     let tx = rpc_client.get_transaction_data().unwrap();
     let transaction_params: Option<TransactionHashParams> =
-        serde_json::from_reader(std::io::BufReader::new(std::io::stdin())).unwrap_or_else(|err| {
+        read_from_stdin().unwrap_or_else(|err| {
             panic!("Unable to parse `TransactionHashParams` from STDIN, error: {err:?}")
         });
 
@@ -365,4 +363,15 @@ fn u256_of(matches: &ArgMatches<'_>, name: &str) -> Option<U256> {
 
         U256::from_str_prefixed(value).unwrap()
     })
+}
+
+fn read_from_stdin<T: serde::de::DeserializeOwned>() -> serde_json::Result<Option<T>> {
+    let mut stdin = String::new();
+    std::io::stdin()
+        .read_to_string(&mut stdin)
+        .map_err(|err| serde_json::Error::io(err))?;
+    if stdin.trim().is_empty() {
+        return Ok(None);
+    }
+    serde_json::from_str(&stdin).map(Some)
 }

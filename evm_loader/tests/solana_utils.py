@@ -213,7 +213,7 @@ class neon_cli:
 
         data_json = ""
         if data:
-            data_json = f'{"data": "{data}"}'
+            data_json = f'{{"data": "{data}"}}'
 
         proc_result = subprocess.run(cmd, input=data_json, text=True, stdout=subprocess.PIPE, universal_newlines=True)
 

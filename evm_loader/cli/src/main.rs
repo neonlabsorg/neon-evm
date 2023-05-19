@@ -369,7 +369,7 @@ fn read_from_stdin<T: serde::de::DeserializeOwned>() -> serde_json::Result<Optio
     let mut stdin = String::new();
     std::io::stdin()
         .read_to_string(&mut stdin)
-        .map_err(|err| serde_json::Error::io(err))?;
+        .map_err(serde_json::Error::io)?;
     if stdin.trim().is_empty() {
         return Ok(None);
     }

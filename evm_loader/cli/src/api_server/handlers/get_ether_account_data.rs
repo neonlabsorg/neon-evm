@@ -1,5 +1,4 @@
 use crate::{api_server::state::State, context, types::request_models::GetEtherRequest};
-use evm_loader::types::Address;
 use tide::{Request, Result};
 
 use crate::commands::get_ether_account_data as GetEtherAccountDataCommand;
@@ -10,8 +9,6 @@ use super::process_result;
 pub async fn get_ether_account_data(req: Request<State>) -> Result<serde_json::Value> {
     let state = req.state();
     let get_ether: GetEtherRequest = req.query().unwrap_or_default();
-    let address = Address::from_hex(get_ether.ether.unwrap_or_default().as_str())
-        .map_err(|_| tide::Error::from_str(400, "address is incorrect"))?;
 
     let signer = context::build_singer(&state.config).map_err(|e| {
         tide::Error::from_str(
@@ -32,6 +29,6 @@ pub async fn get_ether_account_data(req: Request<State>) -> Result<serde_json::V
     process_result(&GetEtherAccountDataCommand::execute(
         context.rpc_client.as_ref(),
         &state.config.evm_loader,
-        &address,
+        &get_ether.ether,
     ))
 }

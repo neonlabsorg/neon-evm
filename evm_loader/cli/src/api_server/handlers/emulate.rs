@@ -8,7 +8,7 @@ use crate::{
     types::{request_models::EmulateRequestModel, trace::TraceCallConfig},
 };
 
-use super::{parse_emulation_params, parse_tx, process_result};
+use super::{parse_emulation_params, process_result};
 
 #[allow(clippy::unused_async)]
 pub async fn emulate(mut req: Request<State>) -> Result<serde_json::Value> {
@@ -24,7 +24,7 @@ pub async fn emulate(mut req: Request<State>) -> Result<serde_json::Value> {
 
     let state = req.state();
 
-    let tx = parse_tx(&emulate_request.tx_params);
+    let tx = emulate_request.tx_params.into();
 
     let signer = context::build_singer(&state.config).map_err(|e| {
         tide::Error::from_str(

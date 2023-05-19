@@ -3,12 +3,9 @@ use evm_loader::types::Address;
 use solana_sdk::pubkey::Pubkey;
 
 use crate::commands::get_neon_elf::CachedElfParams;
-use crate::types::{
-    request_models::{EmulationParamsRequestModel, TxParamsRequestModel},
-    TxParams,
-};
 use crate::{Config, Context, NeonCliResult};
 
+use crate::types::request_models::EmulationParamsRequestModel;
 use std::str::FromStr;
 
 pub mod emulate;
@@ -24,35 +21,7 @@ pub fn u256_of(index: &str) -> Option<U256> {
         return Some(U256::ZERO);
     }
 
-    U256::from_str_prefixed(index).map(Some).unwrap_or(None)
-}
-
-pub(crate) fn parse_tx(model: &TxParamsRequestModel) -> TxParams {
-    let from = model.sender;
-    let to = match Address::from_hex(model.contract.clone().unwrap_or_default().as_str()) {
-        Ok(address) => Some(address),
-        Err(_) => None,
-    };
-    let value = model
-        .value
-        .clone()
-        .map(|v| u256_of(v.as_str()))
-        .unwrap_or_default();
-    let data = model.data.clone();
-    let gas_limit = model
-        .gas_limit
-        .clone()
-        .map(|v| u256_of(v.as_str()))
-        .unwrap_or_default();
-
-    TxParams {
-        nonce: None,
-        from,
-        to,
-        data,
-        value,
-        gas_limit,
-    }
+    U256::from_str_prefixed(index).ok()
 }
 
 pub(crate) fn parse_emulation_params(
@@ -61,9 +30,7 @@ pub(crate) fn parse_emulation_params(
     params: &EmulationParamsRequestModel,
 ) -> (Pubkey, u64, u64, Vec<Address>, Vec<Pubkey>) {
     // Read ELF params only if token_mint or chain_id is not set.
-    let mut token: Option<Pubkey> =
-        Pubkey::from_str(params.token_mint.clone().unwrap_or_default().as_str())
-            .map_or_else(|_| None, Some);
+    let mut token: Option<Pubkey> = params.token_mint.map(Into::into);
     let mut chain = params.chain_id;
     if token.is_none() || chain.is_none() {
         let cached_elf_params = CachedElfParams::new(config, context);
@@ -97,11 +64,7 @@ pub(crate) fn parse_emulation_params(
     let solana_accounts = params
         .solana_accounts
         .clone()
-        .map(|vec| {
-            vec.into_iter()
-                .map(|s| Pubkey::from_str(s.as_str()).expect("incorrect sonala account"))
-                .collect()
-        })
+        .map(|vec| vec.into_iter().map(Into::into).collect())
         .unwrap_or_default();
 
     (token, chain, max_steps, accounts, solana_accounts)

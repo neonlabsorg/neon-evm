@@ -6,6 +6,8 @@ mod tracer_ch_db;
 
 pub use indexer_db::IndexerDb;
 use lazy_static::lazy_static;
+use solana_sdk::pubkey::Pubkey;
+use std::str::FromStr;
 use tokio::runtime::Runtime;
 pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
@@ -194,3 +196,65 @@ pub enum PgError {
 }
 
 pub type PgResult<T> = std::result::Result<T, PgError>;
+
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+pub struct PubkeyBase58(
+    #[serde(serialize_with = "crate::types::serde_pubkey_bs58")]
+    #[serde(deserialize_with = "crate::types::deserialize_pubkey_from_str")]
+    pub Pubkey,
+);
+
+impl AsRef<Pubkey> for PubkeyBase58 {
+    fn as_ref(&self) -> &Pubkey {
+        &self.0
+    }
+}
+
+impl From<Pubkey> for PubkeyBase58 {
+    fn from(value: Pubkey) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&Pubkey> for PubkeyBase58 {
+    fn from(value: &Pubkey) -> Self {
+        Self(*value)
+    }
+}
+
+impl From<PubkeyBase58> for Pubkey {
+    fn from(value: PubkeyBase58) -> Self {
+        value.0
+    }
+}
+
+pub fn serde_pubkey_bs58<S>(value: &Pubkey, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let bs58 = bs58::encode(value).into_string();
+    s.serialize_str(&bs58)
+}
+
+#[allow(unused)]
+pub fn deserialize_pubkey_from_str<'de, D>(deserializer: D) -> Result<Pubkey, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct StringVisitor;
+    impl<'de> serde::de::Visitor<'de> for StringVisitor {
+        type Value = Pubkey;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string containing json data")
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Pubkey::from_str(v).map_err(E::custom)
+        }
+    }
+    deserializer.deserialize_any(StringVisitor)
+}

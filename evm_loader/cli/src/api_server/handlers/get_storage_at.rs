@@ -1,10 +1,9 @@
-use crate::{api_server::request_models::GetStorageAtRequest, context, NeonApiState};
+use crate::{context, types::request_models::GetStorageAtRequest, NeonApiState};
 use axum::{
     extract::{Query, State},
     http::StatusCode,
     Json,
 };
-use evm_loader::types::Address;
 
 use crate::commands::get_storage_at as GetStorageAtCommand;
 
@@ -15,12 +14,10 @@ pub async fn get_storage_at(
     Query(req_params): Query<GetStorageAtRequest>,
     State(state): State<NeonApiState>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let signer = context::build_singer(&state.config).map_err(|e| {
-        tide::Error::from_str(
-            400,
-            format!("Error on creating singer: {:?}", e.to_string()),
-        )
-    })?;
+    let signer = match context::build_singer(&state.config) {
+        Ok(singer) => singer,
+        Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
+    };
 
     let rpc_client = match context::build_rpc_client(&state.config, req_params.slot) {
         Ok(rpc_client) => rpc_client,

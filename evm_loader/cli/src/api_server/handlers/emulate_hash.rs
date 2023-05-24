@@ -1,8 +1,8 @@
 use axum::{http::StatusCode, Json};
 
 use crate::{
-    api_server::state::State, commands::emulate as EmulateCommand, context,
-    types::request_models::EmulateHashRequestModel,
+    commands::emulate as EmulateCommand, context, types::request_models::EmulateHashRequestModel,
+    NeonApiState,
 };
 
 use super::{parse_emulation_params, process_error, process_result};
@@ -17,15 +17,21 @@ pub async fn emulate_hash(
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 
-    let rpc_client = match context::build_hash_rpc_client(
-        &state.config,
-        emulate_hash_request.hash.as_deref().unwrap_or_default(),
-    ) {
+    let rpc_client = match context::build_hash_rpc_client(&state.config, &emulate_hash_request.hash)
+    {
         Ok(rpc_client) => rpc_client,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 
-    let tx = rpc_client.get_transaction_data()?;
+    let tx = match rpc_client.get_transaction_data() {
+        Ok(tx) => tx,
+        Err(e) => {
+            return process_error(
+                StatusCode::BAD_REQUEST,
+                &crate::errors::NeonCliError::SolanaClientError(e),
+            )
+        }
+    };
 
     let context = context::create(rpc_client, signer);
 

@@ -1,25 +1,26 @@
 use axum::{http::StatusCode, Json};
 
-use crate::{api_server::request_models::TxParamsRequest, context, NeonApiState};
+use crate::{context, types::request_models::TraceRequestModel, NeonApiState};
 
 use super::{parse_emulation_params, process_error, process_result};
 
 #[allow(clippy::unused_async)]
 pub async fn trace(
     axum::extract::State(state): axum::extract::State<NeonApiState>,
-    Json(tx_params_request): Json<TraceRequestModel>,
+    Json(trace_request): Json<TraceRequestModel>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let tx: crate::types::TxParams = parse_tx(&tx_params_request);
+    let tx = trace_request.emulate_request.tx_params.into();
 
     let signer = match context::build_singer(&state.config) {
         Ok(singer) => singer,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 
-    let rpc_client = match context::build_rpc_client(&state.config, tx_params_request.slot) {
-        Ok(rpc_client) => rpc_client,
-        Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
-    };
+    let rpc_client =
+        match context::build_rpc_client(&state.config, trace_request.emulate_request.slot) {
+            Ok(rpc_client) => rpc_client,
+            Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
+        };
 
     let context = context::create(rpc_client, signer);
 

@@ -82,6 +82,9 @@ pub enum NeonCliError {
     #[error("AxumError. {0:?}")]
     AxumError(#[from] axum::Error),
 
+    #[error("SolanaClientError. {0:?}")]
+    SolanaClientError(solana_client::client_error::ClientError),
+
     /// Environment Error
     #[error("Environment error {0:?}")]
     EnvironmentError(#[from] EnvironmentError),
@@ -118,6 +121,7 @@ impl NeonCliError {
             NeonCliError::EvmError(_) => 117,
             NeonCliError::AddrParseError(_) => 118,
             NeonCliError::AxumError(_) => 119,
+            NeonCliError::SolanaClientError(_) => 120,
             NeonCliError::EvmLoaderNotSpecified => 201,
             NeonCliError::KeypairNotSpecified => 202,
             NeonCliError::IncorrectProgram(_) => 203,

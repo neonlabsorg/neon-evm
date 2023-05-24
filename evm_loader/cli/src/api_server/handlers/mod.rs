@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use solana_sdk::pubkey::Pubkey;
 
 use crate::commands::get_neon_elf::CachedElfParams;
+use crate::errors::NeonCliError;
 use crate::{Config, Context, NeonCliResult};
 
 use crate::types::request_models::EmulationParamsRequestModel;

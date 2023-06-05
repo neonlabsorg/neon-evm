@@ -12,8 +12,8 @@ pub async fn emulate_hash(
     axum::extract::State(state): axum::extract::State<NeonApiState>,
     Json(emulate_hash_request): Json<EmulateHashRequestModel>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let signer = match context::build_singer(&state.config) {
-        Ok(singer) => singer,
+    let signer = match context::build_signer(&state.config) {
+        Ok(signer) => signer,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 

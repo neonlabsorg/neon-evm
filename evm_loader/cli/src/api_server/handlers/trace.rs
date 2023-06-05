@@ -11,8 +11,8 @@ pub async fn trace(
 ) -> (StatusCode, Json<serde_json::Value>) {
     let tx = trace_request.emulate_request.tx_params.into();
 
-    let signer = match context::build_singer(&state.config) {
-        Ok(singer) => singer,
+    let signer = match context::build_signer(&state.config) {
+        Ok(signer) => signer,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 

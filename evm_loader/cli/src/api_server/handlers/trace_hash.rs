@@ -10,8 +10,8 @@ pub async fn trace_hash(
     axum::extract::State(state): axum::extract::State<NeonApiState>,
     Json(trace_hash_request): Json<TraceHashRequestModel>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let signer = match context::build_singer(&state.config) {
-        Ok(singer) => singer,
+    let signer = match context::build_signer(&state.config) {
+        Ok(signer) => signer,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 

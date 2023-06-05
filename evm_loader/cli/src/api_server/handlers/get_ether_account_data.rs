@@ -13,8 +13,8 @@ pub async fn get_ether_account_data(
     Query(req_params): Query<GetEtherRequest>,
     State(state): State<NeonApiState>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let signer = match context::build_singer(&state.config) {
-        Ok(singer) => singer,
+    let signer = match context::build_signer(&state.config) {
+        Ok(signer) => signer,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 

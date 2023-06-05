@@ -41,6 +41,7 @@ lazy_static = "1.4"
 clickhouse = "0.11.2"
 tide = "0.16.0"
 femme = "2.1.1"
+async-trait = "0.1.68"
 
 
 [[bin]]

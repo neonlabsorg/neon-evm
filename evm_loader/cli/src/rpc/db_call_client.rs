@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use super::{e, Rpc};
 use crate::types::{ChDbConfig, TracerDb, TxParams};
 use solana_client::{
@@ -35,6 +36,7 @@ impl CallDbClient {
     }
 }
 
+#[async_trait]
 impl Rpc for CallDbClient {
     fn commitment(&self) -> CommitmentConfig {
         CommitmentConfig::default()
@@ -51,14 +53,15 @@ impl Rpc for CallDbClient {
         ))
     }
 
-    fn get_account(&self, key: &Pubkey) -> ClientResult<Account> {
+    async fn get_account(&self, key: &Pubkey) -> ClientResult<Account> {
         self.tracer_db
             .get_account_at(key, self.slot)
+            .await
             .map_err(|e| e!("load account error", key, e))?
             .ok_or_else(|| e!("account not found", key))
     }
 
-    fn get_account_with_commitment(
+    async fn get_account_with_commitment(
         &self,
         key: &Pubkey,
         _: CommitmentConfig,
@@ -66,6 +69,7 @@ impl Rpc for CallDbClient {
         let account = self
             .tracer_db
             .get_account_at(key, self.slot)
+            .await
             .map_err(|e| e!("load account error", key, e))?;
 
         let context = RpcResponseContext {
@@ -78,12 +82,13 @@ impl Rpc for CallDbClient {
         })
     }
 
-    fn get_multiple_accounts(&self, pubkeys: &[Pubkey]) -> ClientResult<Vec<Option<Account>>> {
+    async fn get_multiple_accounts(&self, pubkeys: &[Pubkey]) -> ClientResult<Vec<Option<Account>>> {
         let mut result = Vec::new();
         for key in pubkeys {
             let account = self
                 .tracer_db
                 .get_account_at(key, self.slot)
+                .await
                 .map_err(|e| e!("load account error", key, e))?;
             result.push(account);
         }
@@ -98,9 +103,10 @@ impl Rpc for CallDbClient {
         Err(e!("get_block() not implemented for db_call_client"))
     }
 
-    fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp> {
+    async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp> {
         self.tracer_db
             .get_block_time(slot)
+            .await
             .map_err(|e| e!("get_block_time error", slot, e))
     }
 

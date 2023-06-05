@@ -29,6 +29,7 @@ pub async fn trace_hash(mut req: Request<State>) -> Result<serde_json::Value> {
         &state.config,
         &trace_hash_request.emulate_hash_request.hash,
     )
+    .await
     .map_err(|e| {
         tide::Error::from_str(
             400,

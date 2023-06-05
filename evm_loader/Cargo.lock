@@ -2610,6 +2610,7 @@ name = "neon-cli"
 version = "0.15.0-dev"
 dependencies = [
  "arrayref",
+ "async-trait",
  "bincode",
  "bs58",
  "chrono",

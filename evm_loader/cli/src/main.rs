@@ -22,10 +22,10 @@ use std::time::Instant;
 
 type NeonCliResult = Result<serde_json::Value, NeonCliError>;
 
-fn run(options: &ArgMatches) -> NeonCliResult {
+async fn run(options: &ArgMatches) -> NeonCliResult {
     let (cmd, params) = options.subcommand();
     let config = config::create(options)?;
-    let context: Context = context::create_from_config_and_options(options, &config)?;
+    let context: Context = context::create_from_config_and_options(options, &config).await?;
 
     commands::execute(cmd, params, &config, &context)
 }

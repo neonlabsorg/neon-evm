@@ -5,10 +5,8 @@ pub mod trace;
 mod tracer_ch_db;
 
 pub use indexer_db::IndexerDb;
-use lazy_static::lazy_static;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
-use tokio::{runtime::Runtime, task::block_in_place};
 pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use {
@@ -44,7 +42,7 @@ pub struct TxParams {
     pub gas_limit: Option<U256>,
 }
 
-pub fn do_connect(
+pub async fn do_connect(
     host: &String,
     port: &String,
     db: &String,
@@ -57,7 +55,7 @@ pub fn do_connect(
     let mut result = None;
 
     while attempt < 3 {
-        result = block(|| async { connect(&authority, NoTls).await }).ok();
+        result = connect(&authority, NoTls).await.ok();
         if result.is_some() {
             break;
         }
@@ -72,18 +70,6 @@ pub fn do_connect(
         }
     });
     client
-}
-
-lazy_static! {
-    pub static ref RT: Runtime = tokio::runtime::Runtime::new().unwrap();
-}
-
-pub fn block<F, Fu, R>(f: F) -> R
-where
-    F: FnOnce() -> Fu,
-    Fu: std::future::Future<Output = R>,
-{
-    block_in_place(|| RT.block_on(f()))
 }
 
 #[derive(Error, Debug)]

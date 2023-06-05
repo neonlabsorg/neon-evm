@@ -21,7 +21,7 @@ pub fn create(rpc_client: Box<dyn rpc::Rpc>, signer: Box<dyn Signer>) -> Context
 }
 
 /// # Errors
-pub fn create_from_config_and_options(
+pub async fn create_from_config_and_options(
     options: &ArgMatches,
     config: &Config,
 ) -> Result<Context, NeonCliError> {
@@ -37,7 +37,7 @@ pub fn create_from_config_and_options(
             Box::new(TrxDbClient::new(
                 config.db_config.as_ref().expect("db-config not found"),
                 hash,
-            ))
+            ).await)
         }
         _ => {
             if let Some(slot) = slot {
@@ -83,7 +83,7 @@ pub fn build_singer(config: &Config) -> Result<Box<dyn Signer>, NeonCliError> {
     Ok(signer)
 }
 /// # Errors
-pub fn build_hash_rpc_client(
+pub async fn build_hash_rpc_client(
     config: &Config,
     hash: &str,
 ) -> Result<Box<dyn rpc::Rpc>, NeonCliError> {
@@ -92,7 +92,7 @@ pub fn build_hash_rpc_client(
     Ok(Box::new(TrxDbClient::new(
         config.db_config.as_ref().expect("db-config not found"),
         hash,
-    )))
+    ).await))
 }
 
 /// # Errors

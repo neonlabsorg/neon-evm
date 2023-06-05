@@ -5,6 +5,7 @@ mod validator_client;
 pub use db_call_client::CallDbClient;
 pub use db_trx_client::TrxDbClient;
 
+use async_trait::async_trait;
 use crate::types::TxParams;
 use solana_client::{
     client_error::Result as ClientResult,
@@ -25,6 +26,7 @@ use solana_transaction_status::{
 };
 use std::any::Any;
 
+#[async_trait]
 pub trait Rpc {
     fn commitment(&self) -> CommitmentConfig;
     fn confirm_transaction_with_spinner(
@@ -33,16 +35,16 @@ pub trait Rpc {
         recent_blockhash: &Hash,
         commitment_config: CommitmentConfig,
     ) -> ClientResult<()>;
-    fn get_account(&self, key: &Pubkey) -> ClientResult<Account>;
-    fn get_account_with_commitment(
+    async fn get_account(&self, key: &Pubkey) -> ClientResult<Account>;
+    async fn get_account_with_commitment(
         &self,
         key: &Pubkey,
         commitment: CommitmentConfig,
     ) -> RpcResult<Option<Account>>;
-    fn get_multiple_accounts(&self, pubkeys: &[Pubkey]) -> ClientResult<Vec<Option<Account>>>;
+    async fn get_multiple_accounts(&self, pubkeys: &[Pubkey]) -> ClientResult<Vec<Option<Account>>>;
     fn get_account_data(&self, key: &Pubkey) -> ClientResult<Vec<u8>>;
     fn get_block(&self, slot: Slot) -> ClientResult<EncodedConfirmedBlock>;
-    fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp>;
+    async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp>;
     fn get_latest_blockhash(&self) -> ClientResult<Hash>;
     fn get_minimum_balance_for_rent_exemption(&self, data_len: usize) -> ClientResult<u64>;
     fn get_slot(&self) -> ClientResult<Slot>;

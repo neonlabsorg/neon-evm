@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use super::{e, Rpc};
 use crate::types::{ChDbConfig, IndexerDb, TracerDb, TxParams};
 use solana_client::{
@@ -28,11 +29,12 @@ pub struct TrxDbClient {
 }
 
 impl TrxDbClient {
-    pub fn new(config: &ChDbConfig, hash: [u8; 32]) -> Self {
+    pub async fn new(config: &ChDbConfig, hash: [u8; 32]) -> Self {
         let tracer_db = TracerDb::new(config);
-        let indexer_db = IndexerDb::new(config);
+        let indexer_db = IndexerDb::new(config).await;
         let sol_sig = indexer_db
             .get_sol_sig(&hash)
+            .await
             .unwrap_or_else(|_| panic!("get_sol_sig error, hash: 0x{}", hex::encode(hash)));
 
         Self {
@@ -44,6 +46,7 @@ impl TrxDbClient {
     }
 }
 
+#[async_trait]
 impl Rpc for TrxDbClient {
     fn commitment(&self) -> CommitmentConfig {
         CommitmentConfig::default()
@@ -60,14 +63,14 @@ impl Rpc for TrxDbClient {
         ))
     }
 
-    fn get_account(&self, key: &Pubkey) -> ClientResult<Account> {
+    async fn get_account(&self, key: &Pubkey) -> ClientResult<Account> {
         self.tracer_db
             .get_account_by_sol_sig(key, &self.sol_sig)
             .map_err(|e| e!("load account error", key, e))?
             .ok_or_else(|| e!("account not found", key))
     }
 
-    fn get_account_with_commitment(
+    async fn get_account_with_commitment(
         &self,
         key: &Pubkey,
         _commitment: CommitmentConfig,
@@ -92,7 +95,7 @@ impl Rpc for TrxDbClient {
         })
     }
 
-    fn get_multiple_accounts(&self, pubkeys: &[Pubkey]) -> ClientResult<Vec<Option<Account>>> {
+    async fn get_multiple_accounts(&self, pubkeys: &[Pubkey]) -> ClientResult<Vec<Option<Account>>> {
         let mut result = Vec::new();
         for key in pubkeys {
             let account = self
@@ -112,9 +115,10 @@ impl Rpc for TrxDbClient {
         Err(e!("get_block() not implemented for db_trx_client"))
     }
 
-    fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp> {
+    async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp> {
         self.tracer_db
             .get_block_time(slot)
+            .await
             .map_err(|e| e!("get_block_time error", slot, e))
     }
 

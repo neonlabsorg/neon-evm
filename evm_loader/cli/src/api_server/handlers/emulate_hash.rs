@@ -29,6 +29,7 @@ pub async fn emulate_hash(mut req: Request<State>) -> Result<serde_json::Value> 
     })?;
 
     let rpc_client = context::build_hash_rpc_client(&state.config, &emulate_hash_request.hash)
+        .await
         .map_err(|e| {
             tide::Error::from_str(
                 400,

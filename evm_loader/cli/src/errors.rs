@@ -74,7 +74,7 @@ pub enum NeonCliError {
     #[error("Incorrect index {0:?}.")]
     IncorrectIndex(String),
     #[error("Tx parameters parsing error {0:?}.")]
-    TxParametersParsignerror(String),
+    TxParametersParsingError(String),
 
     #[error("AddrParseError. {0:?}")]
     AddrParseError(#[from] AddrParseError),
@@ -135,7 +135,7 @@ impl NeonCliError {
             NeonCliError::InvalidChDbConfig => 247,
             NeonCliError::IncorrectAddress(_) => 248,
             NeonCliError::IncorrectIndex(_) => 249,
-            NeonCliError::TxParametersParsignerror(_) => 250,
+            NeonCliError::TxParametersParsingError(_) => 250,
         }
     }
 }

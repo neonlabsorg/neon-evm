@@ -197,12 +197,8 @@ pub enum PgError {
 
 pub type PgResult<T> = std::result::Result<T, PgError>;
 
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
-pub struct PubkeyBase58(
-    #[serde(serialize_with = "crate::types::serde_pubkey_bs58")]
-    #[serde(deserialize_with = "crate::types::deserialize_pubkey_from_str")]
-    pub Pubkey,
-);
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PubkeyBase58(pub Pubkey);
 
 impl AsRef<Pubkey> for PubkeyBase58 {
     fn as_ref(&self) -> &Pubkey {
@@ -228,33 +224,38 @@ impl From<PubkeyBase58> for Pubkey {
     }
 }
 
-pub fn serde_pubkey_bs58<S>(value: &Pubkey, s: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let bs58 = bs58::encode(value).into_string();
-    s.serialize_str(&bs58)
+impl Serialize for PubkeyBase58 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let bs58 = bs58::encode(&self.0).into_string();
+        serializer.serialize_str(&bs58)
+    }
 }
 
-#[allow(unused)]
-pub fn deserialize_pubkey_from_str<'de, D>(deserializer: D) -> Result<Pubkey, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    struct StringVisitor;
-    impl<'de> serde::de::Visitor<'de> for StringVisitor {
-        type Value = Pubkey;
+impl<'de> Deserialize<'de> for PubkeyBase58 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct StringVisitor;
 
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            formatter.write_str("a string containing json data")
+        impl<'de> serde::de::Visitor<'de> for StringVisitor {
+            type Value = Pubkey;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string containing json data")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Pubkey::from_str(v).map_err(E::custom)
+            }
         }
 
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            Pubkey::from_str(v).map_err(E::custom)
-        }
+        deserializer.deserialize_any(StringVisitor).map(Self)
     }
-    deserializer.deserialize_any(StringVisitor)
 }

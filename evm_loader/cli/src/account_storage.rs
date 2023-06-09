@@ -1,6 +1,5 @@
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
-use crate::types::PubkeyBase58;
 use crate::{
     rpc::Rpc,
     types::trace::{AccountOverrides, BlockOverrides},
@@ -31,6 +30,8 @@ use solana_sdk::{
     rent::Rent,
     sysvar::{slot_hashes, Sysvar},
 };
+
+use crate::{types::PubkeyBase58, Config, Context};
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
@@ -536,7 +537,20 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     fn code_hash(&self, address: &Address) -> [u8; 32] {
         info!("code_hash {address}");
 
-        solana_sdk::keccak::hash(&self.code(address)).to_bytes()
+        // https://eips.ethereum.org/EIPS/eip-1052
+        // https://eips.ethereum.org/EIPS/eip-161
+        let is_non_existent_account = self.ethereum_account_map_or(address, true, |a| {
+            a.trx_count == 0 && a.balance == 0 && a.code_size == 0
+        });
+
+        if is_non_existent_account {
+            return <[u8; 32]>::default();
+        }
+
+        // return empty hash(&[]) as a default value, or code's hash if contract exists
+        self.ethereum_contract_map_or(address, hash(&[]).to_bytes(), |c| {
+            hash(&c.code()).to_bytes()
+        })
     }
 
     fn code(&self, address: &Address) -> evm_loader::evm::Buffer {

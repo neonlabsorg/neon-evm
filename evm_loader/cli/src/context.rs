@@ -99,15 +99,20 @@ pub fn build_rpc_client(
     slot: Option<u64>,
 ) -> Result<Box<dyn rpc::Rpc>, NeonCliError> {
     if let Some(slot) = slot {
-        let config = config
-            .db_config
-            .clone()
-            .ok_or(NeonCliError::InvalidChDbConfig)?;
-        return Ok(Box::new(CallDbClient::new(&config, slot)));
+        return build_call_db_client(config, slot);
     }
 
     Ok(Box::new(RpcClient::new_with_commitment(
         config.json_rpc_url.clone(),
         config.commitment,
     )))
+}
+
+/// # Errors
+pub fn build_call_db_client(config: &Config, slot: u64) -> Result<Box<dyn rpc::Rpc>, NeonCliError> {
+    let config = config
+        .db_config
+        .clone()
+        .ok_or(NeonCliError::InvalidChDbConfig)?;
+    Ok(Box::new(CallDbClient::new(&config, slot)))
 }

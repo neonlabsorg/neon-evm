@@ -1,44 +1,31 @@
+use axum::{http::StatusCode, Json};
 use serde_json::json;
-use tide::{Request, Result};
 
 use crate::{
-    api_server::state::State,
+    api_server::handlers::process_error,
     commands::trace::trace_block,
-    context,
+    context, errors,
     types::{request_models::TraceNextBlockRequestModel, IndexerDb},
+    NeonApiState,
 };
 
 use super::{parse_emulation_params, process_result};
 
 #[allow(clippy::unused_async)]
-pub async fn trace_next_block(mut req: Request<State>) -> Result<serde_json::Value> {
-    let trace_next_block_request: TraceNextBlockRequestModel =
-        req.body_json().await.map_err(|e| {
-            tide::Error::from_str(
-                400,
-                format!(
-                    "Error on parsing transaction parameters request: {:?}",
-                    e.to_string()
-                ),
-            )
-        })?;
+pub async fn trace_next_block(
+    axum::extract::State(state): axum::extract::State<NeonApiState>,
+    Json(trace_next_block_request): Json<TraceNextBlockRequestModel>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let signer = match context::build_signer(&state.config) {
+        Ok(signer) => signer,
+        Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
+    };
 
-    let state = req.state();
-
-    let signer = context::build_singer(&state.config).map_err(|e| {
-        tide::Error::from_str(
-            400,
-            format!("Error on creating singer: {:?}", e.to_string()),
-        )
-    })?;
-
-    let rpc_client = context::build_rpc_client(&state.config, Some(trace_next_block_request.slot))
-        .map_err(|e| {
-            tide::Error::from_str(
-                400,
-                format!("Error on creating rpc client: {:?}", e.to_string()),
-            )
-        })?;
+    let rpc_client =
+        match context::build_call_db_client(&state.config, trace_next_block_request.slot) {
+            Ok(rpc_client) => rpc_client,
+            Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
+        };
 
     let context = context::create(rpc_client, signer);
 
@@ -55,7 +42,16 @@ pub async fn trace_next_block(mut req: Request<State>) -> Result<serde_json::Val
             .as_ref()
             .expect("db-config is required"),
     );
-    let transactions = indexer_db.get_block_transactions(trace_next_block_request.slot + 1)?;
+
+    let transactions = match indexer_db.get_block_transactions(trace_next_block_request.slot + 1) {
+        Ok(transactions) => transactions,
+        Err(e) => {
+            return process_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &errors::NeonCliError::PostgreError(e),
+            )
+        }
+    };
 
     process_result(
         &trace_block(

@@ -31,7 +31,7 @@ use solana_sdk::{
     sysvar::{slot_hashes, Sysvar},
 };
 
-use crate::{types::PubkeyBase58, Config, Context};
+use crate::types::PubkeyBase58;
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
@@ -535,6 +535,8 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     }
 
     fn code_hash(&self, address: &Address) -> [u8; 32] {
+        use solana_sdk::keccak::hash;
+
         info!("code_hash {address}");
 
         // https://eips.ethereum.org/EIPS/eip-1052

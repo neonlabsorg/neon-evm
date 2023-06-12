@@ -1,6 +1,8 @@
 use crate::NeonApiState;
 use axum::{http::StatusCode, Json};
+use serde_json::json;
 
+use crate::commands::trace::trace_transaction;
 use crate::{context, types::request_models::TraceHashRequestModel};
 
 use super::{parse_emulation_params, process_error, process_result};

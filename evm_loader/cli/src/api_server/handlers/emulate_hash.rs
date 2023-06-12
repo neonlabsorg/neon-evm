@@ -1,7 +1,10 @@
 use axum::{http::StatusCode, Json};
+use serde_json::json;
 
 use crate::{
-    commands::emulate as EmulateCommand, context, types::request_models::EmulateHashRequestModel,
+    commands::emulate as EmulateCommand,
+    context,
+    types::{request_models::EmulateHashRequestModel, trace::TraceCallConfig},
     NeonApiState,
 };
 

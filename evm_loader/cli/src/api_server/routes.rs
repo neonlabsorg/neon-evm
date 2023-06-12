@@ -9,7 +9,7 @@ use crate::{
     api_server::handlers::{
         emulate::emulate, emulate_hash::emulate_hash,
         get_ether_account_data::get_ether_account_data, get_storage_at::get_storage_at,
-        trace::trace, trace_hash::trace_hash,
+        trace::trace, trace_hash::trace_hash, trace_next_block::trace_next_block,
     },
     NeonApiState,
 };

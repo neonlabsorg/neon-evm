@@ -1,5 +1,7 @@
 use axum::{http::StatusCode, Json};
+use serde_json::json;
 
+use crate::commands::trace::trace_transaction;
 use crate::{context, types::request_models::TraceRequestModel, NeonApiState};
 
 use super::{parse_emulation_params, process_error, process_result};
@@ -25,12 +27,6 @@ pub async fn trace(
     let context = context::create(rpc_client, signer);
 
     let (token, chain, steps, accounts, solana_accounts) = parse_emulation_params(
-        &state.config,
-        &context,
-        &trace_request.emulate_request.emulation_params,
-    );
-
-    process_result(&crate::commands::trace::execute(
         &state.config,
         &context,
         &trace_request.emulate_request.emulation_params,

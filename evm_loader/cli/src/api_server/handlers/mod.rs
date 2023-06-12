@@ -81,7 +81,7 @@ impl IntoResponse for NeonCliError {
 
         let body = Json(json!({
             "result": "error",
-            "error":error_message,
+            "error": error_message,
         }));
 
         (status, body).into_response()
@@ -97,13 +97,7 @@ fn process_result(result: &NeonCliResult) -> (StatusCode, Json<Value>) {
                 "value": value.to_string(),
             })),
         ),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "result": "error",
-                "error": e.to_string(),
-            })),
-        ),
+        Err(e) => process_error(StatusCode::INTERNAL_SERVER_ERROR, e),
     }
 }
 

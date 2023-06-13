@@ -48,6 +48,29 @@ pub struct AccountRow {
     executable: bool,
     rent_epoch: u64,
     data: Vec<u8>,
+    write_version: Option<i64>,
+    txn_signature: Option<Vec<u8>>,
+}
+
+impl TryInto<Account> for AccountRow {
+    type Error = String;
+
+    fn try_into(self) -> Result<Account, Self::Error> {
+        let owner = Pubkey::try_from(self.owner).map_err(|src| {
+            format!(
+                "Incorrect slice length ({}) while converting owner from: {src:?}",
+                src.len(),
+            )
+        })?;
+
+        Ok(Account {
+            lamports: self.lamports,
+            data: self.data,
+            owner,
+            rent_epoch: self.rent_epoch,
+            executable: self.executable,
+        })
+    }
 }
 
 #[allow(dead_code)]
@@ -112,7 +135,7 @@ impl ClickHouseDb {
     fn get_branch_slots(&self, slot: u64) -> ChResult<(u64, Vec<u64>)> {
         let query = r#"
             SELECT distinct on (slot) slot, parent, status FROM events.update_slot
-            WHERE slot >= (SELECT slot - ? FROM events.update_slot WHERE status = 'Rooted' ORDER BY slot DESC LIMIT 1)
+            WHERE slot >= (SELECT MAX(slot) - ? FROM events.update_slot WHERE status = 'Rooted')
               AND isNotNull(parent)
             ORDER BY slot DESC, status DESC
             "#;
@@ -200,37 +223,39 @@ impl ClickHouseDb {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn get_account_at(&self, key: &Pubkey, slot: u64) -> ChResult<Option<Account>> {
+    pub fn get_account_at(&self, pubkey: &Pubkey, slot: u64) -> ChResult<Option<Account>> {
         let (last, mut branch) = self.get_branch_slots(slot).map_err(|e| {
             println!("get_branch_slots error: {:?}", e);
             e
         })?;
 
-        let key_ = format!("{:?}", key.to_bytes());
+        let pubkey_str = format!("{:?}", pubkey.to_bytes());
 
-        let mut rooted_slots = self.get_account_rooted_slots(&key_, last).map_err(|e| {
-            println!("get_account_rooted_slots error: {:?}", e);
-            e
-        })?;
+        let mut rooted_slots = self
+            .get_account_rooted_slots(&pubkey_str, last)
+            .map_err(|e| {
+                println!("get_account_rooted_slots error: {:?}", e);
+                e
+            })?;
         branch.append(rooted_slots.as_mut());
 
         let mut row: Option<AccountRow> = if branch.is_empty() {
             None
         } else {
             let query = r#"
-                    SELECT owner, lamports, executable, rent_epoch, data
-                    FROM events.update_account_distributed
-                    WHERE pubkey = ?
-                      AND slot IN ?
-                    ORDER BY pubkey, slot DESC, write_version DESC
-                    LIMIT 1
-                    "#;
+                SELECT owner, lamports, executable, rent_epoch, data
+                FROM events.update_account_distributed
+                WHERE pubkey = ?
+                  AND slot IN ?
+                ORDER BY pubkey, slot DESC, write_version DESC
+                LIMIT 1
+            "#;
 
             let time_start = Instant::now();
             let result = block(|| async {
                 self.client
                     .query(query)
-                    .bind(key_.clone())
+                    .bind(pubkey_str.clone())
                     .bind(&branch.as_slice())
                     .fetch_one::<AccountRow>()
                     .await
@@ -241,73 +266,155 @@ impl ClickHouseDb {
                 execution_time.as_secs_f64()
             );
 
-            match result {
-                Ok(row) => Some(row),
-                Err(clickhouse::error::Error::RowNotFound) => None,
-                Err(e) => {
-                    println!("get_account_at error: {e}");
-                    return Err(ChError::Db(e));
-                }
-            }
+            Self::row_opt(result).map_err(|e| {
+                println!("get_account_at error: {e}");
+                ChError::Db(e)
+            })?
         };
 
         if row.is_none() {
             let time_start = Instant::now();
-            let result = block(|| async {
-                let query = r#"
-                SELECT owner, lamports, executable, rent_epoch, data
-                FROM events.older_account_distributed
-                WHERE pubkey = ?
-                ORDER BY slot DESC LIMIT 1
-                "#;
-                self.client
-                    .query(query)
-                    .bind(key_)
-                    .fetch_one::<AccountRow>()
-                    .await
-            });
+            row = block(|| self.get_last_older_account_row(&pubkey_str))?;
             let execution_time = Instant::now().duration_since(time_start);
             info!(
                 "get_account_at sql(3) time: {} sec",
                 execution_time.as_secs_f64()
             );
-
-            row = match result {
-                Ok(row) => Some(row),
-                Err(clickhouse::error::Error::RowNotFound) => None,
-                Err(e) => {
-                    println!("get_account_at error: {e}");
-                    return Err(ChError::Db(e));
-                }
-            };
         }
 
         if let Some(acc) = row {
-            let owner = Pubkey::try_from(acc.owner).map_err(|_| {
-                let err =
-                    clickhouse::error::Error::Custom(format!("error convert owner of key: {key}",));
-                println!("get_account_at error: {err}");
-                ChError::Db(err)
-            })?;
-
-            Ok(Some(Account {
-                lamports: acc.lamports,
-                data: acc.data,
-                owner,
-                rent_epoch: acc.rent_epoch,
-                executable: acc.executable,
-            }))
+            acc.try_into()
+                .map(Some)
+                .map_err(|err| ChError::Db(clickhouse::error::Error::Custom(err)))
         } else {
             Ok(None)
         }
     }
 
+    async fn get_last_older_account_row(&self, pubkey: &str) -> ChResult<Option<AccountRow>> {
+        let query = r#"
+            SELECT owner, lamports, executable, rent_epoch, data
+            FROM events.older_account_distributed
+            WHERE pubkey = ?
+            ORDER BY slot DESC LIMIT 1
+        "#;
+        Self::row_opt(
+            self.client
+                .query(query)
+                .bind(pubkey)
+                .fetch_one::<AccountRow>()
+                .await,
+        )
+        .map_err(|e| {
+            println!("get_last_older_account_row error: {e}");
+            ChError::Db(e)
+        })
+    }
+
     #[allow(clippy::unused_self)]
     pub fn get_account_by_sol_sig(
         &self,
-        _pubkey: &Pubkey,
-        _sol_sig: &[u8; 64],
+        pubkey: &Pubkey,
+        sol_sig: &[u8; 64],
     ) -> ChResult<Option<Account>> {
-        panic!("get_account_by_sol_sig() is not implemented for ClickHouse usage");
+        let pubkey_str = format!("{:?}", pubkey.to_bytes());
+        let query = r#"
+            SELECT MAX(slot)
+            FROM events.notify_transaction_local
+            WHERE signature = ?
+        "#;
+
+        let Some(slot) = Self::row_opt(block(|| async {
+            self.client
+                .query(query)
+                .bind(sol_sig.as_slice())
+                .fetch_one::<u64>()
+                .await
+        }))
+        .map_err(|e| {
+            println!("get_account_by_sol_sig error: {e}");
+            ChError::Db(e)
+        })? else {
+            return Ok(None);
+        };
+
+        // Check, if have records without `txn_signature` or with `write_version` < 0
+        // Also try to find right `write_version`. If found and all checks are OK, return account.
+        let query = r#"
+            SELECT owner, lamports, executable, rent_epoch, data, write_version, txn_signature
+            FROM events.update_account_distributed
+            WHERE slot = ? AND pubkey = ?
+            ORDER BY write_version DESC
+        "#;
+
+        let rows = block(|| async {
+            self.client
+                .query(query)
+                .bind(slot)
+                .bind(pubkey_str.clone())
+                .fetch_all::<AccountRow>()
+                .await
+        })?;
+
+        let mut row_found = None;
+        let mut found_signature = false;
+        for row in rows {
+            let (Some(write_version), Some(sig)) = (&row.write_version, &row.txn_signature) else {
+                return Ok(None);
+            };
+            if *write_version < 0 {
+                return Ok(None);
+            }
+            if sig.as_slice() == sol_sig.as_slice() {
+                found_signature = true;
+                continue;
+            }
+            if found_signature && row_found.is_none() {
+                row_found = Some(row);
+            }
+        }
+
+        // If not found, get closest account state in one of previous slots
+        if row_found.is_none() {
+            let query = r#"
+                SELECT owner, lamports, executable, rent_epoch, data, write_version, txn_signature
+                FROM events.update_account_distributed
+                WHERE pubkey = ? AND slot < ?
+                ORDER BY slot DESC, write_version DESC
+                LIMIT 1
+            "#;
+
+            row_found = Self::row_opt(block(|| async {
+                self.client
+                    .query(query)
+                    .bind(sol_sig.as_slice())
+                    .fetch_one::<AccountRow>()
+                    .await
+            }))
+            .map_err(|e| {
+                println!("get_account_by_sol_sig error: {e}");
+                ChError::Db(e)
+            })?;
+        }
+
+        // If still not found, check older accounts
+        if row_found.is_none() {
+            row_found = block(|| self.get_last_older_account_row(&pubkey_str))?;
+        }
+
+        row_found
+            .map(|row| {
+                row.try_into()
+                    .map_err(|err| ChError::Db(clickhouse::error::Error::Custom(err)))
+            })
+            .transpose()
+    }
+
+    fn row_opt<T>(result: clickhouse::error::Result<T>) -> clickhouse::error::Result<Option<T>> {
+        match result {
+            Ok(row) => Ok(Some(row)),
+            Err(clickhouse::error::Error::RowNotFound) => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 }

@@ -135,7 +135,11 @@ impl ClickHouseDb {
     fn get_branch_slots(&self, slot: u64) -> ChResult<(u64, Vec<u64>)> {
         let query = r#"
             SELECT distinct on (slot) slot, parent, status FROM events.update_slot
-            WHERE slot >= (SELECT MAX(slot) - ? FROM events.update_slot WHERE status = 'Rooted')
+            WHERE slot >= (
+                  SELECT slot - ? FROM events.update_slot
+                  WHERE status = 'Rooted'
+                  ORDER BY slot DESC LIMIT 1
+              )
               AND isNotNull(parent)
             ORDER BY slot DESC, status DESC
             "#;
@@ -296,7 +300,8 @@ impl ClickHouseDb {
             SELECT owner, lamports, executable, rent_epoch, data
             FROM events.older_account_distributed
             WHERE pubkey = ?
-            ORDER BY slot DESC LIMIT 1
+            ORDER BY slot DESC
+            LIMIT 1
         "#;
         Self::row_opt(
             self.client
@@ -311,20 +316,21 @@ impl ClickHouseDb {
         })
     }
 
-    #[allow(clippy::unused_self)]
-    pub fn get_account_by_sol_sig(
-        &self,
-        pubkey: &Pubkey,
-        sol_sig: &[u8; 64],
-    ) -> ChResult<Option<Account>> {
-        let pubkey_str = format!("{:?}", pubkey.to_bytes());
+    async fn get_sol_sig_rooted_slot(&self, sol_sig: &[u8; 64]) -> ChResult<Option<u64>> {
         let query = r#"
-            SELECT MAX(slot)
-            FROM events.notify_transaction_local
-            WHERE signature = ?
+            SELECT b.slot
+            FROM events.update_slot AS b
+            WHERE (b.slot IN (
+                      SELECT a.slot
+                      FROM events.notify_transaction_distributed AS a
+                      WHERE (a.signature = ?)
+                  ))
+            AND (b.status = 'Rooted')
+            ORDER BY b.slot DESC
+            LIMIT 1
         "#;
 
-        let Some(slot) = Self::row_opt(block(|| async {
+        Self::row_opt(block(|| async {
             self.client
                 .query(query)
                 .bind(sol_sig.as_slice())
@@ -332,21 +338,84 @@ impl ClickHouseDb {
                 .await
         }))
         .map_err(|e| {
-            println!("get_account_by_sol_sig error: {e}");
+            println!("get_sol_sig_rooted_slot error: {e}");
             ChError::Db(e)
-        })? else {
-            return Ok(None);
+        })
+    }
+
+    async fn get_sol_sig_confirmed_slot(&self, sol_sig: &[u8; 64]) -> ChResult<Option<u64>> {
+        let query = r#"
+            SELECT b.slot
+            FROM events.update_slot AS b
+            WHERE (b.slot >= (
+                  SELECT a1.slot - ? FROM events.update_slot a1
+                  WHERE a1.status = 'Rooted'
+                  ORDER BY a1.slot DESC
+                  LIMIT 1
+              ))
+            AND (b.slot IN (
+                  SELECT a2.slot
+                  FROM events.notify_transaction_distributed AS a2
+                  WHERE (a2.signature = ?)
+              ))
+            ORDER BY b.slot DESC
+            LIMIT 1
+        "#;
+
+        Self::row_opt(block(|| async {
+            self.client
+                .query(query)
+                .bind(ROOT_BLOCK_DELAY)
+                .bind(sol_sig.as_slice())
+                .fetch_one::<u64>()
+                .await
+        }))
+        .map_err(|e| {
+            println!("get_sol_sig_confirmed_slot error: {e}");
+            ChError::Db(e)
+        })
+    }
+
+    #[allow(clippy::unused_self)]
+    pub fn get_account_by_sol_sig(
+        &self,
+        pubkey: &Pubkey,
+        sol_sig: &[u8; 64],
+    ) -> ChResult<Option<Account>> {
+        let time_start = Instant::now();
+        let mut row = block(|| self.get_sol_sig_rooted_slot(&sol_sig))?;
+        let execution_time = Instant::now().duration_since(time_start);
+        info!(
+            "get_sol_sig_rooted_slot sql(1) time: {} sec",
+            execution_time.as_secs_f64()
+        );
+
+        if row.is_none() {
+            let time_start = Instant::now();
+            row = block(|| self.get_sol_sig_confirmed_slot(&sol_sig))?;
+            let execution_time = Instant::now().duration_since(time_start);
+            info!(
+                "get_sol_sig_confirmed_slot sql(2) time: {} sec",
+                execution_time.as_secs_f64()
+            );
+        }
+
+        let Some(slot) = row else {
+            return Ok(None)
         };
 
         // Check, if have records without `txn_signature` or with `write_version` < 0
         // Also try to find right `write_version`. If found and all checks are OK, return account.
         let query = r#"
-            SELECT owner, lamports, executable, rent_epoch, data, write_version, txn_signature
+            SELECT DISTINCT ON (pubkey, txn_signature, write_version)
+                   owner, lamports, executable, rent_epoch, data, write_version, txn_signature
             FROM events.update_account_distributed
             WHERE slot = ? AND pubkey = ?
             ORDER BY write_version DESC
         "#;
 
+        let pubkey_str = format!("{:?}", pubkey.to_bytes());
+        let time_start = Instant::now();
         let rows = block(|| async {
             self.client
                 .query(query)
@@ -355,59 +424,45 @@ impl ClickHouseDb {
                 .fetch_all::<AccountRow>()
                 .await
         })?;
+        let execution_time = Instant::now().duration_since(time_start);
+        info!(
+            "get_account_by_sol_sig sql(3) time: {} sec",
+            execution_time.as_secs_f64()
+        );
 
         let mut row_found = None;
         let mut found_signature = false;
         for row in rows {
             let (Some(write_version), Some(sig)) = (&row.write_version, &row.txn_signature) else {
+                info!("get_sol_sig_confirmed_slot time cannot extract (write_version, txn_signature)!");
                 return Ok(None);
             };
+            // rent payment -> no changes of the record in the block
             if *write_version < 0 {
-                return Ok(None);
+                row_found = Some(row);
+                break;
             }
             if sig.as_slice() == sol_sig.as_slice() {
                 found_signature = true;
                 continue;
             }
-            if found_signature && row_found.is_none() {
+            if found_signature {
                 row_found = Some(row);
+                break;
             }
         }
 
         // If not found, get closest account state in one of previous slots
-        if row_found.is_none() {
-            let query = r#"
-                SELECT owner, lamports, executable, rent_epoch, data, write_version, txn_signature
-                FROM events.update_account_distributed
-                WHERE pubkey = ? AND slot < ?
-                ORDER BY slot DESC, write_version DESC
-                LIMIT 1
-            "#;
-
-            row_found = Self::row_opt(block(|| async {
-                self.client
-                    .query(query)
-                    .bind(sol_sig.as_slice())
-                    .fetch_one::<AccountRow>()
-                    .await
-            }))
-            .map_err(|e| {
-                println!("get_account_by_sol_sig error: {e}");
-                ChError::Db(e)
-            })?;
+        if row_found.is_some() {
+            return row_found
+                .map(|row| {
+                    row.try_into()
+                        .map_err(|err| ChError::Db(clickhouse::error::Error::Custom(err)))
+                })
+                .transpose()
         }
 
-        // If still not found, check older accounts
-        if row_found.is_none() {
-            row_found = block(|| self.get_last_older_account_row(&pubkey_str))?;
-        }
-
-        row_found
-            .map(|row| {
-                row.try_into()
-                    .map_err(|err| ChError::Db(clickhouse::error::Error::Custom(err)))
-            })
-            .transpose()
+        self.get_account_at(pubkey, slot)
     }
 
     fn row_opt<T>(result: clickhouse::error::Result<T>) -> clickhouse::error::Result<Option<T>> {

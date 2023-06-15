@@ -132,7 +132,7 @@ impl ClickHouseDb {
         result
     }
 
-    fn get_branch_slots(&self, slot: u64) -> ChResult<(u64, Vec<u64>)> {
+    fn get_branch_slots(&self, slot: Option<u64>) -> ChResult<(u64, Vec<u64>)> {
         let query = r#"
             SELECT distinct on (slot) slot, parent, status FROM events.update_slot
             WHERE slot >= (
@@ -162,6 +162,10 @@ impl ClickHouseDb {
             "get_branch_slot sql(1) time: {} sec",
             execution_time.as_secs_f64()
         );
+
+        if slot.is_none() {
+           let slot = last;
+        }
 
         match slot.cmp(&last.slot) {
             Less | Equal => Ok((slot, vec![])),
@@ -344,15 +348,11 @@ impl ClickHouseDb {
     }
 
     async fn get_sol_sig_confirmed_slot(&self, sol_sig: &[u8; 64]) -> ChResult<Option<u64>> {
+        let (last, slot_vec) = self.get_branch_slots(None);
         let query = r#"
             SELECT b.slot
             FROM events.update_slot AS b
-            WHERE (b.slot >= (
-                  SELECT a1.slot - ? FROM events.update_slot a1
-                  WHERE a1.status = 'Rooted'
-                  ORDER BY a1.slot DESC
-                  LIMIT 1
-              ))
+            WHERE (b.slot IN ?)
             AND (b.slot IN (
                   SELECT a2.slot
                   FROM events.notify_transaction_distributed AS a2
@@ -365,7 +365,7 @@ impl ClickHouseDb {
         Self::row_opt(block(|| async {
             self.client
                 .query(query)
-                .bind(ROOT_BLOCK_DELAY)
+                .bind(&slot_vec.as_slice())
                 .bind(sol_sig.as_slice())
                 .fetch_one::<u64>()
                 .await

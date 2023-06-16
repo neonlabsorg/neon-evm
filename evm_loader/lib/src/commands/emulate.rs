@@ -44,7 +44,44 @@ pub async fn execute(
     accounts: &[Address],
     solana_accounts: &[Pubkey],
 ) -> NeonResult<EmulateReturn> {
+    // Call precompiled contract if address matches
+    let precompiled_call_result = tx_params.to.as_ref().and_then(|address| {
+        if evm_loader::evm::is_precompile_address(address) {
+            Some(evm_loader::evm::precompile(
+                address,
+                &tx_params.data.clone().unwrap_or_default(),
+            ))
+            .unwrap_or_default()
+        } else {
+            None
+        }
+    });
+
+    // Finish emulation if precompiled contract was called
+    if let Some(result) = precompiled_call_result {
+        let emulate_result = EmulateReturn {
+            accounts: vec![],
+            solana_accounts: vec![],
+            token_accounts: vec![],
+            result: hex::encode(result),
+            exit_status: String::from("succeed"),
+            steps_executed: 0,
+            used_gas: 0,
+            actions: Vec::<evm_loader::executor::Action>::new(),
+        };
+
+        info!(
+            "Precompiled contract at address {0} was called",
+            tx_params
+                .to
+                .expect(".to should be set for a precompile contract call")
+        );
+
+        return Ok(emulate_result);
+    }
+
     let syscall_stubs = Stubs::new(context).await?;
+
     solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
 
     let storage = EmulatorAccountStorage::new(config, context, token, chain).await;
@@ -65,6 +102,7 @@ pub async fn execute(
 
     let (exit_status, actions, steps_executed) = {
         let mut backend = ExecutorState::new(&storage);
+
         let mut evm = Machine::new(trx, tx_params.from, &mut backend)?;
 
         let (result, steps_executed) = evm.execute(steps, &mut backend)?;

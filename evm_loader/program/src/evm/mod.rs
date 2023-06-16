@@ -28,6 +28,7 @@ mod utils;
 use self::{database::Database, memory::Memory, stack::Stack};
 pub use buffer::Buffer;
 pub use precompile::is_precompile_address;
+pub use precompile::precompile;
 
 macro_rules! tracing_event {
     ($x:expr) => {

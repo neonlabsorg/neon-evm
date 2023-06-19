@@ -222,12 +222,16 @@ impl ClickHouseDb {
 
     fn get_account_rooted_slot(&self, key: &str, slot: u64) -> ChResult<Option<u64>> {
         let query = r#"
-            SELECT s.slot
-            FROM events.update_account_distributed a
-                INNER JOIN events.update_slot s ON a.slot = s.slot AND s.status = 'Rooted' 
-            WHERE a.pubkey = ?
-                AND a.slot <= ?
-            ORDER BY s.slot DESC
+            SELECT DISTINCT slot
+            FROM events.update_account_distributed
+            WHERE pubkey = ?
+                AND slot <= ?
+                AND slot IN (
+                    SELECT slot 
+                    FROM events.update_slot 
+                    WHERE status = 'Rooted'
+                )
+            ORDER BY slot DESC
             LIMIT 1
         "#;
 

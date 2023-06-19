@@ -189,7 +189,7 @@ impl ClickHouseDb {
                 .await
         })?;
 
-        let first = if let Some(first) = rows.pos() {
+        let first = if let Some(first) = rows.pop() {
             first
         } else {
             let err = clickhouse::error::Error::Custom("Rooted slot not found".to_string());
@@ -202,7 +202,7 @@ impl ClickHouseDb {
             execution_time.as_secs_f64()
         );
 
-        if let Some(slot) = slot {
+        let slot = if let Some(slot) = slot {
             slot
         } else {
             let branch = branch_from(rows, &|row| row.is_rooted());
@@ -427,7 +427,7 @@ impl ClickHouseDb {
             );
         }
 
-        if let Some(slot) = slot_opt {
+        let slot = if let Some(slot) = slot_opt {
             slot
         } else {
             return Ok(None);

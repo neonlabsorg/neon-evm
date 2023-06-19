@@ -34,11 +34,25 @@ pub struct ClickHouseDb {
     pub client: Arc<Client>,
 }
 
+pub enum SlotStatus {
+    #[allow(unused)]
+    Confirmed = 1,
+    #[allow(unused)]
+    Processed = 2,
+    Rooted = 3,
+}
+
 #[derive(Row, serde::Deserialize, Clone)]
 pub struct SlotParent {
     pub slot: u64,
     pub parent: Option<u64>,
     pub status: u8,
+}
+
+impl SlotParent {
+    fn is_rooted(&self) -> bool {
+        self.status == SlotStatus::Rooted as u8
+    }
 }
 
 #[derive(Row, serde::Deserialize, Clone)]
@@ -132,15 +146,42 @@ impl ClickHouseDb {
         result
     }
 
-    fn get_branch_slots(&self, slot: u64) -> ChResult<(u64, Vec<u64>)> {
+    fn get_branch_slots(&self, slot: Option<u64>) -> ChResult<(u64, Vec<u64>)> {
+        fn branch_from(
+            rows: Vec<SlotParent>,
+            test_start: &dyn Fn(&SlotParent) -> bool,
+        ) -> Vec<u64> {
+            let mut branch = vec![];
+            let mut last_parent_opt = None;
+            for row in rows {
+                if let Some(ref last_parent) = last_parent_opt {
+                    if row.slot == *last_parent {
+                        branch.push(row.slot);
+                        last_parent_opt = row.parent;
+                    }
+                } else if test_start(&row) {
+                    branch.push(row.slot);
+                    last_parent_opt = row.parent;
+                }
+            }
+            branch
+        }
+
         let query = r#"
-            SELECT distinct on (slot) slot, parent, status FROM events.update_slot
-            WHERE slot >= (SELECT MAX(slot) - ? FROM events.update_slot WHERE status = 'Rooted')
+            SELECT DISTINCT ON (slot, parent) slot, parent, status 
+            FROM events.update_slot
+            WHERE slot >= (
+                  SELECT slot - ? 
+                  FROM events.update_slot
+                  WHERE status = 'Rooted'
+                  ORDER BY slot DESC 
+                  LIMIT 1
+              )
               AND isNotNull(parent)
             ORDER BY slot DESC, status DESC
             "#;
         let time_start = Instant::now();
-        let rows = block(|| async {
+        let mut rows = block(|| async {
             self.client
                 .query(query)
                 .bind(ROOT_BLOCK_DELAY)
@@ -148,10 +189,12 @@ impl ClickHouseDb {
                 .await
         })?;
 
-        let (last, rows) = rows.split_last().ok_or_else(|| {
+        let first = if let Some(first) = rows.pop() {
+            first
+        } else {
             let err = clickhouse::error::Error::Custom("Rooted slot not found".to_string());
-            ChError::Db(err)
-        })?;
+            return Err(ChError::Db(err));
+        };
 
         let execution_time = Instant::now().duration_since(time_start);
         info!(
@@ -159,59 +202,52 @@ impl ClickHouseDb {
             execution_time.as_secs_f64()
         );
 
-        match slot.cmp(&last.slot) {
+        let slot = if let Some(slot) = slot {
+            slot
+        } else {
+            let branch = branch_from(rows, &|row| row.is_rooted());
+            return Ok((first.slot, branch));
+        };
+
+        match slot.cmp(&first.slot) {
             Less | Equal => Ok((slot, vec![])),
             Greater => {
-                let mut branch: Vec<SlotParent> = vec![];
-
-                for row in rows {
-                    if branch.is_empty() {
-                        if row.slot == slot {
-                            branch.push(row.clone());
-                        }
-                    } else if row.slot == branch.last().unwrap().parent.unwrap() {
-                        branch.push(row.clone());
-                    }
-                }
-
+                let branch = branch_from(rows, &|row| row.slot == slot);
                 if branch.is_empty() {
                     let err = clickhouse::error::Error::Custom(format!(
                         "requested slot not found {slot}",
                     ));
-                    Err(ChError::Db(err))
-                } else {
-                    let branch = branch.iter().map(|row| row.slot).collect();
-                    Ok((last.slot, branch))
+                    return Err(ChError::Db(err));
                 }
+                return Ok((first.slot, branch));
             }
         }
     }
 
-    fn get_account_rooted_slots(&self, key: &str, slot: u64) -> ChResult<Vec<u64>> {
+    fn get_account_rooted_slot(&self, key: &str, slot: u64) -> ChResult<Option<u64>> {
         let query = r#"
-            SELECT b.slot
-            FROM events.update_slot AS b
-            WHERE (b.slot IN (
-                      SELECT a.slot
-                      FROM events.update_account_distributed AS a
-                      WHERE (a.pubkey = ?)
-                        AND (a.slot <= ?)
-                      ORDER BY a.pubkey, a.slot DESC
-                      LIMIT 1000))
-              AND (b.status = 'Rooted')
-            ORDER BY b.slot DESC
+            SELECT DISTINCT slot
+            FROM events.update_account_distributed
+            WHERE pubkey = ?
+                AND slot <= ?
+                AND slot IN (
+                    SELECT slot 
+                    FROM events.update_slot 
+                    WHERE status = 'Rooted'
+                )
+            ORDER BY slot DESC
             LIMIT 1
         "#;
 
         let time_start = Instant::now();
-        let rows = block(|| async {
+        let slot_opt = Self::row_opt(block(|| async {
             self.client
                 .query(query)
                 .bind(key)
                 .bind(slot)
-                .fetch_all::<u64>()
+                .fetch_one::<u64>()
                 .await
-        })?;
+        }))?;
 
         let execution_time = Instant::now().duration_since(time_start);
         info!(
@@ -219,27 +255,26 @@ impl ClickHouseDb {
             execution_time.as_secs_f64()
         );
 
-        Ok(rows)
+        Ok(slot_opt)
     }
 
     #[allow(clippy::too_many_lines)]
     pub fn get_account_at(&self, pubkey: &Pubkey, slot: u64) -> ChResult<Option<Account>> {
-        let (last, mut branch) = self.get_branch_slots(slot).map_err(|e| {
+        let (first, mut branch) = self.get_branch_slots(Some(slot)).map_err(|e| {
             println!("get_branch_slots error: {:?}", e);
             e
         })?;
 
         let pubkey_str = format!("{:?}", pubkey.to_bytes());
 
-        let mut rooted_slots = self
-            .get_account_rooted_slots(&pubkey_str, last)
+        self.get_account_rooted_slot(&pubkey_str, first)
             .map_err(|e| {
-                println!("get_account_rooted_slots error: {:?}", e);
+                println!("get_account_rooted_slot error: {:?}", e);
                 e
-            })?;
-        branch.append(rooted_slots.as_mut());
+            })?
+            .map(|rooted_slot| branch.push(rooted_slot));
 
-        let mut row: Option<AccountRow> = if branch.is_empty() {
+        let mut row = if branch.is_empty() {
             None
         } else {
             let query = r#"
@@ -296,7 +331,8 @@ impl ClickHouseDb {
             SELECT owner, lamports, executable, rent_epoch, data
             FROM events.older_account_distributed
             WHERE pubkey = ?
-            ORDER BY slot DESC LIMIT 1
+            ORDER BY slot DESC
+            LIMIT 1
         "#;
         Self::row_opt(
             self.client
@@ -311,103 +347,159 @@ impl ClickHouseDb {
         })
     }
 
+    fn get_sol_sig_rooted_slot(&self, sol_sig: &[u8; 64]) -> ChResult<Option<SlotParent>> {
+        let query = r#"
+            SELECT slot, parent, status
+            FROM events.update_slot
+            WHERE slot IN (
+                    SELECT slot
+                    FROM events.notify_transaction_distributed
+                    WHERE signature = ?
+                )
+                AND status = 'Rooted'
+            ORDER BY slot DESC
+            LIMIT 1
+        "#;
+
+        Self::row_opt(block(|| async {
+            self.client
+                .query(query)
+                .bind(sol_sig.as_slice())
+                .fetch_one::<SlotParent>()
+                .await
+        }))
+        .map_err(|e| {
+            println!("get_sol_sig_rooted_slot error: {e}");
+            ChError::Db(e)
+        })
+    }
+
+    fn get_sol_sig_confirmed_slot(&self, sol_sig: &[u8; 64]) -> ChResult<Option<SlotParent>> {
+        let (_, slot_vec) = self.get_branch_slots(None)?;
+        let query = r#"
+            SELECT slot, parent, status
+            FROM events.update_slot
+            WHERE slot IN ?
+                AND slot IN (
+                    SELECT slot
+                    FROM events.notify_transaction_distributed
+                    WHERE signature = ?
+                )
+            ORDER BY slot DESC
+            LIMIT 1
+        "#;
+
+        Self::row_opt(block(|| async {
+            self.client
+                .query(query)
+                .bind(slot_vec.as_slice())
+                .bind(sol_sig.as_slice())
+                .fetch_one::<SlotParent>()
+                .await
+        }))
+        .map_err(|e| {
+            println!("get_sol_sig_confirmed_slot error: {e}");
+            ChError::Db(e)
+        })
+    }
+
     #[allow(clippy::unused_self)]
     pub fn get_account_by_sol_sig(
         &self,
         pubkey: &Pubkey,
         sol_sig: &[u8; 64],
     ) -> ChResult<Option<Account>> {
-        let pubkey_str = format!("{:?}", pubkey.to_bytes());
-        let query = r#"
-            SELECT MAX(slot)
-            FROM events.notify_transaction_local
-            WHERE signature = ?
-        "#;
+        let time_start = Instant::now();
+        let mut slot_opt = self.get_sol_sig_rooted_slot(&sol_sig)?;
+        let execution_time = Instant::now().duration_since(time_start);
+        info!(
+            "get_sol_sig_rooted_slot sql(1) time: {} sec",
+            execution_time.as_secs_f64()
+        );
 
-        let Some(slot) = Self::row_opt(block(|| async {
-            self.client
-                .query(query)
-                .bind(sol_sig.as_slice())
-                .fetch_one::<u64>()
-                .await
-        }))
-        .map_err(|e| {
-            println!("get_account_by_sol_sig error: {e}");
-            ChError::Db(e)
-        })? else {
+        if slot_opt.is_none() {
+            let time_start = Instant::now();
+            slot_opt = self.get_sol_sig_confirmed_slot(&sol_sig)?;
+            let execution_time = Instant::now().duration_since(time_start);
+            info!(
+                "get_sol_sig_confirmed_slot sql(2) time: {} sec",
+                execution_time.as_secs_f64()
+            );
+        }
+
+        let slot = if let Some(slot) = slot_opt {
+            slot
+        } else {
             return Ok(None);
         };
 
         // Check, if have records without `txn_signature` or with `write_version` < 0
         // Also try to find right `write_version`. If found and all checks are OK, return account.
         let query = r#"
-            SELECT owner, lamports, executable, rent_epoch, data, write_version, txn_signature
+            SELECT DISTINCT ON (pubkey, txn_signature, write_version)
+                   owner, lamports, executable, rent_epoch, data, write_version, txn_signature
             FROM events.update_account_distributed
             WHERE slot = ? AND pubkey = ?
             ORDER BY write_version DESC
         "#;
 
+        let pubkey_str = format!("{:?}", pubkey.to_bytes());
+        let time_start = Instant::now();
         let rows = block(|| async {
             self.client
                 .query(query)
-                .bind(slot)
+                .bind(slot.slot)
                 .bind(pubkey_str.clone())
                 .fetch_all::<AccountRow>()
                 .await
         })?;
+        let execution_time = Instant::now().duration_since(time_start);
+        info!(
+            "get_account_by_sol_sig sql(3) time: {} sec",
+            execution_time.as_secs_f64()
+        );
 
         let mut row_found = None;
         let mut found_signature = false;
         for row in rows {
-            let (Some(write_version), Some(sig)) = (&row.write_version, &row.txn_signature) else {
-                return Ok(None);
-            };
-            if *write_version < 0 {
-                return Ok(None);
+            match (&row.write_version, &row.txn_signature) {
+                (None, Some(_)) => {
+                    info!("get_account_by_sol_sig cannot extract write_version!");
+                    return Ok(None);
+                }
+
+                // rent payment or loading from snapshot -> no changes of the record in the block
+                (_, None) => {
+                    row_found = Some(row);
+                    break;
+                }
+
+                (Some(_), Some(sig)) => {
+                    if sig.as_slice() == sol_sig.as_slice() {
+                        found_signature = true;
+                    } else if found_signature {
+                        row_found = Some(row);
+                        break;
+                    }
+                }
             }
-            if sig.as_slice() == sol_sig.as_slice() {
-                found_signature = true;
-                continue;
-            }
-            if found_signature && row_found.is_none() {
-                row_found = Some(row);
-            }
+        }
+
+        if row_found.is_some() {
+            return row_found
+                .map(|row| {
+                    row.try_into()
+                        .map_err(|err| ChError::Db(clickhouse::error::Error::Custom(err)))
+                })
+                .transpose();
         }
 
         // If not found, get closest account state in one of previous slots
-        if row_found.is_none() {
-            let query = r#"
-                SELECT owner, lamports, executable, rent_epoch, data, write_version, txn_signature
-                FROM events.update_account_distributed
-                WHERE pubkey = ? AND slot < ?
-                ORDER BY slot DESC, write_version DESC
-                LIMIT 1
-            "#;
-
-            row_found = Self::row_opt(block(|| async {
-                self.client
-                    .query(query)
-                    .bind(sol_sig.as_slice())
-                    .fetch_one::<AccountRow>()
-                    .await
-            }))
-            .map_err(|e| {
-                println!("get_account_by_sol_sig error: {e}");
-                ChError::Db(e)
-            })?;
+        if let Some(parent) = slot.parent {
+            self.get_account_at(pubkey, parent)
+        } else {
+            Ok(None)
         }
-
-        // If still not found, check older accounts
-        if row_found.is_none() {
-            row_found = block(|| self.get_last_older_account_row(&pubkey_str))?;
-        }
-
-        row_found
-            .map(|row| {
-                row.try_into()
-                    .map_err(|err| ChError::Db(clickhouse::error::Error::Custom(err)))
-            })
-            .transpose()
     }
 
     fn row_opt<T>(result: clickhouse::error::Result<T>) -> clickhouse::error::Result<Option<T>> {

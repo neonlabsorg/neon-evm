@@ -189,7 +189,9 @@ impl ClickHouseDb {
                 .await
         })?;
 
-        let Some(first) = rows.pop() else {
+        let first = if let Some(first) = rows.pos() {
+            first
+        } else {
             let err = clickhouse::error::Error::Custom("Rooted slot not found".to_string());
             return Err(ChError::Db(err));
         };
@@ -200,9 +202,11 @@ impl ClickHouseDb {
             execution_time.as_secs_f64()
         );
 
-        let Some(slot) = slot else {
+        if let Some(slot) = slot {
+            slot
+        } else {
             let branch = branch_from(rows, &|row| row.is_rooted());
-            return Ok((first.slot, branch))
+            return Ok((first.slot, branch));
         };
 
         match slot.cmp(&first.slot) {
@@ -423,8 +427,10 @@ impl ClickHouseDb {
             );
         }
 
-        let Some(slot) = slot_opt else {
-            return Ok(None)
+        if let Some(slot) = slot_opt {
+            slot
+        } else {
+            return Ok(None);
         };
 
         // Check, if have records without `txn_signature` or with `write_version` < 0

@@ -205,7 +205,7 @@ impl ClickHouseDb {
         let slot = if let Some(slot) = slot {
             slot
         } else {
-            let branch = branch_from(rows, &|row| row.is_rooted());
+            let branch = branch_from(rows, &SlotParent::is_rooted);
             return Ok((first.slot, branch));
         };
 
@@ -219,7 +219,7 @@ impl ClickHouseDb {
                     ));
                     return Err(ChError::Db(err));
                 }
-                return Ok((first.slot, branch));
+                Ok((first.slot, branch))
             }
         }
     }
@@ -267,12 +267,15 @@ impl ClickHouseDb {
 
         let pubkey_str = format!("{:?}", pubkey.to_bytes());
 
-        self.get_account_rooted_slot(&pubkey_str, first)
-            .map_err(|e| {
-                println!("get_account_rooted_slot error: {:?}", e);
-                e
-            })?
-            .map(|rooted_slot| branch.push(rooted_slot));
+        if let Some(rooted_slot) =
+            self.get_account_rooted_slot(&pubkey_str, first)
+                .map_err(|e| {
+                    println!("get_account_rooted_slot error: {:?}", e);
+                    e
+                })?
+        {
+            branch.push(rooted_slot);
+        }
 
         let mut row = if branch.is_empty() {
             None
@@ -410,7 +413,7 @@ impl ClickHouseDb {
         sol_sig: &[u8; 64],
     ) -> ChResult<Option<Account>> {
         let time_start = Instant::now();
-        let mut slot_opt = self.get_sol_sig_rooted_slot(&sol_sig)?;
+        let mut slot_opt = self.get_sol_sig_rooted_slot(sol_sig)?;
         let execution_time = Instant::now().duration_since(time_start);
         info!(
             "get_sol_sig_rooted_slot sql(1) time: {} sec",
@@ -419,7 +422,7 @@ impl ClickHouseDb {
 
         if slot_opt.is_none() {
             let time_start = Instant::now();
-            slot_opt = self.get_sol_sig_confirmed_slot(&sol_sig)?;
+            slot_opt = self.get_sol_sig_confirmed_slot(sol_sig)?;
             let execution_time = Instant::now().duration_since(time_start);
             info!(
                 "get_sol_sig_confirmed_slot sql(2) time: {} sec",

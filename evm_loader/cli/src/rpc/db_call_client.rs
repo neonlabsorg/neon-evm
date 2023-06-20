@@ -73,6 +73,8 @@ impl CallDbClient {
         let row = &rows[0];
         let lamports: i64 = row.try_get(2)?;
         let rent_epoch: i64 = row.try_get(4)?;
+
+        #[allow(deprecated)]
         Ok(Some(Account {
             lamports: u64::try_from(lamports).expect("lamports cast error"),
             data: row.try_get(5)?,

@@ -241,17 +241,14 @@ impl<'a> EmulatorAccountStorage<'a> {
                 Action::EvmSelfDestruct { address } => {
                     self.add_ethereum_account(&address, true);
                 },
-                Action::ExternalInstruction { program_id, accounts, allocate, .. } => {
+                Action::ExternalInstruction { program_id, accounts, fee, .. } => {
                     self.add_solana_account(program_id, false);
 
                     for account in accounts {
                         self.add_solana_account(account.pubkey, account.is_writable);
                     }
 
-                    if allocate > 0 {
-                        let cost = rent.minimum_balance(allocate);
-                        gas = gas.saturating_add(cost);
-                    }
+                    gas = gas.saturating_add(fee);
                 }
             }
         }

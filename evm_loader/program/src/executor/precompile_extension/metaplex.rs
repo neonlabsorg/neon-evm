@@ -3,9 +3,11 @@
 use std::convert::{Into, TryInto};
 
 use ethnum::U256;
-use solana_program::{pubkey::Pubkey};
-use mpl_token_metadata::state::{Creator, Metadata, TokenStandard, TokenMetadataAccount};
-
+use mpl_token_metadata::state::{
+    Creator, Metadata, TokenMetadataAccount, TokenStandard, CREATE_FEE, 
+    MAX_MASTER_EDITION_LEN, MAX_METADATA_LEN,
+};
+use solana_program::{pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
 
 use crate::{
     account_storage::AccountStorage,
@@ -167,7 +169,11 @@ fn create_metadata<B: AccountStorage>(
         None,  // Uses
         None,  // Collection Details
     );
-    state.queue_external_instruction(instruction, seeds, mpl_token_metadata::state::MAX_METADATA_LEN);
+
+    let rent = Rent::get()?;
+    let fee = rent.minimum_balance(MAX_METADATA_LEN) + CREATE_FEE;
+
+    state.queue_external_instruction(instruction, seeds, fee);
 
     Ok(metadata_pubkey.to_bytes().to_vec())
 }
@@ -198,7 +204,11 @@ fn create_master_edition<B: AccountStorage>(
         *state.backend.operator(),
         max_supply,
     );
-    state.queue_external_instruction(instruction, seeds, mpl_token_metadata::state::MAX_MASTER_EDITION_LEN);
+
+    let rent = Rent::get()?;
+    let fee = rent.minimum_balance(MAX_MASTER_EDITION_LEN) + CREATE_FEE;
+
+    state.queue_external_instruction(instruction, seeds, fee);
 
     Ok(edition_pubkey.to_bytes().to_vec())
 }

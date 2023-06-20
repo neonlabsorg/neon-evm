@@ -1,6 +1,6 @@
 use super::{block, ChDbConfig};
 use clickhouse::{Client, Row};
-use log::info;
+use log::{debug, info};
 use rand::Rng;
 use solana_sdk::{
     account::Account,
@@ -42,7 +42,7 @@ pub enum SlotStatus {
     Rooted = 3,
 }
 
-#[derive(Row, serde::Deserialize, Clone)]
+#[derive(Debug, Row, serde::Deserialize, Clone)]
 pub struct SlotParent {
     pub slot: u64,
     pub parent: Option<u64>,
@@ -55,7 +55,7 @@ impl SlotParent {
     }
 }
 
-#[derive(Row, serde::Deserialize, Clone)]
+#[derive(Debug, Row, serde::Deserialize, Clone)]
 pub struct AccountRow {
     owner: Vec<u8>,
     lamports: u64,
@@ -412,11 +412,15 @@ impl ClickHouseDb {
         pubkey: &Pubkey,
         sol_sig: &[u8; 64],
     ) -> ChResult<Option<Account>> {
+        info!(
+            "get_account_by_sol_sig: pubkey = {pubkey}, sol_sig = {}",
+            bs58::encode(sol_sig).into_string()
+        );
         let time_start = Instant::now();
         let mut slot_opt = self.get_sol_sig_rooted_slot(sol_sig)?;
         let execution_time = Instant::now().duration_since(time_start);
         info!(
-            "get_sol_sig_rooted_slot sql(1) time: {} sec",
+            "get_sol_sig_rooted_slot = {slot_opt:?}, time: {} sec",
             execution_time.as_secs_f64()
         );
 
@@ -425,7 +429,7 @@ impl ClickHouseDb {
             slot_opt = self.get_sol_sig_confirmed_slot(sol_sig)?;
             let execution_time = Instant::now().duration_since(time_start);
             info!(
-                "get_sol_sig_confirmed_slot sql(2) time: {} sec",
+                "get_sol_sig_confirmed_slot = {slot_opt:?}, time: {} sec",
                 execution_time.as_secs_f64()
             );
         }
@@ -458,9 +462,12 @@ impl ClickHouseDb {
         })?;
         let execution_time = Instant::now().duration_since(time_start);
         info!(
-            "get_account_by_sol_sig sql(3) time: {} sec",
+            "get_account_by_sol_sig sql(1) returned {} row(s), time: {} sec",
+            rows.len(),
             execution_time.as_secs_f64()
         );
+
+        debug!("get_account_by_sol_sig sql(1) returned:\n{rows:?}");
 
         let mut row_found = None;
         let mut found_signature = false;

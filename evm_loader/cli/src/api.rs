@@ -1,18 +1,19 @@
 #![allow(dead_code)]
 #![deny(warnings)]
 #![deny(clippy::all, clippy::pedantic)]
-mod account_storage;
 mod api_options;
 mod api_server;
-mod commands;
-mod config;
-mod context;
-mod errors;
-mod event_listener;
-mod program_options;
-mod rpc;
-mod syscall_stubs;
-mod types;
+
+pub use neon_lib::account_storage;
+pub use neon_lib::commands;
+pub use neon_lib::config;
+pub use neon_lib::context;
+pub use neon_lib::errors;
+pub use neon_lib::event_listener;
+pub use neon_lib::program_options;
+pub use neon_lib::rpc;
+pub use neon_lib::syscall_stubs;
+pub use neon_lib::types;
 
 use std::{env, net::SocketAddr, str::FromStr, sync::Arc};
 

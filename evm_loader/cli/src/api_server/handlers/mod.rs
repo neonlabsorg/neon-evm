@@ -1,5 +1,4 @@
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 use axum::Json;
 use ethnum::U256;
 use evm_loader::types::Address;
@@ -72,19 +71,6 @@ pub(crate) fn parse_emulation_params(
         .unwrap_or_default();
 
     (token, chain, max_steps, accounts, solana_accounts)
-}
-
-impl IntoResponse for NeonCliError {
-    fn into_response(self) -> Response {
-        let (status, error_message) = (StatusCode::INTERNAL_SERVER_ERROR, self.to_string());
-
-        let body = Json(json!({
-            "result": "error",
-            "error":error_message,
-        }));
-
-        (status, body).into_response()
-    }
 }
 
 fn process_result(result: &NeonCliResult) -> (StatusCode, Json<Value>) {

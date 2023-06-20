@@ -3,7 +3,11 @@
 
 use std::net::AddrParseError;
 
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::Json;
 use log::error;
+use serde_json::json;
 use solana_cli::cli::CliError as SolanaCliError;
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_client::tpu_client::TpuSenderError as SolanaTpuSenderError;
@@ -137,6 +141,19 @@ impl NeonCliError {
             NeonCliError::IncorrectIndex(_) => 249,
             NeonCliError::TxParametersParsingError(_) => 250,
         }
+    }
+}
+
+impl IntoResponse for NeonCliError {
+    fn into_response(self) -> Response {
+        let (status, error_message) = (StatusCode::INTERNAL_SERVER_ERROR, self.to_string());
+
+        let body = Json(json!({
+            "result": "error",
+            "error":error_message,
+        }));
+
+        (status, body).into_response()
     }
 }
 

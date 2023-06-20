@@ -60,6 +60,7 @@ impl TrxDbClient {
         let lamports: i64 = row.try_get(0)?;
         let rent_epoch: i64 = row.try_get(4)?;
 
+        #[allow(deprecated)]
         let account = Account {
             lamports: u64::try_from(lamports).expect("lamports cast error"),
             data: row.try_get(1)?,

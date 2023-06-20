@@ -62,7 +62,7 @@ fn create_metadata_accounts_v3(meta: &[AccountMeta], accounts: &mut BTreeMap<Pub
     };
 
     let compatible_data = args.data.to_v1();
-    assert_data_valid(&compatible_data, update_authority_key, &metadata, false, meta[4].is_signer, false)?;
+    assert_data_valid(&compatible_data, update_authority_key, &metadata, false, meta[4].is_signer)?;
 
     metadata.mint = *mint_key;
     metadata.key = Key::MetadataV1;

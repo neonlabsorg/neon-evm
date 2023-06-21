@@ -140,7 +140,7 @@ impl ClickHouseDb {
         });
         let execution_time = Instant::now().duration_since(time_start);
         info!(
-            "get_latest_block sql time: {} sec",
+            "get_latest_block sql returned {result:?}, time: {} sec",
             execution_time.as_secs_f64()
         );
         result
@@ -325,7 +325,7 @@ impl ClickHouseDb {
             row = block(|| self.get_last_older_account_row(&pubkey_str))?;
             let execution_time = Instant::now().duration_since(time_start);
             info!(
-                "get_account_at {{ pubkey: {pubkey}, slot: {slot} }} sql(3) returned {row:?}, time: {} sec",
+                "get_account_at {{ pubkey: {pubkey}, slot: {slot} }} sql(2) returned {row:?}, time: {} sec",
                 execution_time.as_secs_f64()
             );
         }

@@ -306,7 +306,8 @@ impl ClickHouseDb {
                     .bind(&branch.as_slice())
                     .fetch_one::<AccountRow>()
                     .await
-            })).map_err(|e| {
+            }))
+            .map_err(|e| {
                 println!("get_account_at error: {e}");
                 ChError::Db(e)
             })?;
@@ -479,16 +480,20 @@ impl ClickHouseDb {
             execution_time.as_secs_f64(),
         );
 
-        debug!("get_account_by_sol_sig {{ pubkey: {pubkey}, sol_sig: {sol_sig_str} }} \
-            sql(1) returned:\n{rows:?}");
+        debug!(
+            "get_account_by_sol_sig {{ pubkey: {pubkey}, sol_sig: {sol_sig_str} }} \
+            sql(1) returned:\n{rows:?}"
+        );
 
         let mut row_found = None;
         let mut found_signature = false;
         for row in rows {
             match (&row.write_version, &row.txn_signature) {
                 (None, Some(_)) => {
-                    info!("get_account_by_sol_sig {{ pubkey: {pubkey}, sol_sig: {sol_sig_str} }} \
-                        cannot extract write_version!");
+                    info!(
+                        "get_account_by_sol_sig {{ pubkey: {pubkey}, sol_sig: {sol_sig_str} }} \
+                        cannot extract write_version!"
+                    );
                     return Ok(None);
                 }
 

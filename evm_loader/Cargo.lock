@@ -2241,7 +2241,6 @@ dependencies = [
  "bincode",
  "bs58",
  "chrono",
- "clap 2.34.0",
  "clickhouse",
  "ethnum",
  "evm-loader",

@@ -62,8 +62,7 @@ pub struct AccountRow {
     executable: bool,
     rent_epoch: u64,
     data: Vec<u8>,
-    write_version: Option<i64>,
-    txn_signature: Option<Vec<u8>>,
+    txn_signature: Vec<u8>,
 }
 
 impl TryInto<Account> for AccountRow {
@@ -290,7 +289,7 @@ impl ClickHouseDb {
             None
         } else {
             let query = r#"
-                SELECT owner, lamports, executable, rent_epoch, data, write_version, txn_signature
+                SELECT owner, lamports, executable, rent_epoch, data, txn_signature
                 FROM events.update_account_distributed
                 WHERE pubkey = ?
                   AND slot IN ?
@@ -345,7 +344,7 @@ impl ClickHouseDb {
 
     async fn get_last_older_account_row(&self, pubkey: &str) -> ChResult<Option<AccountRow>> {
         let query = r#"
-            SELECT owner, lamports, executable, rent_epoch, data, write_version, txn_signature
+            SELECT owner, lamports, executable, rent_epoch, data, txn_signature
             FROM events.older_account_distributed
             WHERE pubkey = ?
             ORDER BY slot DESC
@@ -452,11 +451,10 @@ impl ClickHouseDb {
             return Ok(None);
         };
 
-        // Check, if have records without `txn_signature` or with `write_version` < 0
-        // Also try to find right `write_version`. If found and all checks are OK, return account.
+        // Try to find account changes within the given slot.
         let query = r#"
             SELECT DISTINCT ON (pubkey, txn_signature, write_version)
-                   owner, lamports, executable, rent_epoch, data, write_version, txn_signature
+                   owner, lamports, executable, rent_epoch, data, txn_signature
             FROM events.update_account_distributed
             WHERE slot = ? AND pubkey = ?
             ORDER BY write_version DESC
@@ -485,34 +483,11 @@ impl ClickHouseDb {
             sql(1) returned:\n{rows:?}"
         );
 
-        let mut row_found = None;
-        let mut found_signature = false;
-        for row in rows {
-            match (&row.write_version, &row.txn_signature) {
-                (None, Some(_)) => {
-                    info!(
-                        "get_account_by_sol_sig {{ pubkey: {pubkey}, sol_sig: {sol_sig_str} }} \
-                        cannot extract write_version!"
-                    );
-                    return Ok(None);
-                }
-
-                // rent payment or loading from snapshot -> no changes of the record in the block
-                (_, None) => {
-                    row_found = Some(row);
-                    break;
-                }
-
-                (Some(_), Some(sig)) => {
-                    if sig.as_slice() == sol_sig.as_slice() {
-                        found_signature = true;
-                    } else if found_signature {
-                        row_found = Some(row);
-                        break;
-                    }
-                }
-            }
-        }
+        let row_found = rows
+            .into_iter()
+            .skip_while(|row| row.txn_signature.as_slice() != sol_sig.as_slice())
+            .skip(1)
+            .next();
 
         info!("get_account_by_sol_sig {{ pubkey: {pubkey}, sol_sig: {sol_sig_str} }}, row_found: {row_found:?}");
 

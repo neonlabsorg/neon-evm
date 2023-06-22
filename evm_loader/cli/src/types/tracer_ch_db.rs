@@ -290,7 +290,7 @@ impl ClickHouseDb {
             None
         } else {
             let query = r#"
-                SELECT owner, lamports, executable, rent_epoch, data
+                SELECT owner, lamports, executable, rent_epoch, data, write_version, txn_signature
                 FROM events.update_account_distributed
                 WHERE pubkey = ?
                   AND slot IN ?
@@ -345,7 +345,7 @@ impl ClickHouseDb {
 
     async fn get_last_older_account_row(&self, pubkey: &str) -> ChResult<Option<AccountRow>> {
         let query = r#"
-            SELECT owner, lamports, executable, rent_epoch, data
+            SELECT owner, lamports, executable, rent_epoch, data, write_version, txn_signature
             FROM events.older_account_distributed
             WHERE pubkey = ?
             ORDER BY slot DESC

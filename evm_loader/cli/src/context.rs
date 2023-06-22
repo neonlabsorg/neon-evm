@@ -1,6 +1,6 @@
-use crate::program_options::truncate;
 use clap::ArgMatches;
 use hex::FromHex;
+use neon_lib::context::truncate;
 pub use neon_lib::context::*;
 use neon_lib::rpc;
 use neon_lib::rpc::CallDbClient;
@@ -9,19 +9,6 @@ use neon_lib::Config;
 use neon_lib::NeonCliError;
 use solana_clap_utils::keypair::signer_from_path;
 use solana_client::rpc_client::RpcClient;
-
-/// # Errors
-pub fn build_hash_rpc_client(
-    config: &Config,
-    hash: &str,
-) -> Result<Box<dyn rpc::Rpc>, NeonCliError> {
-    let hash = <[u8; 32]>::from_hex(truncate(hash))?;
-
-    Ok(Box::new(TrxDbClient::new(
-        config.db_config.as_ref().expect("db-config not found"),
-        hash,
-    )))
-}
 
 /// # Errors
 pub fn create_from_config_and_options(

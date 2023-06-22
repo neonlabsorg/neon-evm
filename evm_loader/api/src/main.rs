@@ -3,12 +3,11 @@
 #![deny(clippy::all, clippy::pedantic)]
 mod api_options;
 mod api_server;
-mod commands;
-mod config;
-mod context;
-mod program_options;
 
 pub use neon_lib::account_storage;
+pub use neon_lib::commands;
+pub use neon_lib::config;
+pub use neon_lib::context;
 pub use neon_lib::errors;
 pub use neon_lib::event_listener;
 pub use neon_lib::rpc;

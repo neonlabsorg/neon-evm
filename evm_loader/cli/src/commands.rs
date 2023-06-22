@@ -1,8 +1,9 @@
 pub use neon_lib::commands::*;
+use neon_lib::context::truncate;
 
 use crate::{
-    commands::get_neon_elf::CachedElfParams, context::Context, program_options::truncate,
-    types::TxParams, Config, NeonCliResult,
+    commands::get_neon_elf::CachedElfParams, context::Context, types::TxParams, Config,
+    NeonCliResult,
 };
 use clap::ArgMatches;
 use ethnum::U256;

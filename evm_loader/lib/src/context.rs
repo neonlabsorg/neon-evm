@@ -1,7 +1,33 @@
-use crate::{rpc, rpc::CallDbClient, Config, NeonCliError};
+use crate::{
+    rpc::CallDbClient,
+    rpc::{self, TrxDbClient},
+    Config, NeonCliError,
+};
+use hex::FromHex;
 use solana_clap_utils::keypair::signer_from_path;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::signature::Signer;
+
+/// # Errors
+pub fn build_hash_rpc_client(
+    config: &Config,
+    hash: &str,
+) -> Result<Box<dyn rpc::Rpc>, NeonCliError> {
+    let hash = <[u8; 32]>::from_hex(truncate(hash))?;
+
+    Ok(Box::new(TrxDbClient::new(
+        config.db_config.as_ref().expect("db-config not found"),
+        hash,
+    )))
+}
+
+pub fn truncate(in_str: &str) -> &str {
+    if &in_str[..2] == "0x" {
+        &in_str[2..]
+    } else {
+        in_str
+    }
+}
 
 pub struct Context {
     pub rpc_client: Box<dyn rpc::Rpc>,

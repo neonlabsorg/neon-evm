@@ -486,8 +486,7 @@ impl ClickHouseDb {
         let row_found = rows
             .into_iter()
             .skip_while(|row| row.txn_signature.as_slice() != sol_sig.as_slice())
-            .skip(1)
-            .next();
+            .nth(1);
 
         info!("get_account_by_sol_sig {{ pubkey: {pubkey}, sol_sig: {sol_sig_str} }}, row_found: {row_found:?}");
 

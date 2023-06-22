@@ -3,7 +3,7 @@
 
 mod commands;
 mod config;
-pub mod context;
+mod context;
 mod logs;
 mod program_options;
 

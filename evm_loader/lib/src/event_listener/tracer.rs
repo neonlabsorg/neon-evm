@@ -6,6 +6,12 @@ pub struct Tracer {
     pub data: Vec<FullTraceData>,
 }
 
+impl Default for Tracer {
+    fn default() -> Self {
+        Tracer::new()
+    }
+}
+
 impl Tracer {
     pub fn new() -> Self {
         Tracer {

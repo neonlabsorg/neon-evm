@@ -11,6 +11,7 @@ use std::str::FromStr;
 
 pub type NeonCliResult = Result<serde_json::Value, NeonError>;
 
+#[allow(clippy::too_many_lines)]
 pub fn execute(
     cmd: &str,
     params: Option<&ArgMatches>,

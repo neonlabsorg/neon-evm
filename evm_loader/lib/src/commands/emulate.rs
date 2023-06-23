@@ -5,19 +5,32 @@ use evm_loader::{
     account_storage::AccountStorage,
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
-    executor::ExecutorState,
+    executor::{Action, ExecutorState},
     gasometer::LAMPORTS_PER_SIGNATURE,
     types::{Address, Transaction},
 };
+use serde::Serialize;
 
 use crate::{
     account_storage::{EmulatorAccountStorage, NeonAccount, SolanaAccount},
-    errors::NeonCliError,
+    errors::NeonError,
     syscall_stubs::Stubs,
-    Config, NeonCliResult,
+    Config, NeonResult,
 };
 use crate::{context::Context, types::TxParams};
 use solana_sdk::pubkey::Pubkey;
+
+#[derive(Serialize)]
+pub struct EmulateReturn {
+    pub accounts: Vec<NeonAccount>,
+    pub solana_accounts: Vec<SolanaAccount>,
+    pub token_accounts: Vec<()>,
+    pub result: String,
+    pub exit_status: String,
+    pub steps_executed: u64,
+    pub used_gas: u64,
+    pub actions: Vec<Action>,
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn execute(
@@ -29,7 +42,7 @@ pub fn execute(
     steps: u64,
     accounts: &[Address],
     solana_accounts: &[Pubkey],
-) -> NeonCliResult {
+) -> NeonResult<EmulateReturn> {
     let syscall_stubs = Stubs::new(context)?;
     solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
 
@@ -60,7 +73,7 @@ pub fn execute(
     debug!("{steps_executed} steps executed");
 
     if exit_status == ExitStatus::StepLimit {
-        return Err(NeonCliError::TooManySteps);
+        return Err(NeonError::TooManySteps);
     }
 
     let accounts_operations = storage.calc_accounts_operations(&actions);
@@ -84,16 +97,16 @@ pub fn execute(
     let solana_accounts: Vec<SolanaAccount> =
         storage.solana_accounts.borrow().values().cloned().collect();
 
-    let json = serde_json::json!({
-        "accounts": accounts,
-        "solana_accounts": solana_accounts,
-        "token_accounts": [],
-        "result": hex::encode(result),
-        "exit_status": status,
-        "steps_executed": steps_executed,
-        "used_gas": steps_gas + begin_end_gas + actions_gas + accounts_gas,
-        "actions": actions
-    });
+    let result = EmulateReturn {
+        accounts,
+        solana_accounts,
+        token_accounts: vec![],
+        result: hex::encode(result),
+        exit_status: status.to_string(),
+        steps_executed,
+        used_gas: steps_gas + begin_end_gas + actions_gas + accounts_gas,
+        actions,
+    };
 
-    Ok(json)
+    Ok(result)
 }

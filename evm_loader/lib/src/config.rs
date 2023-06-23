@@ -1,6 +1,6 @@
 use std::{env, str::FromStr};
 
-use crate::{types::ChDbConfig, NeonCliError};
+use crate::{types::ChDbConfig, NeonError};
 use serde::{Deserialize, Serialize};
 use solana_clap_utils::{
     input_validators::normalize_to_url_if_moniker, keypair::keypair_from_path,
@@ -26,7 +26,7 @@ pub struct Config {
 // }
 
 /// # Errors
-pub fn create_from_api_comnfig(api_config: &APIOptions) -> Result<Config, NeonCliError> {
+pub fn create_from_api_comnfig(api_config: &APIOptions) -> Result<Config, NeonError> {
     let solana_cli_config: SolanaConfig =
         if let Some(path) = api_config.solana_cli_config_path.clone() {
             solana_cli_config::Config::load(path.as_str()).unwrap_or_default()
@@ -42,7 +42,7 @@ pub fn create_from_api_comnfig(api_config: &APIOptions) -> Result<Config, NeonCl
     let evm_loader: Pubkey = if let Ok(val) = Pubkey::from_str(&api_config.evm_loader) {
         val
     } else {
-        return Err(NeonCliError::EvmLoaderNotSpecified);
+        return Err(NeonError::EvmLoaderNotSpecified);
     };
 
     let keypair_path: String = api_config.keypair.clone();

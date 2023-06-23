@@ -3,10 +3,12 @@ use crate::{
     context::Context,
     event_listener::tracer::Tracer,
     types::{trace::TracedCall, TxParams},
-    Config, NeonCliResult,
+    Config, NeonResult,
 };
 use evm_loader::types::Address;
 use solana_sdk::pubkey::Pubkey;
+
+pub type TraceReturn = TracedCall;
 
 #[allow(clippy::too_many_arguments)]
 pub fn execute(
@@ -18,7 +20,7 @@ pub fn execute(
     steps: u64,
     accounts: &[Address],
     solana_accounts: &[Pubkey],
-) -> NeonCliResult {
+) -> NeonResult<TraceReturn> {
     let mut tracer = Tracer::new();
 
     evm_loader::evm::tracing::using(&mut tracer, || {
@@ -42,5 +44,5 @@ pub fn execute(
         used_gas: 0,
     };
 
-    Ok(serde_json::json!(trace))
+    Ok(trace)
 }

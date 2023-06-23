@@ -6,7 +6,7 @@ use neon_lib::rpc;
 use neon_lib::rpc::CallDbClient;
 use neon_lib::rpc::TrxDbClient;
 use neon_lib::Config;
-use neon_lib::NeonCliError;
+use neon_lib::NeonError;
 use solana_clap_utils::keypair::signer_from_path;
 use solana_client::rpc_client::RpcClient;
 
@@ -14,7 +14,7 @@ use solana_client::rpc_client::RpcClient;
 pub fn create_from_config_and_options(
     options: &ArgMatches,
     config: &Config,
-) -> Result<Context, NeonCliError> {
+) -> Result<Context, NeonError> {
     let (cmd, params) = options.subcommand();
 
     let slot = options.value_of("slot");
@@ -53,7 +53,7 @@ pub fn create_from_config_and_options(
         "keypair",
         &mut wallet_manager,
     )
-    .map_err(|_| NeonCliError::KeypairNotSpecified)?;
+    .map_err(|_| NeonError::KeypairNotSpecified)?;
 
     Ok(Context { rpc_client, signer })
 }

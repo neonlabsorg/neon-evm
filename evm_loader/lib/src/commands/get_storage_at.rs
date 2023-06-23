@@ -12,15 +12,17 @@ use evm_loader::{
 use crate::context::Context;
 use crate::{
     account_storage::{account_info, EmulatorAccountStorage},
-    Config, NeonCliResult,
+    Config, NeonResult,
 };
+
+pub type GetStorageAtReturn = String;
 
 pub fn execute(
     config: &Config,
     context: &Context,
     ether_address: Address,
     index: &U256,
-) -> NeonCliResult {
+) -> NeonResult<GetStorageAtReturn> {
     let value = if let (solana_address, Some(mut account)) =
         EmulatorAccountStorage::get_account_from_solana(config, context, &ether_address)
     {
@@ -65,5 +67,5 @@ pub fn execute(
         <[u8; 32]>::default()
     };
 
-    Ok(serde_json::json!(hex::encode(value)))
+    Ok(hex::encode(value))
 }

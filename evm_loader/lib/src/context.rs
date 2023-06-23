@@ -1,7 +1,7 @@
 use crate::{
     rpc::CallDbClient,
     rpc::{self, TrxDbClient},
-    Config, NeonCliError,
+    Config, NeonError,
 };
 use hex::FromHex;
 use solana_clap_utils::keypair::signer_from_path;
@@ -9,10 +9,7 @@ use solana_client::rpc_client::RpcClient;
 use solana_sdk::signature::Signer;
 
 /// # Errors
-pub fn build_hash_rpc_client(
-    config: &Config,
-    hash: &str,
-) -> Result<Box<dyn rpc::Rpc>, NeonCliError> {
+pub fn build_hash_rpc_client(config: &Config, hash: &str) -> Result<Box<dyn rpc::Rpc>, NeonError> {
     let hash = <[u8; 32]>::from_hex(truncate(hash))?;
 
     Ok(Box::new(TrxDbClient::new(
@@ -40,7 +37,7 @@ pub fn create(rpc_client: Box<dyn rpc::Rpc>, signer: Box<dyn Signer>) -> Context
 }
 
 /// # Errors
-pub fn build_signer(config: &Config) -> Result<Box<dyn Signer>, NeonCliError> {
+pub fn build_signer(config: &Config) -> Result<Box<dyn Signer>, NeonError> {
     let mut wallet_manager = None;
 
     let signer = signer_from_path(
@@ -49,7 +46,7 @@ pub fn build_signer(config: &Config) -> Result<Box<dyn Signer>, NeonCliError> {
         "keypair",
         &mut wallet_manager,
     )
-    .map_err(|_| NeonCliError::KeypairNotSpecified)?;
+    .map_err(|_| NeonError::KeypairNotSpecified)?;
 
     Ok(signer)
 }
@@ -58,12 +55,12 @@ pub fn build_signer(config: &Config) -> Result<Box<dyn Signer>, NeonCliError> {
 pub fn build_rpc_client(
     config: &Config,
     slot: Option<u64>,
-) -> Result<Box<dyn rpc::Rpc>, NeonCliError> {
+) -> Result<Box<dyn rpc::Rpc>, NeonError> {
     if let Some(slot) = slot {
         let config = config
             .db_config
             .clone()
-            .ok_or(NeonCliError::InvalidChDbConfig)?;
+            .ok_or(NeonError::InvalidChDbConfig)?;
         return Ok(Box::new(CallDbClient::new(&config, slot)));
     }
 

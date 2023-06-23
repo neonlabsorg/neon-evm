@@ -18,10 +18,10 @@ use clap::ArgMatches;
 pub use config::Config;
 pub use context::Context;
 
-use crate::errors::NeonCliError;
+use crate::errors::NeonError;
 use std::time::Instant;
 
-type NeonCliResult = Result<serde_json::Value, NeonCliError>;
+type NeonCliResult = Result<serde_json::Value, NeonError>;
 
 fn run(options: &ArgMatches) -> NeonCliResult {
     let (cmd, params) = options.subcommand();
@@ -62,7 +62,7 @@ async fn main() {
     logs::init(&options).expect("logs init error");
     std::panic::set_hook(Box::new(|info| {
         let message = std::format!("Panic: {}", info);
-        print_result(&Err(NeonCliError::Panic(message)));
+        print_result(&Err(NeonError::Panic(message)));
     }));
 
     let result = run(&options);

@@ -1,4 +1,6 @@
-use crate::{context::Context, NeonCliResult};
+use serde::Serialize;
+
+use crate::{context::Context, NeonResult};
 
 use {
     crate::{
@@ -8,7 +10,7 @@ use {
             },
             transaction_executor::TransactionExecutor,
         },
-        errors::NeonCliError,
+        errors::NeonError,
         Config,
     },
     evm_loader::{
@@ -33,6 +35,11 @@ use {
     thiserror::Error,
 };
 
+#[derive(Serialize)]
+pub struct InitEnvironmentReturn {
+    pub transactions: Vec<String>,
+}
+
 struct Parameters {
     params: HashMap<String, String>,
 }
@@ -42,7 +49,7 @@ impl Parameters {
         Self { params }
     }
 
-    pub fn get<T: std::str::FromStr>(&self, name: &str) -> Result<T, NeonCliError> {
+    pub fn get<T: std::str::FromStr>(&self, name: &str) -> Result<T, NeonError> {
         self.params
             .get(name)
             .ok_or_else(|| EnvironmentError::MissingProgramParameter(name.to_string()))?
@@ -78,7 +85,7 @@ pub enum EnvironmentError {
     IncorrectProgramAuthority,
 }
 
-fn read_keys_dir(keys_dir: &str) -> Result<HashMap<Pubkey, Keypair>, NeonCliError> {
+fn read_keys_dir(keys_dir: &str) -> Result<HashMap<Pubkey, Keypair>, NeonError> {
     let mut keys = HashMap::new();
     for file in Path::new(keys_dir).read_dir()? {
         let path = file?.path();
@@ -100,7 +107,7 @@ pub fn execute(
     force: bool,
     keys_dir: Option<&str>,
     file: Option<&str>,
-) -> NeonCliResult {
+) -> NeonResult<InitEnvironmentReturn> {
     info!(
         "Signer: {}, send_trx: {}, force: {}",
         context.signer.pubkey(),
@@ -139,7 +146,7 @@ pub fn execute(
     }
 
     //====================== Create NEON-token mint ===================================================================
-    let create_token = |mint: &Pubkey, decimals: u8| -> Result<Option<Transaction>, NeonCliError> {
+    let create_token = |mint: &Pubkey, decimals: u8| -> Result<Option<Transaction>, NeonError> {
         let mint_signer = keys
             .get(mint)
             .ok_or(EnvironmentError::MissingPrivateKey(*mint))?;
@@ -301,9 +308,9 @@ pub fn execute(
         .map(|s| bs58::encode(s).into_string())
         .collect::<Vec<String>>();
 
-    let result = serde_json::json!({
-        "transactions": signatures,
-    });
+    let result = InitEnvironmentReturn {
+        transactions: signatures,
+    };
 
     if stats.total_objects == stats.corrected_objects {
         Ok(result)
@@ -312,10 +319,10 @@ pub fn execute(
             Ok(result)
         } else {
             // Some object required modifing
-            Err(NeonCliError::IncompleteEnvironment)
+            Err(NeonError::IncompleteEnvironment)
         }
     } else {
         // Some error in objects or on applying transactions
-        Err(NeonCliError::WrongEnvironment)
+        Err(NeonError::WrongEnvironment)
     }
 }

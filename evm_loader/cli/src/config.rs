@@ -1,6 +1,6 @@
 use clap::ArgMatches;
 pub use neon_lib::config::*;
-use neon_lib::NeonCliError;
+use neon_lib::NeonError;
 use solana_clap_utils::{
     input_parsers::pubkey_of, input_validators::normalize_to_url_if_moniker,
     keypair::keypair_from_path,
@@ -12,7 +12,7 @@ use std::str::FromStr;
 /// # Errors
 /// `EvmLoaderNotSpecified` - if `evm_loader` is not specified
 /// `KeypairNotSpecified` - if `signer` is not specified
-pub fn create(options: &ArgMatches) -> Result<Config, NeonCliError> {
+pub fn create(options: &ArgMatches) -> Result<Config, NeonError> {
     let solana_cli_config = options
         .value_of("config_file")
         .map_or_else(solana_cli_config::Config::default, |config_file| {
@@ -31,7 +31,7 @@ pub fn create(options: &ArgMatches) -> Result<Config, NeonCliError> {
     let evm_loader = if let Some(value) = pubkey_of(options, "evm_loader") {
         value
     } else {
-        return Err(NeonCliError::EvmLoaderNotSpecified);
+        return Err(NeonError::EvmLoaderNotSpecified);
     };
 
     let keypair_path: String = options

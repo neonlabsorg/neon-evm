@@ -19,11 +19,11 @@ use std::{env, net::SocketAddr, str::FromStr, sync::Arc};
 use axum::Router;
 pub use config::Config;
 pub use context::Context;
-use errors::NeonCliError;
+use errors::NeonError;
 use tokio::signal::{self};
 
-type NeonCliResult = Result<serde_json::Value, NeonCliError>;
-type NeonApiResult<T> = Result<T, NeonCliError>;
+type NeonCliResult = Result<serde_json::Value, NeonError>;
+type NeonApiResult<T> = Result<T, NeonError>;
 type NeonApiState = Arc<api_server::state::State>;
 
 #[tokio::main]

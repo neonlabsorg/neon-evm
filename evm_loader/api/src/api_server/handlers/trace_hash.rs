@@ -28,7 +28,7 @@ pub async fn trace_hash(
         Err(e) => {
             return process_error(
                 StatusCode::BAD_REQUEST,
-                &crate::errors::NeonCliError::SolanaClientError(e),
+                &crate::errors::NeonError::SolanaClientError(e),
             )
         }
     };
@@ -41,14 +41,17 @@ pub async fn trace_hash(
         &trace_hash_request.emulate_hash_request.emulation_params,
     );
 
-    process_result(&crate::commands::trace::execute(
-        &state.config,
-        &context,
-        tx,
-        token,
-        chain,
-        steps,
-        &accounts,
-        &solana_accounts,
-    ))
+    process_result(
+        &crate::commands::trace::execute(
+            &state.config,
+            &context,
+            tx,
+            token,
+            chain,
+            steps,
+            &accounts,
+            &solana_accounts,
+        )
+        .map(|x| serde_json::to_value(x).unwrap()),
+    )
 }

@@ -1,9 +1,10 @@
 use crate::{
-    commands::get_neon_elf::read_elf_parameters_from_account, errors::NeonCliError, Config,
-    Context, NeonCliResult,
+    commands::get_neon_elf::read_elf_parameters_from_account, errors::NeonError, Config, Context,
+    NeonResult,
 };
 use evm_loader::account::{MainTreasury, Treasury};
 use log::{info, warn};
+use serde::Serialize;
 use solana_cli::checks::check_account_for_fee;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
@@ -14,13 +15,19 @@ use solana_sdk::{
 };
 use spl_token::instruction::sync_native;
 
-pub fn execute(config: &Config, context: &Context) -> NeonCliResult {
+#[derive(Serialize)]
+pub struct CollectTreasuryReturn {
+    pub pool_address: String,
+    pub balance: u64,
+}
+
+pub fn execute(config: &Config, context: &Context) -> NeonResult<CollectTreasuryReturn> {
     let neon_params = read_elf_parameters_from_account(config, context)?;
 
     let pool_count: u32 = neon_params
         .get("NEON_POOL_COUNT")
         .and_then(|value| value.parse().ok())
-        .ok_or(NeonCliError::IncorrectProgram(config.evm_loader))?;
+        .ok_or(NeonError::IncorrectProgram(config.evm_loader))?;
 
     let main_balance_address = MainTreasury::address(&config.evm_loader).0;
 
@@ -94,8 +101,8 @@ pub fn execute(config: &Config, context: &Context) -> NeonCliResult {
         .send_and_confirm_transaction_with_spinner(&trx)?;
 
     let main_balance_account = context.rpc_client.get_account(&main_balance_address)?;
-    Ok(serde_json::json!({
-        "pool_address": main_balance_address.to_string(),
-        "balance": main_balance_account.lamports
-    }))
+    Ok(CollectTreasuryReturn {
+        pool_address: main_balance_address.to_string(),
+        balance: main_balance_account.lamports,
+    })
 }

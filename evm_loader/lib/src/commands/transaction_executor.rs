@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use {
-    crate::{errors::NeonCliError, rpc},
+    crate::{errors::NeonError, rpc},
     log::{debug, error, info, warn},
     solana_sdk::{
         account::Account,
@@ -62,7 +62,7 @@ impl<'a> TransactionExecutor<'a> {
         }
     }
 
-    pub fn get_account(&self, account_key: &Pubkey) -> Result<Option<Account>, NeonCliError> {
+    pub fn get_account(&self, account_key: &Pubkey) -> Result<Option<Account>, NeonError> {
         let account_info = self
             .client
             .get_account_with_commitment(account_key, self.client.commitment())?
@@ -74,18 +74,18 @@ impl<'a> TransactionExecutor<'a> {
         &self,
         owner_program_id: &Pubkey,
         account_key: &Pubkey,
-    ) -> Result<Option<T>, NeonCliError> {
+    ) -> Result<Option<T>, NeonError> {
         if let Some(account_info) = self.get_account(account_key)? {
             if account_info.data.is_empty() {
-                return Err(NeonCliError::AccountNotFound(*account_key));
+                return Err(NeonError::AccountNotFound(*account_key));
             }
             if account_info.owner != *owner_program_id {
-                return Err(NeonCliError::IncorrectProgram(account_info.owner));
+                return Err(NeonError::IncorrectProgram(account_info.owner));
             }
 
             let account: T = T::unpack(&account_info.data)?;
             if !account.is_initialized() {
-                return Err(NeonCliError::AccountNotFound(*account_key));
+                return Err(NeonError::AccountNotFound(*account_key));
             }
             Ok(Some(account))
         } else {
@@ -93,7 +93,7 @@ impl<'a> TransactionExecutor<'a> {
         }
     }
 
-    pub fn checkpoint(&self, commitment: CommitmentConfig) -> Result<(), NeonCliError> {
+    pub fn checkpoint(&self, commitment: CommitmentConfig) -> Result<(), NeonError> {
         let recent_blockhash = self.client.get_latest_blockhash()?;
         for sig in self.signatures.borrow().iter() {
             self.client
@@ -106,7 +106,7 @@ impl<'a> TransactionExecutor<'a> {
         &self,
         instructions: &[Instruction],
         signing_keypairs: &T,
-    ) -> Result<Transaction, NeonCliError> {
+    ) -> Result<Transaction, NeonError> {
         let mut transaction =
             Transaction::new_with_payer(instructions, Some(&self.fee_payer.pubkey()));
 
@@ -120,11 +120,11 @@ impl<'a> TransactionExecutor<'a> {
     pub fn create_transaction_with_payer_only(
         &self,
         instructions: &[Instruction],
-    ) -> Result<Transaction, NeonCliError> {
+    ) -> Result<Transaction, NeonError> {
         self.create_transaction::<[&dyn Signer; 0]>(instructions, &[])
     }
 
-    pub fn send_transaction(&self, transaction: &Transaction) -> Result<Signature, NeonCliError> {
+    pub fn send_transaction(&self, transaction: &Transaction) -> Result<Signature, NeonError> {
         self.client
             .send_transaction(transaction)
             .map_err(std::convert::Into::into)
@@ -133,13 +133,13 @@ impl<'a> TransactionExecutor<'a> {
     pub fn check_and_create_object<T, V, C>(
         &self,
         name: &str,
-        object: Result<Option<T>, NeonCliError>,
+        object: Result<Option<T>, NeonError>,
         verify: V,
         create: C,
-    ) -> Result<Option<Signature>, NeonCliError>
+    ) -> Result<Option<Signature>, NeonError>
     where
-        V: FnOnce(&T) -> Result<Option<Transaction>, NeonCliError>,
-        C: FnOnce() -> Result<Option<Transaction>, NeonCliError>,
+        V: FnOnce(&T) -> Result<Option<Transaction>, NeonError>,
+        C: FnOnce() -> Result<Option<Transaction>, NeonError>,
         T: std::fmt::Debug,
     {
         if let Some(data) = object.map_err(|e| {

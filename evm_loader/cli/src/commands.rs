@@ -1,10 +1,7 @@
 pub use neon_lib::commands::*;
-use neon_lib::context::truncate;
+use neon_lib::{context::truncate, NeonError};
 
-use crate::{
-    commands::get_neon_elf::CachedElfParams, context::Context, types::TxParams, Config,
-    NeonCliResult,
-};
+use crate::{commands::get_neon_elf::CachedElfParams, context::Context, types::TxParams, Config};
 use clap::ArgMatches;
 use ethnum::U256;
 use evm_loader::types::Address;
@@ -12,18 +9,20 @@ use solana_clap_utils::input_parsers::{pubkey_of, value_of, values_of};
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 
+pub type NeonCliResult = Result<serde_json::Value, NeonError>;
+
 pub fn execute(
     cmd: &str,
     params: Option<&ArgMatches>,
     config: &Config,
     context: &Context,
 ) -> NeonCliResult {
-    match (cmd, params) {
+    Ok(match (cmd, params) {
         ("emulate", Some(params)) => {
             let tx = parse_tx(params);
             let (token, chain, steps, accounts, solana_accounts) =
                 parse_tx_params(config, context, params);
-            emulate::execute(
+            serde_json::to_value(emulate::execute(
                 config,
                 context,
                 tx,
@@ -32,13 +31,14 @@ pub fn execute(
                 steps,
                 &accounts,
                 &solana_accounts,
-            )
+            )?)
+            .unwrap()
         }
         ("emulate_hash", Some(params)) => {
             let tx = context.rpc_client.get_transaction_data()?;
             let (token, chain, steps, accounts, solana_accounts) =
                 parse_tx_params(config, context, params);
-            emulate::execute(
+            serde_json::to_value(emulate::execute(
                 config,
                 context,
                 tx,
@@ -47,13 +47,14 @@ pub fn execute(
                 steps,
                 &accounts,
                 &solana_accounts,
-            )
+            )?)
+            .unwrap()
         }
         ("trace", Some(params)) => {
             let tx = parse_tx(params);
             let (token, chain, steps, accounts, solana_accounts) =
                 parse_tx_params(config, context, params);
-            trace::execute(
+            serde_json::to_value(trace::execute(
                 config,
                 context,
                 tx,
@@ -62,13 +63,14 @@ pub fn execute(
                 steps,
                 &accounts,
                 &solana_accounts,
-            )
+            )?)
+            .unwrap()
         }
         ("trace_hash", Some(params)) => {
             let tx = context.rpc_client.get_transaction_data()?;
             let (token, chain, steps, accounts, solana_accounts) =
                 parse_tx_params(config, context, params);
-            trace::execute(
+            serde_json::to_value(trace::execute(
                 config,
                 context,
                 tx,
@@ -77,45 +79,57 @@ pub fn execute(
                 steps,
                 &accounts,
                 &solana_accounts,
-            )
+            )?)
+            .unwrap()
         }
         ("create-ether-account", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
-            create_ether_account::execute(config, context, &ether)
+            serde_json::to_value(create_ether_account::execute(config, context, &ether)?).unwrap()
         }
         ("deposit", Some(params)) => {
             let amount = value_of(params, "amount").expect("amount parse error");
             let ether = address_of(params, "ether").expect("ether parse error");
-            deposit::execute(config, context, amount, &ether)
+            serde_json::to_value(deposit::execute(config, context, amount, &ether)?).unwrap()
         }
         ("get-ether-account-data", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
-            get_ether_account_data::execute(config, context, &ether)
+            serde_json::to_value(get_ether_account_data::execute(config, context, &ether)?).unwrap()
         }
         ("cancel-trx", Some(params)) => {
             let storage_account =
                 pubkey_of(params, "storage_account").expect("storage_account parse error");
-            cancel_trx::execute(config, context, &storage_account)
+            serde_json::to_value(cancel_trx::execute(config, context, &storage_account)?).unwrap()
         }
         ("neon-elf-params", Some(params)) => {
             let program_location = params.value_of("program_location");
-            get_neon_elf::execute(config, context, program_location)
+            serde_json::to_value(get_neon_elf::execute(config, context, program_location)?).unwrap()
         }
-        ("collect-treasury", Some(_)) => collect_treasury::execute(config, context),
+        ("collect-treasury", Some(_)) => {
+            serde_json::to_value(collect_treasury::execute(config, context)?).unwrap()
+        }
         ("init-environment", Some(params)) => {
             let file = params.value_of("file");
             let send_trx = params.is_present("send-trx");
             let force = params.is_present("force");
             let keys_dir = params.value_of("keys-dir");
-            init_environment::execute(config, context, send_trx, force, keys_dir, file)
+            serde_json::to_value(init_environment::execute(
+                config, context, send_trx, force, keys_dir, file,
+            )?)
+            .unwrap()
         }
         ("get-storage-at", Some(params)) => {
             let contract_id = address_of(params, "contract_id").expect("contract_it parse error");
             let index = u256_of(params, "index").expect("index parse error");
-            get_storage_at::execute(config, context, contract_id, &index)
+            serde_json::to_value(get_storage_at::execute(
+                config,
+                context,
+                contract_id,
+                &index,
+            )?)
+            .unwrap()
         }
         _ => unreachable!(),
-    }
+    })
 }
 
 fn address_or_deploy_of(matches: &ArgMatches<'_>, name: &str) -> Option<Address> {

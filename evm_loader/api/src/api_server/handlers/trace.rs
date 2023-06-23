@@ -30,14 +30,17 @@ pub async fn trace(
         &trace_request.emulate_request.emulation_params,
     );
 
-    process_result(&crate::commands::trace::execute(
-        &state.config,
-        &context,
-        tx,
-        token,
-        chain,
-        steps,
-        &accounts,
-        &solana_accounts,
-    ))
+    process_result(
+        &crate::commands::trace::execute(
+            &state.config,
+            &context,
+            tx,
+            token,
+            chain,
+            steps,
+            &accounts,
+            &solana_accounts,
+        )
+        .map(|x| serde_json::to_value(x).unwrap()),
+    )
 }

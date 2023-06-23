@@ -1,6 +1,7 @@
 use log::debug;
+use serde::Serialize;
 
-use crate::{Config, Context, NeonCliResult};
+use crate::{Config, Context, NeonResult};
 use evm_loader::types::Address;
 use solana_cli::checks::check_account_for_fee;
 use solana_client::rpc_client::RpcClient;
@@ -8,10 +9,16 @@ use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     message::Message,
     pubkey::Pubkey,
+    signature::Signature,
     system_program,
     transaction::Transaction,
 };
 use spl_associated_token_account::get_associated_token_address;
+
+#[derive(Serialize)]
+pub struct DepositReturn {
+    pub transaction: Signature,
+}
 
 /// Executes subcommand `deposit`.
 pub fn execute(
@@ -19,7 +26,7 @@ pub fn execute(
     context: &Context,
     amount: u64,
     ether_address: &Address,
-) -> NeonCliResult {
+) -> NeonResult<DepositReturn> {
     let (ether_pubkey, _) = ether_address.find_solana_address(&config.evm_loader);
 
     let token_mint_id = evm_loader::config::token_mint::id();
@@ -62,7 +69,9 @@ pub fn execute(
         .rpc_client
         .send_and_confirm_transaction_with_spinner(&finalize_tx)?;
 
-    Ok(serde_json::json!({ "transaction": signature }))
+    Ok(DepositReturn {
+        transaction: signature,
+    })
 }
 
 /// Returns instruction to approve transfer of NEON tokens.

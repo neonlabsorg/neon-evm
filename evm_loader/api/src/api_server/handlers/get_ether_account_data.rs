@@ -25,9 +25,8 @@ pub async fn get_ether_account_data(
 
     let context = context::create(rpc_client, signer);
 
-    process_result(&GetEtherAccountDataCommand::execute(
-        &state.config,
-        &context,
-        &req_params.ether,
-    ))
+    process_result(
+        &GetEtherAccountDataCommand::execute(&state.config, &context, &req_params.ether)
+            .map(|x| serde_json::to_value(x).unwrap()),
+    )
 }

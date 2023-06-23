@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use solana_sdk::pubkey::Pubkey;
 
 use crate::commands::get_neon_elf::CachedElfParams;
-use crate::errors::NeonCliError;
+use crate::errors::NeonError;
 use crate::{Config, Context, NeonCliResult};
 
 use crate::types::request_models::EmulationParamsRequestModel;
@@ -92,7 +92,7 @@ fn process_result(result: &NeonCliResult) -> (StatusCode, Json<Value>) {
     }
 }
 
-fn process_error(status_code: StatusCode, e: &NeonCliError) -> (StatusCode, Json<Value>) {
+fn process_error(status_code: StatusCode, e: &NeonError) -> (StatusCode, Json<Value>) {
     (
         status_code,
         Json(json!({

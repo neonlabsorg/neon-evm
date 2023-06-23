@@ -10,6 +10,6 @@ pub mod types;
 
 pub use config::Config;
 pub use context::Context;
-pub use errors::NeonCliError;
+pub use errors::NeonError;
 
-pub type NeonCliResult = Result<serde_json::Value, NeonCliError>;
+pub type NeonResult<T> = Result<T, NeonError>;

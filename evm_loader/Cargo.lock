@@ -2243,7 +2243,6 @@ dependencies = [
  "rand 0.8.5",
  "scroll",
  "serde",
- "serde_json",
  "solana-clap-utils",
  "solana-cli",
  "solana-cli-config",

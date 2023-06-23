@@ -4,6 +4,7 @@
 mod api_options;
 mod api_server;
 
+use api_server::handlers::NeonApiError;
 pub use neon_lib::account_storage;
 pub use neon_lib::commands;
 pub use neon_lib::config;
@@ -13,17 +14,17 @@ pub use neon_lib::event_listener;
 pub use neon_lib::rpc;
 pub use neon_lib::syscall_stubs;
 pub use neon_lib::types;
+use neon_lib::NeonError;
 
 use std::{env, net::SocketAddr, str::FromStr, sync::Arc};
 
 use axum::Router;
 pub use config::Config;
 pub use context::Context;
-use errors::NeonError;
 use tokio::signal::{self};
 
 type NeonCliResult = Result<serde_json::Value, NeonError>;
-type NeonApiResult<T> = Result<T, NeonError>;
+type NeonApiResult<T> = Result<T, NeonApiError>;
 type NeonApiState = Arc<api_server::state::State>;
 
 #[tokio::main]

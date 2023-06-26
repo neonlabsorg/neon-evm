@@ -21,7 +21,7 @@ pub struct DepositReturn {
 }
 
 /// Executes subcommand `deposit`.
-pub fn execute(
+pub async fn execute(
     config: &Config,
     context: &Context,
     amount: u64,
@@ -49,7 +49,7 @@ pub fn execute(
     ];
 
     let mut finalize_message = Message::new(&instructions, Some(&context.signer.pubkey()));
-    let blockhash = context.rpc_client.get_latest_blockhash()?;
+    let blockhash = context.rpc_client.get_latest_blockhash().await?;
     finalize_message.recent_blockhash = blockhash;
 
     let client = context
@@ -67,7 +67,8 @@ pub fn execute(
 
     let signature = context
         .rpc_client
-        .send_and_confirm_transaction_with_spinner(&finalize_tx)?;
+        .send_and_confirm_transaction_with_spinner(&finalize_tx)
+        .await?;
 
     Ok(DepositReturn {
         transaction: signature,

@@ -18,7 +18,7 @@ pub struct CreateEtherAccountReturn {
     pub solana_address: String,
 }
 
-pub fn execute(
+pub async fn execute(
     config: &Config,
     context: &Context,
     ether_address: &Address,
@@ -39,7 +39,7 @@ pub fn execute(
     let instructions = vec![create_account_v03_instruction];
 
     let mut finalize_message = Message::new(&instructions, Some(&context.signer.pubkey()));
-    let blockhash = context.rpc_client.get_latest_blockhash()?;
+    let blockhash = context.rpc_client.get_latest_blockhash().await?;
     finalize_message.recent_blockhash = blockhash;
 
     let client = context
@@ -57,7 +57,8 @@ pub fn execute(
 
     context
         .rpc_client
-        .send_and_confirm_transaction_with_spinner(&finalize_tx)?;
+        .send_and_confirm_transaction_with_spinner(&finalize_tx)
+        .await?;
 
     Ok(CreateEtherAccountReturn {
         solana_address: solana_address.to_string(),

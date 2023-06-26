@@ -21,8 +21,8 @@ pub struct CollectTreasuryReturn {
     pub balance: u64,
 }
 
-pub fn execute(config: &Config, context: &Context) -> NeonResult<CollectTreasuryReturn> {
-    let neon_params = read_elf_parameters_from_account(config, context)?;
+pub async fn execute(config: &Config, context: &Context) -> NeonResult<CollectTreasuryReturn> {
+    let neon_params = read_elf_parameters_from_account(config, context).await?;
 
     let pool_count: u32 = neon_params
         .get("NEON_POOL_COUNT")
@@ -44,12 +44,14 @@ pub fn execute(config: &Config, context: &Context) -> NeonResult<CollectTreasury
 
         if let Some(aux_balance_account) = context
             .rpc_client
-            .get_account_with_commitment(&aux_balance_address, config.commitment)?
+            .get_account_with_commitment(&aux_balance_address, config.commitment)
+            .await?
             .value
         {
             let minimal_balance = context
                 .rpc_client
-                .get_minimum_balance_for_rent_exemption(aux_balance_account.data.len())?;
+                .get_minimum_balance_for_rent_exemption(aux_balance_account.data.len())
+                .await?;
             let available_lamports = aux_balance_account.lamports.saturating_sub(minimal_balance);
             if available_lamports > 0 {
                 info!(
@@ -68,7 +70,7 @@ pub fn execute(config: &Config, context: &Context) -> NeonResult<CollectTreasury
                     )],
                     Some(&context.signer.pubkey()),
                 );
-                let blockhash = context.rpc_client.get_latest_blockhash()?;
+                let blockhash = context.rpc_client.get_latest_blockhash().await?;
                 message.recent_blockhash = blockhash;
 
                 check_account_for_fee(client, &context.signer.pubkey(), &message)?;
@@ -77,7 +79,8 @@ pub fn execute(config: &Config, context: &Context) -> NeonResult<CollectTreasury
                 trx.try_sign(&[&*context.signer], blockhash)?;
                 context
                     .rpc_client
-                    .send_and_confirm_transaction_with_spinner(&trx)?;
+                    .send_and_confirm_transaction_with_spinner(&trx)
+                    .await?;
             } else {
                 info!("{:4}: skip account {}", i, aux_balance_address);
             }
@@ -89,7 +92,7 @@ pub fn execute(config: &Config, context: &Context) -> NeonResult<CollectTreasury
         &[sync_native(&spl_token::id(), &main_balance_address)?],
         Some(&context.signer.pubkey()),
     );
-    let blockhash = context.rpc_client.get_latest_blockhash()?;
+    let blockhash = context.rpc_client.get_latest_blockhash().await?;
     message.recent_blockhash = blockhash;
 
     check_account_for_fee(client, &context.signer.pubkey(), &message)?;
@@ -98,9 +101,13 @@ pub fn execute(config: &Config, context: &Context) -> NeonResult<CollectTreasury
     trx.try_sign(&[&*context.signer], blockhash)?;
     context
         .rpc_client
-        .send_and_confirm_transaction_with_spinner(&trx)?;
+        .send_and_confirm_transaction_with_spinner(&trx)
+        .await?;
 
-    let main_balance_account = context.rpc_client.get_account(&main_balance_address)?;
+    let main_balance_account = context
+        .rpc_client
+        .get_account(&main_balance_address)
+        .await?;
     Ok(CollectTreasuryReturn {
         pool_address: main_balance_address.to_string(),
         balance: main_balance_account.lamports,

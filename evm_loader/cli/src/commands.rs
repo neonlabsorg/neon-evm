@@ -1,5 +1,6 @@
 pub use neon_lib::commands::*;
 use neon_lib::{context::truncate, NeonError};
+use serde_json::json;
 
 use crate::{commands::get_neon_elf::CachedElfParams, context::Context, types::TxParams, Config};
 use clap::ArgMatches;
@@ -23,7 +24,7 @@ pub fn execute(
             let tx = parse_tx(params);
             let (token, chain, steps, accounts, solana_accounts) =
                 parse_tx_params(config, context, params);
-            serde_json::to_value(emulate::execute(
+            json!(emulate::execute(
                 config,
                 context,
                 tx,
@@ -33,13 +34,12 @@ pub fn execute(
                 &accounts,
                 &solana_accounts,
             )?)
-            .unwrap()
         }
         ("emulate_hash", Some(params)) => {
             let tx = context.rpc_client.get_transaction_data()?;
             let (token, chain, steps, accounts, solana_accounts) =
                 parse_tx_params(config, context, params);
-            serde_json::to_value(emulate::execute(
+            json!(emulate::execute(
                 config,
                 context,
                 tx,
@@ -49,13 +49,12 @@ pub fn execute(
                 &accounts,
                 &solana_accounts,
             )?)
-            .unwrap()
         }
         ("trace", Some(params)) => {
             let tx = parse_tx(params);
             let (token, chain, steps, accounts, solana_accounts) =
                 parse_tx_params(config, context, params);
-            serde_json::to_value(trace::execute(
+            json!(trace::execute(
                 config,
                 context,
                 tx,
@@ -65,13 +64,12 @@ pub fn execute(
                 &accounts,
                 &solana_accounts,
             )?)
-            .unwrap()
         }
         ("trace_hash", Some(params)) => {
             let tx = context.rpc_client.get_transaction_data()?;
             let (token, chain, steps, accounts, solana_accounts) =
                 parse_tx_params(config, context, params);
-            serde_json::to_value(trace::execute(
+            json!(trace::execute(
                 config,
                 context,
                 tx,
@@ -81,53 +79,50 @@ pub fn execute(
                 &accounts,
                 &solana_accounts,
             )?)
-            .unwrap()
         }
         ("create-ether-account", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
-            serde_json::to_value(create_ether_account::execute(config, context, &ether)?).unwrap()
+            json!(create_ether_account::execute(config, context, &ether)?)
         }
         ("deposit", Some(params)) => {
             let amount = value_of(params, "amount").expect("amount parse error");
             let ether = address_of(params, "ether").expect("ether parse error");
-            serde_json::to_value(deposit::execute(config, context, amount, &ether)?).unwrap()
+            json!(deposit::execute(config, context, amount, &ether)?)
         }
         ("get-ether-account-data", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
-            serde_json::to_value(get_ether_account_data::execute(config, context, &ether)?).unwrap()
+            json!(get_ether_account_data::execute(config, context, &ether)?)
         }
         ("cancel-trx", Some(params)) => {
             let storage_account =
                 pubkey_of(params, "storage_account").expect("storage_account parse error");
-            serde_json::to_value(cancel_trx::execute(config, context, &storage_account)?).unwrap()
+            json!(cancel_trx::execute(config, context, &storage_account)?)
         }
         ("neon-elf-params", Some(params)) => {
             let program_location = params.value_of("program_location");
-            serde_json::to_value(get_neon_elf::execute(config, context, program_location)?).unwrap()
+            json!(get_neon_elf::execute(config, context, program_location)?)
         }
         ("collect-treasury", Some(_)) => {
-            serde_json::to_value(collect_treasury::execute(config, context)?).unwrap()
+            json!(collect_treasury::execute(config, context)?)
         }
         ("init-environment", Some(params)) => {
             let file = params.value_of("file");
             let send_trx = params.is_present("send-trx");
             let force = params.is_present("force");
             let keys_dir = params.value_of("keys-dir");
-            serde_json::to_value(init_environment::execute(
+            json!(init_environment::execute(
                 config, context, send_trx, force, keys_dir, file,
             )?)
-            .unwrap()
         }
         ("get-storage-at", Some(params)) => {
             let contract_id = address_of(params, "contract_id").expect("contract_it parse error");
             let index = u256_of(params, "index").expect("index parse error");
-            serde_json::to_value(get_storage_at::execute(
+            json!(get_storage_at::execute(
                 config,
                 context,
                 contract_id,
                 &index,
             )?)
-            .unwrap()
         }
         _ => unreachable!(),
     })

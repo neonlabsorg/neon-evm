@@ -5,6 +5,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use std::convert::Into;
 
 use super::{process_error, process_result};
 
@@ -27,6 +28,6 @@ pub async fn get_ether_account_data(
 
     process_result(
         &GetEtherAccountDataCommand::execute(&state.config, &context, &req_params.ether)
-            .map(|x| serde_json::to_value(x).unwrap()),
+            .map_err(Into::into),
     )
 }

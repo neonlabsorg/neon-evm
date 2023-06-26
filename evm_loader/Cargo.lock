@@ -2197,6 +2197,7 @@ dependencies = [
  "ethnum",
  "evm-loader",
  "neon-lib",
+ "serde",
  "serde_json",
  "solana-sdk",
  "tokio",

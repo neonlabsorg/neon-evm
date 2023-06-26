@@ -1,4 +1,5 @@
 use axum::{http::StatusCode, Json};
+use std::convert::Into;
 
 use crate::{context, types::request_models::TraceRequestModel, NeonApiState};
 
@@ -41,6 +42,6 @@ pub async fn trace(
             &accounts,
             &solana_accounts,
         )
-        .map(|x| serde_json::to_value(x).unwrap()),
+        .map_err(Into::into),
     )
 }

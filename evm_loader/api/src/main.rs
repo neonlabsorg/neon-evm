@@ -14,7 +14,6 @@ pub use neon_lib::event_listener;
 pub use neon_lib::rpc;
 pub use neon_lib::syscall_stubs;
 pub use neon_lib::types;
-use neon_lib::NeonError;
 
 use std::{env, net::SocketAddr, str::FromStr, sync::Arc};
 
@@ -23,7 +22,6 @@ pub use config::Config;
 pub use context::Context;
 use tokio::signal::{self};
 
-type NeonCliResult = Result<serde_json::Value, NeonError>;
 type NeonApiResult<T> = Result<T, NeonApiError>;
 type NeonApiState = Arc<api_server::state::State>;
 

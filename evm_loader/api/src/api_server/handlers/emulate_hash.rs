@@ -1,4 +1,5 @@
 use axum::{http::StatusCode, Json};
+use std::convert::Into;
 
 use crate::{
     commands::emulate as EmulateCommand, context, types::request_models::EmulateHashRequestModel,
@@ -52,6 +53,6 @@ pub async fn emulate_hash(
             &accounts,
             &solana_accounts,
         )
-        .map(|x| serde_json::to_value(x).unwrap()),
+        .map_err(Into::into),
     )
 }

@@ -1,4 +1,5 @@
 use axum::{http::StatusCode, Json};
+use std::convert::Into;
 
 use crate::{
     commands::emulate as EmulateCommand, context, types::request_models::EmulateRequestModel,
@@ -40,6 +41,6 @@ pub async fn emulate(
             &accounts,
             &solana_accounts,
         )
-        .map(|x| serde_json::to_value(x).unwrap()),
+        .map_err(Into::into),
     )
 }

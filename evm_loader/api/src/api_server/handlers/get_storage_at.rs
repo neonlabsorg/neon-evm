@@ -4,6 +4,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use std::convert::Into;
 
 use crate::commands::get_storage_at as GetStorageAtCommand;
 
@@ -33,6 +34,6 @@ pub async fn get_storage_at(
             req_params.contract_id,
             &req_params.index,
         )
-        .map(|x| serde_json::to_value(x).unwrap()),
+        .map_err(Into::into),
     )
 }

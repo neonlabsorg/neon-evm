@@ -3,12 +3,13 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use ethnum::U256;
 use evm_loader::types::Address;
+use serde::Serialize;
 use serde_json::{json, Value};
 use solana_sdk::pubkey::Pubkey;
 
 use crate::commands::get_neon_elf::CachedElfParams;
 use crate::errors::NeonError;
-use crate::{Config, Context, NeonCliResult};
+use crate::{Config, Context, NeonApiResult};
 
 use crate::types::request_models::EmulationParamsRequestModel;
 use std::net::AddrParseError;
@@ -115,20 +116,22 @@ pub(crate) fn parse_emulation_params(
     (token, chain, max_steps, accounts, solana_accounts)
 }
 
-fn process_result(result: &NeonCliResult) -> (StatusCode, Json<Value>) {
+fn process_result<T: Serialize>(
+    result: &NeonApiResult<T>,
+) -> (StatusCode, Json<serde_json::Value>) {
     match result {
         Ok(value) => (
             StatusCode::OK,
             Json(json!({
                 "result": "success",
-                "value": value.to_string(),
+                "value": value,
             })),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
                 "result": "error",
-                "error": e.to_string(),
+                "error": e.0.to_string(),
             })),
         ),
     }

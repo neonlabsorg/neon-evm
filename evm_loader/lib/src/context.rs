@@ -14,7 +14,7 @@ use solana_sdk::signature::Signer;
 pub async fn build_hash_rpc_client(
     config: &Config,
     hash: &str,
-) -> Result<Arc<dyn rpc::Rpc>, NeonError> {
+) -> Result<Arc<dyn rpc::Rpc + Send + Sync>, NeonError> {
     let hash = <[u8; 32]>::from_hex(truncate(hash))?;
 
     Ok(Arc::new(
@@ -35,12 +35,12 @@ pub fn truncate(in_str: &str) -> &str {
 }
 
 pub struct Context {
-    pub rpc_client: Arc<dyn rpc::Rpc>,
+    pub rpc_client: Arc<dyn rpc::Rpc + Send + Sync>,
     pub signer: Arc<dyn Signer>,
 }
 
 #[must_use]
-pub fn create(rpc_client: Arc<dyn rpc::Rpc>, signer: Arc<dyn Signer>) -> Context {
+pub fn create(rpc_client: Arc<dyn rpc::Rpc + Send + Sync>, signer: Arc<dyn Signer>) -> Context {
     Context { rpc_client, signer }
 }
 
@@ -63,7 +63,7 @@ pub fn build_signer(config: &Config) -> Result<Arc<dyn Signer>, NeonError> {
 pub fn build_rpc_client(
     config: &Config,
     slot: Option<u64>,
-) -> Result<Arc<dyn rpc::Rpc>, NeonError> {
+) -> Result<Arc<dyn rpc::Rpc + Send + Sync>, NeonError> {
     if let Some(slot) = slot {
         let config = config
             .db_config

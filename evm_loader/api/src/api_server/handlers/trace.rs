@@ -1,15 +1,16 @@
-use axum::{http::StatusCode, Json};
 use std::convert::Into;
+
+use actix_web::{http::StatusCode, post, web, Responder};
 
 use crate::{context, types::request_models::TraceRequestModel, NeonApiState};
 
 use super::{parse_emulation_params, process_error, process_result};
 
-#[allow(clippy::unused_async)]
+#[post("/trace")]
 pub async fn trace(
-    axum::extract::State(state): axum::extract::State<NeonApiState>,
-    Json(trace_request): Json<TraceRequestModel>,
-) -> (StatusCode, Json<serde_json::Value>) {
+    state: web::Data<NeonApiState>,
+    web::Json(trace_request): web::Json<TraceRequestModel>,
+) -> impl Responder {
     let tx = trace_request.emulate_request.tx_params.into();
 
     let signer = match context::build_signer(&state.config) {
@@ -29,7 +30,8 @@ pub async fn trace(
         &state.config,
         &context,
         &trace_request.emulate_request.emulation_params,
-    );
+    )
+    .await;
 
     process_result(
         &crate::commands::trace::execute(
@@ -42,6 +44,7 @@ pub async fn trace(
             &accounts,
             &solana_accounts,
         )
+        .await
         .map_err(Into::into),
     )
 }

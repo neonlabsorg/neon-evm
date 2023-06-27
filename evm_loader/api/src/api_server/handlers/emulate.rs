@@ -1,4 +1,4 @@
-use axum::{http::StatusCode, Json};
+use actix_web::{http::StatusCode, post, web, Responder};
 use std::convert::Into;
 
 use crate::{
@@ -8,11 +8,11 @@ use crate::{
 
 use super::{parse_emulation_params, process_error, process_result};
 
-#[allow(clippy::unused_async)]
+#[post("/emulate")]
 pub async fn emulate(
-    axum::extract::State(state): axum::extract::State<NeonApiState>,
-    Json(emulate_request): Json<EmulateRequestModel>,
-) -> (StatusCode, Json<serde_json::Value>) {
+    state: web::Data<NeonApiState>,
+    web::Json(emulate_request): web::Json<EmulateRequestModel>,
+) -> impl Responder {
     let tx = emulate_request.tx_params.into();
 
     let signer = match context::build_signer(&state.config) {
@@ -28,7 +28,7 @@ pub async fn emulate(
     let context = context::create(rpc_client, signer);
 
     let (token, chain, steps, accounts, solana_accounts) =
-        parse_emulation_params(&state.config, &context, &emulate_request.emulation_params);
+        parse_emulation_params(&state.config, &context, &emulate_request.emulation_params).await;
 
     process_result(
         &EmulateCommand::execute(
@@ -41,6 +41,7 @@ pub async fn emulate(
             &accounts,
             &solana_accounts,
         )
+        .await
         .map_err(Into::into),
     )
 }

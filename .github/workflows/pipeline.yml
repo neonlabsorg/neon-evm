@@ -7,6 +7,7 @@ on:
     branches:
       - master
       - develop
+      - feature/runners
       - '[vt][0-9].[0-9]+.[0-9x]+*'
     tags:
       - "*"
@@ -34,7 +35,7 @@ jobs:
           python3 ./.github/workflows/deploy.py publish_image \
           --github_sha=${GITHUB_SHA}
   run-tests-and-finalize-image:
-    runs-on: test-runner
+    runs-on: neon-evm-1
     needs:
       - deploy-neon-evm
     steps:

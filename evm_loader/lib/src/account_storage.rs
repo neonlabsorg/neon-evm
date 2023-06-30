@@ -411,7 +411,7 @@ impl<'a> EmulatorAccountStorage<'a> {
     where
         F: FnOnce(ether_contract::ContractData) -> R,
     {
-        block(|| self.add_ethereum_account(address, false));
+        self.add_ethereum_account(address, false).await;
 
         let mut accounts = self.accounts.write().await;
         let solana_account = accounts.get_mut(address).expect("get account error");

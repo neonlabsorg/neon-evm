@@ -16,14 +16,15 @@ pub struct IndexerDb {
 }
 
 impl IndexerDb {
-    pub fn new(config: &ChDbConfig) -> Self {
+    pub async fn new(config: &ChDbConfig) -> Self {
         let client = do_connect(
             &config.indexer_host,
             &config.indexer_port,
             &config.indexer_database,
             &config.indexer_user,
             &config.indexer_password,
-        );
+        )
+        .await;
         Self {
             client: Arc::new(client),
         }

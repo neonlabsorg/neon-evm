@@ -18,7 +18,7 @@ use evm_loader::{
     gasometer::LAMPORTS_PER_SIGNATURE,
     types::Address,
 };
-use log::{debug, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use solana_client::client_error;
 use solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE;
 use solana_sdk::{
@@ -86,9 +86,15 @@ impl NeonAccount {
         writable: bool,
     ) -> Self {
         let (key, _) = make_solana_program_address(&address, evm_loader);
-        info!("get_account_from_solana {} => {}", address, key);
+        info!("get_account_from_solana {address} => {key}");
 
-        let account = rpc_client.get_account(&key).ok();
+        let account = match rpc_client.get_account(&key) {
+            Ok(account) => Some(account),
+            Err(err) => {
+                error!("rpc_client.get_account {key} error: {err:?}");
+                None
+            }
+        };
         Self::new(address, key, account, writable)
     }
 }

@@ -31,9 +31,9 @@ impl TrxDbClient {
     pub fn new(config: &ChDbConfig, hash: [u8; 32]) -> Self {
         let tracer_db = TracerDb::new(config);
         let indexer_db = IndexerDb::new(config);
-        let sol_sig = indexer_db
-            .get_sol_sig(&hash)
-            .unwrap_or_else(|_| panic!("get_sol_sig error, hash: 0x{}", hex::encode(hash)));
+        let sol_sig = indexer_db.get_sol_sig(&hash).unwrap_or_else(|e| {
+            panic!("get_sol_sig for hash: 0x{} error: {e:?}", hex::encode(hash))
+        });
 
         Self {
             hash,

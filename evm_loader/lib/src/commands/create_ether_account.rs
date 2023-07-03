@@ -1,7 +1,7 @@
 use log::debug;
 use serde::Serialize;
 use solana_cli::checks::check_account_for_fee;
-use solana_client::rpc_client::RpcClient;
+use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     message::Message,

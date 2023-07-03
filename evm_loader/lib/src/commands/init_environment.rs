@@ -157,11 +157,10 @@ pub async fn execute(
             .get(&mint)
             .ok_or(EnvironmentError::MissingPrivateKey(mint))?;
         let data_len = spl_token::state::Mint::LEN;
-        let lamports = block(|| {
-            context
-                .rpc_client
-                .get_minimum_balance_for_rent_exemption(data_len)
-        })?;
+        let lamports = context
+            .rpc_client
+            .get_minimum_balance_for_rent_exemption(data_len)
+            .await?;
         let parameters = &[
             system_instruction::create_account(
                 &executor_clone.fee_payer.pubkey(),

@@ -17,12 +17,13 @@ pub async fn get_ether_account_data(
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 
-    let rpc_client = match context::build_rpc_client(&state.config, req_params.slot) {
-        Ok(rpc_client) => rpc_client,
-        Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
-    };
+    let (rpc_client, blocking_rpc_client) =
+        match context::build_rpc_client(&state.config, req_params.slot) {
+            Ok(rpc_client) => rpc_client,
+            Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
+        };
 
-    let context = context::create(rpc_client, signer);
+    let context = context::create(rpc_client, signer, blocking_rpc_client);
 
     process_result(
         &GetEtherAccountDataCommand::execute(&state.config, &context, &req_params.ether)

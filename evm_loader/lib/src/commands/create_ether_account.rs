@@ -1,7 +1,6 @@
 use log::debug;
 use serde::Serialize;
 use solana_cli::checks::check_account_for_fee;
-use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     message::Message,
@@ -43,10 +42,9 @@ pub async fn execute(
     finalize_message.recent_blockhash = blockhash;
 
     let client = context
-        .rpc_client
-        .as_any()
-        .downcast_ref::<RpcClient>()
-        .expect("cast to solana_client::rpc_client::RpcClient error");
+        .blocking_rpc_client
+        .as_ref()
+        .expect("Non-blocking RPC client not initialized");
 
     check_account_for_fee(client, &context.signer.pubkey(), &finalize_message)?;
 

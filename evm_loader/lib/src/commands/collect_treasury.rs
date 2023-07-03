@@ -6,7 +6,6 @@ use evm_loader::account::{MainTreasury, Treasury};
 use log::{info, warn};
 use serde::Serialize;
 use solana_cli::checks::check_account_for_fee;
-use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     message::Message,
@@ -34,10 +33,9 @@ pub async fn execute(config: &Config, context: &Context) -> NeonResult<CollectTr
     info!("Main pool balance: {}", main_balance_address);
 
     let client = context
-        .rpc_client
-        .as_any()
-        .downcast_ref::<RpcClient>()
-        .expect("cast to solana_client::rpc_client::RpcClient error");
+        .blocking_rpc_client
+        .as_ref()
+        .expect("Non-blocking RPC client not initialized");
 
     for i in 0..pool_count {
         let (aux_balance_address, _) = Treasury::address(&config.evm_loader, i);

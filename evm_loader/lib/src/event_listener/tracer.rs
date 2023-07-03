@@ -7,6 +7,12 @@ pub struct Tracer {
     pub(crate) enable_return_data: bool,
 }
 
+impl Default for Tracer {
+    fn default() -> Self {
+        Tracer::new()
+    }
+}
+
 impl Tracer {
     pub fn new(enable_return_data: bool) -> Self {
         Tracer {

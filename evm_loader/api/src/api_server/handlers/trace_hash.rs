@@ -1,6 +1,6 @@
 use crate::NeonApiState;
 use axum::{http::StatusCode, Json};
-use serde_json::json;
+use std::convert::Into;
 
 use crate::commands::trace::trace_transaction;
 use crate::{context, types::request_models::TraceHashRequestModel};
@@ -30,7 +30,7 @@ pub async fn trace_hash(
         Err(e) => {
             return process_error(
                 StatusCode::BAD_REQUEST,
-                &crate::errors::NeonCliError::SolanaClientError(e),
+                &crate::errors::NeonError::SolanaClientError(e),
             )
         }
     };
@@ -56,6 +56,6 @@ pub async fn trace_hash(
             &solana_accounts,
             trace_hash_request.trace_config.unwrap_or_default().into(),
         )
-        .map(|result| json!(result)),
+        .map_err(Into::into),
     )
 }

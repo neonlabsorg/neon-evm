@@ -1,5 +1,5 @@
 use axum::{http::StatusCode, Json};
-use serde_json::json;
+use std::convert::Into;
 
 use crate::{
     commands::emulate as EmulateCommand,
@@ -31,7 +31,7 @@ pub async fn emulate_hash(
         Err(e) => {
             return process_error(
                 StatusCode::BAD_REQUEST,
-                &crate::errors::NeonCliError::SolanaClientError(e),
+                &crate::errors::NeonError::SolanaClientError(e),
             )
         }
     };
@@ -57,6 +57,6 @@ pub async fn emulate_hash(
             &solana_accounts,
             TraceCallConfig::default(),
         )
-        .map(|result| json!(result)),
+        .map_err(Into::into),
     )
 }

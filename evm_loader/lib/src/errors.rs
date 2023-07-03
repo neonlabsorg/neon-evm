@@ -17,7 +17,7 @@ use crate::types::PgError;
 
 /// Errors that may be returned by the neon-cli program.
 #[derive(Debug, Error)]
-pub enum NeonCliError {
+pub enum NeonError {
     /// Std IO Error
     #[error("Std I/O error. {0:?}")]
     StdIoError(#[from] std::io::Error),
@@ -99,39 +99,39 @@ pub enum NeonCliError {
     Panic(String),
 }
 
-impl NeonCliError {
+impl NeonError {
     pub fn error_code(&self) -> i32 {
         match self {
-            NeonCliError::IncompleteEnvironment => 50,
-            NeonCliError::WrongEnvironment => 51,
-            NeonCliError::EnvironmentError(_) => 52,
-            NeonCliError::Panic(_) => 101,
-            NeonCliError::StdIoError(_) => 102,
-            NeonCliError::ProgramError(_) => 111,
-            NeonCliError::SignerError(_) => 112,
-            NeonCliError::ClientError(_) => 113,
-            NeonCliError::CliError(_) => 114,
-            NeonCliError::TpuSenderError(_) => 115,
-            NeonCliError::PubkeyError(_) => 116,
-            NeonCliError::EvmError(_) => 117,
-            NeonCliError::AddrParseError(_) => 118,
-            NeonCliError::AxumError(_) => 119,
-            NeonCliError::SolanaClientError(_) => 120,
-            NeonCliError::EvmLoaderNotSpecified => 201,
-            NeonCliError::KeypairNotSpecified => 202,
-            NeonCliError::IncorrectProgram(_) => 203,
-            NeonCliError::AccountNotFound(_) => 205,
-            NeonCliError::AccountIsNotBpf(_) => 226,
-            NeonCliError::AccountIsNotUpgradeable(_) => 227,
-            NeonCliError::AssociatedPdaNotFound(_, _) => 241,
-            NeonCliError::InvalidAssociatedPda(_, _) => 242,
-            NeonCliError::TooManySteps => 245,
-            NeonCliError::FromHexError(_) => 246,
-            NeonCliError::InvalidChDbConfig => 247,
-            NeonCliError::IncorrectAddress(_) => 248,
-            NeonCliError::IncorrectIndex(_) => 249,
-            NeonCliError::TxParametersParsingError(_) => 250,
-            NeonCliError::PostgreError(_) => 251,
+            NeonError::IncompleteEnvironment => 50,
+            NeonError::WrongEnvironment => 51,
+            NeonError::EnvironmentError(_) => 52,
+            NeonError::Panic(_) => 101,
+            NeonError::StdIoError(_) => 102,
+            NeonError::ProgramError(_) => 111,
+            NeonError::SignerError(_) => 112,
+            NeonError::ClientError(_) => 113,
+            NeonError::CliError(_) => 114,
+            NeonError::TpuSenderError(_) => 115,
+            NeonError::PubkeyError(_) => 116,
+            NeonError::EvmError(_) => 117,
+            NeonError::AddrParseError(_) => 118,
+            NeonError::AxumError(_) => 119,
+            NeonError::SolanaClientError(_) => 120,
+            NeonError::EvmLoaderNotSpecified => 201,
+            NeonError::KeypairNotSpecified => 202,
+            NeonError::IncorrectProgram(_) => 203,
+            NeonError::AccountNotFound(_) => 205,
+            NeonError::AccountIsNotBpf(_) => 226,
+            NeonError::AccountIsNotUpgradeable(_) => 227,
+            NeonError::AssociatedPdaNotFound(_, _) => 241,
+            NeonError::InvalidAssociatedPda(_, _) => 242,
+            NeonError::TooManySteps => 245,
+            NeonError::FromHexError(_) => 246,
+            NeonError::InvalidChDbConfig => 247,
+            NeonError::IncorrectAddress(_) => 248,
+            NeonError::IncorrectIndex(_) => 249,
+            NeonError::TxParametersParsingError(_) => 250,
+            NeonError::PostgreError(_) => 251,
         }
     }
 }

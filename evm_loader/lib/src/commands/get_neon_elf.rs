@@ -7,11 +7,14 @@ use solana_sdk::{
     pubkey::Pubkey,
 };
 
-use crate::{context::Context, errors::NeonCliError, Config, NeonCliResult};
+use crate::{context::Context, errors::NeonError, Config, NeonResult};
+
+pub type GetNeonElfReturn = HashMap<String, String>;
 
 pub struct CachedElfParams {
-    elf_params: HashMap<String, String>,
+    elf_params: GetNeonElfReturn,
 }
+
 impl CachedElfParams {
     pub fn new(config: &Config, context: &Context) -> Self {
         Self {
@@ -24,7 +27,7 @@ impl CachedElfParams {
     }
 }
 
-pub fn read_elf_parameters(_config: &Config, program_data: &[u8]) -> HashMap<String, String> {
+pub fn read_elf_parameters(_config: &Config, program_data: &[u8]) -> GetNeonElfReturn {
     let mut result = HashMap::new();
     let elf = goblin::elf::Elf::parse(program_data).expect("Unable to parse ELF file");
     let ctx = goblin::container::Ctx::new(
@@ -81,7 +84,7 @@ pub fn read_elf_parameters(_config: &Config, program_data: &[u8]) -> HashMap<Str
 pub fn read_elf_parameters_from_account(
     config: &Config,
     context: &Context,
-) -> Result<HashMap<String, String>, NeonCliError> {
+) -> Result<GetNeonElfReturn, NeonError> {
     let (_, program_data) = read_program_data_from_account(config, context, &config.evm_loader)?;
     Ok(read_elf_parameters(config, &program_data))
 }
@@ -90,12 +93,12 @@ pub fn read_program_data_from_account(
     config: &Config,
     context: &Context,
     evm_loader: &Pubkey,
-) -> Result<(Option<Pubkey>, Vec<u8>), NeonCliError> {
+) -> Result<(Option<Pubkey>, Vec<u8>), NeonError> {
     let account = context
         .rpc_client
         .get_account_with_commitment(evm_loader, config.commitment)?
         .value
-        .ok_or(NeonCliError::AccountNotFound(*evm_loader))?;
+        .ok_or(NeonError::AccountNotFound(*evm_loader))?;
 
     if account.owner == bpf_loader::id() || account.owner == bpf_loader_deprecated::id() {
         Ok((None, account.data))
@@ -108,7 +111,7 @@ pub fn read_program_data_from_account(
                 .rpc_client
                 .get_account_with_commitment(&programdata_address, config.commitment)?
                 .value
-                .ok_or(NeonCliError::AssociatedPdaNotFound(
+                .ok_or(NeonError::AssociatedPdaNotFound(
                     programdata_address,
                     config.evm_loader,
                 ))?;
@@ -122,7 +125,7 @@ pub fn read_program_data_from_account(
                 let program_data = &programdata_account.data[offset..];
                 Ok((upgrade_authority_address, program_data.to_vec()))
             } else {
-                Err(NeonCliError::InvalidAssociatedPda(
+                Err(NeonError::InvalidAssociatedPda(
                     programdata_address,
                     config.evm_loader,
                 ))
@@ -135,51 +138,41 @@ pub fn read_program_data_from_account(
             let program_data = &account.data[offset..];
             Ok((authority_address, program_data.to_vec()))
         } else {
-            Err(NeonCliError::AccountIsNotUpgradeable(config.evm_loader))
+            Err(NeonError::AccountIsNotUpgradeable(config.evm_loader))
         }
     } else {
-        Err(NeonCliError::AccountIsNotBpf(config.evm_loader))
+        Err(NeonError::AccountIsNotBpf(config.evm_loader))
     }
 }
 
-#[allow(clippy::unnecessary_wraps)]
-fn elf_parameters_to_json(params: HashMap<String, String>) -> NeonCliResult {
-    use serde_json::{Map, Value};
-
-    let params: Map<String, Value> = params
-        .into_iter()
-        .map(|(key, value)| (key, Value::String(value)))
-        .collect();
-
-    Ok(Value::Object(params))
-}
-
 /// # Errors
-pub fn read_program_data(program_location: &str) -> Result<Vec<u8>, NeonCliError> {
+pub fn read_program_data(program_location: &str) -> Result<Vec<u8>, NeonError> {
     let mut file = File::open(program_location)?;
     let mut program_data = Vec::new();
     file.read_to_end(&mut program_data)?;
     Ok(program_data)
 }
 
-fn read_program_params_from_file(config: &Config, program_location: &str) -> NeonCliResult {
+fn read_program_params_from_file(
+    config: &Config,
+    program_location: &str,
+) -> NeonResult<GetNeonElfReturn> {
     let program_data = read_program_data(program_location)?;
-    let elf_params = read_elf_parameters(config, &program_data);
-
-    elf_parameters_to_json(elf_params)
+    Ok(read_elf_parameters(config, &program_data))
 }
 
-fn read_program_params_from_account(config: &Config, context: &Context) -> NeonCliResult {
-    let elf_params = read_elf_parameters_from_account(config, context)?;
-
-    elf_parameters_to_json(elf_params)
+fn read_program_params_from_account(
+    config: &Config,
+    context: &Context,
+) -> NeonResult<GetNeonElfReturn> {
+    read_elf_parameters_from_account(config, context)
 }
 
 pub fn execute(
     config: &Config,
     context: &Context,
     program_location: Option<&str>,
-) -> NeonCliResult {
+) -> NeonResult<GetNeonElfReturn> {
     program_location.map_or_else(
         || read_program_params_from_account(config, context),
         |program_location| read_program_params_from_file(config, program_location),

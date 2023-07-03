@@ -1,17 +1,18 @@
 #![deny(warnings)]
 #![deny(clippy::all, clippy::pedantic)]
 
-mod account_storage;
 mod commands;
-pub mod config;
-pub mod context;
-mod errors;
-mod event_listener;
+mod config;
+mod context;
 mod logs;
 mod program_options;
-mod rpc;
-mod syscall_stubs;
-mod types;
+
+pub use neon_lib::account_storage;
+pub use neon_lib::errors;
+pub use neon_lib::event_listener;
+pub use neon_lib::rpc;
+pub use neon_lib::syscall_stubs;
+pub use neon_lib::types;
 
 use clap::ArgMatches;
 pub use config::Config;
@@ -32,7 +33,7 @@ use crate::{
         get_ether_account_data, get_neon_elf, get_neon_elf::CachedElfParams, get_storage_at,
         init_environment, trace,
     },
-    errors::NeonCliError,
+    errors::NeonError,
     rpc::Rpc,
     types::{
         trace::{TraceCallConfig, TraceConfig},
@@ -41,7 +42,7 @@ use crate::{
 };
 use evm_loader::types::Address;
 
-type NeonCliResult = Result<serde_json::Value, NeonCliError>;
+type NeonCliResult = Result<serde_json::Value, NeonError>;
 
 fn run(options: &ArgMatches) -> NeonCliResult {
     let slot: Option<u64> = options
@@ -85,7 +86,7 @@ async fn main() {
     logs::init(&options).expect("logs init error");
     std::panic::set_hook(Box::new(|info| {
         let message = std::format!("Panic: {info}");
-        print_result(&Err(NeonCliError::Panic(message)));
+        print_result(&Err(NeonError::Panic(message)));
     }));
 
     let result = run(&options);

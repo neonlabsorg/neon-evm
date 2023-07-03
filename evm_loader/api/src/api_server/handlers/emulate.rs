@@ -1,5 +1,5 @@
 use axum::{http::StatusCode, Json};
-use serde_json::json;
+use std::convert::Into;
 
 use crate::{
     commands::emulate as EmulateCommand,
@@ -34,17 +34,16 @@ pub async fn emulate(
 
     process_result(
         &EmulateCommand::execute(
-            context.rpc_client.as_ref(),
-            state.config.evm_loader,
+            &state.config,
+            &context,
             tx,
             token,
             chain,
             steps,
-            state.config.commitment,
             &accounts,
             &solana_accounts,
             TraceCallConfig::default(),
         )
-        .map(|result| json!(result)),
+        .map_err(Into::into),
     )
 }

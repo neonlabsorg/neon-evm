@@ -1,29 +1,28 @@
 #![allow(dead_code)]
 #![deny(warnings)]
 #![deny(clippy::all, clippy::pedantic)]
-mod account_storage;
 mod api_options;
 mod api_server;
-mod commands;
-mod config;
-mod context;
-mod errors;
-mod event_listener;
-mod program_options;
-mod rpc;
-mod syscall_stubs;
-mod types;
+
+use api_server::handlers::NeonApiError;
+pub use neon_lib::account_storage;
+pub use neon_lib::commands;
+pub use neon_lib::config;
+pub use neon_lib::context;
+pub use neon_lib::errors;
+pub use neon_lib::event_listener;
+pub use neon_lib::rpc;
+pub use neon_lib::syscall_stubs;
+pub use neon_lib::types;
 
 use std::{env, net::SocketAddr, str::FromStr, sync::Arc};
 
 use axum::Router;
 pub use config::Config;
 pub use context::Context;
-use errors::NeonCliError;
 use tokio::signal::{self};
 
-type NeonCliResult = Result<serde_json::Value, NeonCliError>;
-type NeonApiResult<T> = Result<T, NeonCliError>;
+type NeonApiResult<T> = Result<T, NeonApiError>;
 type NeonApiState = Arc<api_server::state::State>;
 
 #[tokio::main]

@@ -3,14 +3,16 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use ethnum::U256;
 use evm_loader::types::Address;
+use serde::Serialize;
 use serde_json::{json, Value};
 use solana_sdk::pubkey::Pubkey;
 
 use crate::commands::get_neon_elf::CachedElfParams;
-use crate::errors::NeonCliError;
-use crate::{Config, Context, NeonCliResult};
+use crate::errors::NeonError;
+use crate::{Config, Context, NeonApiResult};
 
 use crate::types::request_models::EmulationParamsRequestModel;
+use std::net::AddrParseError;
 use std::str::FromStr;
 
 pub mod emulate;
@@ -20,6 +22,46 @@ pub mod get_storage_at;
 pub mod trace;
 pub mod trace_hash;
 pub mod trace_next_block;
+
+#[derive(Debug)]
+pub struct NeonApiError(pub NeonError);
+
+impl NeonApiError {
+    pub fn into_inner(self) -> NeonError {
+        self.into()
+    }
+}
+
+impl From<NeonError> for NeonApiError {
+    fn from(value: NeonError) -> Self {
+        NeonApiError(value)
+    }
+}
+
+impl From<NeonApiError> for NeonError {
+    fn from(value: NeonApiError) -> Self {
+        value.0
+    }
+}
+
+impl From<AddrParseError> for NeonApiError {
+    fn from(value: AddrParseError) -> Self {
+        NeonApiError(value.into())
+    }
+}
+
+impl IntoResponse for NeonApiError {
+    fn into_response(self) -> Response {
+        let (status, error_message) = (StatusCode::INTERNAL_SERVER_ERROR, self.0.to_string());
+
+        let body = Json(json!({
+            "result": "error",
+            "error":error_message,
+        }));
+
+        (status, body).into_response()
+    }
+}
 
 pub fn u256_of(index: &str) -> Option<U256> {
     if index.is_empty() {
@@ -75,33 +117,29 @@ pub(crate) fn parse_emulation_params(
     (token, chain, max_steps, accounts, solana_accounts)
 }
 
-impl IntoResponse for NeonCliError {
-    fn into_response(self) -> Response {
-        let (status, error_message) = (StatusCode::INTERNAL_SERVER_ERROR, self.to_string());
-
-        let body = Json(json!({
-            "result": "error",
-            "error": error_message,
-        }));
-
-        (status, body).into_response()
-    }
-}
-
-fn process_result(result: &NeonCliResult) -> (StatusCode, Json<Value>) {
+fn process_result<T: Serialize>(
+    result: &NeonApiResult<T>,
+) -> (StatusCode, Json<serde_json::Value>) {
     match result {
         Ok(value) => (
             StatusCode::OK,
             Json(json!({
                 "result": "success",
-                "value": value.to_string(),
+                "value": value,
             })),
         ),
-        Err(e) => process_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "result": "error",
+                "error": e.0.to_string(),
+            })),
+        ),
+        Err(e) => process_error(StatusCode::INTERNAL_SERVER_ERROR, e.0),
     }
 }
 
-fn process_error(status_code: StatusCode, e: &NeonCliError) -> (StatusCode, Json<Value>) {
+fn process_error(status_code: StatusCode, e: &NeonError) -> (StatusCode, Json<Value>) {
     (
         status_code,
         Json(json!({

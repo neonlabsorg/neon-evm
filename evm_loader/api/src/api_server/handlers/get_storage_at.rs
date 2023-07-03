@@ -1,16 +1,18 @@
-use crate::commands::get_ether_account_data as GetEtherAccountDataCommand;
-use crate::{context, types::request_models::GetEtherRequest, NeonApiState};
+use crate::{context, types::request_models::GetStorageAtRequest, NeonApiState};
 use axum::{
     extract::{Query, State},
     http::StatusCode,
     Json,
 };
+use std::convert::Into;
+
+use crate::commands::get_storage_at as GetStorageAtCommand;
 
 use super::{process_error, process_result};
 
 #[allow(clippy::unused_async)]
-pub async fn get_ether_account_data(
-    Query(req_params): Query<GetEtherRequest>,
+pub async fn get_storage_at(
+    Query(req_params): Query<GetStorageAtRequest>,
     State(state): State<NeonApiState>,
 ) -> (StatusCode, Json<serde_json::Value>) {
     let signer = match context::build_signer(&state.config) {
@@ -25,9 +27,13 @@ pub async fn get_ether_account_data(
 
     let context = context::create(rpc_client, signer);
 
-    process_result(&GetEtherAccountDataCommand::execute(
-        context.rpc_client.as_ref(),
-        &state.config.evm_loader,
-        &req_params.ether,
-    ))
+    process_result(
+        &GetStorageAtCommand::execute(
+            context.rpc_client.as_ref(),
+            &state.config.evm_loader,
+            req_params.contract_id,
+            &req_params.index,
+        )
+        .map_err(Into::into),
+    )
 }

@@ -1,18 +1,29 @@
 use log::info;
 
+use serde::Serialize;
 use solana_sdk::{
     incinerator,
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
+    signature::Signature,
 };
 
 use evm_loader::account::State;
 
 use crate::{
-    account_storage::account_info, commands::send_transaction, Config, Context, NeonCliResult,
+    account_storage::account_info, commands::send_transaction, Config, Context, NeonResult,
 };
 
-pub fn execute(config: &Config, context: &Context, storage_account: &Pubkey) -> NeonCliResult {
+#[derive(Serialize)]
+pub struct CancelTrxReturn {
+    pub transaction: Signature,
+}
+
+pub fn execute(
+    config: &Config,
+    context: &Context,
+    storage_account: &Pubkey,
+) -> NeonResult<CancelTrxReturn> {
     let mut acc = context.rpc_client.get_account(storage_account)?;
     let storage_info = account_info(storage_account, &mut acc);
     let storage = State::from_account(&config.evm_loader, &storage_info)?;
@@ -51,5 +62,7 @@ pub fn execute(config: &Config, context: &Context, storage_account: &Pubkey) -> 
         &instructions,
     )?;
 
-    Ok(serde_json::json!({ "transaction": signature }))
+    Ok(CancelTrxReturn {
+        transaction: signature,
+    })
 }

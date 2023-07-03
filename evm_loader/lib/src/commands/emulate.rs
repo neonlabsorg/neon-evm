@@ -9,12 +9,14 @@ use evm_loader::{
     gasometer::LAMPORTS_PER_SIGNATURE,
     types::{Address, Transaction},
 };
+use serde::Serialize;
 
 use crate::{
     account_storage::{EmulatorAccountStorage, NeonAccount, SolanaAccount},
-    errors::NeonCliError,
+    errors::NeonError,
     rpc::Rpc,
     syscall_stubs::Stubs,
+    Config, NeonResult,
     types::{trace::TraceCallConfig, TxParams},
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
@@ -45,6 +47,18 @@ where
     s.serialize_str(&hex::encode(value))
 }
 
+#[derive(Serialize)]
+pub struct EmulateReturn {
+    pub accounts: Vec<NeonAccount>,
+    pub solana_accounts: Vec<SolanaAccount>,
+    pub token_accounts: Vec<()>,
+    pub result: String,
+    pub exit_status: String,
+    pub steps_executed: u64,
+    pub used_gas: u64,
+    pub actions: Vec<Action>,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn execute(
     rpc_client: &dyn Rpc,
@@ -57,7 +71,7 @@ pub fn execute(
     accounts: &[Address],
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
-) -> Result<EmulationResultWithAccounts, NeonCliError> {
+) -> NeonResult<EmulationResultWithAccounts> {
     let (emulation_result, storage) = emulate_transaction(
         rpc_client,
         evm_loader,
@@ -142,7 +156,7 @@ pub(crate) fn emulate_trx(
     debug!("{steps_executed} steps executed");
 
     if exit_status == ExitStatus::StepLimit {
-        return Err(NeonCliError::TooManySteps);
+        return Err(NeonError::TooManySteps);
     }
 
     let accounts_operations = storage.calc_accounts_operations(&actions);

@@ -1,4 +1,5 @@
 use log::debug;
+use serde::Serialize;
 use solana_cli::checks::check_account_for_fee;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
@@ -10,9 +11,18 @@ use solana_sdk::{
 
 use evm_loader::types::Address;
 
-use crate::{Config, Context, NeonCliResult};
+use crate::{Config, Context, NeonResult};
 
-pub fn execute(config: &Config, context: &Context, ether_address: &Address) -> NeonCliResult {
+#[derive(Serialize)]
+pub struct CreateEtherAccountReturn {
+    pub solana_address: String,
+}
+
+pub fn execute(
+    config: &Config,
+    context: &Context,
+    ether_address: &Address,
+) -> NeonResult<CreateEtherAccountReturn> {
     let (solana_address, nonce) = ether_address.find_solana_address(&config.evm_loader);
     debug!("Create ethereum account {solana_address} <- {ether_address} {nonce}");
 
@@ -49,7 +59,7 @@ pub fn execute(config: &Config, context: &Context, ether_address: &Address) -> N
         .rpc_client
         .send_and_confirm_transaction_with_spinner(&finalize_tx)?;
 
-    Ok(serde_json::json!({
-        "solana_address": solana_address.to_string(),
-    }))
+    Ok(CreateEtherAccountReturn {
+        solana_address: solana_address.to_string(),
+    })
 }

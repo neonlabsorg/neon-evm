@@ -12,7 +12,7 @@ use evm_loader::{
 
 use crate::{
     account_storage::{account_info, EmulatorAccountStorage},
-    errors::NeonCliError,
+    Config, NeonResult,
     rpc::Rpc,
 };
 
@@ -21,7 +21,7 @@ pub fn execute(
     evm_loader: &Pubkey,
     ether_address: Address,
     index: &U256,
-) -> Result<[u8; 32], NeonCliError> {
+) -> NeonResult<[u8; 32]> {
     let value = if let (solana_address, Some(mut account)) =
         EmulatorAccountStorage::get_account_from_solana(rpc_client, evm_loader, &ether_address)
     {

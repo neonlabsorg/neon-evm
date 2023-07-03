@@ -139,7 +139,7 @@ impl TransactionExecutor {
             .map_err(std::convert::Into::into)
     }
 
-    pub async fn check_and_create_object<T, V, C, Fu>(
+    pub async fn check_and_create_object<T, V, C, Fu1, Fu2>(
         &self,
         name: &str,
         object: Result<Option<T>, NeonError>,
@@ -147,17 +147,18 @@ impl TransactionExecutor {
         create: C,
     ) -> Result<Option<Signature>, NeonError>
     where
-        Fu: Future<Output = Result<Option<Transaction>, NeonError>>,
-        V: FnOnce(&T) -> Result<Option<Transaction>, NeonError>,
-        C: FnOnce() -> Fu,
-        T: std::fmt::Debug,
+        Fu1: Future<Output = Result<Option<Transaction>, NeonError>>,
+        Fu2: Future<Output = Result<Option<Transaction>, NeonError>>,
+        V: FnOnce(T) -> Fu2,
+        C: FnOnce() -> Fu1,
+        T: std::fmt::Debug + Clone,
     {
         if let Some(data) = object.map_err(|e| {
             error!("{}: {:?}", name, e);
             e
         })? {
             debug!("{}: {:?}", name, data);
-            match verify(&data) {
+            match verify(data.clone()).await {
                 Ok(None) => {
                     info!("{}: correct", name);
                     self.stats.write().await.inc_corrected_objects();

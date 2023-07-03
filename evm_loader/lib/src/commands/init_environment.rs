@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 
-use crate::{context::Context, types::block, NeonResult};
+use crate::{context::Context, NeonResult};
 
 use {
     crate::{
@@ -191,7 +191,7 @@ pub async fn execute(
             executor
                 .get_account_data_pack::<spl_token::state::Mint>(&spl_token::id(), &neon_token_mint)
                 .await,
-            |mint| {
+            |mint| async move {
                 if mint.decimals != neon_token_mint_decimals {
                     error!("Invalid token decimals");
                     return Err(EnvironmentError::IncorrectTokenDecimals.into());
@@ -216,7 +216,7 @@ pub async fn execute(
                     &deposit_address,
                 )
                 .await,
-            |account| {
+            |account| async move {
                 if account.mint != neon_token_mint || account.owner != deposit_authority {
                     Err(EnvironmentError::InvalidSplTokenAccount(deposit_address).into())
                 } else {
@@ -253,7 +253,7 @@ pub async fn execute(
         .check_and_create_object(
             "Main treasury pool",
             executor.get_account(&main_balance_address).await,
-            |_| Ok(None),
+            |_| async move { Ok(None) },
             || async {
                 if program_upgrade_authority != Some(context.signer.pubkey()) {
                     return Err(EnvironmentError::IncorrectProgramAuthority.into());
@@ -294,19 +294,15 @@ pub async fn execute(
             .check_and_create_object(
                 &format!("Aux treasury pool {i}"),
                 executor.get_account(&aux_balance_address).await,
-                move |v| {
+                move |v| async move {
                     if v.lamports < minimum_balance {
-                        let transaction = block(|| async move {
-                            executor_clone
-                                .create_transaction_with_payer_only(&[
-                                    system_instruction::transfer(
-                                        &executor_clone.fee_payer.pubkey(),
-                                        &aux_balance_address,
-                                        minimum_balance - v.lamports,
-                                    ),
-                                ])
-                                .await
-                        })?;
+                        let transaction = executor_clone
+                            .create_transaction_with_payer_only(&[system_instruction::transfer(
+                                &executor_clone.fee_payer.pubkey(),
+                                &aux_balance_address,
+                                minimum_balance - v.lamports,
+                            )])
+                            .await?;
                         Ok(Some(transaction))
                     } else {
                         Ok(None)

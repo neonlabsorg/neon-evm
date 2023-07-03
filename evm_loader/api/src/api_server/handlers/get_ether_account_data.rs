@@ -31,6 +31,7 @@ pub async fn get_ether_account_data(
             context.rpc_client.as_ref(),
             &state.config.evm_loader,
             &req_params.ether,
-        ).map_err(Into::into),
+        )
+        .map_err(Into::into),
     )
 }

@@ -62,7 +62,7 @@ pub struct AccountRow {
     executable: bool,
     rent_epoch: u64,
     data: Vec<u8>,
-    // txn_signature: Vec<u8>,
+    txn_signature: Vec<u8>,
 }
 
 impl TryInto<Account> for AccountRow {
@@ -289,7 +289,7 @@ impl ClickHouseDb {
             None
         } else {
             let query = r#"
-                SELECT owner, lamports, executable, rent_epoch, data
+                SELECT owner, lamports, executable, rent_epoch, data, txn_signature
                 FROM events.update_account_distributed
                 WHERE pubkey = ?
                   AND slot IN ?
@@ -344,7 +344,7 @@ impl ClickHouseDb {
 
     async fn get_last_older_account_row(&self, pubkey: &str) -> ChResult<Option<AccountRow>> {
         let query = r#"
-            SELECT owner, lamports, executable, rent_epoch, data
+            SELECT owner, lamports, executable, rent_epoch, data, txn_signature
             FROM events.older_account_distributed
             WHERE pubkey = ?
             ORDER BY slot DESC
@@ -454,7 +454,7 @@ impl ClickHouseDb {
         // Try to find account changes within the given slot.
         let query = r#"
             SELECT DISTINCT ON (pubkey, txn_signature, write_version)
-                   owner, lamports, executable, rent_epoch, data
+                   owner, lamports, executable, rent_epoch, data, txn_signature
             FROM events.update_account_distributed
             WHERE slot = ? AND pubkey = ?
             ORDER BY write_version DESC
@@ -483,21 +483,21 @@ impl ClickHouseDb {
             sql(1) returned:\n{rows:?}"
         );
 
-        // let row_found = rows
-        //     .into_iter()
-        //     .skip_while(|row| row.txn_signature.as_slice() != sol_sig.as_slice())
-        //     .nth(1);
-        //
-        // info!("get_account_by_sol_sig {{ pubkey: {pubkey}, sol_sig: {sol_sig_str} }}, row_found: {row_found:?}");
-        //
-        // if row_found.is_some() {
-        //     return row_found
-        //         .map(|row| {
-        //             row.try_into()
-        //                 .map_err(|err| ChError::Db(clickhouse::error::Error::Custom(err)))
-        //         })
-        //         .transpose();
-        // }
+        let row_found = rows
+            .into_iter()
+            .skip_while(|row| row.txn_signature.as_slice() != sol_sig.as_slice())
+            .nth(1);
+
+        info!("get_account_by_sol_sig {{ pubkey: {pubkey}, sol_sig: {sol_sig_str} }}, row_found: {row_found:?}");
+
+        if row_found.is_some() {
+            return row_found
+                .map(|row| {
+                    row.try_into()
+                        .map_err(|err| ChError::Db(clickhouse::error::Error::Custom(err)))
+                })
+                .transpose();
+        }
 
         // If not found, get closest account state in one of previous slots
         if let Some(parent) = slot.parent {

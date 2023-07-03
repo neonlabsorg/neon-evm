@@ -466,7 +466,7 @@ impl ClickHouseDb {
             self.client
                 .query(query)
                 .bind(slot.slot)
-                .bind(pubkey_str.clone())
+                .bind(pubkey_str)
                 .fetch_all::<AccountRow>()
                 .await
         })?;

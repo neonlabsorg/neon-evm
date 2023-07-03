@@ -16,8 +16,8 @@ use crate::{
     errors::NeonError,
     rpc::Rpc,
     syscall_stubs::Stubs,
-    Config, NeonResult,
     types::{trace::TraceCallConfig, TxParams},
+    NeonResult,
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
@@ -107,7 +107,7 @@ pub(crate) fn emulate_transaction<'a>(
     accounts: &[Address],
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
-) -> Result<(EmulationResult, EmulatorAccountStorage<'a>), NeonCliError> {
+) -> Result<(EmulationResult, EmulatorAccountStorage<'a>), NeonError> {
     setup_syscall_stubs(rpc_client)?;
 
     let storage = EmulatorAccountStorage::with_accounts(
@@ -130,7 +130,7 @@ pub(crate) fn emulate_trx(
     storage: &EmulatorAccountStorage,
     chain_id: u64,
     step_limit: u64,
-) -> Result<EmulationResult, NeonCliError> {
+) -> Result<EmulationResult, NeonError> {
     let (exit_status, actions, steps_executed) = {
         let mut backend = ExecutorState::new(storage);
         let trx = Transaction {
@@ -184,7 +184,7 @@ pub(crate) fn emulate_trx(
     })
 }
 
-pub(crate) fn setup_syscall_stubs(rpc_client: &dyn Rpc) -> Result<(), NeonCliError> {
+pub(crate) fn setup_syscall_stubs(rpc_client: &dyn Rpc) -> Result<(), NeonError> {
     let syscall_stubs = Stubs::new(rpc_client)?;
     solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
 

@@ -34,12 +34,13 @@ pub async fn emulate(
 
     process_result(
         &EmulateCommand::execute(
-            &state.config,
-            &context,
+            context.rpc_client.as_ref(),
+            state.config.evm_loader,
             tx,
             token,
             chain,
             steps,
+            state.config.commitment,
             &accounts,
             &solana_accounts,
             TraceCallConfig::default(),

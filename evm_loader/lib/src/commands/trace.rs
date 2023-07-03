@@ -1,7 +1,7 @@
 use crate::{
     account_storage::EmulatorAccountStorage,
     commands::emulate::{emulate_transaction, emulate_trx, setup_syscall_stubs},
-    errors::NeonCliError,
+    errors::NeonError,
     event_listener::tracer::Tracer,
     rpc::Rpc,
     types::{
@@ -13,7 +13,7 @@ use evm_loader::types::Address;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn trace_transaction(
+pub fn trace_transaction(
     rpc_client: &dyn Rpc,
     evm_loader: Pubkey,
     tx: TxParams,
@@ -24,7 +24,7 @@ pub(crate) fn trace_transaction(
     accounts: &[Address],
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
-) -> Result<TracedCall, NeonCliError> {
+) -> Result<TracedCall, NeonError> {
     let mut tracer = Tracer::new(trace_call_config.trace_config.enable_return_data);
 
     let (emulation_result, _storage) = evm_loader::evm::tracing::using(&mut tracer, || {
@@ -54,7 +54,7 @@ pub(crate) fn trace_transaction(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn trace_block(
+pub fn trace_block(
     rpc_client: &dyn Rpc,
     evm_loader: Pubkey,
     transactions: Vec<TxParams>,
@@ -65,7 +65,7 @@ pub(crate) fn trace_block(
     accounts: &[Address],
     solana_accounts: &[Pubkey],
     trace_config: &TraceConfig,
-) -> Result<Vec<TracedCall>, NeonCliError> {
+) -> Result<Vec<TracedCall>, NeonError> {
     setup_syscall_stubs(rpc_client)?;
 
     let storage = EmulatorAccountStorage::with_accounts(
@@ -95,7 +95,7 @@ fn trace_trx(
     chain_id: u64,
     steps: u64,
     trace_config: &TraceConfig,
-) -> Result<TracedCall, NeonCliError> {
+) -> Result<TracedCall, NeonError> {
     let mut tracer = Tracer::new(trace_config.enable_return_data);
 
     let emulation_result = evm_loader::evm::tracing::using(&mut tracer, || {

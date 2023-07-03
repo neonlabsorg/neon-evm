@@ -1,5 +1,4 @@
 use axum::{http::StatusCode, Json};
-use serde_json::json;
 
 use crate::{
     api_server::handlers::process_error,
@@ -48,7 +47,7 @@ pub async fn trace_next_block(
         Err(e) => {
             return process_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                &errors::NeonCliError::PostgreError(e),
+                &errors::NeonError::PostgreError(e),
             )
         }
     };
@@ -66,6 +65,6 @@ pub async fn trace_next_block(
             &solana_accounts,
             &trace_next_block_request.trace_config.unwrap_or_default(),
         )
-        .map(|result| json!(result)),
+        .map_err(Into::into),
     )
 }

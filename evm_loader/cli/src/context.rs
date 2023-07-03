@@ -1,6 +1,6 @@
 use clap::ArgMatches;
 use hex::FromHex;
-use neon_lib::context::truncate;
+use neon_lib::context::truncate_0x;
 pub use neon_lib::context::*;
 use neon_lib::rpc;
 use neon_lib::rpc::CallDbClient;

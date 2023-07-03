@@ -2,7 +2,7 @@ use clap::{crate_description, crate_name, App, AppSettings, Arg, ArgMatches, Sub
 use ethnum::U256;
 use evm_loader::types::Address;
 use hex::FromHex;
-use neon_lib::context::truncate;
+use neon_lib::context::truncate_0x;
 use solana_clap_utils::input_validators::{is_url_or_moniker, is_valid_pubkey};
 use std::fmt::Display;
 

@@ -1,18 +1,19 @@
 #![deny(warnings)]
 #![deny(clippy::all, clippy::pedantic)]
 
-mod commands;
 mod config;
 mod context;
 mod logs;
 mod program_options;
 
-pub use neon_lib::account_storage;
-pub use neon_lib::errors;
-pub use neon_lib::event_listener;
-pub use neon_lib::rpc;
-pub use neon_lib::syscall_stubs;
-pub use neon_lib::types;
+use neon_lib::{
+    commands::{
+        cancel_trx, collect_treasury, create_ether_account, deposit, emulate,
+        get_ether_account_data, get_neon_elf, get_neon_elf::CachedElfParams, get_storage_at,
+        init_environment, trace,
+    },
+    errors, rpc, types,
+};
 
 use clap::ArgMatches;
 pub use config::Config;
@@ -23,16 +24,12 @@ use ethnum::U256;
 use serde_json::json;
 use solana_clap_utils::input_parsers::{pubkey_of, value_of, values_of};
 use solana_client::client_error::{ClientError, ClientErrorKind};
+use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use tokio::time::Instant;
 
 use crate::{
-    commands::{
-        cancel_trx, collect_treasury, create_ether_account, deposit, emulate,
-        get_ether_account_data, get_neon_elf, get_neon_elf::CachedElfParams, get_storage_at,
-        init_environment, trace,
-    },
     errors::NeonError,
     rpc::Rpc,
     types::{
@@ -214,33 +211,66 @@ fn execute(
         }
         ("create-ether-account", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
-            create_ether_account::execute(config, context, &ether)
+            let rpc_client = context
+                .rpc_client
+                .as_any()
+                .downcast_ref::<RpcClient>()
+                .expect("cast to solana_client::rpc_client::RpcClient error");
+            create_ether_account::execute(
+                rpc_client,
+                config.evm_loader,
+                context.signer.as_ref(),
+                &ether,
+            )
+            .map(|result| json!(result))
         }
         ("deposit", Some(params)) => {
+            let rpc_client = context
+                .rpc_client
+                .as_any()
+                .downcast_ref::<RpcClient>()
+                .expect("cast to solana_client::rpc_client::RpcClient error");
             let amount = value_of(params, "amount").expect("amount parse error");
             let ether = address_of(params, "ether").expect("ether parse error");
-            deposit::execute(config, context, amount, &ether)
+            deposit::execute(
+                rpc_client,
+                config.evm_loader,
+                context.signer.as_ref(),
+                amount,
+                &ether,
+            )
+            .map(|result| json!(result))
         }
         ("get-ether-account-data", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
             get_ether_account_data::execute(context.rpc_client.as_ref(), &config.evm_loader, &ether)
+                .map(|result| json!(result))
         }
         ("cancel-trx", Some(params)) => {
             let storage_account =
                 pubkey_of(params, "storage_account").expect("storage_account parse error");
-            cancel_trx::execute(config, context, &storage_account)
+            cancel_trx::execute(
+                context.rpc_client.as_ref(),
+                context.signer.as_ref(),
+                config.evm_loader,
+                &storage_account,
+            )
+            .map(|result| json!(result))
         }
         ("neon-elf-params", Some(params)) => {
             let program_location = params.value_of("program_location");
-            get_neon_elf::execute(config, context, program_location)
+            get_neon_elf::execute(config, context, program_location).map(|result| json!(result))
         }
-        ("collect-treasury", Some(_)) => collect_treasury::execute(config, context),
+        ("collect-treasury", Some(_)) => {
+            collect_treasury::execute(config, context).map(|result| json!(result))
+        }
         ("init-environment", Some(params)) => {
             let file = params.value_of("file");
             let send_trx = params.is_present("send-trx");
             let force = params.is_present("force");
             let keys_dir = params.value_of("keys-dir");
             init_environment::execute(config, context, send_trx, force, keys_dir, file)
+                .map(|result| json!(result))
         }
         ("get-storage-at", Some(params)) => {
             let contract_id = address_of(params, "contract_id").expect("contract_it parse error");

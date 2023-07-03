@@ -128,14 +128,7 @@ fn process_result<T: Serialize>(
                 "value": value,
             })),
         ),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "result": "error",
-                "error": e.0.to_string(),
-            })),
-        ),
-        Err(e) => process_error(StatusCode::INTERNAL_SERVER_ERROR, e.0),
+        Err(e) => process_error(StatusCode::INTERNAL_SERVER_ERROR, &e.0),
     }
 }
 

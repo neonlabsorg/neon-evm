@@ -12,8 +12,8 @@ use evm_loader::{
 
 use crate::{
     account_storage::{account_info, EmulatorAccountStorage},
-    Config, NeonResult,
     rpc::Rpc,
+    NeonResult,
 };
 
 pub fn execute(

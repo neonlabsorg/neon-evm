@@ -10,7 +10,7 @@ use solana_sdk::signature::Signer;
 
 /// # Errors
 pub fn build_hash_rpc_client(config: &Config, hash: &str) -> Result<Box<dyn rpc::Rpc>, NeonError> {
-    let hash = <[u8; 32]>::from_hex(truncate(hash))?;
+    let hash = <[u8; 32]>::from_hex(truncate_0x(hash))?;
 
     Ok(Box::new(TrxDbClient::new(
         config.db_config.as_ref().expect("db-config not found"),
@@ -18,7 +18,7 @@ pub fn build_hash_rpc_client(config: &Config, hash: &str) -> Result<Box<dyn rpc:
     )))
 }
 
-pub fn truncate(in_str: &str) -> &str {
+pub fn truncate_0x(in_str: &str) -> &str {
     if &in_str[..2] == "0x" {
         &in_str[2..]
     } else {
@@ -57,15 +57,20 @@ pub fn build_rpc_client(
     slot: Option<u64>,
 ) -> Result<Box<dyn rpc::Rpc>, NeonError> {
     if let Some(slot) = slot {
-        let config = config
-            .db_config
-            .clone()
-            .ok_or(NeonError::InvalidChDbConfig)?;
-        return Ok(Box::new(CallDbClient::new(&config, slot)));
+        return build_call_db_client(config, slot);
     }
 
     Ok(Box::new(RpcClient::new_with_commitment(
         config.json_rpc_url.clone(),
         config.commitment,
     )))
+}
+
+/// # Errors
+pub fn build_call_db_client(config: &Config, slot: u64) -> Result<Box<dyn rpc::Rpc>, NeonError> {
+    let config = config
+        .db_config
+        .clone()
+        .ok_or(NeonError::InvalidChDbConfig)?;
+    Ok(Box::new(CallDbClient::new(&config, slot)))
 }

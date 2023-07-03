@@ -62,7 +62,7 @@ pub struct AccountRow {
     executable: bool,
     rent_epoch: u64,
     data: Vec<u8>,
-    txn_signature: Vec<u8>,
+    txn_signature: Option<Vec<u8>>,
 }
 
 impl TryInto<Account> for AccountRow {
@@ -485,7 +485,9 @@ impl ClickHouseDb {
 
         let row_found = rows
             .into_iter()
-            .skip_while(|row| row.txn_signature.as_slice() != sol_sig.as_slice())
+            .skip_while(|row| {
+                row.txn_signature.as_ref().unwrap_or(&vec![]).as_slice() != sol_sig.as_slice()
+            })
             .nth(1);
 
         info!("get_account_by_sol_sig {{ pubkey: {pubkey}, sol_sig: {sol_sig_str} }}, row_found: {row_found:?}");

@@ -141,7 +141,7 @@ pub(crate) fn emulate_trx(
             gas_limit: tx_params.gas_limit.unwrap_or_default(),
             target: tx_params.to,
             value: tx_params.value.unwrap_or_default(),
-            call_data: evm_loader::evm::Buffer::new(&tx_params.data.unwrap_or_default()),
+            call_data: evm_loader::evm::Buffer::from_slice(&tx_params.data.unwrap_or_default()),
             chain_id: Some(chain_id.into()),
             ..Transaction::default()
         };

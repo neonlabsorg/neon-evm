@@ -567,7 +567,10 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             self.state_overrides
                 .as_ref()
                 .and_then(|account_overrides| account_overrides.get(address)?.code.as_ref())
-                .map_or_else(|| Buffer::new(&c.code()), |code| Buffer::new(&code.0))
+                .map_or_else(
+                    || Buffer::new(&c.code()),
+                    |code| Buffer::from_slice(&code.0),
+                )
         })
     }
 

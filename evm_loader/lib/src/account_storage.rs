@@ -30,7 +30,7 @@ use crate::{types::PubkeyBase58, Config, Context};
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, Clone, Debug)]
 pub struct NeonAccount {
     address: Address,
     account: PubkeyBase58,

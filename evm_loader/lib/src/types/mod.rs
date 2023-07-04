@@ -13,7 +13,7 @@ pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use {
     ethnum::U256,
-    evm_loader::types::Address,
+    // evm_loader::types::Address,
     postgres::NoTls,
     serde::{Deserialize, Deserializer, Serialize, Serializer},
     thiserror::Error,
@@ -22,6 +22,7 @@ use {
 };
 
 type Bytes = Vec<u8>;
+pub use evm_loader::types::Address;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone, Default)]
 pub struct ChDbConfig {

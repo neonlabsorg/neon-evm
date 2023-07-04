@@ -7,7 +7,7 @@ use crate::commands::get_storage_at as GetStorageAtCommand;
 
 use super::{process_error, process_result};
 
-#[get("get_storage_at")]
+#[get("/get-storage-at")]
 pub async fn get_storage_at(
     web::Query(req_params): web::Query<GetStorageAtRequest>,
     state: web::Data<NeonApiState>,

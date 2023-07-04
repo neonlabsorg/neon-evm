@@ -9,7 +9,7 @@ use evm_loader::{
     gasometer::LAMPORTS_PER_SIGNATURE,
     types::{Address, Transaction},
 };
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 use crate::{
     account_storage::{EmulatorAccountStorage, NeonAccount, SolanaAccount},
@@ -20,7 +20,7 @@ use crate::{
 use crate::{context::Context, types::TxParams};
 use solana_sdk::pubkey::Pubkey;
 
-#[derive(Serialize, Desialize)]
+#[derive(Serialize, Deserialize)]
 pub struct EmulateReturn {
     pub accounts: Vec<NeonAccount>,
     pub solana_accounts: Vec<SolanaAccount>,

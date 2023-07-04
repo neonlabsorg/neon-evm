@@ -1,5 +1,5 @@
 use evm_loader::{account::EthereumAccount, types::Address};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 use crate::{
     account_storage::{account_info, EmulatorAccountStorage},

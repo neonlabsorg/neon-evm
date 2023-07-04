@@ -7,7 +7,7 @@ use crate::{
     Config, Context, NeonResult,
 };
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GetEtherAccountDataReturn {
     pub solana_address: String,
     pub address: Address,

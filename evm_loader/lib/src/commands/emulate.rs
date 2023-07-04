@@ -20,7 +20,7 @@ use crate::{
 use crate::{context::Context, types::TxParams};
 use solana_sdk::pubkey::Pubkey;
 
-#[derive(Serialize)]
+#[derive(Serialize, Desialize)]
 pub struct EmulateReturn {
     pub accounts: Vec<NeonAccount>,
     pub solana_accounts: Vec<SolanaAccount>,

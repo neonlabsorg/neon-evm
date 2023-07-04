@@ -1,5 +1,12 @@
 use log::{debug, info};
 
+use crate::{
+    account_storage::{EmulatorAccountStorage, NeonAccount, SolanaAccount},
+    errors::NeonError,
+    syscall_stubs::Stubs,
+    Config, NeonResult,
+};
+use crate::{context::Context, types::TxParams};
 use ethnum::U256;
 use evm_loader::{
     account_storage::AccountStorage,
@@ -9,16 +16,9 @@ use evm_loader::{
     gasometer::LAMPORTS_PER_SIGNATURE,
     types::{Address, Transaction},
 };
-use serde::{Serialize, Deserialize};
-use std::fmt;
-use crate::{
-    account_storage::{EmulatorAccountStorage, NeonAccount, SolanaAccount},
-    errors::NeonError,
-    syscall_stubs::Stubs,
-    Config, NeonResult,
-};
-use crate::{context::Context, types::TxParams};
+use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
+use std::fmt;
 
 #[derive(Serialize, Deserialize)]
 pub struct EmulateReturn {
@@ -33,11 +33,10 @@ pub struct EmulateReturn {
 }
 
 impl fmt::Debug for EmulateReturn {
-    fn fmt (&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "({}, {})", self.steps_executed, self.result)
     }
 }
-
 
 #[allow(clippy::too_many_arguments)]
 pub fn execute(

@@ -10,7 +10,7 @@ use evm_loader::{
     types::{Address, Transaction},
 };
 use serde::{Serialize, Deserialize};
-
+use std::fmt;
 use crate::{
     account_storage::{EmulatorAccountStorage, NeonAccount, SolanaAccount},
     errors::NeonError,
@@ -31,6 +31,13 @@ pub struct EmulateReturn {
     pub used_gas: u64,
     pub actions: Vec<Action>,
 }
+
+impl fmt::Debug for EmulateReturn {
+    fn fmt (&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {})", self.steps_executed, self.result)
+    }
+}
+
 
 #[allow(clippy::too_many_arguments)]
 pub fn execute(

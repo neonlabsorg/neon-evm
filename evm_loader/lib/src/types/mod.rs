@@ -13,11 +13,9 @@ pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use {
     ethnum::U256,
-    // evm_loader::types::Address,
     postgres::NoTls,
     serde::{Deserialize, Deserializer, Serialize, Serializer},
     thiserror::Error,
-    // tokio::task::block_in_place,
     tokio_postgres::{connect, Client},
 };
 

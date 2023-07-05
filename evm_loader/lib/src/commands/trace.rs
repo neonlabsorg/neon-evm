@@ -7,8 +7,20 @@ use crate::{
 };
 use evm_loader::types::Address;
 use solana_sdk::pubkey::Pubkey;
+use std::fmt;
 
 pub type TraceReturn = TracedCall;
+
+impl fmt::Display for TraceReturn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "(full_trace_data size: {}, used_gas: {}, ...)",
+            self.full_trace_data.len(),
+            self.used_gas
+        )
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn execute(

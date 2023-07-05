@@ -32,9 +32,13 @@ pub struct EmulateReturn {
     pub actions: Vec<Action>,
 }
 
-impl fmt::Debug for EmulateReturn {
+impl fmt::Display for EmulateReturn {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({}, {})", self.steps_executed, self.result)
+        write!(
+            f,
+            "(exit_status: {}, steps_executed: {}, result: {}, ...)",
+            self.exit_status, self.steps_executed, self.result
+        )
     }
 }
 

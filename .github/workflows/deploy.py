@@ -102,28 +102,43 @@ def run_subprocess(command):
 def run_tests(github_sha):
     image_name = f"{IMAGE_NAME}:{github_sha}"
     os.environ["EVM_LOADER_IMAGE"] = image_name
-    run_subprocess(f"docker-compose -f ./evm_loader/docker-compose-test.yml down")
-    run_subprocess(f"docker-compose -f ./evm_loader/docker-compose-test.yml up -d")
+    project_name = f"neon-evm-{github_sha}"
+    stop_containers(project_name)
 
+    run_subprocess(f"docker-compose -p {project_name} -f ./evm_loader/docker-compose-test.yml up -d")
+
+    container_data = subprocess.run(
+        f"docker compose  -p {project_name} -f ./evm_loader/docker-compose-test.yml ps --format json",
+        shell=True, capture_output=True, text=True).stdout
+    container_data = json.loads(container_data)[0]
+    click.echo(container_data)
+    container_name = container_data["Name"]
     click.echo("Start tests")
     exec_id = docker_client.exec_create(
-        container="solana", cmd="/opt/deploy-test.sh")
+        container=container_name, cmd="/opt/deploy-test.sh")
     logs = docker_client.exec_start(exec_id['Id'], stream=True)
 
     tests_are_failed = False
+    all_logs = ""
     for line in logs:
         current_line = line.decode('utf-8')
+        all_logs += line
         click.echo(current_line)
         if 'ERROR ' in current_line or 'FAILED ' in current_line:
             tests_are_failed = True
+            print("Tests are failed")
+    if "[100%]" not in all_logs:
+        tests_are_failed = True
+        print("Part of tests are skipped")
+
+    stop_containers(project_name)
+
     if tests_are_failed or docker_client.exec_inspect(exec_id['Id'])["ExitCode"] == 1:
-        print("Tests are failed")
         sys.exit(1)
 
 
-@cli.command(name="stop_containers")
-def stop_containers():
-    run_subprocess(f"docker-compose -f ./evm_loader/docker-compose-test.yml down")
+def stop_containers(project_name):
+    run_subprocess(f"docker-compose -p {project_name} -f ./evm_loader/docker-compose-test.yml down")
 
 
 @cli.command(name="trigger_proxy_action")

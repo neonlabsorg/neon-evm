@@ -44,10 +44,6 @@ jobs:
           python3 ./.github/workflows/deploy.py run_tests \
           --github_sha=${GITHUB_SHA}
 
-      - name: Stop containers
-        if: always()
-        run: python3 ./.github/workflows/deploy.py stop_containers
-
       - name: Trigger proxy build
         run: |
           python3 ./.github/workflows/deploy.py trigger_proxy_action \

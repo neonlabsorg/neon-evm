@@ -106,13 +106,7 @@ def run_tests(github_sha):
     stop_containers(project_name)
 
     run_subprocess(f"docker-compose -p {project_name} -f ./evm_loader/docker-compose-test.yml up -d")
-
-    container_data = subprocess.run(
-        f"docker compose  -p {project_name} -f ./evm_loader/docker-compose-test.yml ps --format json",
-        shell=True, capture_output=True, text=True).stdout
-    container_data = json.loads(container_data)[0]
-    click.echo(container_data)
-    container_name = container_data["Name"]
+    container_name = get_solana_container_name(project_name)
     click.echo("Start tests")
     exec_id = docker_client.exec_create(
         container=container_name, cmd="/opt/deploy-test.sh")
@@ -122,7 +116,7 @@ def run_tests(github_sha):
     all_logs = ""
     for line in logs:
         current_line = line.decode('utf-8')
-        all_logs += line
+        all_logs += current_line
         click.echo(current_line)
         if 'ERROR ' in current_line or 'FAILED ' in current_line:
             tests_are_failed = True
@@ -135,6 +129,17 @@ def run_tests(github_sha):
 
     if tests_are_failed or docker_client.exec_inspect(exec_id['Id'])["ExitCode"] == 1:
         sys.exit(1)
+
+
+def get_solana_container_name(project_name):
+    data = subprocess.run(
+        f"docker-compose -p {project_name} -f ./evm_loader/docker-compose-test.yml ps",
+        shell=True, capture_output=True, text=True).stdout
+    click.echo(data)
+    pattern = rf'{project_name}_[a-zA-Z0-9_]+'
+
+    match = re.search(pattern, data)
+    return match.group(0)
 
 
 def stop_containers(project_name):

@@ -44,7 +44,7 @@ pub async fn execute(
     let client = context
         .blocking_rpc_client
         .as_ref()
-        .expect("Non-blocking RPC client not initialized");
+        .expect("Blocking RPC client not initialized");
 
     check_account_for_fee(client, &context.signer.pubkey(), &finalize_message)?;
 

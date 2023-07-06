@@ -35,7 +35,7 @@ pub async fn execute(config: &Config, context: &Context) -> NeonResult<CollectTr
     let client = context
         .blocking_rpc_client
         .as_ref()
-        .expect("Non-blocking RPC client not initialized");
+        .expect("Blocking RPC client not initialized");
 
     for i in 0..pool_count {
         let (aux_balance_address, _) = Treasury::address(&config.evm_loader, i);

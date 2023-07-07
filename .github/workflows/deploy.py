@@ -125,9 +125,10 @@ def run_tests(github_sha):
         tests_are_failed = True
         print("Part of tests are skipped")
 
+    exec_status = docker_client.exec_inspect(exec_id['Id'])["ExitCode"]
     stop_containers(project_name)
 
-    if tests_are_failed or docker_client.exec_inspect(exec_id['Id'])["ExitCode"] == 1:
+    if tests_are_failed or exec_status == 1:
         sys.exit(1)
 
 

@@ -2,15 +2,22 @@ version: "2.1"
 
 services:
   solana:
+    container_name: solana
     image: ${EVM_LOADER_IMAGE}
     environment:
       - RUST_LOG=solana_runtime::system_instruction_processor=trace,solana_runtime::message_processor=debug,solana_bpf_loader=debug,solana_rbpf=debug
-      - SOLANA_URL=http://solana:8899
+      - SOLANA_URL=http://127.0.0.1:8899
     hostname: solana
     ports:
-       - 8899
+      - 8899:8899
+      - 9900:9900
+      - 8900:8900
+      - 8003:8003/udp
     expose:
       - "8899"
+      - "9900"
+      - "8900"
+      - "8003/udp"
     entrypoint:
       /opt/solana/bin/solana-run-neon.sh
 
@@ -24,3 +31,7 @@ services:
 #      - 9090:9090
 #    expose:
 #      - "9090"
+
+networks:
+  default:
+    name: evm_loader-deploy_test-net

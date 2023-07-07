@@ -6,7 +6,7 @@ use crate::{context, types::request_models::TraceHashRequestModel, NeonApiState}
 
 use super::{parse_emulation_params, process_error, process_result};
 
-#[post("/trace-hash")]
+#[post("/trace_hash")]
 pub async fn trace_hash(
     state: web::Data<NeonApiState>,
     web::Json(trace_hash_request): web::Json<TraceHashRequestModel>,

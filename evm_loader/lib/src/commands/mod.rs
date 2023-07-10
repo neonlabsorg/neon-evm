@@ -23,7 +23,7 @@ pub mod init_environment;
 pub mod trace;
 mod transaction_executor;
 
-pub fn send_transaction(
+pub async fn send_transaction(
     rpc_client: &dyn Rpc,
     signer: &dyn Signer,
     instructions: &[Instruction],
@@ -32,7 +32,7 @@ pub fn send_transaction(
     let mut transaction = Transaction::new_unsigned(message);
     let signers = [signer];
     let (blockhash, _last_valid_slot) =
-        rpc_client.get_latest_blockhash_with_commitment(CommitmentConfig::confirmed())?;
+        rpc_client.get_latest_blockhash_with_commitment(CommitmentConfig::confirmed()).await?;
     transaction.try_sign(&signers, blockhash)?;
 
     rpc_client.send_and_confirm_transaction_with_spinner_and_config(
@@ -43,4 +43,5 @@ pub fn send_transaction(
             ..RpcSendTransactionConfig::default()
         },
     )
+    .await
 }

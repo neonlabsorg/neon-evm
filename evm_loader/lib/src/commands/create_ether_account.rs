@@ -20,7 +20,7 @@ pub struct CreateEtherAccountReturn {
     pub solana_address: String,
 }
 
-pub fn execute(
+pub async fn execute(
     rpc_client: &RpcClient,
     evm_loader: Pubkey,
     signer: &dyn Signer,
@@ -42,17 +42,22 @@ pub fn execute(
     let instructions = vec![create_account_v03_instruction];
 
     let mut finalize_message = Message::new(&instructions, Some(&signer.pubkey()));
-    let blockhash = rpc_client.get_latest_blockhash()?;
+    let blockhash = rpc_client.get_latest_blockhash().await?;
     finalize_message.recent_blockhash = blockhash;
 
-    check_account_for_fee(rpc_client, &signer.pubkey(), &finalize_message)?;
+    let client = context
+        .blocking_rpc_client
+        .as_ref()
+        .expect("Blocking RPC client not initialized");
+
+    check_account_for_fee(client, &signer.pubkey(), &finalize_message)?;
 
     let mut finalize_tx = Transaction::new_unsigned(finalize_message);
 
     finalize_tx.try_sign(&[signer], blockhash)?;
     debug!("signed: {:x?}", finalize_tx);
 
-    rpc_client.send_and_confirm_transaction_with_spinner(&finalize_tx)?;
+    rpc_client.send_and_confirm_transaction_with_spinner(&finalize_tx).await?;
 
     Ok(CreateEtherAccountReturn {
         solana_address: solana_address.to_string(),

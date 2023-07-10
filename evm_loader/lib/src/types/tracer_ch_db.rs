@@ -1,4 +1,4 @@
-use super::{block, ChDbConfig};
+use super::ChDbConfig;
 use clickhouse::{Client, Row};
 use log::{debug, info};
 use rand::Rng;
@@ -107,18 +107,17 @@ impl ClickHouseDb {
     }
 
     // return value is not used for tracer methods
-    pub fn get_block_time(&self, slot: Slot) -> ChResult<UnixTimestamp> {
+    pub async fn get_block_time(&self, slot: Slot) -> ChResult<UnixTimestamp> {
         let time_start = Instant::now();
-        let result = block(|| async {
-            let query =
-                "SELECT JSONExtractInt(notify_block_json, 'block_time') FROM events.notify_block_distributed WHERE slot = ? LIMIT 1";
-            self.client
-                .query(query)
-                .bind(slot)
-                .fetch_one::<UnixTimestamp>()
-                .await
-                .map_err(std::convert::Into::into)
-        });
+        let query =
+            "SELECT JSONExtractInt(notify_block_json, 'block_time') FROM events.notify_block_distributed WHERE slot = ? LIMIT 1";
+        let result = self
+            .client
+            .query(query)
+            .bind(slot)
+            .fetch_one::<UnixTimestamp>()
+            .await
+            .map_err(std::convert::Into::into);
         let execution_time = Instant::now().duration_since(time_start);
         info!(
             "get_block_time sql time: {} sec",
@@ -127,16 +126,15 @@ impl ClickHouseDb {
         result
     }
 
-    pub fn get_latest_block(&self) -> ChResult<u64> {
+    pub async fn get_latest_block(&self) -> ChResult<u64> {
         let time_start = Instant::now();
-        let result = block(|| async {
-            let query = "SELECT max(slot) FROM events.update_slot";
-            self.client
-                .query(query)
-                .fetch_one::<u64>()
-                .await
-                .map_err(std::convert::Into::into)
-        });
+        let query = "SELECT max(slot) FROM events.update_slot";
+        let result = self
+            .client
+            .query(query)
+            .fetch_one::<u64>()
+            .await
+            .map_err(std::convert::Into::into);
         let execution_time = Instant::now().duration_since(time_start);
         info!(
             "get_latest_block sql returned {result:?}, time: {} sec",
@@ -145,7 +143,7 @@ impl ClickHouseDb {
         result
     }
 
-    fn get_branch_slots(&self, slot: Option<u64>) -> ChResult<(u64, Vec<u64>)> {
+    async fn get_branch_slots(&self, slot: Option<u64>) -> ChResult<(u64, Vec<u64>)> {
         fn branch_from(
             rows: Vec<SlotParent>,
             test_start: &dyn Fn(&SlotParent) -> bool,
@@ -169,26 +167,25 @@ impl ClickHouseDb {
         info!("get_branch_slots {{ slot: {slot:?} }}");
 
         let query = r#"
-            SELECT DISTINCT ON (slot, parent) slot, parent, status 
+            SELECT DISTINCT ON (slot, parent) slot, parent, status
             FROM events.update_slot
             WHERE slot >= (
-                  SELECT slot - ? 
+                  SELECT slot - ?
                   FROM events.update_slot
                   WHERE status = 'Rooted'
-                  ORDER BY slot DESC 
+                  ORDER BY slot DESC
                   LIMIT 1
               )
               AND isNotNull(parent)
             ORDER BY slot DESC, status DESC
             "#;
         let time_start = Instant::now();
-        let mut rows = block(|| async {
-            self.client
-                .query(query)
-                .bind(ROOT_BLOCK_DELAY)
-                .fetch_all::<SlotParent>()
-                .await
-        })?;
+        let mut rows = self
+            .client
+            .query(query)
+            .bind(ROOT_BLOCK_DELAY)
+            .fetch_all::<SlotParent>()
+            .await?;
 
         let first = if let Some(first) = rows.pop() {
             first
@@ -230,7 +227,7 @@ impl ClickHouseDb {
         result
     }
 
-    fn get_account_rooted_slot(&self, key: &str, slot: u64) -> ChResult<Option<u64>> {
+    async fn get_account_rooted_slot(&self, key: &str, slot: u64) -> ChResult<Option<u64>> {
         info!("get_account_rooted_slot {{ key: {key}, slot: {slot} }}");
         let query = r#"
             SELECT DISTINCT slot
@@ -238,8 +235,8 @@ impl ClickHouseDb {
             WHERE pubkey = ?
                 AND slot <= ?
                 AND slot IN (
-                    SELECT slot 
-                    FROM events.update_slot 
+                    SELECT slot
+                    FROM events.update_slot
                     WHERE status = 'Rooted'
                 )
             ORDER BY slot DESC
@@ -247,14 +244,14 @@ impl ClickHouseDb {
         "#;
 
         let time_start = Instant::now();
-        let slot_opt = Self::row_opt(block(|| async {
+        let slot_opt = Self::row_opt(
             self.client
                 .query(query)
                 .bind(key)
                 .bind(slot)
                 .fetch_one::<u64>()
                 .await
-        }))?;
+        )?;
 
         let execution_time = Instant::now().duration_since(time_start);
         info!(
@@ -266,7 +263,7 @@ impl ClickHouseDb {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn get_account_at(&self, pubkey: &Pubkey, slot: u64) -> ChResult<Option<Account>> {
+    pub async fn get_account_at(&self, pubkey: &Pubkey, slot: u64) -> ChResult<Option<Account>> {
         info!("get_account_at {{ pubkey: {pubkey}, slot: {slot} }}");
         let (first, mut branch) = self.get_branch_slots(Some(slot)).map_err(|e| {
             println!("get_branch_slots error: {:?}", e);
@@ -298,14 +295,14 @@ impl ClickHouseDb {
             "#;
 
             let time_start = Instant::now();
-            let row = Self::row_opt(block(|| async {
+            let row = Self::row_opt(
                 self.client
                     .query(query)
                     .bind(pubkey_str.clone())
                     .bind(&branch.as_slice())
                     .fetch_one::<AccountRow>()
                     .await
-            }))
+            )
             .map_err(|e| {
                 println!("get_account_at error: {e}");
                 ChError::Db(e)
@@ -321,7 +318,7 @@ impl ClickHouseDb {
 
         if row.is_none() {
             let time_start = Instant::now();
-            row = block(|| self.get_last_older_account_row(&pubkey_str))?;
+            row = self.get_last_older_account_row(&pubkey_str)?;
             let execution_time = Instant::now().duration_since(time_start);
             info!(
                 "get_account_at {{ pubkey: {pubkey}, slot: {slot} }} sql(2) returned {row:?}, time: {} sec",

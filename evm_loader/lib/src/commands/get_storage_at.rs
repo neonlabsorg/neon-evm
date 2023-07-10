@@ -16,14 +16,14 @@ use crate::{
     NeonResult,
 };
 
-pub fn execute(
+pub asyng fn execute(
     rpc_client: &dyn Rpc,
     evm_loader: &Pubkey,
     ether_address: Address,
     index: &U256,
 ) -> NeonResult<[u8; 32]> {
     let value = if let (solana_address, Some(mut account)) =
-        EmulatorAccountStorage::get_account_from_solana(rpc_client, evm_loader, &ether_address)
+        EmulatorAccountStorage::get_account_from_solana(rpc_client, evm_loader, &ether_address).await
     {
         let info = account_info(&solana_address, &mut account);
 
@@ -39,7 +39,7 @@ pub fn execute(
                 let address =
                     EthereumStorageAddress::new(evm_loader, account_data.info.key, &index);
 
-                if let Ok(mut account) = rpc_client.get_account(address.pubkey()) {
+                if let Ok(mut account) = rpc_client.get_account(address.pubkey()).await {
                     if solana_sdk::system_program::check_id(&account.owner) {
                         <[u8; 32]>::default()
                     } else {

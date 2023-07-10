@@ -60,7 +60,7 @@ pub struct EmulateReturn {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn execute(
+pub async fn execute(
     rpc_client: &dyn Rpc,
     evm_loader: Pubkey,
     tx_params: TxParams,
@@ -70,6 +70,7 @@ pub fn execute(
     commitment: CommitmentConfig,
     accounts: &[Address],
     solana_accounts: &[Pubkey],
+    trace_call_config: TraceCallConfig,
     trace_call_config: TraceCallConfig,
 ) -> NeonResult<EmulationResultWithAccounts> {
     let (emulation_result, storage) = emulate_transaction(
@@ -83,7 +84,7 @@ pub fn execute(
         accounts,
         solana_accounts,
         trace_call_config,
-    )?;
+    ).await?;
     let accounts = storage.accounts.borrow().values().cloned().collect();
     let solana_accounts = storage.solana_accounts.borrow().values().cloned().collect();
 
@@ -96,7 +97,7 @@ pub fn execute(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn emulate_transaction<'a>(
+pub(crate) async fn emulate_transaction<'a>(
     rpc_client: &'a dyn Rpc,
     evm_loader: Pubkey,
     tx_params: TxParams,
@@ -108,7 +109,7 @@ pub(crate) fn emulate_transaction<'a>(
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
 ) -> Result<(EmulationResult, EmulatorAccountStorage<'a>), NeonError> {
-    setup_syscall_stubs(rpc_client)?;
+    setup_syscall_stubs(rpc_client).await?;
 
     let storage = EmulatorAccountStorage::with_accounts(
         rpc_client,
@@ -164,8 +165,8 @@ pub(crate) fn emulate_trx(
     let max_iterations = (steps_executed + (EVM_STEPS_MIN - 1)) / EVM_STEPS_MIN;
     let steps_gas = max_iterations * (LAMPORTS_PER_SIGNATURE + PAYMENT_TO_TREASURE);
     let begin_end_gas = 2 * LAMPORTS_PER_SIGNATURE;
-    let actions_gas = storage.apply_actions(&actions);
-    let accounts_gas = storage.apply_accounts_operations(accounts_operations);
+    let actions_gas = storage.apply_actions(&actions).await;
+    let accounts_gas = storage.apply_accounts_operations(accounts_operations).await;
     info!("Gas - steps: {steps_gas}, actions: {actions_gas}, accounts: {accounts_gas}");
 
     let (result, status) = match exit_status {

@@ -8,9 +8,9 @@ pub struct Stubs {
 }
 
 impl Stubs {
-    pub fn new(rpc_client: &dyn Rpc) -> Result<Box<Stubs>, NeonError> {
+    pub async fn new(rpc_client: &dyn Rpc) -> Result<Box<Stubs>, NeonError> {
         let rent_pubkey = solana_sdk::sysvar::rent::id();
-        let data = rpc_client.get_account_data(&rent_pubkey)?;
+        let data = rpc_client.get_account_data(&rent_pubkey).await?;
         let rent = bincode::deserialize(&data).map_err(|_| ProgramError::InvalidArgument)?;
 
         Ok(Box::new(Self { rent }))

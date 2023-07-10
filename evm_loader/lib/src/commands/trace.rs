@@ -13,7 +13,7 @@ use evm_loader::types::Address;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
 #[allow(clippy::too_many_arguments)]
-pub fn trace_transaction(
+pub async fn trace_transaction(
     rpc_client: &dyn Rpc,
     evm_loader: Pubkey,
     tx: TxParams,
@@ -27,7 +27,7 @@ pub fn trace_transaction(
 ) -> Result<TracedCall, NeonError> {
     let mut tracer = Tracer::new(trace_call_config.trace_config.enable_return_data);
 
-    let (emulation_result, _storage) = evm_loader::evm::tracing::using(&mut tracer, || {
+    let (emulation_result, _storage) = evm_loader::evm::tracing::using(&mut tracer, || async {
         emulate_transaction(
             rpc_client,
             evm_loader,
@@ -40,7 +40,9 @@ pub fn trace_transaction(
             solana_accounts,
             trace_call_config,
         )
-    })?;
+        .await
+    })
+    .await?;
 
     let (vm_trace, full_trace_data) = tracer.into_traces();
 

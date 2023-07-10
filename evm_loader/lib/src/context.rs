@@ -8,30 +8,21 @@ use crate::{
 use hex::FromHex;
 use solana_clap_utils::keypair::signer_from_path;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_client::rpc_client::RpcClient as BlockingRpcClient;
 use solana_sdk::signature::Signer;
-
-type FullRpcClient = (
-    Arc<dyn rpc::Rpc + Send + Sync>,
-    Option<Arc<BlockingRpcClient>>,
-);
 
 /// # Errors
 pub async fn build_hash_rpc_client(
     config: &Config,
     hash: &str,
-) -> Result<FullRpcClient, NeonError> {
+) -> Result<Arc<dyn rpc::Rpc + Send + Sync>, NeonError> {
     let hash = <[u8; 32]>::from_hex(truncate_0x(hash))?;
 
-    Ok((
-        Arc::new(
-            TrxDbClient::new(
-                config.db_config.as_ref().expect("db-config not found"),
-                hash,
-            )
-            .await,
-        ),
-        None,
+    Ok(Arc::new(
+        TrxDbClient::new(
+            config.db_config.as_ref().expect("db-config not found"),
+            hash,
+        )
+        .await,
     ))
 }
 
@@ -46,20 +37,11 @@ pub fn truncate_0x(in_str: &str) -> &str {
 pub struct Context {
     pub rpc_client: Arc<dyn rpc::Rpc + Send + Sync>,
     pub signer: Arc<dyn Signer>,
-    pub blocking_rpc_client: Option<Arc<BlockingRpcClient>>,
 }
 
 #[must_use]
-pub fn create(
-    rpc_client: Arc<dyn rpc::Rpc + Send + Sync>,
-    signer: Arc<dyn Signer>,
-    blocking_rpc_client: Option<Arc<BlockingRpcClient>>,
-) -> Context {
-    Context {
-        rpc_client,
-        signer,
-        blocking_rpc_client,
-    }
+pub fn create(rpc_client: Arc<dyn rpc::Rpc + Send + Sync>, signer: Arc<dyn Signer>) -> Context {
+    Context { rpc_client, signer }
 }
 
 /// # Errors
@@ -78,28 +60,28 @@ pub fn build_signer(config: &Config) -> Result<Arc<dyn Signer>, NeonError> {
 }
 
 /// # Errors
-pub fn build_rpc_client(config: &Config, slot: Option<u64>) -> Result<FullRpcClient, NeonError> {
+pub fn build_rpc_client(
+    config: &Config,
+    slot: Option<u64>,
+) -> Result<Arc<dyn rpc::Rpc + Send + Sync>, NeonError> {
     if let Some(slot) = slot {
         return build_call_db_client(config, slot);
     }
 
-    Ok((
-        Arc::new(RpcClient::new_with_commitment(
-            config.json_rpc_url.clone(),
-            config.commitment,
-        )),
-        Some(Arc::new(BlockingRpcClient::new_with_commitment(
-            config.json_rpc_url.clone(),
-            config.commitment,
-        ))),
-    ))
+    Ok(Arc::new(RpcClient::new_with_commitment(
+        config.json_rpc_url.clone(),
+        config.commitment,
+    )))
 }
 
 /// # Errors
-pub fn build_call_db_client(config: &Config, slot: u64) -> Result<FullRpcClient, NeonError> {
+pub fn build_call_db_client(
+    config: &Config,
+    slot: u64,
+) -> Result<Arc<dyn rpc::Rpc + Send + Sync>, NeonError> {
     let config = config
         .db_config
         .clone()
         .ok_or(NeonError::InvalidChDbConfig)?;
-    Ok((Arc::new(CallDbClient::new(&config, slot)), None))
+    Ok(Arc::new(CallDbClient::new(&config, slot)))
 }

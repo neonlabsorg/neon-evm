@@ -71,7 +71,6 @@ pub async fn execute(
     accounts: &[Address],
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
-    trace_call_config: TraceCallConfig,
 ) -> NeonResult<EmulationResultWithAccounts> {
     let (emulation_result, storage) = emulate_transaction(
         rpc_client,
@@ -84,9 +83,16 @@ pub async fn execute(
         accounts,
         solana_accounts,
         trace_call_config,
-    ).await?;
-    let accounts = storage.accounts.borrow().values().cloned().collect();
-    let solana_accounts = storage.solana_accounts.borrow().values().cloned().collect();
+    )
+    .await?;
+    let accounts = storage.accounts.read().await.values().cloned().collect();
+    let solana_accounts = storage
+        .solana_accounts
+        .read()
+        .await
+        .values()
+        .cloned()
+        .collect();
 
     Ok(EmulationResultWithAccounts {
         accounts,
@@ -121,14 +127,17 @@ pub(crate) async fn emulate_transaction<'a>(
         solana_accounts,
         &trace_call_config.block_overrides,
         trace_call_config.state_overrides,
-    );
+    )
+    .await?;
 
-    emulate_trx(tx_params, &storage, chain_id, step_limit).map(move |result| (result, storage))
+    emulate_trx(tx_params, &storage, chain_id, step_limit)
+        .await
+        .map(move |result| (result, storage))
 }
 
-pub(crate) fn emulate_trx(
+pub(crate) async fn emulate_trx<'a>(
     tx_params: TxParams,
-    storage: &EmulatorAccountStorage,
+    storage: &'a EmulatorAccountStorage<'a>,
     chain_id: u64,
     step_limit: u64,
 ) -> Result<EmulationResult, NeonError> {
@@ -185,8 +194,8 @@ pub(crate) fn emulate_trx(
     })
 }
 
-pub(crate) fn setup_syscall_stubs(rpc_client: &dyn Rpc) -> Result<(), NeonError> {
-    let syscall_stubs = Stubs::new(rpc_client)?;
+pub(crate) async fn setup_syscall_stubs(rpc_client: &dyn Rpc) -> Result<(), NeonError> {
+    let syscall_stubs = Stubs::new(rpc_client).await?;
     solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
 
     Ok(())

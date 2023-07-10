@@ -2,14 +2,28 @@ use std::convert::Into;
 
 use actix_web::{http::StatusCode, post, web, Responder};
 
-use crate::{context, types::request_models::TraceHashRequestModel, NeonApiState};
 use crate::commands::trace::trace_transaction;
-use crate::{context, types::request_models::TraceHashRequestModel};
+use crate::{context, types::request_models::TraceHashRequestModel, NeonApiState};
 
 use super::{parse_emulation_params, process_error, process_result};
 
-#[post("/trace_hash")]
+#[post("/trace-hash")]
 pub async fn trace_hash(
+    state: web::Data<NeonApiState>,
+    trace_hash_request: web::Json<TraceHashRequestModel>,
+) -> impl Responder {
+    trace_hash_internal(state, trace_hash_request).await
+}
+
+#[post("/trace_hash")]
+pub async fn trace_hash_obsolete(
+    state: web::Data<NeonApiState>,
+    trace_hash_request: web::Json<TraceHashRequestModel>,
+) -> impl Responder {
+    trace_hash_internal(state, trace_hash_request).await
+}
+
+async fn trace_hash_internal(
     state: web::Data<NeonApiState>,
     web::Json(trace_hash_request): web::Json<TraceHashRequestModel>,
 ) -> impl Responder {
@@ -18,13 +32,13 @@ pub async fn trace_hash(
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 
-    let (rpc_client, blocking_rpc_client) = match context::build_hash_rpc_client(
+    let rpc_client = match context::build_hash_rpc_client(
         &state.config,
         &trace_hash_request.emulate_hash_request.hash,
     )
     .await
     {
-        Ok((rpc_client, blocking_rpc_client)) => (rpc_client, blocking_rpc_client),
+        Ok(rpc_client) => rpc_client,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 
@@ -38,7 +52,7 @@ pub async fn trace_hash(
         }
     };
 
-    let context = context::create(rpc_client, signer, blocking_rpc_client);
+    let context = context::create(rpc_client, signer);
 
     let (token, chain, steps, accounts, solana_accounts) = parse_emulation_params(
         &state.config,

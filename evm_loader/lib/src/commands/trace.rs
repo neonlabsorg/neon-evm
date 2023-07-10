@@ -56,7 +56,7 @@ pub async fn trace_transaction(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn trace_block(
+pub async fn trace_block(
     rpc_client: &dyn Rpc,
     evm_loader: Pubkey,
     transactions: Vec<TxParams>,
@@ -68,7 +68,7 @@ pub fn trace_block(
     solana_accounts: &[Pubkey],
     trace_config: &TraceConfig,
 ) -> Result<Vec<TracedCall>, NeonError> {
-    setup_syscall_stubs(rpc_client)?;
+    setup_syscall_stubs(rpc_client).await?;
 
     let storage = EmulatorAccountStorage::with_accounts(
         rpc_client,
@@ -80,20 +80,21 @@ pub fn trace_block(
         solana_accounts,
         &None,
         None,
-    );
+    )
+    .await?;
 
     let mut results = vec![];
     for tx_params in transactions {
-        let result = trace_trx(tx_params, &storage, chain_id, steps, trace_config)?;
+        let result = trace_trx(tx_params, &storage, chain_id, steps, trace_config).await?;
         results.push(result);
     }
 
     Ok(results)
 }
 
-fn trace_trx(
+async fn trace_trx<'a>(
     tx_params: TxParams,
-    storage: &EmulatorAccountStorage,
+    storage: &'a EmulatorAccountStorage<'a>,
     chain_id: u64,
     steps: u64,
     trace_config: &TraceConfig,
@@ -102,7 +103,8 @@ fn trace_trx(
 
     let emulation_result = evm_loader::evm::tracing::using(&mut tracer, || {
         emulate_trx(tx_params, storage, chain_id, steps)
-    })?;
+    })
+    .await?;
 
     let (vm_trace, full_trace_data) = tracer.into_traces();
 

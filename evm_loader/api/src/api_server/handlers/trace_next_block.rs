@@ -1,4 +1,5 @@
-use axum::{http::StatusCode, Json};
+use actix_web::http::StatusCode;
+use actix_web::{post, web, Responder};
 
 use crate::{
     api_server::handlers::process_error,
@@ -10,11 +11,12 @@ use crate::{
 
 use super::{parse_emulation_params, process_result};
 
+#[post("/trace-next-block")]
 #[allow(clippy::unused_async)]
 pub async fn trace_next_block(
-    axum::extract::State(state): axum::extract::State<NeonApiState>,
-    Json(trace_next_block_request): Json<TraceNextBlockRequestModel>,
-) -> (StatusCode, Json<serde_json::Value>) {
+    state: web::Data<NeonApiState>,
+    web::Json(trace_next_block_request): web::Json<TraceNextBlockRequestModel>,
+) -> impl Responder {
     let signer = match context::build_signer(&state.config) {
         Ok(signer) => signer,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
@@ -32,7 +34,8 @@ pub async fn trace_next_block(
         &state.config,
         &context,
         &trace_next_block_request.emulation_params,
-    );
+    )
+    .await;
 
     let indexer_db = IndexerDb::new(
         state
@@ -40,9 +43,14 @@ pub async fn trace_next_block(
             .db_config
             .as_ref()
             .expect("db-config is required"),
-    );
+    )
+    .await;
 
-    let transactions = match indexer_db.get_block_transactions(trace_next_block_request.slot + 1) {
+    // TODO: Query next block (which parent = slot) instead of getting slot + 1:
+    let transactions = match indexer_db
+        .get_block_transactions(trace_next_block_request.slot + 1)
+        .await
+    {
         Ok(transactions) => transactions,
         Err(e) => {
             return process_error(
@@ -65,6 +73,7 @@ pub async fn trace_next_block(
             &solana_accounts,
             &trace_next_block_request.trace_config.unwrap_or_default(),
         )
+        .await
         .map_err(Into::into),
     )
 }

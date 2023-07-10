@@ -75,7 +75,8 @@ impl IndexerDb {
     #[allow(unused)]
     pub async fn get_slot_by_block_hash(&self, block_hash: &[u8; 32]) -> PgResult<u64> {
         let hex = format!("0x{}", hex::encode(block_hash));
-        let row = self.client
+        let row = self
+            .client
             .query_one(
                 "SELECT block_slot FROM solana_blocks WHERE block_hash = $1 AND is_active = TRUE",
                 &[&hex],
@@ -110,27 +111,26 @@ impl IndexerDb {
         Self::extract_transaction(&row)
     }
 
-    pub fn get_block_transactions(&self, slot: u64) -> PgResult<Vec<TxParams>> {
+    pub async fn get_block_transactions(&self, slot: u64) -> PgResult<Vec<TxParams>> {
         let slot: i64 = slot
             .try_into()
             .map_err(|e| PgError::Custom(format!("slot cast error: {e}")))?;
 
-        let rows = block(|| async {
-            self.client
-                .query(
-                    &format!(
-                        "\
-                    SELECT {TXPARAMS_FIELDS} \
-                    FROM neon_transactions t \
-                        INNER JOIN solana_blocks b ON t.block_slot = b.block_slot \
-                    WHERE b.is_active = TRUE AND t.block_slot = $1 \
-                    ORDER BY tx_idx\
-                "
-                    ),
-                    &[&slot],
-                )
-                .await
-        })?;
+        let rows = self
+            .client
+            .query(
+                &format!(
+                    "\
+                SELECT {TXPARAMS_FIELDS} \
+                FROM neon_transactions t \
+                    INNER JOIN solana_blocks b ON t.block_slot = b.block_slot \
+                WHERE b.is_active = TRUE AND t.block_slot = $1 \
+                ORDER BY tx_idx\
+            "
+                ),
+                &[&slot],
+            )
+            .await?;
 
         let mut transactions = vec![];
         for row in rows {

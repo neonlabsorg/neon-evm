@@ -10,8 +10,23 @@ use crate::{
 
 use super::{parse_emulation_params, process_error, process_result};
 
-#[post("/emulate_hash")]
+#[post("/emulate-hash")]
 pub async fn emulate_hash(
+    state: web::Data<NeonApiState>,
+    emulate_hash_request: web::Json<EmulateHashRequestModel>,
+) -> impl Responder {
+    emulate_hash_internal(state, emulate_hash_request).await
+}
+
+#[post("/emulate_hash")]
+pub async fn emulate_hash_obsolete(
+    state: web::Data<NeonApiState>,
+    emulate_hash_request: web::Json<EmulateHashRequestModel>,
+) -> impl Responder {
+    emulate_hash_internal(state, emulate_hash_request).await
+}
+
+async fn emulate_hash_internal(
     state: web::Data<NeonApiState>,
     web::Json(emulate_hash_request): web::Json<EmulateHashRequestModel>,
 ) -> impl Responder {
@@ -20,7 +35,7 @@ pub async fn emulate_hash(
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 
-    let (rpc_client, blocking_rpc_client) =
+    let rpc_client =
         match context::build_hash_rpc_client(&state.config, &emulate_hash_request.hash).await {
             Ok(rpc_client) => rpc_client,
             Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
@@ -36,7 +51,7 @@ pub async fn emulate_hash(
         }
     };
 
-    let context = context::create(rpc_client, signer, blocking_rpc_client);
+    let context = context::create(rpc_client, signer);
 
     let (token, chain, steps, accounts, solana_accounts) = parse_emulation_params(
         &state.config,

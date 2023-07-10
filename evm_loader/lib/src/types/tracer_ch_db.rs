@@ -250,7 +250,7 @@ impl ClickHouseDb {
                 .bind(key)
                 .bind(slot)
                 .fetch_one::<u64>()
-                .await
+                .await,
         )?;
 
         let execution_time = Instant::now().duration_since(time_start);
@@ -265,19 +265,20 @@ impl ClickHouseDb {
     #[allow(clippy::too_many_lines)]
     pub async fn get_account_at(&self, pubkey: &Pubkey, slot: u64) -> ChResult<Option<Account>> {
         info!("get_account_at {{ pubkey: {pubkey}, slot: {slot} }}");
-        let (first, mut branch) = self.get_branch_slots(Some(slot)).map_err(|e| {
+        let (first, mut branch) = self.get_branch_slots(Some(slot)).await.map_err(|e| {
             println!("get_branch_slots error: {:?}", e);
             e
         })?;
 
         let pubkey_str = format!("{:?}", pubkey.to_bytes());
 
-        if let Some(rooted_slot) =
-            self.get_account_rooted_slot(&pubkey_str, first)
-                .map_err(|e| {
-                    println!("get_account_rooted_slot error: {:?}", e);
-                    e
-                })?
+        if let Some(rooted_slot) = self
+            .get_account_rooted_slot(&pubkey_str, first)
+            .await
+            .map_err(|e| {
+                println!("get_account_rooted_slot error: {:?}", e);
+                e
+            })?
         {
             branch.push(rooted_slot);
         }
@@ -301,7 +302,7 @@ impl ClickHouseDb {
                     .bind(pubkey_str.clone())
                     .bind(&branch.as_slice())
                     .fetch_one::<AccountRow>()
-                    .await
+                    .await,
             )
             .map_err(|e| {
                 println!("get_account_at error: {e}");
@@ -318,7 +319,7 @@ impl ClickHouseDb {
 
         if row.is_none() {
             let time_start = Instant::now();
-            row = self.get_last_older_account_row(&pubkey_str)?;
+            row = self.get_last_older_account_row(&pubkey_str).await?;
             let execution_time = Instant::now().duration_since(time_start);
             info!(
                 "get_account_at {{ pubkey: {pubkey}, slot: {slot} }} sql(2) returned {row:?}, time: {} sec",
@@ -360,7 +361,7 @@ impl ClickHouseDb {
         })
     }
 
-    fn get_sol_sig_rooted_slot(&self, sol_sig: &[u8; 64]) -> ChResult<Option<SlotParent>> {
+    async fn get_sol_sig_rooted_slot(&self, sol_sig: &[u8; 64]) -> ChResult<Option<SlotParent>> {
         let query = r#"
             SELECT slot, parent, status
             FROM events.update_slot
@@ -374,21 +375,21 @@ impl ClickHouseDb {
             LIMIT 1
         "#;
 
-        Self::row_opt(block(|| async {
+        Self::row_opt(
             self.client
                 .query(query)
                 .bind(sol_sig.as_slice())
                 .fetch_one::<SlotParent>()
-                .await
-        }))
+                .await,
+        )
         .map_err(|e| {
             println!("get_sol_sig_rooted_slot error: {e}");
             ChError::Db(e)
         })
     }
 
-    fn get_sol_sig_confirmed_slot(&self, sol_sig: &[u8; 64]) -> ChResult<Option<SlotParent>> {
-        let (_, slot_vec) = self.get_branch_slots(None)?;
+    async fn get_sol_sig_confirmed_slot(&self, sol_sig: &[u8; 64]) -> ChResult<Option<SlotParent>> {
+        let (_, slot_vec) = self.get_branch_slots(None).await?;
         let query = r#"
             SELECT slot, parent, status
             FROM events.update_slot
@@ -402,14 +403,14 @@ impl ClickHouseDb {
             LIMIT 1
         "#;
 
-        Self::row_opt(block(|| async {
+        Self::row_opt(
             self.client
                 .query(query)
                 .bind(slot_vec.as_slice())
                 .bind(sol_sig.as_slice())
                 .fetch_one::<SlotParent>()
-                .await
-        }))
+                .await,
+        )
         .map_err(|e| {
             println!("get_sol_sig_confirmed_slot error: {e}");
             ChError::Db(e)
@@ -417,7 +418,7 @@ impl ClickHouseDb {
     }
 
     #[allow(clippy::unused_self)]
-    pub fn get_account_by_sol_sig(
+    pub async fn get_account_by_sol_sig(
         &self,
         pubkey: &Pubkey,
         sol_sig: &[u8; 64],
@@ -425,7 +426,7 @@ impl ClickHouseDb {
         let sol_sig_str = bs58::encode(sol_sig).into_string();
         info!("get_account_by_sol_sig {{ pubkey: {pubkey}, sol_sig: {sol_sig_str} }}");
         let time_start = Instant::now();
-        let mut slot_opt = self.get_sol_sig_rooted_slot(sol_sig)?;
+        let mut slot_opt = self.get_sol_sig_rooted_slot(sol_sig).await?;
         let execution_time = Instant::now().duration_since(time_start);
         info!(
             "get_sol_sig_rooted_slot({sol_sig_str}) -> {slot_opt:?}, time: {} sec",
@@ -434,7 +435,7 @@ impl ClickHouseDb {
 
         if slot_opt.is_none() {
             let time_start = Instant::now();
-            slot_opt = self.get_sol_sig_confirmed_slot(sol_sig)?;
+            slot_opt = self.get_sol_sig_confirmed_slot(sol_sig).await?;
             let execution_time = Instant::now().duration_since(time_start);
             info!(
                 "get_sol_sig_confirmed_slot({sol_sig_str}) -> {slot_opt:?}, time: {} sec",
@@ -459,14 +460,13 @@ impl ClickHouseDb {
 
         let pubkey_str = format!("{:?}", pubkey.to_bytes());
         let time_start = Instant::now();
-        let rows = block(|| async {
-            self.client
-                .query(query)
-                .bind(slot.slot)
-                .bind(pubkey_str)
-                .fetch_all::<AccountRow>()
-                .await
-        })?;
+        let rows = self
+            .client
+            .query(query)
+            .bind(slot.slot)
+            .bind(pubkey_str)
+            .fetch_all::<AccountRow>()
+            .await?;
         let execution_time = Instant::now().duration_since(time_start);
         info!(
             "get_account_by_sol_sig {{ pubkey: {pubkey}, sol_sig: {sol_sig_str} }} \
@@ -505,7 +505,7 @@ impl ClickHouseDb {
 
         // If not found, get closest account state in one of previous slots
         if let Some(parent) = slot.parent {
-            self.get_account_at(pubkey, parent)
+            self.get_account_at(pubkey, parent).await
         } else {
             Ok(None)
         }

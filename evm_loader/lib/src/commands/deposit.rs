@@ -1,9 +1,10 @@
 use log::debug;
 use serde::Serialize;
 
+use crate::rpc::check_account_for_fee;
 use crate::NeonResult;
 use evm_loader::types::Address;
-use solana_cli::checks::check_account_for_fee;
+use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::signer::Signer;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
@@ -22,7 +23,7 @@ pub struct DepositReturn {
 
 /// Executes subcommand `deposit`.
 pub async fn execute(
-    rpc_client: &FullRpcClient,
+    rpc_client: &RpcClient,
     evm_loader: Pubkey,
     signer: &dyn Signer,
     amount: u64,
@@ -52,19 +53,16 @@ pub async fn execute(
     let blockhash = rpc_client.get_latest_blockhash().await?;
     finalize_message.recent_blockhash = blockhash;
 
-    let client = rpc_client
-        .blocking_rpc_client
-        .as_ref()
-        .expect("Blocking RPC client not initialized");
-
-    check_account_for_fee(rpc_client, &signer.pubkey(), &finalize_message)?;
+    check_account_for_fee(rpc_client, &signer.pubkey(), &finalize_message).await?;
 
     let mut finalize_tx = Transaction::new_unsigned(finalize_message);
 
     finalize_tx.try_sign(&[signer], blockhash)?;
     debug!("signed: {:x?}", finalize_tx);
 
-    let signature = rpc_client.send_and_confirm_transaction_with_spinner(&finalize_tx).await?;
+    let signature = rpc_client
+        .send_and_confirm_transaction_with_spinner(&finalize_tx)
+        .await?;
 
     Ok(DepositReturn {
         transaction: signature,

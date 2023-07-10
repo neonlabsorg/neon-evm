@@ -4,6 +4,7 @@ use tokio::sync::RwLock;
 use crate::{
     rpc::Rpc,
     types::trace::{AccountOverrides, BlockOverrides},
+    NeonError,
 };
 use ethnum::U256;
 use evm_loader::account::ether_contract;
@@ -131,20 +132,28 @@ impl<'a> EmulatorAccountStorage<'a> {
         commitment: CommitmentConfig,
         block_overrides: &Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
-    ) -> Self {
+    ) -> Result<EmulatorAccountStorage<'a>, NeonError> {
         trace!("backend::new");
 
-        let block_number = block_overrides
+        let block_number = match block_overrides
             .as_ref()
-            .and_then(|overrides| overrides.number)
-            .unwrap_or_else(|| rpc_client.get_slot().unwrap_or_default());
+            .map(|overrides| overrides.number)
+            .flatten()
+        {
+            None => rpc_client.get_slot().await?,
+            Some(number) => number,
+        };
 
-        let block_timestamp = block_overrides
+        let block_timestamp = match block_overrides
             .as_ref()
-            .and_then(|overrides| overrides.time)
-            .unwrap_or_else(|| rpc_client.get_block_time(block_number).unwrap_or_default());
+            .map(|overrides| overrides.time)
+            .flatten()
+        {
+            None => rpc_client.get_block_time(block_number).await?,
+            Some(time) => time,
+        };
 
-        Self {
+        Ok(Self {
             accounts: RwLock::new(HashMap::new()),
             solana_accounts: RwLock::new(HashMap::new()),
             rpc_client,
@@ -155,11 +164,11 @@ impl<'a> EmulatorAccountStorage<'a> {
             chain_id,
             commitment,
             state_overrides,
-        }
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn with_accounts(
+    pub async fn with_accounts(
         rpc_client: &'a dyn Rpc,
         evm_loader: Pubkey,
         token_mint: Pubkey,
@@ -169,7 +178,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         solana_accounts: &[Pubkey],
         block_overrides: &Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
-    ) -> Self {
+    ) -> Result<EmulatorAccountStorage<'a>, NeonError> {
         let storage = Self::new(
             rpc_client,
             evm_loader,
@@ -178,10 +187,13 @@ impl<'a> EmulatorAccountStorage<'a> {
             commitment,
             block_overrides,
             state_overrides,
-        );
-        storage.initialize_cached_accounts(accounts, solana_accounts);
-
+        )
+        .await?;
         storage
+            .initialize_cached_accounts(accounts, solana_accounts)
+            .await;
+
+        Ok(storage)
     }
 
     pub async fn initialize_cached_accounts(
@@ -234,7 +246,8 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         let result = self
             .rpc_client
-            .get_account_with_commitment(pubkey, self.commitment).await?;
+            .get_account_with_commitment(pubkey, self.commitment)
+            .await?;
 
         accounts
             .entry(*pubkey)

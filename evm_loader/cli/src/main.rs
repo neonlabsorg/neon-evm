@@ -24,7 +24,7 @@ use ethnum::U256;
 use serde_json::json;
 use solana_clap_utils::input_parsers::{pubkey_of, value_of, values_of};
 use solana_client::client_error::{ClientError, ClientErrorKind};
-use solana_client::rpc_client::RpcClient;
+use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use tokio::time::Instant;
@@ -97,18 +97,18 @@ async fn main() {
 }
 
 #[allow(clippy::too_many_lines)]
-fn execute(
+async fn execute<'a>(
     cmd: &str,
-    params: Option<&ArgMatches>,
-    config: &Config,
-    context: &Context,
+    params: Option<&'a ArgMatches<'a>>,
+    config: &'a Config,
+    context: &'a Context,
     slot: Option<u64>,
 ) -> NeonCliResult {
     match (cmd, params) {
         ("emulate", Some(params)) => {
             let (tx, trace_call_config) = parse_tx(params);
             let (token, chain, steps, accounts, solana_accounts) =
-                parse_tx_params(config, context, params);
+                parse_tx_params(config, context, params).await;
             emulate::execute(
                 context.rpc_client.as_ref(),
                 config.evm_loader,
@@ -121,12 +121,13 @@ fn execute(
                 &solana_accounts,
                 trace_call_config,
             )
+            .await
             .map(|result| json!(result))
         }
         ("emulate-hash", Some(params)) => {
-            let (tx, trace_config) = parse_tx_hash(context.rpc_client.as_ref());
+            let (tx, trace_config) = parse_tx_hash(context.rpc_client.as_ref()).await;
             let (token, chain, steps, accounts, solana_accounts) =
-                parse_tx_params(config, context, params);
+                parse_tx_params(config, context, params).await;
             emulate::execute(
                 context.rpc_client.as_ref(),
                 config.evm_loader,
@@ -139,12 +140,13 @@ fn execute(
                 &solana_accounts,
                 trace_config.into(),
             )
+            .await
             .map(|result| json!(result))
         }
         ("trace", Some(params)) => {
             let (tx, trace_call_config) = parse_tx(params);
             let (token, chain, steps, accounts, solana_accounts) =
-                parse_tx_params(config, context, params);
+                parse_tx_params(config, context, params).await;
             trace::trace_transaction(
                 context.rpc_client.as_ref(),
                 config.evm_loader,
@@ -157,12 +159,13 @@ fn execute(
                 &solana_accounts,
                 trace_call_config,
             )
+            .await
             .map(|trace| json!(trace))
         }
         ("trace-hash", Some(params)) => {
-            let (tx, trace_config) = parse_tx_hash(context.rpc_client.as_ref());
+            let (tx, trace_config) = parse_tx_hash(context.rpc_client.as_ref()).await;
             let (token, chain, steps, accounts, solana_accounts) =
-                parse_tx_params(config, context, params);
+                parse_tx_params(config, context, params).await;
             trace::trace_transaction(
                 context.rpc_client.as_ref(),
                 config.evm_loader,
@@ -175,6 +178,7 @@ fn execute(
                 &solana_accounts,
                 trace_config.into(),
             )
+            .await
             .map(|trace| json!(trace))
         }
         ("trace-next-block", Some(params)) => {
@@ -187,14 +191,17 @@ fn execute(
                 .map(|params| params.trace_config.unwrap_or_default())
                 .unwrap_or_default();
             let (token, chain, steps, accounts, solana_accounts) =
-                parse_tx_params(config, context, params);
+                parse_tx_params(config, context, params).await;
             let indexer_db =
-                IndexerDb::new(config.db_config.as_ref().expect("db-config is required"));
-            let transactions = indexer_db.get_block_transactions(slot + 1).map_err(|e| {
-                ClientError::from(ClientErrorKind::Custom(format!(
-                    "get_block_transactions error: {e}"
-                )))
-            })?;
+                IndexerDb::new(config.db_config.as_ref().expect("db-config is required")).await;
+            let transactions = indexer_db
+                .get_block_transactions(slot + 1)
+                .await
+                .map_err(|e| {
+                    ClientError::from(ClientErrorKind::Custom(format!(
+                        "get_block_transactions error: {e}"
+                    )))
+                })?;
             trace::trace_block(
                 context.rpc_client.as_ref(),
                 config.evm_loader,
@@ -207,6 +214,7 @@ fn execute(
                 &solana_accounts,
                 &trace_config,
             )
+            .await
             .map(|traces| json!(traces))
         }
         ("create-ether-account", Some(params)) => {
@@ -215,13 +223,14 @@ fn execute(
                 .rpc_client
                 .as_any()
                 .downcast_ref::<RpcClient>()
-                .expect("cast to solana_client::rpc_client::RpcClient error");
+                .expect("cast to solana_client::nonblocking::rpc_client::RpcClient error");
             create_ether_account::execute(
                 rpc_client,
                 config.evm_loader,
                 context.signer.as_ref(),
                 &ether,
             )
+            .await
             .map(|result| json!(result))
         }
         ("deposit", Some(params)) => {
@@ -229,7 +238,7 @@ fn execute(
                 .rpc_client
                 .as_any()
                 .downcast_ref::<RpcClient>()
-                .expect("cast to solana_client::rpc_client::RpcClient error");
+                .expect("cast to solana_client::nonblocking::rpc_client::RpcClient error");
             let amount = value_of(params, "amount").expect("amount parse error");
             let ether = address_of(params, "ether").expect("ether parse error");
             deposit::execute(
@@ -239,11 +248,13 @@ fn execute(
                 amount,
                 &ether,
             )
+            .await
             .map(|result| json!(result))
         }
         ("get-ether-account-data", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
             get_ether_account_data::execute(context.rpc_client.as_ref(), &config.evm_loader, &ether)
+                .await
                 .map(|result| json!(result))
         }
         ("cancel-trx", Some(params)) => {
@@ -255,21 +266,25 @@ fn execute(
                 config.evm_loader,
                 &storage_account,
             )
+            .await
             .map(|result| json!(result))
         }
         ("neon-elf-params", Some(params)) => {
             let program_location = params.value_of("program_location");
-            get_neon_elf::execute(config, context, program_location).map(|result| json!(result))
+            get_neon_elf::execute(config, context, program_location)
+                .await
+                .map(|result| json!(result))
         }
-        ("collect-treasury", Some(_)) => {
-            collect_treasury::execute(config, context).map(|result| json!(result))
-        }
+        ("collect-treasury", Some(_)) => collect_treasury::execute(config, context)
+            .await
+            .map(|result| json!(result)),
         ("init-environment", Some(params)) => {
             let file = params.value_of("file");
             let send_trx = params.is_present("send-trx");
             let force = params.is_present("force");
             let keys_dir = params.value_of("keys-dir");
             init_environment::execute(config, context, send_trx, force, keys_dir, file)
+                .await
                 .map(|result| json!(result))
         }
         ("get-storage-at", Some(params)) => {
@@ -281,6 +296,7 @@ fn execute(
                 contract_id,
                 &index,
             )
+            .await
             .map(|hash| json!(hex::encode(hash)))
         }
         _ => unreachable!(),
@@ -316,8 +332,8 @@ fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
     (tx_params, trace_config)
 }
 
-fn parse_tx_hash(rpc_client: &dyn Rpc) -> (TxParams, TraceConfig) {
-    let tx = rpc_client.get_transaction_data().unwrap();
+async fn parse_tx_hash(rpc_client: &dyn Rpc) -> (TxParams, TraceConfig) {
+    let tx = rpc_client.get_transaction_data().await.unwrap();
     let transaction_params: Option<TransactionHashParams> =
         read_from_stdin().unwrap_or_else(|err| {
             panic!("Unable to parse `TransactionHashParams` from STDIN, error: {err:?}")
@@ -331,16 +347,16 @@ fn parse_tx_hash(rpc_client: &dyn Rpc) -> (TxParams, TraceConfig) {
 }
 
 #[must_use]
-pub fn parse_tx_params(
+pub async fn parse_tx_params<'a>(
     config: &Config,
     context: &Context,
-    params: &ArgMatches,
+    params: &'a ArgMatches<'a>,
 ) -> (Pubkey, u64, u64, Vec<Address>, Vec<Pubkey>) {
     // Read ELF params only if token_mint or chain_id is not set.
     let mut token = pubkey_of(params, "token_mint");
     let mut chain = value_of(params, "chain_id");
     if token.is_none() || chain.is_none() {
-        let cached_elf_params = CachedElfParams::new(config, context);
+        let cached_elf_params = CachedElfParams::new(config, context).await;
         token = token.or_else(|| {
             Some(
                 Pubkey::from_str(

@@ -1,5 +1,5 @@
 use std::cell::{RefCell};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{HashMap, HashSet};
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
 use solana_program::clock::Clock;
@@ -24,7 +24,7 @@ impl<'a> ProgramAccountStorage<'a> {
 
         let mut solana_accounts = accounts.iter()
             .map(|a| (a.key, a))
-            .collect::<BTreeMap<_, _>>();
+            .collect::<HashMap<_, _>>();
 
         solana_accounts.insert(operator.key, operator.info);
         if let Some(system) = system_program {
@@ -32,8 +32,8 @@ impl<'a> ProgramAccountStorage<'a> {
         }
 
 
-        let mut ethereum_accounts = BTreeMap::new();
-        let mut storage_accounts = BTreeMap::new();
+        let mut ethereum_accounts = HashMap::with_capacity(accounts.len());
+        let mut storage_accounts = HashMap::with_capacity(accounts.len());
 
         for &account_info in solana_accounts.values() {
             if account_info.owner != program_id {
@@ -66,9 +66,9 @@ impl<'a> ProgramAccountStorage<'a> {
             clock: Clock::get()?,
             solana_accounts,
             ethereum_accounts,
-            empty_ethereum_accounts: RefCell::new(BTreeSet::new()),
+            empty_ethereum_accounts: RefCell::new(HashSet::new()),
             storage_accounts,
-            empty_storage_accounts: RefCell::new(BTreeSet::new()),
+            empty_storage_accounts: RefCell::new(HashSet::new()),
         })
     }
 

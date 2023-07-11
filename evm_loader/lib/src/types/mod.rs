@@ -8,7 +8,7 @@ pub use indexer_db::IndexerDb;
 use lazy_static::lazy_static;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
-use tokio::{runtime::Runtime, task::block_in_place};
+use tokio::runtime::Runtime;
 pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use {
@@ -184,7 +184,7 @@ where
     F: FnOnce() -> Fu,
     Fu: std::future::Future<Output = R>,
 {
-    block_in_place(|| RT.block_on(f()))
+    RT.block_on(f())
 }
 
 #[derive(Error, Debug)]

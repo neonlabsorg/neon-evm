@@ -90,6 +90,24 @@ impl ClickHouseDb {
         result
     }
 
+    #[allow(unused)]
+    pub async fn get_earliest_slot(&self) -> ChResult<u64> {
+        let time_start = Instant::now();
+        let query = "SELECT min(slot) FROM events.update_slot";
+        let result = self
+            .client
+            .query(query)
+            .fetch_one::<u64>()
+            .await
+            .map_err(std::convert::Into::into);
+        let execution_time = Instant::now().duration_since(time_start);
+        info!(
+            "get_earliest_slot sql time: {} sec",
+            execution_time.as_secs_f64()
+        );
+        result
+    }
+
     pub async fn get_latest_block(&self) -> ChResult<u64> {
         let time_start = Instant::now();
         let query = "SELECT max(slot) FROM events.update_slot";

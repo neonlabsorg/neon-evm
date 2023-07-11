@@ -73,7 +73,7 @@ pub async fn execute(config: &Config, context: &Context) -> NeonResult<CollectTr
                 let blockhash = context.rpc_client.get_latest_blockhash().await?;
                 message.recent_blockhash = blockhash;
 
-                check_account_for_fee(&client, &context.signer.pubkey(), &message).await?;
+                check_account_for_fee(client, &context.signer.pubkey(), &message).await?;
 
                 let mut trx = Transaction::new_unsigned(message);
                 trx.try_sign(&[&*context.signer], blockhash)?;
@@ -95,7 +95,7 @@ pub async fn execute(config: &Config, context: &Context) -> NeonResult<CollectTr
     let blockhash = context.rpc_client.get_latest_blockhash().await?;
     message.recent_blockhash = blockhash;
 
-    check_account_for_fee(&client, &context.signer.pubkey(), &message).await?;
+    check_account_for_fee(client, &context.signer.pubkey(), &message).await?;
 
     let mut trx = Transaction::new_unsigned(message);
     trx.try_sign(&[&*context.signer], blockhash)?;

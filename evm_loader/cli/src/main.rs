@@ -346,7 +346,6 @@ async fn parse_tx_hash(rpc_client: &dyn Rpc) -> (TxParams, TraceConfig) {
     (tx, trace_config)
 }
 
-#[must_use]
 pub async fn parse_tx_params<'a>(
     config: &Config,
     context: &Context,

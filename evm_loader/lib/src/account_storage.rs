@@ -137,8 +137,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         let block_number = match block_overrides
             .as_ref()
-            .map(|overrides| overrides.number)
-            .flatten()
+            .and_then(|overrides| overrides.number)
         {
             None => rpc_client.get_slot().await?,
             Some(number) => number,
@@ -146,8 +145,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         let block_timestamp = match block_overrides
             .as_ref()
-            .map(|overrides| overrides.time)
-            .flatten()
+            .and_then(|overrides| overrides.time)
         {
             None => rpc_client.get_block_time(block_number).await?,
             Some(time) => time,

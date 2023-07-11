@@ -27,7 +27,9 @@ pub async fn execute(
     evm_loader: &Pubkey,
     ether_address: &Address,
 ) -> NeonResult<GetEtherAccountDataReturn> {
-    match EmulatorAccountStorage::get_account_from_solana(rpc_client, evm_loader, ether_address).await {
+    match EmulatorAccountStorage::get_account_from_solana(rpc_client, evm_loader, ether_address)
+        .await
+    {
         (solana_address, Some(mut acc)) => {
             let acc_info = account_info(&solana_address, &mut acc);
             let account_data = EthereumAccount::from_account(evm_loader, &acc_info).unwrap();

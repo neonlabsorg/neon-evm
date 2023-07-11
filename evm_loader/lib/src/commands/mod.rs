@@ -31,17 +31,19 @@ pub async fn send_transaction(
     let message = Message::new(instructions, Some(&signer.pubkey()));
     let mut transaction = Transaction::new_unsigned(message);
     let signers = [signer];
-    let (blockhash, _last_valid_slot) =
-        rpc_client.get_latest_blockhash_with_commitment(CommitmentConfig::confirmed()).await?;
+    let (blockhash, _last_valid_slot) = rpc_client
+        .get_latest_blockhash_with_commitment(CommitmentConfig::confirmed())
+        .await?;
     transaction.try_sign(&signers, blockhash)?;
 
-    rpc_client.send_and_confirm_transaction_with_spinner_and_config(
-        &transaction,
-        CommitmentConfig::confirmed(),
-        RpcSendTransactionConfig {
-            preflight_commitment: Some(CommitmentLevel::Confirmed),
-            ..RpcSendTransactionConfig::default()
-        },
-    )
-    .await
+    rpc_client
+        .send_and_confirm_transaction_with_spinner_and_config(
+            &transaction,
+            CommitmentConfig::confirmed(),
+            RpcSendTransactionConfig {
+                preflight_commitment: Some(CommitmentLevel::Confirmed),
+                ..RpcSendTransactionConfig::default()
+            },
+        )
+        .await
 }

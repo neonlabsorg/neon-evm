@@ -18,6 +18,7 @@ pub use neon_lib::rpc;
 pub use neon_lib::syscall_stubs;
 pub use neon_lib::types;
 
+use actix_web::web::Data;
 use std::sync::Arc;
 use std::{env, net::SocketAddr, str::FromStr};
 
@@ -25,6 +26,8 @@ pub use config::Config;
 pub use context::Context;
 use tokio::signal::{self};
 
+use crate::api_server::handlers::emulate_hash::emulate_hash_obsolete;
+use crate::api_server::handlers::trace_hash::trace_hash_obsolete;
 use crate::api_server::handlers::{
     emulate::emulate, emulate_hash::emulate_hash, get_ether_account_data::get_ether_account_data,
     get_storage_at::get_storage_at, trace::trace, trace_hash::trace_hash,
@@ -59,13 +62,15 @@ async fn main() -> NeonApiResult<()> {
     HttpServer::new(move || {
         App::new().service(
             web::scope("/api")
-                .app_data(state.clone())
+                .app_data(Data::new(Arc::clone(&state)))
                 .service(emulate)
                 .service(emulate_hash)
+                .service(emulate_hash_obsolete)
                 .service(get_ether_account_data)
                 .service(get_storage_at)
                 .service(trace)
-                .service(trace_hash),
+                .service(trace_hash)
+                .service(trace_hash_obsolete),
         )
     })
     .bind(&addr)

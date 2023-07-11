@@ -23,7 +23,7 @@ impl fmt::Display for TraceReturn {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn execute(
+pub async fn execute(
     config: &Config,
     context: &Context,
     tx: TxParams,
@@ -35,7 +35,7 @@ pub fn execute(
 ) -> NeonResult<TraceReturn> {
     let mut tracer = Tracer::new();
 
-    evm_loader::evm::tracing::using(&mut tracer, || {
+    evm_loader::evm::tracing::using(&mut tracer, || async {
         emulate::execute(
             config,
             context,
@@ -46,7 +46,9 @@ pub fn execute(
             accounts,
             solana_accounts,
         )
-    })?;
+        .await
+    })
+    .await?;
 
     let (vm_trace, full_trace_data) = tracer.into_traces();
 

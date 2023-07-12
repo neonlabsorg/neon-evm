@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{HashMap, HashSet};
 use std::cmp::Ordering;
 use crate::account::{EthereumAccount, EthereumStorage};
 use crate::executor::{Action, OwnedAccountInfo};
@@ -38,13 +38,13 @@ pub struct ProgramAccountStorage<'a> {
     operator: &'a Pubkey,
     clock: Clock,
 
-    solana_accounts: BTreeMap<&'a Pubkey, &'a AccountInfo<'a>>,
+    solana_accounts: HashMap<&'a Pubkey, &'a AccountInfo<'a>>,
 
-    ethereum_accounts: BTreeMap<Address, EthereumAccount<'a>>,
-    empty_ethereum_accounts: RefCell<BTreeSet<Address>>,
+    ethereum_accounts: HashMap<Address, EthereumAccount<'a>>,
+    empty_ethereum_accounts: RefCell<HashSet<Address>>,
 
-    storage_accounts: BTreeMap<(Address,U256), EthereumStorage<'a>>,
-    empty_storage_accounts: RefCell<BTreeSet<(Address,U256)>>,
+    storage_accounts: HashMap<(Address,U256), EthereumStorage<'a>>,
+    empty_storage_accounts: RefCell<HashSet<(Address,U256)>>,
 }
 
 /// Account storage
@@ -107,7 +107,7 @@ pub trait AccountStorage {
         &self,
         actions: &[Action],
     ) -> AccountsOperations {
-        let mut accounts = BTreeMap::new();
+        let mut accounts = HashMap::with_capacity(actions.len());
         for action in actions {
             let (address, code_size) = match action {
                 Action::NeonTransfer { target, .. } => (target, 0),

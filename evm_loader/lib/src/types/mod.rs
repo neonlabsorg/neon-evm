@@ -5,8 +5,11 @@ pub mod trace;
 mod tracer_ch_db;
 
 pub use indexer_db::IndexerDb;
+use lazy_static::lazy_static;
 use solana_sdk::pubkey::Pubkey;
+use std::future::Future;
 use std::str::FromStr;
+use tokio::runtime::Runtime;
 pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use {
@@ -173,12 +176,19 @@ pub async fn do_connect(
     client
 }
 
-pub fn block<F, Fu, R>(f: F) -> R
+lazy_static! {
+    pub static ref RT: Runtime = Runtime::new().unwrap();
+}
+
+pub fn block<F, Fut>(f: F) -> Fut::Output
 where
-    F: FnOnce() -> Fu,
-    Fu: std::future::Future<Output = R>,
+    F: FnOnce() -> Fut,
+    Fut: Future,
 {
-    tokio::runtime::Handle::current().block_on(f())
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(f())),
+        Err(_) => RT.block_on(f()),
+    }
 }
 
 #[derive(Error, Debug)]

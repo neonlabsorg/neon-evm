@@ -10,7 +10,7 @@ pub use neon_lib::commands;
 pub use neon_lib::config;
 pub use neon_lib::context;
 pub use neon_lib::errors;
-pub use neon_lib::event_listener;
+// pub use neon_lib::event_listener;
 pub use neon_lib::rpc;
 pub use neon_lib::syscall_stubs;
 pub use neon_lib::types;

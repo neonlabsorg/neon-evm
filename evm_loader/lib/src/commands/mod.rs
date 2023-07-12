@@ -19,7 +19,7 @@ pub mod get_ether_account_data;
 pub mod get_neon_elf;
 pub mod get_storage_at;
 pub mod init_environment;
-pub mod trace;
+// pub mod trace;
 mod transaction_executor;
 
 pub fn send_transaction(

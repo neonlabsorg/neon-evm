@@ -36,7 +36,7 @@ use crate::api_server::handlers::{
 type NeonApiResult<T> = Result<T, NeonApiError>;
 type NeonApiState = Arc<api_server::state::State>;
 
-#[tokio::main(flavor = "multi_thread")]
+#[tokio::main]
 async fn main() -> NeonApiResult<()> {
     let options = api_options::parse();
 

@@ -9,7 +9,7 @@ use lazy_static::lazy_static;
 use solana_sdk::pubkey::Pubkey;
 use std::future::Future;
 use std::str::FromStr;
-use tokio::{runtime::Runtime, task::block_in_place};
+use tokio::runtime::Runtime;
 pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use {
@@ -186,7 +186,7 @@ where
     Fut: Future,
 {
     match tokio::runtime::Handle::try_current() {
-        Ok(handle) => block_in_place(|| handle.block_on(f())),
+        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(f())),
         Err(_) => RT.block_on(f()),
     }
 }

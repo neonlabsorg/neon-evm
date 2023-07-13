@@ -1,12 +1,8 @@
-use {crate::types::Bytes, ethnum::U256, std::collections::HashMap};
+use {ethnum::U256, std::collections::HashMap};
 
-#[derive(
-    serde::Serialize,
-    serde::Deserialize,
-    Debug,
-    Clone,
-    PartialEq, /*, RlpEncodable, RlpDecodable */
-)]
+type Bytes = Vec<u8>;
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 /// A diff of some chunk of memory.
 pub struct MemoryDiff {
     /// Offset into memory the change begins.
@@ -20,8 +16,10 @@ pub struct MemoryDiff {
     serde::Deserialize,
     Debug,
     Clone,
-    PartialEq, /*, RlpEncodable, RlpDecodable */
+    PartialEq,
+    Eq, /*, RlpEncodable, RlpDecodable */
 )]
+
 /// A diff of some storage value.
 pub struct StorageDiff {
     /// Which key in storage is changed.
@@ -35,7 +33,8 @@ pub struct StorageDiff {
     serde::Deserialize,
     Debug,
     Clone,
-    PartialEq, /*, RlpEncodable, RlpDecodable */
+    PartialEq,
+    Eq, /*, RlpEncodable, RlpDecodable */
 )]
 /// A record of an executed VM operation.
 pub struct VMExecutedOperation {
@@ -55,6 +54,7 @@ pub struct VMExecutedOperation {
     Debug,
     Clone,
     PartialEq,
+    Eq,
     Default, /*, RlpEncodable, RlpDecodable */
 )]
 /// A record of the execution of a single VM operation.
@@ -114,6 +114,7 @@ pub struct ExecutiveVMTracer {
 
 impl ExecutiveVMTracer {
     /// Create a new top-level instance.
+    #[must_use]
     pub fn toplevel() -> Self {
         ExecutiveVMTracer {
             data: VMTrace {

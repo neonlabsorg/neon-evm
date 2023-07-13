@@ -7,9 +7,9 @@ mod context;
 mod logs;
 mod program_options;
 
+pub use evm_loader::evm::event_listener;
 pub use neon_lib::account_storage;
 pub use neon_lib::errors;
-pub use neon_lib::event_listener;
 pub use neon_lib::rpc;
 pub use neon_lib::syscall_stubs;
 pub use neon_lib::types;

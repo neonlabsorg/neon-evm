@@ -1,10 +1,14 @@
+use self::listener_vm_tracer::ListenerVmTracer;
+
+use super::tracing::{Event, EventListener};
+
 mod listener_tracer;
 mod listener_vm_tracer;
+pub mod trace;
 pub mod tracer;
 mod vm_tracer;
 
-use evm_loader::evm::tracing::{Event, EventListener};
-use {listener_tracer::ListenerTracer, listener_vm_tracer::ListenerVmTracer, tracer::Tracer};
+use {listener_tracer::ListenerTracer, tracer::Tracer};
 
 impl EventListener for Tracer {
     fn event(&mut self, event: Event) {

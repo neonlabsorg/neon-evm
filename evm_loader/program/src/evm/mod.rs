@@ -14,6 +14,14 @@ use crate::{
     types::{Address, Transaction},
 };
 
+#[cfg(feature = "tracing")]
+use {crate::evm::tracing::EventListener, tracing::Event};
+#[cfg(feature = "tracing")]
+use {std::cell::RefCell, std::rc::Rc};
+
+#[cfg(feature = "tracing")]
+pub mod event_listener;
+
 mod buffer;
 pub mod database;
 mod memory;
@@ -26,22 +34,12 @@ pub mod tracing;
 mod utils;
 
 use self::{database::Database, memory::Memory, stack::Stack};
+
+#[cfg(feature = "tracing")]
+use crate::evm::event_listener::tracer::Tracer;
+
 pub use buffer::Buffer;
 pub use precompile::is_precompile_address;
-
-macro_rules! tracing_event {
-    ($x:expr) => {
-        #[cfg(feature = "tracing")]
-        crate::evm::tracing::with(|listener| listener.event($x));
-    };
-    ($condition:expr; $x:expr) => {
-        #[cfg(feature = "tracing")]
-        if $condition {
-            crate::evm::tracing::with(|listener| listener.event($x));
-        }
-    };
-}
-pub(crate) use tracing_event;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ExitStatus {
@@ -92,6 +90,10 @@ pub struct Machine<B: Database> {
     reason: Reason,
 
     parent: Option<Box<Self>>,
+
+    #[serde(skip)]
+    #[cfg(feature = "tracing")]
+    tracer: Rc<RefCell<Tracer>>,
 
     #[serde(skip)]
     phantom: PhantomData<*const B>,
@@ -178,6 +180,24 @@ impl<B: Database> Machine<B> {
 
         let execution_code = backend.code(&target)?;
 
+        #[cfg(feature = "tracing")]
+        let tracer = Rc::new(RefCell::new(Tracer::new()));
+
+        let stack;
+        let memory;
+
+        #[cfg(feature = "tracing")]
+        {
+            stack = Stack::new(Some(tracer.clone()));
+            memory = Memory::new(tracer.clone());
+        }
+
+        #[cfg(not(feature = "tracing"))]
+        {
+            stack = Stack::new();
+            memory = Memory::new();
+        }
+
         Ok(Self {
             origin,
             context: Context {
@@ -192,13 +212,15 @@ impl<B: Database> Machine<B> {
             call_data: trx.call_data,
             return_data: Buffer::empty(),
             return_range: 0..0,
-            stack: Stack::new(),
-            memory: Memory::new(),
+            stack,
+            memory,
             pc: 0_usize,
             is_static: false,
             reason: Reason::Call,
             parent: None,
             phantom: PhantomData,
+            #[cfg(feature = "tracing")]
+            tracer,
         })
     }
 
@@ -218,6 +240,24 @@ impl<B: Database> Machine<B> {
         backend.increment_nonce(target)?;
         backend.transfer(origin, target, trx.value)?;
 
+        #[cfg(feature = "tracing")]
+        let tracer = Rc::new(RefCell::new(Tracer::new()));
+
+        let stack;
+        let memory;
+
+        #[cfg(feature = "tracing")]
+        {
+            stack = Stack::new(Some(tracer.clone()));
+            memory = Memory::new(tracer.clone());
+        }
+
+        #[cfg(not(feature = "tracing"))]
+        {
+            stack = Stack::new();
+            memory = Memory::new();
+        }
+
         Ok(Self {
             origin,
             context: Context {
@@ -230,8 +270,8 @@ impl<B: Database> Machine<B> {
             gas_limit: trx.gas_limit,
             return_data: Buffer::empty(),
             return_range: 0..0,
-            stack: Stack::new(),
-            memory: Memory::new(),
+            stack,
+            memory,
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,
@@ -239,6 +279,8 @@ impl<B: Database> Machine<B> {
             call_data: Buffer::empty(),
             parent: None,
             phantom: PhantomData,
+            #[cfg(feature = "tracing")]
+            tracer,
         })
     }
 
@@ -249,10 +291,13 @@ impl<B: Database> Machine<B> {
 
         let mut step = 0_u64;
 
-        tracing_event!(tracing::Event::BeginVM {
-            context: self.context,
-            code: self.execution_code.to_vec()
-        });
+        #[cfg(feature = "tracing")]
+        {
+            self.tracer.borrow_mut().event(Event::BeginVM {
+                context: self.context,
+                code: self.execution_code.to_vec(),
+            });
+        }
 
         let status = loop {
             step += 1;
@@ -262,12 +307,15 @@ impl<B: Database> Machine<B> {
 
             let opcode = self.execution_code.get_or_default(self.pc);
 
-            tracing_event!(tracing::Event::BeginStep {
-                opcode,
-                pc: self.pc,
-                stack: self.stack.to_vec(),
-                memory: self.memory.to_vec()
-            });
+            #[cfg(feature = "tracing")]
+            {
+                self.tracer.borrow_mut().event(Event::BeginStep {
+                    opcode,
+                    pc: self.pc,
+                    stack: self.stack.to_vec(),
+                    memory: self.memory.to_vec(),
+                });
+            }
 
             // SAFETY: OPCODES.len() == 256, opcode <= 255
             let opcode_fn = unsafe { Self::OPCODES.get_unchecked(opcode as usize) };
@@ -280,9 +328,12 @@ impl<B: Database> Machine<B> {
                 }
             };
 
-            tracing_event!(opcode_result != Action::Noop; tracing::Event::EndStep {
-                gas_used: 0_u64
-            });
+            #[cfg(feature = "tracing")]
+            if opcode_result != Action::Noop {
+                self.tracer
+                    .borrow_mut()
+                    .event(Event::EndStep { gas_used: 0_u64 });
+            }
 
             match opcode_result {
                 Action::Continue => self.pc += 1,
@@ -295,8 +346,9 @@ impl<B: Database> Machine<B> {
             }
         };
 
-        tracing_event!(tracing::Event::EndVM {
-            status: status.clone()
+        #[cfg(feature = "tracing")]
+        self.tracer.borrow_mut().event(Event::EndVM {
+            status: status.clone(),
         });
 
         Ok((status, step))
@@ -310,6 +362,24 @@ impl<B: Database> Machine<B> {
         call_data: Buffer,
         gas_limit: Option<U256>,
     ) {
+        #[cfg(feature = "tracing")]
+        let tracer = Rc::new(RefCell::new(Tracer::new()));
+
+        let stack;
+        let memory;
+
+        #[cfg(feature = "tracing")]
+        {
+            stack = Stack::new(Some(tracer.clone()));
+            memory = Memory::new(tracer.clone());
+        }
+
+        #[cfg(not(feature = "tracing"))]
+        {
+            stack = Stack::new();
+            memory = Memory::new();
+        }
+
         let mut other = Self {
             origin: self.origin,
             context,
@@ -319,13 +389,15 @@ impl<B: Database> Machine<B> {
             call_data,
             return_data: Buffer::empty(),
             return_range: 0..0,
-            stack: Stack::new(),
-            memory: Memory::new(),
+            stack,
+            memory,
             pc: 0_usize,
             is_static: self.is_static,
             reason,
             parent: None,
             phantom: PhantomData,
+            #[cfg(feature = "tracing")]
+            tracer,
         };
 
         core::mem::swap(self, &mut other);

@@ -2,12 +2,15 @@
 use ethnum::{I256, U256};
 use solana_program::log::sol_log_data;
 
-use super::{database::Database, tracing_event, Context, Machine, Reason};
+use super::{database::Database, Context, Machine, Reason};
 use crate::{
     error::{Error, Result},
     evm::Buffer,
     types::Address,
 };
+
+#[cfg(feature = "tracing")]
+use crate::evm::tracing::{Event, EventListener};
 
 #[derive(Eq, PartialEq)]
 pub enum Action {
@@ -735,7 +738,10 @@ impl<B: Database> Machine<B> {
         let index = self.stack.pop_u256()?;
         let value = backend.storage(&self.context.contract, &index)?;
 
-        tracing_event!(super::tracing::Event::StorageAccess { index, value });
+        #[cfg(feature = "tracing")]
+        self.tracer
+            .borrow_mut()
+            .event(Event::StorageAccess { index, value });
 
         self.stack.push_array(&value)?;
 
@@ -751,8 +757,16 @@ impl<B: Database> Machine<B> {
         let index = self.stack.pop_u256()?;
         let value = *self.stack.pop_array()?;
 
-        tracing_event!(super::tracing::Event::StorageSet { index, value });
-        tracing_event!(super::tracing::Event::StorageAccess { index, value });
+        #[cfg(feature = "tracing")]
+        {
+            self.tracer
+                .borrow_mut()
+                .event(Event::StorageSet { index, value });
+
+            self.tracer
+                .borrow_mut()
+                .event(Event::StorageAccess { index, value });
+        }
 
         backend.set_storage(self.context.contract, index, value)?;
 
@@ -900,10 +914,10 @@ impl<B: Database> Machine<B> {
         let address = self.context.contract.as_bytes();
 
         match N {
-            0 => sol_log_data(&[b"LOG0", address, &[0], data]),                                                
-            1 => sol_log_data(&[b"LOG1", address, &[1], &topics[0], data]),                                    
-            2 => sol_log_data(&[b"LOG2", address, &[2], &topics[0], &topics[1], data]),                        
-            3 => sol_log_data(&[b"LOG3", address, &[3], &topics[0], &topics[1], &topics[2], data]),            
+            0 => sol_log_data(&[b"LOG0", address, &[0], data]),
+            1 => sol_log_data(&[b"LOG1", address, &[1], &topics[0], data]),
+            2 => sol_log_data(&[b"LOG2", address, &[2], &topics[0], &topics[1], data]),
+            3 => sol_log_data(&[b"LOG3", address, &[3], &topics[0], &topics[1], &topics[2], data]),
             4 => sol_log_data(&[b"LOG4", address, &[4], &topics[0], &topics[1], &topics[2], &topics[3], data]),
             _ => unreachable!(),
         }
@@ -974,10 +988,13 @@ impl<B: Database> Machine<B> {
             code_address: None,
         };
 
-        tracing_event!(super::tracing::Event::BeginVM {
-            context,
-            code: init_code.to_vec()
-        });
+        #[cfg(feature = "tracing")]
+        {
+            self.tracer.borrow_mut().event(Event::BeginVM {
+                context,
+                code: init_code.to_vec(),
+            });
+        }
 
         self.fork(Reason::Create, context, init_code, Buffer::empty(), None);
         backend.snapshot();
@@ -1021,10 +1038,13 @@ impl<B: Database> Machine<B> {
             code_address: Some(address),
         };
 
-        tracing_event!(super::tracing::Event::BeginVM {
-            context,
-            code: code.to_vec()
-        });
+        #[cfg(feature = "tracing")]
+        {
+            self.tracer.borrow_mut().event(Event::BeginVM {
+                context,
+                code: code.to_vec(),
+            });
+        }
 
         self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
         backend.snapshot();
@@ -1067,10 +1087,13 @@ impl<B: Database> Machine<B> {
             code_address: Some(address),
         };
 
-        tracing_event!(super::tracing::Event::BeginVM {
-            context,
-            code: code.to_vec()
-        });
+        #[cfg(feature = "tracing")]
+        {
+            self.tracer.borrow_mut().event(Event::BeginVM {
+                context,
+                code: code.to_vec(),
+            });
+        }
 
         self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
         backend.snapshot();
@@ -1105,10 +1128,13 @@ impl<B: Database> Machine<B> {
             ..self.context
         };
 
-        tracing_event!(super::tracing::Event::BeginVM {
-            context,
-            code: code.to_vec()
-        });
+        #[cfg(feature = "tracing")]
+        {
+            self.tracer.borrow_mut().event(Event::BeginVM {
+                context,
+                code: code.to_vec(),
+            });
+        }
 
         self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
         backend.snapshot();
@@ -1141,10 +1167,13 @@ impl<B: Database> Machine<B> {
             code_address: Some(address),
         };
 
-        tracing_event!(super::tracing::Event::BeginVM {
-            context,
-            code: code.to_vec()
-        });
+        #[cfg(feature = "tracing")]
+        {
+            self.tracer.borrow_mut().event(Event::BeginVM {
+                context,
+                code: code.to_vec(),
+            });
+        }
 
         self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
         self.is_static = true;
@@ -1206,10 +1235,16 @@ impl<B: Database> Machine<B> {
             return Ok(Action::Return(return_data.to_vec()));
         }
 
-        tracing_event!(super::tracing::Event::EndStep { gas_used: 0_u64 });
-        tracing_event!(super::tracing::Event::EndVM {
-            status: super::ExitStatus::Return(return_data.to_vec())
-        });
+        #[cfg(feature = "tracing")]
+        {
+            self.tracer
+                .borrow_mut()
+                .event(Event::EndStep { gas_used: 0_u64 });
+
+            self.tracer.borrow_mut().event(Event::EndVM {
+                status: super::ExitStatus::Return(return_data.to_vec()),
+            });
+        }
 
         let returned = self.join();
         match returned.reason {
@@ -1246,10 +1281,16 @@ impl<B: Database> Machine<B> {
             return Ok(Action::Revert(return_data.to_vec()));
         }
 
-        tracing_event!(super::tracing::Event::EndStep { gas_used: 0_u64 });
-        tracing_event!(super::tracing::Event::EndVM {
-            status: super::ExitStatus::Revert(return_data.to_vec())
-        });
+        #[cfg(feature = "tracing")]
+        {
+            self.tracer
+                .borrow_mut()
+                .event(Event::EndStep { gas_used: 0_u64 });
+
+            self.tracer.borrow_mut().event(Event::EndVM {
+                status: super::ExitStatus::Revert(return_data.to_vec()),
+            });
+        }
 
         let returned = self.join();
         match returned.reason {
@@ -1294,10 +1335,15 @@ impl<B: Database> Machine<B> {
             return Ok(Action::Suicide);
         }
 
-        tracing_event!(super::tracing::Event::EndStep { gas_used: 0_u64 });
-        tracing_event!(super::tracing::Event::EndVM {
-            status: super::ExitStatus::Suicide
-        });
+        #[cfg(feature = "tracing")]
+        {
+            self.tracer
+                .borrow_mut()
+                .event(Event::EndStep { gas_used: 0_u64 });
+            self.tracer.borrow_mut().event(Event::EndVM {
+                status: super::ExitStatus::Suicide,
+            });
+        }
 
         let returned = self.join();
         match returned.reason {
@@ -1322,10 +1368,16 @@ impl<B: Database> Machine<B> {
             return Ok(Action::Stop);
         }
 
-        tracing_event!(super::tracing::Event::EndStep { gas_used: 0_u64 });
-        tracing_event!(super::tracing::Event::EndVM {
-            status: super::ExitStatus::Stop
-        });
+        #[cfg(feature = "tracing")]
+        {
+            self.tracer
+                .borrow_mut()
+                .event(Event::EndStep { gas_used: 0_u64 });
+
+            self.tracer.borrow_mut().event(Event::EndVM {
+                status: super::ExitStatus::Stop,
+            });
+        }
 
         let returned = self.join();
         match returned.reason {

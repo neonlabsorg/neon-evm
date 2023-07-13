@@ -2,8 +2,17 @@ use solana_program::program_memory::{sol_memcpy, sol_memset};
 use std::alloc::{GlobalAlloc, Layout};
 use std::ops::Range;
 
+#[cfg(feature = "tracing")]
+use {std::cell::RefCell, std::rc::Rc};
+
+#[cfg(feature = "tracing")]
+use super::event_listener::tracer::Tracer;
+
+#[cfg(feature = "tracing")]
+use super::tracing::{Event, EventListener};
+
 use super::utils::checked_next_multiple_of_32;
-use super::{tracing_event, Buffer};
+use super::Buffer;
 use crate::error::Error;
 
 const MAX_MEMORY_SIZE: usize = 64 * 1024;
@@ -16,13 +25,40 @@ pub struct Memory {
     data: *mut u8,
     capacity: usize,
     size: usize,
+    #[cfg(feature = "tracing")]
+    tracer: Option<Rc<RefCell<Tracer>>>,
 }
 
 impl Memory {
+    #[cfg(feature = "tracing")]
+    pub fn new(tracer: Rc<RefCell<Tracer>>) -> Self {
+        Self::with_capacity(MEMORY_CAPACITY, tracer)
+    }
+
+    #[cfg(not(feature = "tracing"))]
     pub fn new() -> Self {
         Self::with_capacity(MEMORY_CAPACITY)
     }
 
+    #[cfg(feature = "tracing")]
+    pub fn with_capacity(capacity: usize, tracer: Rc<RefCell<Tracer>>) -> Self {
+        unsafe {
+            let layout = Layout::from_size_align_unchecked(capacity, MEMORY_ALIGN);
+            let data = crate::allocator::EVM.alloc_zeroed(layout);
+            if data.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+
+            Self {
+                data,
+                capacity,
+                size: 0,
+                tracer: Some(tracer),
+            }
+        }
+    }
+
+    #[cfg(not(feature = "tracing"))]
     pub fn with_capacity(capacity: usize) -> Self {
         unsafe {
             let layout = Layout::from_size_align_unchecked(capacity, MEMORY_ALIGN);
@@ -39,6 +75,29 @@ impl Memory {
         }
     }
 
+    #[cfg(feature = "tracing")]
+    pub fn from_buffer(v: &[u8], tracer: Option<Rc<RefCell<Tracer>>>) -> Self {
+        let capacity = v.len().next_power_of_two().max(MEMORY_CAPACITY);
+
+        unsafe {
+            let layout = Layout::from_size_align_unchecked(capacity, MEMORY_ALIGN);
+            let data = crate::allocator::EVM.alloc_zeroed(layout);
+            if data.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+
+            std::ptr::copy_nonoverlapping(v.as_ptr(), data, v.len());
+
+            Self {
+                data,
+                capacity,
+                size: v.len(),
+                tracer,
+            }
+        }
+    }
+
+    #[cfg(not(feature = "tracing"))]
     pub fn from_buffer(v: &[u8]) -> Self {
         let capacity = v.len().next_power_of_two().max(MEMORY_CAPACITY);
 
@@ -140,10 +199,13 @@ impl Memory {
     }
 
     pub fn write_32(&mut self, offset: usize, value: &[u8; 32]) -> Result<(), Error> {
-        tracing_event!(super::tracing::Event::MemorySet {
-            offset,
-            data: value.to_vec()
-        });
+        #[cfg(feature = "tracing")]
+        if let Some(tracer) = self.tracer.as_ref() {
+            tracer.borrow_mut().event(Event::MemorySet {
+                offset,
+                data: value.to_vec(),
+            });
+        }
 
         self.realloc(offset, 32)?;
 
@@ -156,10 +218,13 @@ impl Memory {
     }
 
     pub fn write_byte(&mut self, offset: usize, value: u8) -> Result<(), Error> {
-        tracing_event!(super::tracing::Event::MemorySet {
-            offset,
-            data: vec![value]
-        });
+        #[cfg(feature = "tracing")]
+        if let Some(tracer) = self.tracer.as_ref() {
+            tracer.borrow_mut().event(Event::MemorySet {
+                offset,
+                data: vec![value],
+            });
+        }
 
         self.realloc(offset, 1)?;
 
@@ -191,24 +256,30 @@ impl Memory {
 
         match source_offset {
             source_offset if source_offset >= source.len() => {
-                tracing_event!(super::tracing::Event::MemorySet {
-                    offset,
-                    data: vec![0; length]
-                });
+                #[cfg(feature = "tracing")]
+                if let Some(tracer) = self.tracer.as_ref() {
+                    tracer.borrow_mut().event(Event::MemorySet {
+                        offset,
+                        data: vec![0; length],
+                    });
+                }
 
                 sol_memset(data, 0, length);
             }
             source_offset if (source_offset + length) > source.len() => {
                 let source = &source[source_offset..];
 
-                tracing_event!(super::tracing::Event::MemorySet {
-                    offset,
-                    data: {
-                        let mut buffer = vec![0_u8; length];
-                        buffer[..source.len()].copy_from_slice(source);
-                        buffer
-                    }
-                });
+                #[cfg(feature = "tracing")]
+                if let Some(tracer) = self.tracer.as_ref() {
+                    tracer.borrow_mut().event(Event::MemorySet {
+                        offset,
+                        data: {
+                            let mut buffer = vec![0_u8; length];
+                            buffer[..source.len()].copy_from_slice(source);
+                            buffer
+                        },
+                    });
+                }
 
                 data[..source.len()].copy_from_slice(source);
                 data[source.len()..].fill(0_u8);
@@ -216,10 +287,13 @@ impl Memory {
             source_offset => {
                 let source = &source[source_offset..source_offset + length];
 
-                tracing_event!(super::tracing::Event::MemorySet {
-                    offset,
-                    data: source.to_vec()
-                });
+                #[cfg(feature = "tracing")]
+                if let Some(tracer) = self.tracer.as_ref() {
+                    tracer.borrow_mut().event(Event::MemorySet {
+                        offset,
+                        data: source.to_vec(),
+                    });
+                }
 
                 sol_memcpy(data, source, length);
             }
@@ -281,7 +355,10 @@ impl<'de> serde::Deserialize<'de> for Memory {
                     return Err(E::invalid_length(v.len(), &self));
                 }
 
-                Ok(Memory::from_buffer(v))
+                #[cfg(feature = "tracing")]
+                return Ok(Memory::from_buffer(v, None));
+                #[cfg(not(feature = "tracing"))]
+                return Ok(Memory::from_buffer(v));
             }
         }
 

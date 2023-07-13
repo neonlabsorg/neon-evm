@@ -1,6 +1,11 @@
 #![allow(clippy::inline_always)]
 
-use super::tracing_event;
+#[cfg(feature = "tracing")]
+use super::{event_listener::tracer::Tracer, tracing::Event, tracing::EventListener};
+
+#[cfg(feature = "tracing")]
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{error::Error, types::Address};
 use ethnum::{I256, U256};
 use std::{
@@ -15,9 +20,34 @@ pub struct Stack {
     begin: *mut u8,
     end: *mut u8,
     top: *mut u8,
+    #[cfg(feature = "tracing")]
+    tracer: Option<Rc<RefCell<Tracer>>>,
 }
 
 impl Stack {
+    #[cfg(feature = "tracing")]
+    pub fn new(tracer: Option<Rc<RefCell<Tracer>>>) -> Self {
+        let (begin, end) = unsafe {
+            let layout = Layout::from_size_align_unchecked(STACK_SIZE, ELEMENT_SIZE);
+            let begin = crate::allocator::EVM.alloc(layout);
+            if begin.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+
+            let end = begin.add(STACK_SIZE - ELEMENT_SIZE);
+
+            (begin, end)
+        };
+
+        Self {
+            begin,
+            end,
+            top: begin,
+            tracer,
+        }
+    }
+
+    #[cfg(not(feature = "tracing"))]
     pub fn new() -> Self {
         let (begin, end) = unsafe {
             let layout = Layout::from_size_align_unchecked(STACK_SIZE, ELEMENT_SIZE);
@@ -61,9 +91,12 @@ impl Stack {
             return Err(Error::StackOverflow);
         }
 
-        tracing_event!(super::tracing::Event::StackPush {
-            value: unsafe { *self.read() }
-        });
+        #[cfg(feature = "tracing")]
+        if let Some(tracer) = self.tracer.as_ref() {
+            tracer.borrow_mut().event(Event::StackPush {
+                value: unsafe { *self.read() },
+            });
+        }
 
         unsafe {
             self.top = self.top.add(32);
@@ -303,7 +336,12 @@ impl<'de> serde::Deserialize<'de> for Stack {
                     return Err(E::invalid_length(v.len(), &self));
                 }
 
+                #[cfg(feature = "tracing")]
+                let mut stack = Stack::new(None);
+
+                #[cfg(not(feature = "tracing"))]
                 let mut stack = Stack::new();
+
                 unsafe {
                     stack.top = stack.begin.add(v.len());
 

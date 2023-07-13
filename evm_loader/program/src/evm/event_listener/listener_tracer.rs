@@ -1,5 +1,4 @@
-use super::tracer::Tracer;
-use crate::types::trace::FullTraceData;
+use super::{trace::FullTraceData, tracer::Tracer};
 
 pub trait ListenerTracer {
     fn begin_step(&mut self, stack: Vec<[u8; 32]>, memory: Vec<u8>);

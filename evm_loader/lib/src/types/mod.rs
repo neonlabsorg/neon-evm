@@ -1,7 +1,6 @@
 mod indexer_db;
 pub mod request_models;
 #[allow(clippy::all)]
-pub mod trace;
 mod tracer_ch_db;
 
 pub use indexer_db::IndexerDb;
@@ -19,8 +18,6 @@ use {
     thiserror::Error,
     tokio_postgres::{connect, Client},
 };
-
-type Bytes = Vec<u8>;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone, Default)]
 pub struct ChDbConfig {

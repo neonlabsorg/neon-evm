@@ -50,36 +50,36 @@ pub fn execute(
                 &solana_accounts,
             )?)
         }
-        ("trace", Some(params)) => {
-            let tx = parse_tx(params);
-            let (token, chain, steps, accounts, solana_accounts) =
-                parse_tx_params(config, context, params);
-            json!(trace::execute(
-                config,
-                context,
-                tx,
-                token,
-                chain,
-                steps,
-                &accounts,
-                &solana_accounts,
-            )?)
-        }
-        ("trace_hash", Some(params)) => {
-            let tx = context.rpc_client.get_transaction_data()?;
-            let (token, chain, steps, accounts, solana_accounts) =
-                parse_tx_params(config, context, params);
-            json!(trace::execute(
-                config,
-                context,
-                tx,
-                token,
-                chain,
-                steps,
-                &accounts,
-                &solana_accounts,
-            )?)
-        }
+        // ("trace", Some(params)) => {
+        //     let tx = parse_tx(params);
+        //     let (token, chain, steps, accounts, solana_accounts) =
+        //         parse_tx_params(config, context, params);
+        //     json!(trace::execute(
+        //         config,
+        //         context,
+        //         tx,
+        //         token,
+        //         chain,
+        //         steps,
+        //         &accounts,
+        //         &solana_accounts,
+        //     )?)
+        // }
+        // ("trace_hash", Some(params)) => {
+        //     let tx = context.rpc_client.get_transaction_data()?;
+        //     let (token, chain, steps, accounts, solana_accounts) =
+        //         parse_tx_params(config, context, params);
+        //     json!(trace::execute(
+        //         config,
+        //         context,
+        //         tx,
+        //         token,
+        //         chain,
+        //         steps,
+        //         &accounts,
+        //         &solana_accounts,
+        //     )?)
+        // }
         ("create-ether-account", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
             json!(create_ether_account::execute(config, context, &ether)?)

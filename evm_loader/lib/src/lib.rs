@@ -3,7 +3,7 @@ pub mod commands;
 pub mod config;
 pub mod context;
 pub mod errors;
-pub mod event_listener;
+// pub mod event_listener;
 pub mod rpc;
 pub mod syscall_stubs;
 pub mod types;

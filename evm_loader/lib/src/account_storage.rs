@@ -30,7 +30,7 @@ use crate::{types::PubkeyBase58, Config, Context};
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct NeonAccount {
     address: Address,
     account: PubkeyBase58,
@@ -83,7 +83,7 @@ impl NeonAccount {
     }
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct SolanaAccount {
     pubkey: PubkeyBase58,
     is_writable: bool,

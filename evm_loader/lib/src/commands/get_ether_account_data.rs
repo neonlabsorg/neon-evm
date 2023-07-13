@@ -1,13 +1,14 @@
 use evm_loader::{account::EthereumAccount, types::Address};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     account_storage::{account_info, EmulatorAccountStorage},
     errors::NeonError,
     Config, Context, NeonResult,
 };
+use std::fmt;
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct GetEtherAccountDataReturn {
     pub solana_address: String,
     pub address: Address,
@@ -18,6 +19,15 @@ pub struct GetEtherAccountDataReturn {
     pub generation: u32,
     pub code_size: u32,
     pub code: String,
+}
+
+impl fmt::Display for GetEtherAccountDataReturn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "(solana_address: {:?}, address: {:?}, trx_count: {:?}, balance: {:?}, code_size: {:?}, ...)",
+            self.solana_address, self.address, self.trx_count, self.balance, self.code_size)
+    }
 }
 
 pub fn execute(

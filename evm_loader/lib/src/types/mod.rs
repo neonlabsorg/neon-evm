@@ -13,17 +13,17 @@ pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use {
     ethnum::U256,
-    evm_loader::types::Address,
     postgres::NoTls,
     serde::{Deserialize, Deserializer, Serialize, Serializer},
+    std::fmt,
     thiserror::Error,
-    // tokio::task::block_in_place,
     tokio_postgres::{connect, Client},
 };
 
 type Bytes = Vec<u8>;
+pub use evm_loader::types::Address;
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone, Default)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone, Default)]
 pub struct ChDbConfig {
     pub clickhouse_url: Vec<String>,
     pub clickhouse_user: Option<String>,
@@ -33,6 +33,16 @@ pub struct ChDbConfig {
     pub indexer_database: String,
     pub indexer_user: String,
     pub indexer_password: String,
+}
+
+impl fmt::Debug for ChDbConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ChDbConfig {{clickhouse_url: {:?}, clickhouse_user: {:?}, clickhouse_password: {:?}, indexer_host: {}, indexer_port: {}, indexer_database: {}, indexer_user: {}}}",
+            self.clickhouse_url, self.clickhouse_user, self.clickhouse_password, self.indexer_host, self.indexer_port, self.indexer_database, self.indexer_user
+        )
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]

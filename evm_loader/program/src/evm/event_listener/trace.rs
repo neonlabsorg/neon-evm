@@ -194,6 +194,10 @@ impl VMTracer for ExecutiveVMTracer {
     fn drain(mut self) -> Option<VMTrace> {
         self.data.subs.pop()
     }
+
+    fn copy_vm_trace(&self) -> Option<VMTrace> {
+        self.data.subs.clone().pop()
+    }
 }
 
 // ethcore/src/trace/mod.rs
@@ -222,6 +226,10 @@ pub trait VMTracer: Send {
 
     /// Consumes self and returns the VM trace.
     fn drain(self) -> Option<Self::Output>;
+
+    /// Copy the VM trace.
+    /// This is used to get the VM trace without consuming the tracer.
+    fn copy_vm_trace(&self) -> Option<Self::Output>;
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]

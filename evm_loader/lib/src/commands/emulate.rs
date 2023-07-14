@@ -4,7 +4,10 @@ use ethnum::U256;
 use evm_loader::{
     account_storage::AccountStorage,
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
-    evm::{ExitStatus, Machine},
+    evm::{
+        event_listener::trace::{FullTraceData, VMTrace},
+        ExitStatus, Machine,
+    },
     executor::{Action, ExecutorState},
     gasometer::LAMPORTS_PER_SIGNATURE,
     types::{Address, Transaction},
@@ -31,6 +34,8 @@ pub struct EmulateReturn {
     pub steps_executed: u64,
     pub used_gas: u64,
     pub actions: Vec<Action>,
+    pub vm_trace: Option<VMTrace>,
+    pub full_trace_data: Vec<FullTraceData>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -63,7 +68,7 @@ pub async fn execute(
         ..Transaction::default()
     };
 
-    let (exit_status, actions, steps_executed) = {
+    let (exit_status, actions, steps_executed, vm_trace, full_trace_data) = {
         let mut backend = ExecutorState::new(&storage);
         let mut evm = Machine::new(trx, tx_params.from, &mut backend)?;
 
@@ -71,9 +76,10 @@ pub async fn execute(
         if result == ExitStatus::StepLimit {
             return Err(NeonError::TooManySteps);
         }
+        let (vm_trace, full_trace_data) = evm.get_trace_data();
 
         let actions = backend.into_actions();
-        (result, actions, steps_executed)
+        (result, actions, steps_executed, vm_trace, full_trace_data)
     };
 
     debug!("Execute done, result={exit_status:?}");
@@ -114,6 +120,8 @@ pub async fn execute(
         steps_executed,
         used_gas: steps_gas + begin_end_gas + actions_gas + accounts_gas,
         actions,
+        vm_trace,
+        full_trace_data,
     };
 
     Ok(result)

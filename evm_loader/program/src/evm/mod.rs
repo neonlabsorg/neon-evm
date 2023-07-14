@@ -36,7 +36,10 @@ mod utils;
 use self::{database::Database, memory::Memory, stack::Stack};
 
 #[cfg(feature = "tracing")]
-use crate::evm::event_listener::tracer::Tracer;
+use {
+    event_listener::trace::{FullTraceData, VMTrace},
+    event_listener::tracer::Tracer,
+};
 
 pub use buffer::Buffer;
 pub use precompile::is_precompile_address;
@@ -352,6 +355,12 @@ impl<B: Database> Machine<B> {
         });
 
         Ok((status, step))
+    }
+
+    #[cfg(feature = "tracing")]
+    #[must_use]
+    pub fn get_trace_data(&self) -> (Option<VMTrace>, Vec<FullTraceData>) {
+        self.tracer.as_ref().borrow().copy_traces()
     }
 
     fn fork(

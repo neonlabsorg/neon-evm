@@ -1,6 +1,5 @@
 use crate::{commands::emulate, context::Context, types::TxParams, Config, NeonResult};
 use evm_loader::evm::event_listener::trace::TracedCall;
-use evm_loader::evm::event_listener::tracer::Tracer;
 use evm_loader::types::Address;
 use solana_sdk::pubkey::Pubkey;
 
@@ -17,9 +16,7 @@ pub async fn execute(
     accounts: &[Address],
     solana_accounts: &[Pubkey],
 ) -> NeonResult<TraceReturn> {
-    let tracer = Tracer::new();
-
-    emulate::execute(
+    let result = emulate::execute(
         config,
         context,
         tx,
@@ -31,11 +28,9 @@ pub async fn execute(
     )
     .await?;
 
-    let (vm_trace, full_trace_data) = tracer.into_traces();
-
     let trace = TracedCall {
-        vm_trace,
-        full_trace_data,
+        vm_trace: result.vm_trace,
+        full_trace_data: result.full_trace_data,
         used_gas: 0,
     };
 

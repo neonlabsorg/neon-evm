@@ -16,7 +16,6 @@ pub use neon_lib::rpc;
 pub use neon_lib::syscall_stubs;
 pub use neon_lib::types;
 
-use actix_web::web::Data;
 use std::sync::Arc;
 use std::{env, net::SocketAddr, str::FromStr};
 

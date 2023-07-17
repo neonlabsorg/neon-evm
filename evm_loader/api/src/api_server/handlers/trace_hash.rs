@@ -2,6 +2,7 @@ use std::convert::Into;
 
 use crate::{context, types::request_models::TraceHashRequestModel, NeonApiState};
 use axum::{http::StatusCode, Json};
+use neon_lib::commands::trace::trace_transaction;
 
 use super::{parse_emulation_params, process_error, process_result};
 
@@ -9,7 +10,7 @@ pub async fn trace_hash(
     axum::extract::State(state): axum::extract::State<NeonApiState>,
     Json(trace_hash_request): Json<TraceHashRequestModel>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let (rpc_client, blocking_rpc_client) = match context::build_hash_rpc_client(
+    let rpc_client = match context::build_hash_rpc_client(
         &state.config,
         &trace_hash_request.emulate_hash_request.hash,
     )

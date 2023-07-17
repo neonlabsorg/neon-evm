@@ -1,6 +1,3 @@
-use actix_web::http::StatusCode;
-use actix_web::{post, web, Responder};
-
 use crate::{
     api_server::handlers::process_error,
     commands::trace::trace_block,
@@ -8,27 +5,23 @@ use crate::{
     types::{request_models::TraceNextBlockRequestModel, IndexerDb},
     NeonApiState,
 };
+use axum::http::StatusCode;
+use axum::Json;
+use std::sync::Arc;
 
 use super::{parse_emulation_params, process_result};
 
-#[post("/trace-next-block")]
-#[allow(clippy::unused_async)]
 pub async fn trace_next_block(
-    state: web::Data<NeonApiState>,
-    web::Json(trace_next_block_request): web::Json<TraceNextBlockRequestModel>,
-) -> impl Responder {
-    let signer = match context::build_signer(&state.config) {
-        Ok(signer) => signer,
-        Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
-    };
-
+    axum::extract::State(state): axum::extract::State<NeonApiState>,
+    Json(trace_next_block_request): Json<TraceNextBlockRequestModel>,
+) -> (StatusCode, Json<serde_json::Value>) {
     let rpc_client =
         match context::build_call_db_client(&state.config, trace_next_block_request.slot) {
             Ok(rpc_client) => rpc_client,
             Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
         };
 
-    let context = context::create(rpc_client, signer);
+    let context = context::create(rpc_client, Arc::clone(&state.config));
 
     let (token, chain, steps, accounts, solana_accounts) = parse_emulation_params(
         &state.config,

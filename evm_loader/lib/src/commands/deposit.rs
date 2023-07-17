@@ -38,7 +38,7 @@ pub async fn execute(
     let evm_pool_pubkey = get_associated_token_address(&evm_token_authority, &token_mint_id);
 
     let instructions = vec![
-        spl_approve_instruction(signer.pubkey(), signer_token_pubkey, ether_pubkey, amount),
+        spl_approve_instruction(signer.pubkey(), signer_token_pubkey, ether_pubkey, amount)?,
         deposit_instruction(
             evm_loader,
             signer.pubkey(),
@@ -46,7 +46,7 @@ pub async fn execute(
             evm_pool_pubkey,
             ether_address,
             ether_pubkey,
-        )?,
+        ),
     ];
 
     let mut finalize_message = Message::new(&instructions, Some(&signer.pubkey()));
@@ -113,5 +113,5 @@ fn deposit_instruction(
             AccountMeta::new(signer, true),
             AccountMeta::new_readonly(system_program::id(), false),
         ],
-    ))
+    )
 }

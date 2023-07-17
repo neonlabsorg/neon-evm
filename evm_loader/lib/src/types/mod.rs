@@ -7,9 +7,9 @@ mod tracer_ch_db;
 pub use indexer_db::IndexerDb;
 use lazy_static::lazy_static;
 use solana_sdk::pubkey::Pubkey;
-use std::future::Future;
 use std::str::FromStr;
 use tokio::runtime::Runtime;
+use tokio::task::block_in_place;
 pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use {

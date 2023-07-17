@@ -27,6 +27,7 @@ use solana_client::client_error::{ClientError, ClientErrorKind};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
+use std::sync::Arc;
 use tokio::time::Instant;
 
 use crate::{
@@ -46,8 +47,9 @@ async fn run<'a>(options: &'a ArgMatches<'a>) -> NeonCliResult {
         .value_of("slot")
         .map(|slot_str| slot_str.parse().expect("slot parse error"));
     let (cmd, params) = options.subcommand();
-    let config = config::create(options)?;
-    let context = context::create_from_config_and_options(options, &config, &slot).await?;
+    let config = Arc::new(config::create(options)?);
+    let context: Context =
+        context::create_from_config_and_options(options, config.clone(), &slot).await?;
 
     execute(cmd, params, &config, &context, slot).await
 }

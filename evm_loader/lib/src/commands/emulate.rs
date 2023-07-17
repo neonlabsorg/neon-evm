@@ -17,7 +17,7 @@ use crate::{
     rpc::Rpc,
     syscall_stubs::Stubs,
     types::{trace::TraceCallConfig, TxParams},
-    NeonResult,
+    Config, NeonResult,
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
@@ -174,8 +174,8 @@ pub(crate) async fn emulate_trx<'a>(
     let max_iterations = (steps_executed + (EVM_STEPS_MIN - 1)) / EVM_STEPS_MIN;
     let steps_gas = max_iterations * (LAMPORTS_PER_SIGNATURE + PAYMENT_TO_TREASURE);
     let begin_end_gas = 2 * LAMPORTS_PER_SIGNATURE;
-    let actions_gas = storage.apply_actions(&actions).await;
-    let accounts_gas = storage.apply_accounts_operations(accounts_operations).await;
+    let actions_gas = block(storage.apply_actions(&actions));
+    let accounts_gas = block(storage.apply_accounts_operations(accounts_operations));
     info!("Gas - steps: {steps_gas}, actions: {actions_gas}, accounts: {accounts_gas}");
 
     let (result, status) = match exit_status {
@@ -187,7 +187,7 @@ pub(crate) async fn emulate_trx<'a>(
 
     Ok(EmulationResult {
         result,
-        exit_status: status.to_owned(),
+        exit_status: status.to_string(),
         steps_executed,
         used_gas: steps_gas + begin_end_gas + actions_gas + accounts_gas,
         actions,

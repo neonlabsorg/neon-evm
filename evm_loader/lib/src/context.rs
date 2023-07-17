@@ -36,16 +36,25 @@ pub fn truncate_0x(in_str: &str) -> &str {
 
 pub struct Context {
     pub rpc_client: Arc<dyn rpc::Rpc + Send + Sync>,
-    pub signer: Arc<dyn Signer>,
+    signer_config: Arc<Config>,
+}
+
+impl Context {
+    pub fn signer(&self) -> Result<Box<dyn Signer>, NeonError> {
+        build_signer(&self.signer_config)
+    }
 }
 
 #[must_use]
-pub fn create(rpc_client: Arc<dyn rpc::Rpc + Send + Sync>, signer: Arc<dyn Signer>) -> Context {
-    Context { rpc_client, signer }
+pub fn create(rpc_client: Arc<dyn rpc::Rpc + Send + Sync>, signer_config: Arc<Config>) -> Context {
+    Context {
+        rpc_client,
+        signer_config,
+    }
 }
 
 /// # Errors
-pub fn build_signer(config: &Config) -> Result<Arc<dyn Signer>, NeonError> {
+pub fn build_signer(config: &Config) -> Result<Box<dyn Signer>, NeonError> {
     let mut wallet_manager = None;
 
     let signer = signer_from_path(
@@ -56,7 +65,7 @@ pub fn build_signer(config: &Config) -> Result<Arc<dyn Signer>, NeonError> {
     )
     .map_err(|_| NeonError::KeypairNotSpecified)?;
 
-    Ok(Arc::from(signer))
+    Ok(signer)
 }
 
 /// # Errors

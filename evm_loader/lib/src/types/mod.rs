@@ -21,7 +21,6 @@ use {
     serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer},
     std::{fmt, ops::Deref},
     thiserror::Error,
-    // tokio::task::block_in_place,
     tokio_postgres::{connect, Client},
 };
 
@@ -180,14 +179,13 @@ lazy_static! {
     pub static ref RT: Runtime = Runtime::new().unwrap();
 }
 
-pub fn block<F, Fut>(f: F) -> Fut::Output
+pub fn block<Fu>(f: Fu) -> Fu::Output
 where
-    F: FnOnce() -> Fut,
-    Fut: Future,
+    Fu: std::future::Future,
 {
     match tokio::runtime::Handle::try_current() {
-        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(f())),
-        Err(_) => RT.block_on(f()),
+        Ok(handle) => block_in_place(|| handle.block_on(f)),
+        Err(_) => RT.block_on(f),
     }
 }
 

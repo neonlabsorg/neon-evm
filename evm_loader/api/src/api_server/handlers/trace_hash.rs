@@ -1,38 +1,15 @@
 use std::convert::Into;
 
-use actix_web::{http::StatusCode, post, web, Responder};
-
-use crate::commands::trace::trace_transaction;
 use crate::{context, types::request_models::TraceHashRequestModel, NeonApiState};
+use axum::{http::StatusCode, Json};
 
 use super::{parse_emulation_params, process_error, process_result};
 
-#[post("/trace-hash")]
 pub async fn trace_hash(
-    state: web::Data<NeonApiState>,
-    trace_hash_request: web::Json<TraceHashRequestModel>,
-) -> impl Responder {
-    trace_hash_internal(state, trace_hash_request).await
-}
-
-#[post("/trace_hash")]
-pub async fn trace_hash_obsolete(
-    state: web::Data<NeonApiState>,
-    trace_hash_request: web::Json<TraceHashRequestModel>,
-) -> impl Responder {
-    trace_hash_internal(state, trace_hash_request).await
-}
-
-async fn trace_hash_internal(
-    state: web::Data<NeonApiState>,
-    web::Json(trace_hash_request): web::Json<TraceHashRequestModel>,
-) -> impl Responder {
-    let signer = match context::build_signer(&state.config) {
-        Ok(signer) => signer,
-        Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
-    };
-
-    let rpc_client = match context::build_hash_rpc_client(
+    axum::extract::State(state): axum::extract::State<NeonApiState>,
+    Json(trace_hash_request): Json<TraceHashRequestModel>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let (rpc_client, blocking_rpc_client) = match context::build_hash_rpc_client(
         &state.config,
         &trace_hash_request.emulate_hash_request.hash,
     )
@@ -52,7 +29,7 @@ async fn trace_hash_internal(
         }
     };
 
-    let context = context::create(rpc_client, signer);
+    let context = context::create(rpc_client, state.config.clone());
 
     let (token, chain, steps, accounts, solana_accounts) = parse_emulation_params(
         &state.config,

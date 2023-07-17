@@ -1,6 +1,7 @@
 use crate::rpc::Rpc;
 use solana_client::{
-    client_error::Result as SolanaClientResult, rpc_config::RpcSendTransactionConfig,
+    client_error::{ClientError, Result as SolanaClientResult},
+    rpc_config::RpcSendTransactionConfig,
 };
 use solana_sdk::{
     commitment_config::{CommitmentConfig, CommitmentLevel},

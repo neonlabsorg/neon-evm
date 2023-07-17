@@ -46,7 +46,7 @@ pub async fn execute(
             evm_pool_pubkey,
             ether_address,
             ether_pubkey,
-        ),
+        )?,
     ];
 
     let mut finalize_message = Message::new(&instructions, Some(&signer.pubkey()));
@@ -75,7 +75,7 @@ fn spl_approve_instruction(
     source_pubkey: Pubkey,
     delegate_pubkey: Pubkey,
     amount: u64,
-) -> Instruction {
+) -> NeonResult<Instruction> {
     use spl_token::instruction::TokenInstruction;
 
     let accounts = vec![
@@ -86,11 +86,11 @@ fn spl_approve_instruction(
 
     let data = TokenInstruction::Approve { amount }.pack();
 
-    Instruction {
+    Ok(Instruction {
         program_id: spl_token::id(),
         accounts,
         data,
-    }
+    })
 }
 
 /// Returns instruction to deposit NEON tokens.
@@ -113,5 +113,5 @@ fn deposit_instruction(
             AccountMeta::new(signer, true),
             AccountMeta::new_readonly(system_program::id(), false),
         ],
-    )
+    ))
 }

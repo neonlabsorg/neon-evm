@@ -319,7 +319,7 @@ impl ClickHouseDb {
 
         if row.is_none() {
             let time_start = Instant::now();
-            row = self.get_last_older_account_row(&pubkey_str).await?;
+            row = self.get_older_account_row_at(&pubkey_str, slot).await?;
             let execution_time = Instant::now().duration_since(time_start);
             info!(
                 "get_account_at {{ pubkey: {pubkey}, slot: {slot} }} sql(2) returned {row:?}, time: {} sec",
@@ -340,11 +340,15 @@ impl ClickHouseDb {
         result
     }
 
-    async fn get_last_older_account_row(&self, pubkey: &str) -> ChResult<Option<AccountRow>> {
+    async fn get_older_account_row_at(
+        &self,
+        pubkey: &str,
+        slot: u64,
+    ) -> ChResult<Option<AccountRow>> {
         let query = r#"
             SELECT owner, lamports, executable, rent_epoch, data, txn_signature
             FROM events.older_account_distributed
-            WHERE pubkey = ?
+            WHERE pubkey = ? AND slot <= ?
             ORDER BY slot DESC
             LIMIT 1
         "#;
@@ -352,6 +356,7 @@ impl ClickHouseDb {
             self.client
                 .query(query)
                 .bind(pubkey)
+                .bind(slot)
                 .fetch_one::<AccountRow>()
                 .await,
         )

@@ -15,6 +15,7 @@ pub mod collect_treasury;
 pub mod create_ether_account;
 pub mod deposit;
 pub mod emulate;
+pub mod emulate_tracer;
 pub mod get_ether_account_data;
 pub mod get_neon_elf;
 pub mod get_storage_at;

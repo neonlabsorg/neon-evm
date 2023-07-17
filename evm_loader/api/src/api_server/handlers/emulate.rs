@@ -2,8 +2,8 @@ use axum::{http::StatusCode, Json};
 use std::convert::Into;
 
 use crate::{
-    commands::emulate as EmulateCommand, context, types::request_models::EmulateRequestModel,
-    NeonApiState,
+    commands::emulate_tracer as EmulateCommand, context,
+    types::request_models::EmulateRequestModel, NeonApiState,
 };
 
 use super::{parse_emulation_params, process_error, process_result};

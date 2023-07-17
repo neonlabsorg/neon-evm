@@ -14,7 +14,7 @@ use solana_sdk::signature::Signer;
 pub async fn build_hash_rpc_client(
     config: &Config,
     hash: &str,
-) -> Result<Arc<dyn rpc::Rpc + Send + Sync>, NeonError> {
+) -> Result<Arc<dyn rpc::Rpc>, NeonError> {
     let hash = <[u8; 32]>::from_hex(truncate_0x(hash))?;
 
     Ok(Arc::new(
@@ -35,7 +35,7 @@ pub fn truncate_0x(in_str: &str) -> &str {
 }
 
 pub struct Context {
-    pub rpc_client: Arc<dyn rpc::Rpc + Send + Sync>,
+    pub rpc_client: Arc<dyn rpc::Rpc>,
     signer_config: Arc<Config>,
 }
 
@@ -46,7 +46,7 @@ impl Context {
 }
 
 #[must_use]
-pub fn create(rpc_client: Arc<dyn rpc::Rpc + Send + Sync>, signer_config: Arc<Config>) -> Context {
+pub fn create(rpc_client: Arc<dyn rpc::Rpc>, signer_config: Arc<Config>) -> Context {
     Context {
         rpc_client,
         signer_config,
@@ -72,7 +72,7 @@ pub fn build_signer(config: &Config) -> Result<Box<dyn Signer>, NeonError> {
 pub fn build_rpc_client(
     config: &Config,
     slot: Option<u64>,
-) -> Result<Arc<dyn rpc::Rpc + Send + Sync>, NeonError> {
+) -> Result<Arc<dyn rpc::Rpc>, NeonError> {
     if let Some(slot) = slot {
         return build_call_db_client(config, slot);
     }
@@ -84,10 +84,7 @@ pub fn build_rpc_client(
 }
 
 /// # Errors
-pub fn build_call_db_client(
-    config: &Config,
-    slot: u64,
-) -> Result<Arc<dyn rpc::Rpc + Send + Sync>, NeonError> {
+pub fn build_call_db_client(config: &Config, slot: u64) -> Result<Arc<dyn rpc::Rpc>, NeonError> {
     let config = config
         .db_config
         .clone()

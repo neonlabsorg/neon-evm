@@ -19,7 +19,7 @@ pub async fn create_from_config_and_options<'a>(
 ) -> Result<Context, NeonError> {
     let (cmd, params) = options.subcommand();
 
-    let rpc_client: Arc<dyn rpc::Rpc + Send + Sync> = match (cmd, params) {
+    let rpc_client: Arc<dyn rpc::Rpc> = match (cmd, params) {
         ("emulate-hash" | "trace-hash" | "emulate_hash" | "trace_hash", Some(params)) => {
             let hash = params.value_of("hash").expect("hash not found");
             let hash = <[u8; 32]>::from_hex(truncate_0x(hash)).expect("hash cast error");

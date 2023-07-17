@@ -86,11 +86,8 @@ pub async fn execute(
         trace_call_config,
     )
     .await?;
-    let accounts = storage.accounts.read().await.values().cloned().collect();
-    let solana_accounts = storage
-        .solana_accounts
-        .read()
-        .await
+    let accounts = block(storage.accounts.read()).values().cloned().collect();
+    let solana_accounts = block(storage.solana_accounts.read())
         .values()
         .cloned()
         .collect();

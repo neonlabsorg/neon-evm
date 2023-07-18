@@ -58,6 +58,9 @@ const_format = { version = "0.2.21" }
 cfg-if = { version = "1.0" }
 log = { version = "0.4", default-features = false, optional = true }
 
+[dev-dependencies]
+serde_json = "1"
+
 [lib]
 crate-type = ["cdylib", "lib"]
 

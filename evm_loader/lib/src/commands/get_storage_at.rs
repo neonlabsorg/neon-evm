@@ -17,12 +17,14 @@ use crate::{
     NeonResult,
 };
 
+pub type GetStorageAtReturn = [u8; 32];
+
 pub async fn execute(
     rpc_client: &dyn Rpc,
     evm_loader: &Pubkey,
     ether_address: Address,
     index: &U256,
-) -> NeonResult<[u8; 32]> {
+) -> NeonResult<GetStorageAtReturn> {
     let value = if let (solana_address, Some(mut account)) =
         EmulatorAccountStorage::get_account_from_solana(rpc_client, evm_loader, &ether_address)
             .await

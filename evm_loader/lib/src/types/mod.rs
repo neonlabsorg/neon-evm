@@ -4,6 +4,7 @@ pub mod request_models;
 pub mod trace;
 mod tracer_ch_db;
 
+pub use evm_loader::types::Address;
 pub use indexer_db::IndexerDb;
 use lazy_static::lazy_static;
 use solana_sdk::pubkey::Pubkey;
@@ -15,7 +16,6 @@ pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 use {
     crate::types::trace::{TraceCallConfig, TraceConfig},
     ethnum::U256,
-    evm_loader::types::Address,
     hex::FromHex,
     postgres::NoTls,
     serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer},

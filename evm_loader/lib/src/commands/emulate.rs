@@ -48,18 +48,6 @@ where
     s.serialize_str(&hex::encode(value))
 }
 
-#[derive(Serialize)]
-pub struct EmulateReturn {
-    pub accounts: Vec<NeonAccount>,
-    pub solana_accounts: Vec<SolanaAccount>,
-    pub token_accounts: Vec<()>,
-    pub result: String,
-    pub exit_status: String,
-    pub steps_executed: u64,
-    pub used_gas: u64,
-    pub actions: Vec<Action>,
-}
-
 #[allow(clippy::too_many_arguments)]
 pub async fn execute(
     rpc_client: &dyn Rpc,

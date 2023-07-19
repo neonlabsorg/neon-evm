@@ -9,6 +9,11 @@ pub async fn trace(
     axum::extract::State(state): axum::extract::State<NeonApiState>,
     Json(trace_request): Json<TraceRequestModel>,
 ) -> (StatusCode, Json<serde_json::Value>) {
+    let signer = match context::build_signer(&state.config) {
+        Ok(signer) => signer,
+        Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
+    };
+
     let tx = trace_request.emulate_request.tx_params.into();
 
     let (rpc_client, blocking_rpc_client) =
@@ -17,7 +22,7 @@ pub async fn trace(
             Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
         };
 
-    let context = context::create(rpc_client, state.config.clone(), blocking_rpc_client);
+    let context = context::create(rpc_client, signer, blocking_rpc_client);
 
     let (token, chain, steps, accounts, solana_accounts) = parse_emulation_params(
         &state.config,

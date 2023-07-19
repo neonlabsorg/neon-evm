@@ -27,7 +27,7 @@ type NeonCliResult = Result<serde_json::Value, NeonError>;
 async fn run<'a>(options: &'a ArgMatches<'a>) -> NeonCliResult {
     let (cmd, params) = options.subcommand();
     let config = Arc::new(config::create(options)?);
-    let context: Context = context::create_from_config_and_options(options, config.clone()).await?;
+    let context: Context = context::create_from_config_and_options(options, &config).await?;
 
     commands::execute(cmd, params, config.as_ref(), &context).await
 }

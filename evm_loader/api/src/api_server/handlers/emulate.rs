@@ -12,6 +12,11 @@ pub async fn emulate(
     axum::extract::State(state): axum::extract::State<NeonApiState>,
     Json(emulate_request): Json<EmulateRequestModel>,
 ) -> (StatusCode, Json<serde_json::Value>) {
+    let signer = match context::build_signer(&state.config) {
+        Ok(signer) => signer,
+        Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
+    };
+
     let tx = emulate_request.tx_params.into();
 
     let (rpc_client, blocking_rpc_client) =
@@ -20,7 +25,7 @@ pub async fn emulate(
             Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
         };
 
-    let context = context::create(rpc_client, state.config.clone(), blocking_rpc_client);
+    let context = context::create(rpc_client, signer, blocking_rpc_client);
 
     let (token, chain, steps, accounts, solana_accounts) =
         parse_emulation_params(&state.config, &context, &emulate_request.emulation_params).await;

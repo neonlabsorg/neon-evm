@@ -45,31 +45,26 @@ pub fn truncate(in_str: &str) -> &str {
 
 pub struct Context {
     pub rpc_client: Arc<dyn rpc::Rpc + Send + Sync>,
-    signer_config: Arc<Config>,
+    pub signer: Arc<dyn Signer + Send + Sync>,
     pub blocking_rpc_client: Option<Arc<BlockingRpcClient>>,
-}
-
-impl Context {
-    pub fn signer(&self) -> Result<Box<dyn Signer>, NeonError> {
-        build_signer(&self.signer_config)
-    }
 }
 
 #[must_use]
 pub fn create(
     rpc_client: Arc<dyn rpc::Rpc + Send + Sync>,
-    signer_config: Arc<Config>,
+    signer: Box<dyn Signer + Send + Sync>,
     blocking_rpc_client: Option<Arc<BlockingRpcClient>>,
 ) -> Context {
+    let signer = Arc::from(signer);
     Context {
         rpc_client,
-        signer_config,
+        signer,
         blocking_rpc_client,
     }
 }
 
 /// # Errors
-pub fn build_signer(config: &Config) -> Result<Box<dyn Signer>, NeonError> {
+pub fn build_signer(config: &Config) -> Result<Box<dyn Signer + Send + Sync>, NeonError> {
     let mut wallet_manager = None;
 
     let signer = signer_from_path(
@@ -79,6 +74,8 @@ pub fn build_signer(config: &Config) -> Result<Box<dyn Signer>, NeonError> {
         &mut wallet_manager,
     )
     .map_err(|_| NeonError::KeypairNotSpecified)?;
+
+    let signer = unsafe { std::mem::transmute(signer) };
 
     Ok(signer)
 }

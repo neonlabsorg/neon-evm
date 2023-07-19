@@ -9,12 +9,14 @@ use neon_lib::rpc::CallDbClient;
 use neon_lib::rpc::TrxDbClient;
 use neon_lib::Config;
 use neon_lib::NeonError;
+use solana_clap_utils::keypair::signer_from_path;
 use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_sdk::signer::Signer;
 
 /// # Errors
 pub async fn create_from_config_and_options<'a>(
     options: &'a ArgMatches<'a>,
-    config: Arc<Config>,
+    config: &'a Config,
 ) -> Result<Context, NeonError> {
     let (cmd, params) = options.subcommand();
 
@@ -64,9 +66,23 @@ pub async fn create_from_config_and_options<'a>(
             }
         };
 
-    Ok(neon_lib::context::create(
+    let mut wallet_manager = None;
+
+    let signer: Arc<dyn Signer> = Arc::from(
+        signer_from_path(
+            options,
+            &config.keypair_path,
+            "keypair",
+            &mut wallet_manager,
+        )
+        .map_err(|_| NeonError::KeypairNotSpecified)?,
+    );
+
+    let signer = unsafe { std::mem::transmute(signer) };
+
+    Ok(Context {
         rpc_client,
-        config.clone(),
+        signer,
         blocking_rpc_client,
-    ))
+    })
 }

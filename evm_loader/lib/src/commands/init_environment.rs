@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 
-use crate::{context::Context, NeonResult};
+use crate::{context::Context, types::block, NeonResult};
 
 use {
     crate::{
@@ -109,14 +109,13 @@ pub async fn execute(
     keys_dir: Option<&str>,
     file: Option<&str>,
 ) -> NeonResult<InitEnvironmentReturn> {
-    let signer = context.signer()?;
     info!(
         "Signer: {}, send_trx: {}, force: {}",
-        signer.pubkey(),
+        context.signer.pubkey(),
         send_trx,
         force
     );
-    let second_signer: Arc<dyn Signer> = Arc::from(context.signer()?);
+    let second_signer = context.signer.clone();
     let fee_payer = config
         .fee_payer
         .as_ref()
@@ -133,8 +132,11 @@ pub async fn execute(
         &bpf_loader_upgradeable::id(),
     )
     .0;
-    let (program_upgrade_authority, program_data) =
-        read_program_data_from_account(config, context, &config.evm_loader).await?;
+    let (program_upgrade_authority, program_data) = block(read_program_data_from_account(
+        config,
+        context,
+        &config.evm_loader,
+    ))?;
     let data = file.map_or(Ok(program_data), read_program_data)?;
     let program_parameters = Parameters::new(read_elf_parameters(config, &data));
 
@@ -154,7 +156,7 @@ pub async fn execute(
 
     //====================== Create NEON-token mint ===================================================================
     let executor_clone = executor.clone();
-    let second_signer = context.signer()?;
+    let second_signer = context.signer.clone();
     let create_token = move |mint: Pubkey, decimals: u8| async move {
         let mint_signer = keys
             .get(&mint)
@@ -188,59 +190,56 @@ pub async fn execute(
 
     let neon_token_mint = program_parameters.get::<Pubkey>("NEON_TOKEN_MINT")?;
     let neon_token_mint_decimals = program_parameters.get::<u8>("NEON_TOKEN_MINT_DECIMALS")?;
-    executor
-        .check_and_create_object(
-            "NEON-token mint",
-            executor
-                .get_account_data_pack::<spl_token::state::Mint>(&spl_token::id(), &neon_token_mint)
-                .await,
-            |mint| async move {
-                if mint.decimals != neon_token_mint_decimals {
-                    error!("Invalid token decimals");
-                    return Err(EnvironmentError::IncorrectTokenDecimals.into());
-                }
-                Ok(None)
-            },
-            || create_token(neon_token_mint, neon_token_mint_decimals),
-        )
-        .await?;
+    block(executor.check_and_create_object(
+        "NEON-token mint",
+        block(
+            executor.get_account_data_pack::<spl_token::state::Mint>(
+                &spl_token::id(),
+                &neon_token_mint,
+            ),
+        ),
+        |mint| async move {
+            if mint.decimals != neon_token_mint_decimals {
+                error!("Invalid token decimals");
+                return Err(EnvironmentError::IncorrectTokenDecimals.into());
+            }
+            Ok(None)
+        },
+        || create_token(neon_token_mint, neon_token_mint_decimals),
+    ))?;
 
-    executor.checkpoint(config.commitment).await?;
+    block(executor.checkpoint(config.commitment))?;
 
     //====================== Create 'Deposit' NEON-token balance ======================================================
     let (deposit_authority, _) = Pubkey::find_program_address(&[b"Deposit"], &config.evm_loader);
     let deposit_address = get_associated_token_address(&deposit_authority, &neon_token_mint);
-    executor
-        .check_and_create_object(
-            "NEON Deposit balance",
-            executor
-                .get_account_data_pack::<spl_token::state::Account>(
-                    &spl_token::id(),
-                    &deposit_address,
-                )
-                .await,
-            |account| async move {
-                if account.mint != neon_token_mint || account.owner != deposit_authority {
-                    Err(EnvironmentError::InvalidSplTokenAccount(deposit_address).into())
-                } else {
-                    Ok(None)
-                }
-            },
-            || async {
-                let transaction = executor
-                    .create_transaction_with_payer_only(&[
-                        spl_associated_token_account::instruction::create_associated_token_account(
-                            &executor.fee_payer.pubkey(),
-                            &deposit_authority,
-                            &neon_token_mint,
-                            &spl_token::id(),
-                        ),
-                    ])
-                    .await?;
-                Ok(Some(transaction))
-            },
-        )
-        .await?;
+    block(executor.check_and_create_object(
+        "NEON Deposit balance",
+        block(executor.get_account_data_pack::<spl_token::state::Account>(
+            &spl_token::id(),
+            &deposit_address,
+        )),
+        |account| async move {
+            if account.mint != neon_token_mint || account.owner != deposit_authority {
+                Err(EnvironmentError::InvalidSplTokenAccount(deposit_address).into())
+            } else {
+                Ok(None)
+            }
+        },
+        || async {
+            let transaction = executor
+                .create_transaction_with_payer_only(&[
+                    spl_associated_token_account::instruction::create_associated_token_account(
+                        &executor.fee_payer.pubkey(),
+                        &deposit_authority,
+                        &neon_token_mint,
+                        &spl_token::id(),
+                    ),
+                ])
+                .await?;
+            Ok(Some(transaction))
+        },
+    ))?;
 
     //====================== Create main treasury balance =============================================================
     let treasury_pool_seed = program_parameters.get::<String>("NEON_POOL_SEED")?;
@@ -252,88 +251,78 @@ pub async fn execute(
         return Err(EnvironmentError::TreasuryPoolSeedMismatch.into());
     }
     let main_balance_address = MainTreasury::address(&config.evm_loader).0;
-    executor
-        .check_and_create_object(
-            "Main treasury pool",
-            executor.get_account(&main_balance_address).await,
-            |_| async move { Ok(None) },
-            || async {
-                if program_upgrade_authority != Some(signer.pubkey()) {
-                    return Err(EnvironmentError::IncorrectProgramAuthority.into());
-                }
-                let transaction = executor
-                    .create_transaction(
-                        &[Instruction::new_with_bincode(
-                            config.evm_loader,
-                            &(0x29_u8), // evm_loader::instruction::EvmInstruction::CreateMainTreasury
-                            vec![
-                                AccountMeta::new(main_balance_address, false),
-                                AccountMeta::new_readonly(program_data_address, false),
-                                AccountMeta::new_readonly(signer.pubkey(), true),
-                                AccountMeta::new_readonly(spl_token::id(), false),
-                                AccountMeta::new_readonly(system_program::id(), false),
-                                AccountMeta::new_readonly(native_mint::id(), false),
-                                AccountMeta::new(executor.fee_payer.pubkey(), true),
-                            ],
-                        )],
-                        &[&*signer],
-                    )
-                    .await?;
-                Ok(Some(transaction))
-            },
-        )
-        .await?;
+    block(executor.check_and_create_object(
+        "Main treasury pool",
+        block(executor.get_account(&main_balance_address)),
+        |_| async move { Ok(None) },
+        || async {
+            if program_upgrade_authority != Some(context.signer.pubkey()) {
+                return Err(EnvironmentError::IncorrectProgramAuthority.into());
+            }
+            let transaction = executor
+                .create_transaction(
+                    &[Instruction::new_with_bincode(
+                        config.evm_loader,
+                        &(0x29_u8), // evm_loader::instruction::EvmInstruction::CreateMainTreasury
+                        vec![
+                            AccountMeta::new(main_balance_address, false),
+                            AccountMeta::new_readonly(program_data_address, false),
+                            AccountMeta::new_readonly(context.signer.pubkey(), true),
+                            AccountMeta::new_readonly(spl_token::id(), false),
+                            AccountMeta::new_readonly(system_program::id(), false),
+                            AccountMeta::new_readonly(native_mint::id(), false),
+                            AccountMeta::new(executor.fee_payer.pubkey(), true),
+                        ],
+                    )],
+                    &[(&*context.signer) as &dyn Signer],
+                )
+                .await?;
+            Ok(Some(transaction))
+        },
+    ))?;
 
     //====================== Create auxiliary treasury balances =======================================================
     let treasury_pool_count = program_parameters.get::<u32>("NEON_POOL_COUNT")?;
     for i in 0..treasury_pool_count {
-        let minimum_balance = context
-            .rpc_client
-            .get_minimum_balance_for_rent_exemption(0)
-            .await?;
+        let minimum_balance = block(context.rpc_client.get_minimum_balance_for_rent_exemption(0))?;
         let aux_balance_address = Treasury::address(&config.evm_loader, i).0;
         let executor_clone = executor.clone();
-        executor
-            .check_and_create_object(
-                &format!("Aux treasury pool {i}"),
-                executor.get_account(&aux_balance_address).await,
-                move |v| async move {
-                    if v.lamports < minimum_balance {
-                        let transaction = executor_clone
-                            .create_transaction_with_payer_only(&[system_instruction::transfer(
-                                &executor_clone.fee_payer.pubkey(),
-                                &aux_balance_address,
-                                minimum_balance - v.lamports,
-                            )])
-                            .await?;
-                        Ok(Some(transaction))
-                    } else {
-                        Ok(None)
-                    }
-                },
-                || async {
-                    let transaction = executor
+        block(executor.check_and_create_object(
+            &format!("Aux treasury pool {i}"),
+            block(executor.get_account(&aux_balance_address)),
+            move |v| async move {
+                if v.lamports < minimum_balance {
+                    let transaction = executor_clone
                         .create_transaction_with_payer_only(&[system_instruction::transfer(
-                            &executor.fee_payer.pubkey(),
+                            &executor_clone.fee_payer.pubkey(),
                             &aux_balance_address,
-                            minimum_balance,
+                            minimum_balance - v.lamports,
                         )])
                         .await?;
                     Ok(Some(transaction))
-                },
-            )
-            .await?;
+                } else {
+                    Ok(None)
+                }
+            },
+            || async {
+                let transaction = executor
+                    .create_transaction_with_payer_only(&[system_instruction::transfer(
+                        &executor.fee_payer.pubkey(),
+                        &aux_balance_address,
+                        minimum_balance,
+                    )])
+                    .await?;
+                Ok(Some(transaction))
+            },
+        ))?;
     }
 
-    executor.checkpoint(context.rpc_client.commitment()).await?;
+    block(executor.checkpoint(context.rpc_client.commitment()))?;
 
-    let stats = executor.stats.read().await;
+    let stats = block(executor.stats.read());
     info!("Stats: {:?}", stats);
 
-    let signatures = executor
-        .signatures
-        .read()
-        .await
+    let signatures = block(executor.signatures.read())
         .iter()
         .map(|s| bs58::encode(s).into_string())
         .collect::<Vec<String>>();

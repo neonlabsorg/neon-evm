@@ -9,6 +9,7 @@ use solana_sdk::{
     message::Message,
     pubkey::Pubkey,
     signature::Signature,
+    signer::Signer,
     system_program,
     transaction::Transaction,
 };
@@ -27,11 +28,11 @@ pub async fn execute(
     ether_address: &Address,
 ) -> NeonResult<DepositReturn> {
     let (ether_pubkey, _) = ether_address.find_solana_address(&config.evm_loader);
-    let signer = context.signer()?;
 
     let token_mint_id = evm_loader::config::token_mint::id();
 
-    let signer_token_pubkey = get_associated_token_address(&signer.pubkey(), &token_mint_id);
+    let signer_token_pubkey =
+        get_associated_token_address(&context.signer.pubkey(), &token_mint_id);
     let evm_token_authority = Pubkey::find_program_address(&[b"Deposit"], &config.evm_loader).0;
     let evm_pool_pubkey = get_associated_token_address(&evm_token_authority, &token_mint_id);
 
@@ -47,7 +48,7 @@ pub async fn execute(
         )?,
     ];
 
-    let mut finalize_message = Message::new(&instructions, Some(&signer.pubkey()));
+    let mut finalize_message = Message::new(&instructions, Some(&context.signer.pubkey()));
     let blockhash = context.rpc_client.get_latest_blockhash().await?;
     finalize_message.recent_blockhash = blockhash;
 
@@ -56,11 +57,11 @@ pub async fn execute(
         .as_ref()
         .expect("Blocking RPC client not initialized");
 
-    check_account_for_fee(client, &signer.pubkey(), &finalize_message)?;
+    check_account_for_fee(client, &context.signer.pubkey(), &finalize_message)?;
 
     let mut finalize_tx = Transaction::new_unsigned(finalize_message);
 
-    finalize_tx.try_sign(&[&*signer], blockhash)?;
+    finalize_tx.try_sign(&[(&*context.signer) as &dyn Signer], blockhash)?;
     debug!("signed: {:x?}", finalize_tx);
 
     let signature = context
@@ -86,7 +87,7 @@ fn spl_approve_instruction(
     let accounts = vec![
         AccountMeta::new(source_pubkey, false),
         AccountMeta::new_readonly(delegate_pubkey, false),
-        AccountMeta::new_readonly(context.signer()?.pubkey(), true),
+        AccountMeta::new_readonly(context.signer.pubkey(), true),
     ];
 
     let data = TokenInstruction::Approve { amount }.pack();
@@ -115,7 +116,7 @@ fn deposit_instruction(
             AccountMeta::new(destination_pubkey, false),
             AccountMeta::new(ether_account_pubkey, false),
             AccountMeta::new_readonly(spl_token::id(), false),
-            AccountMeta::new(context.signer()?.pubkey(), true),
+            AccountMeta::new(context.signer.pubkey(), true),
             AccountMeta::new_readonly(system_program::id(), false),
         ],
     ))

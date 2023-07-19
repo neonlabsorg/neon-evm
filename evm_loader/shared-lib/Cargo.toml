@@ -1,0 +1,17 @@
+[package]
+name = "neon-shared-lib"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "neon_shared_lib"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+abi_stable = "0.11.1"
+async-ffi = { version = "0.4.1", features = ["abi_stable"] }
+neon-interface = { git = "ssh://git@github.com/neonlabsorg/neon-interface.git", rev = "b7050977563a5d5fe27f6e1852fcf311fa92f795" }
+neon-lib = { path = "../lib" }
+serde_json = "1.0.85"

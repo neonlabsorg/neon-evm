@@ -1,4 +1,5 @@
 use log::{debug, info};
+use std::fmt::Formatter;
 
 use ethnum::U256;
 use evm_loader::{
@@ -24,7 +25,8 @@ use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulationResult {
-    #[serde(serialize_with = "serde_hex")]
+    #[serde(serialize_with = "serde_hex_serialize")]
+    #[serde(deserialize_with = "serde_hex_deserialize")]
     pub result: Vec<u8>,
     pub exit_status: String,
     pub steps_executed: u64,
@@ -41,11 +43,36 @@ pub struct EmulationResultWithAccounts {
     pub emulation_result: EmulationResult,
 }
 
-fn serde_hex<S>(value: &[u8], s: S) -> Result<S::Ok, S::Error>
+fn serde_hex_serialize<S>(value: &[u8], s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
     s.serialize_str(&hex::encode(value))
+}
+
+fn serde_hex_deserialize<'de, D>(d: D) -> Result<Vec<u8>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct StringVisitor;
+    impl<'de> serde::de::Visitor<'de> for StringVisitor {
+        type Value = Vec<u8>;
+
+        fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+            write!(formatter, "a hex-encoded string with even length")
+        }
+
+        fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            hex::decode(s).map_err(|_err| {
+                serde::de::Error::invalid_value(serde::de::Unexpected::Str(s), &self)
+            })
+        }
+    }
+
+    d.deserialize_string(StringVisitor)
 }
 
 #[allow(clippy::too_many_arguments)]

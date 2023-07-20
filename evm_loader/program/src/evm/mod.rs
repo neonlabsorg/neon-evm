@@ -374,6 +374,13 @@ impl<B: Database> Machine<B> {
         #[cfg(feature = "tracing")]
         let tracer = Rc::new(RefCell::new(Tracer::new()));
 
+        #[cfg(feature = "tracing")]
+        {
+            tracer.borrow_mut().event(Event::BeginVM {
+                context,
+                code: execution_code.to_vec(),
+            });
+        }
         let stack;
         let memory;
 

@@ -988,14 +988,6 @@ impl<B: Database> Machine<B> {
             code_address: None,
         };
 
-        #[cfg(feature = "tracing")]
-        {
-            self.tracer.borrow_mut().event(Event::BeginVM {
-                context,
-                code: init_code.to_vec(),
-            });
-        }
-
         self.fork(Reason::Create, context, init_code, Buffer::empty(), None);
         backend.snapshot();
 
@@ -1038,14 +1030,6 @@ impl<B: Database> Machine<B> {
             code_address: Some(address),
         };
 
-        #[cfg(feature = "tracing")]
-        {
-            self.tracer.borrow_mut().event(Event::BeginVM {
-                context,
-                code: code.to_vec(),
-            });
-        }
-
         self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
         backend.snapshot();
 
@@ -1087,14 +1071,6 @@ impl<B: Database> Machine<B> {
             code_address: Some(address),
         };
 
-        #[cfg(feature = "tracing")]
-        {
-            self.tracer.borrow_mut().event(Event::BeginVM {
-                context,
-                code: code.to_vec(),
-            });
-        }
-
         self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
         backend.snapshot();
 
@@ -1128,14 +1104,6 @@ impl<B: Database> Machine<B> {
             ..self.context
         };
 
-        #[cfg(feature = "tracing")]
-        {
-            self.tracer.borrow_mut().event(Event::BeginVM {
-                context,
-                code: code.to_vec(),
-            });
-        }
-
         self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
         backend.snapshot();
 
@@ -1166,14 +1134,6 @@ impl<B: Database> Machine<B> {
             value: U256::ZERO,
             code_address: Some(address),
         };
-
-        #[cfg(feature = "tracing")]
-        {
-            self.tracer.borrow_mut().event(Event::BeginVM {
-                context,
-                code: code.to_vec(),
-            });
-        }
 
         self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
         self.is_static = true;

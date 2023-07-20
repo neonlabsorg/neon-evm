@@ -331,6 +331,12 @@ impl<B: Database> Machine<B> {
                 }
             };
 
+            // Need to check Tracing state-machine.
+            // precompiled contracts  raises error
+            //  the reason: opcode_call() derive new instance of tracer, calls BeginVM
+            // and returns Action::Continue for precompiled contract (keccak256).
+            // So, the for derived tracer instance the EndStep is called.
+            // BeginStep was not called, error raises.
             #[cfg(feature = "tracing")]
             if opcode_result != Action::Noop {
                 self.tracer

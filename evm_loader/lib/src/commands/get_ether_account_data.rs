@@ -1,5 +1,5 @@
 use evm_loader::{account::EthereumAccount, types::Address};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
 
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
     NeonResult,
 };
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GetEtherAccountDataReturn {
     pub solana_address: String,
     pub address: Address,

@@ -9,7 +9,7 @@ use evm_loader::{
     gasometer::LAMPORTS_PER_SIGNATURE,
     types::{Address, Transaction},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::types::block;
 use crate::{
@@ -22,7 +22,7 @@ use crate::{
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulationResult {
     #[serde(serialize_with = "serde_hex")]
     pub result: Vec<u8>,
@@ -32,7 +32,7 @@ pub struct EmulationResult {
     pub actions: Vec<Action>,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulationResultWithAccounts {
     pub accounts: Vec<NeonAccount>,
     pub solana_accounts: Vec<SolanaAccount>,

@@ -1,5 +1,5 @@
 use log::debug;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::signer::Signer;
 use solana_sdk::{
@@ -15,7 +15,7 @@ use evm_loader::types::Address;
 use crate::rpc::check_account_for_fee;
 use crate::NeonResult;
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateEtherAccountReturn {
     pub solana_address: String,
 }

@@ -21,6 +21,7 @@ use evm_loader::{
     types::Address,
 };
 use log::{debug, error, info, trace, warn};
+use serde::{Deserialize, Serialize};
 use solana_client::client_error;
 use solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE;
 use solana_sdk::{
@@ -37,7 +38,7 @@ use crate::types::{block, PubkeyBase58};
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NeonAccount {
     address: Address,
     account: PubkeyBase58,
@@ -101,7 +102,7 @@ impl NeonAccount {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SolanaAccount {
     pubkey: PubkeyBase58,
     is_writable: bool,

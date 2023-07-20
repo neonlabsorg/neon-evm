@@ -1,5 +1,5 @@
 use log::debug;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::rpc::check_account_for_fee;
 use crate::NeonResult;
@@ -16,7 +16,7 @@ use solana_sdk::{
 };
 use spl_associated_token_account::get_associated_token_address;
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DepositReturn {
     pub transaction: Signature,
 }

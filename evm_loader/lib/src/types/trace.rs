@@ -1,13 +1,8 @@
 use evm_loader::{account::EthereumAccount, types::Address};
+use serde::{Deserialize, Serialize};
 use {crate::types::Bytes, ethnum::U256, std::collections::HashMap};
 
-#[derive(
-    serde::Serialize,
-    serde::Deserialize,
-    Debug,
-    Clone,
-    PartialEq, /*, RlpEncodable, RlpDecodable */
-)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq /*, RlpEncodable, RlpDecodable */)]
 /// A diff of some chunk of memory.
 pub struct MemoryDiff {
     /// Offset into memory the change begins.
@@ -16,13 +11,7 @@ pub struct MemoryDiff {
     pub data: Bytes,
 }
 
-#[derive(
-    serde::Serialize,
-    serde::Deserialize,
-    Debug,
-    Clone,
-    PartialEq, /*, RlpEncodable, RlpDecodable */
-)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq /*, RlpEncodable, RlpDecodable */)]
 /// A diff of some storage value.
 pub struct StorageDiff {
     /// Which key in storage is changed.
@@ -31,13 +20,7 @@ pub struct StorageDiff {
     pub value: [u8; 32],
 }
 
-#[derive(
-    serde::Serialize,
-    serde::Deserialize,
-    Debug,
-    Clone,
-    PartialEq, /*, RlpEncodable, RlpDecodable */
-)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq /*, RlpEncodable, RlpDecodable */)]
 /// A record of an executed VM operation.
 pub struct VMExecutedOperation {
     /// The total gas used.
@@ -51,12 +34,7 @@ pub struct VMExecutedOperation {
 }
 
 #[derive(
-    serde::Serialize,
-    serde::Deserialize,
-    Debug,
-    Clone,
-    PartialEq,
-    Default, /*, RlpEncodable, RlpDecodable */
+    Serialize, Deserialize, Debug, Clone, PartialEq, Default /*, RlpEncodable, RlpDecodable */,
 )]
 /// A record of the execution of a single VM operation.
 pub struct VMOperation {
@@ -71,12 +49,7 @@ pub struct VMOperation {
 }
 
 #[derive(
-    serde::Serialize,
-    serde::Deserialize,
-    Debug,
-    Clone,
-    PartialEq,
-    Default, /*, RlpEncodable, RlpDecodable */
+    Serialize, Deserialize, Debug, Clone, PartialEq, Default /*, RlpEncodable, RlpDecodable */,
 )]
 /// A record of a full VM trace for a CALL/CREATE.
 #[allow(clippy::module_name_repetitions)]
@@ -99,7 +72,7 @@ pub struct TraceData {
     pub store_written: Option<(U256, [u8; 32])>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct FullTraceData {
     pub stack: Vec<[u8; 32]>,
     pub memory: Vec<u8>,
@@ -225,7 +198,7 @@ pub trait VMTracer: Send {
     fn drain(self) -> Option<Self::Output>;
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TracedCall {
     pub vm_trace: Option<VMTrace>,
     pub full_trace_data: Vec<FullTraceData>,

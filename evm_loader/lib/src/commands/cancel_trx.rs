@@ -1,6 +1,6 @@
 use log::info;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use solana_sdk::{
     incinerator,
     instruction::{AccountMeta, Instruction},
@@ -13,7 +13,7 @@ use evm_loader::account::State;
 
 use crate::{account_storage::account_info, commands::send_transaction, rpc::Rpc, NeonResult};
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CancelTrxReturn {
     pub transaction: Signature,
 }

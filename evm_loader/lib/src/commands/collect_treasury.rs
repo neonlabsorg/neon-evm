@@ -5,7 +5,7 @@ use crate::{
 };
 use evm_loader::account::{MainTreasury, Treasury};
 use log::{info, warn};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
@@ -15,7 +15,7 @@ use solana_sdk::{
 };
 use spl_token::instruction::sync_native;
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CollectTreasuryReturn {
     pub pool_address: String,
     pub balance: u64,

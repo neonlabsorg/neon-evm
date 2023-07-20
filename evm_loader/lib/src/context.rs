@@ -63,6 +63,8 @@ pub fn create(
     }
 }
 
+/// # Safety
+/// Make sure all implementations of Signer are Sync and Send
 pub unsafe fn transmute_to_send_sync(boxed: Box<dyn Signer>) -> Box<dyn Signer + Send + Sync> {
     Box::from_raw(Box::into_raw(boxed) as *mut (dyn Signer + Send + Sync))
 }

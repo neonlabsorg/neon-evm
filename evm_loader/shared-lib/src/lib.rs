@@ -17,6 +17,7 @@ use neon_lib::{
     },
     config::create_from_api_comnfig,
     context::{build_hash_rpc_client, build_rpc_client},
+    signer::NeonSigner,
     Config, Context, NeonError, NeonResult,
 };
 
@@ -77,7 +78,7 @@ fn init_context(
     fn internal(config: &Config, params: &str) -> Result<Context, NeonError> {
         let slot = serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
         let (rpc_client, blocking_rpc_client) = build_rpc_client(config, slot)?;
-        let signer = neon_lib::context::build_signer(config)?;
+        let signer = NeonSigner::new(config)?;
         Ok(neon_lib::context::create(
             rpc_client,
             signer,
@@ -98,7 +99,7 @@ fn init_hash_context<'a>(
     async fn internal(config: &Config, params: &str) -> Result<Context, NeonError> {
         let slot = serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
         let (rpc_client, blocking_rpc_client) = build_hash_rpc_client(config, slot).await?;
-        let signer = neon_lib::context::build_signer(config)?;
+        let signer = NeonSigner::new(config)?;
         Ok(neon_lib::context::create(
             rpc_client,
             signer,

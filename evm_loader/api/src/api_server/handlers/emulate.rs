@@ -1,4 +1,5 @@
 use axum::{http::StatusCode, Json};
+use neon_lib::signer::NeonSigner;
 use std::convert::Into;
 
 use crate::{
@@ -12,7 +13,7 @@ pub async fn emulate(
     axum::extract::State(state): axum::extract::State<NeonApiState>,
     Json(emulate_request): Json<EmulateRequestModel>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let signer = match context::build_signer(&state.config) {
+    let signer = match NeonSigner::new(&state.config) {
         Ok(signer) => signer,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };

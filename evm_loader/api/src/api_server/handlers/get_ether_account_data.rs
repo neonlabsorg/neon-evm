@@ -5,6 +5,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use neon_lib::signer::NeonSigner;
 use std::convert::Into;
 
 use super::{process_error, process_result};
@@ -13,7 +14,7 @@ pub async fn get_ether_account_data(
     Query(req_params): Query<GetEtherRequest>,
     State(state): State<NeonApiState>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let signer = match context::build_signer(&state.config) {
+    let signer = match NeonSigner::new(&state.config) {
         Ok(signer) => signer,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };

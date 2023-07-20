@@ -2,6 +2,7 @@ use std::convert::Into;
 
 use crate::{context, types::request_models::TraceHashRequestModel, NeonApiState};
 use axum::{http::StatusCode, Json};
+use neon_lib::signer::NeonSigner;
 
 use super::{parse_emulation_params, process_error, process_result};
 
@@ -9,7 +10,7 @@ pub async fn trace_hash(
     axum::extract::State(state): axum::extract::State<NeonApiState>,
     Json(trace_hash_request): Json<TraceHashRequestModel>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let signer = match context::build_signer(&state.config) {
+    let signer = match NeonSigner::new(&state.config) {
         Ok(signer) => signer,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };

@@ -6,6 +6,7 @@ use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signature::Signature,
+    signer::Signer,
 };
 
 use evm_loader::account::State;

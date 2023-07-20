@@ -11,6 +11,7 @@ use neon_lib::Config;
 use neon_lib::NeonError;
 use solana_clap_utils::keypair::signer_from_path;
 use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_sdk::signer::Signer;
 
 /// # Errors
 pub async fn create_from_config_and_options<'a>(
@@ -75,9 +76,8 @@ pub async fn create_from_config_and_options<'a>(
     )
     .map_err(|_| NeonError::KeypairNotSpecified)?;
 
-    let signer = unsafe { transmute_to_send_sync(signer) };
-
-    let signer = Arc::from(signer);
+    let signer: Arc<dyn Signer> = Arc::from(signer);
+    let signer = signer.into();
 
     Ok(Context {
         rpc_client,

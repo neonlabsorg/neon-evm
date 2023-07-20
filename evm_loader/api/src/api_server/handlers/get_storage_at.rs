@@ -4,6 +4,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use neon_lib::signer::NeonSigner;
 use std::convert::Into;
 
 use crate::commands::get_storage_at as GetStorageAtCommand;
@@ -14,7 +15,7 @@ pub async fn get_storage_at(
     Query(req_params): Query<GetStorageAtRequest>,
     State(state): State<NeonApiState>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let signer = match context::build_signer(&state.config) {
+    let signer = match NeonSigner::new(&state.config) {
         Ok(signer) => signer,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };

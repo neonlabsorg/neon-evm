@@ -3,6 +3,8 @@ use std::{future::Future, sync::Arc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
+use crate::signer::NeonSigner;
+
 use {
     crate::{errors::NeonError, rpc},
     log::{debug, error, info, warn},
@@ -50,11 +52,11 @@ pub struct TransactionExecutor {
     pub send_trx: bool,
     pub signatures: RwLock<Vec<Signature>>,
     pub stats: RwLock<Stats>,
-    pub fee_payer: Arc<dyn Signer>,
+    pub fee_payer: NeonSigner,
 }
 
 impl TransactionExecutor {
-    pub fn new(client: Arc<dyn rpc::Rpc>, fee_payer: Arc<dyn Signer>, send_trx: bool) -> Self {
+    pub fn new(client: Arc<dyn rpc::Rpc>, fee_payer: NeonSigner, send_trx: bool) -> Self {
         Self {
             client,
             send_trx,
@@ -115,7 +117,7 @@ impl TransactionExecutor {
             Transaction::new_with_payer(instructions, Some(&self.fee_payer.pubkey()));
 
         let blockhash = self.client.get_latest_blockhash().await?;
-        transaction.try_partial_sign(&[self.fee_payer.as_ref()], blockhash)?;
+        transaction.try_partial_sign(&[&*self.fee_payer], blockhash)?;
         transaction.try_sign(signing_keypairs, blockhash)?;
 
         Ok(transaction)

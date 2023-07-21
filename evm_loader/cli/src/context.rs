@@ -20,53 +20,34 @@ pub async fn create_from_config_and_options<'a>(
 
     let slot = options.value_of("slot");
 
-    let (rpc_client, blocking_rpc_client): (Arc<dyn rpc::Rpc + Send + Sync>, _) =
-        match (cmd, params) {
-            ("emulate_hash" | "trace_hash", Some(params)) => {
-                let hash = params.value_of("hash").expect("hash not found");
-                let hash = <[u8; 32]>::from_hex(truncate(hash)).expect("hash cast error");
+    let rpc_client: Arc<dyn rpc::Rpc> = match (cmd, params) {
+        ("emulate-hash" | "trace-hash" | "emulate_hash" | "trace_hash", Some(params)) => {
+            let hash = params.value_of("hash").expect("hash not found");
+            let hash = <[u8; 32]>::from_hex(truncate_0x(hash)).expect("hash cast error");
 
-                (
-                    Arc::new(
-                        TrxDbClient::new(
-                            config.db_config.as_ref().expect("db-config not found"),
-                            hash,
-                        )
-                        .await,
-                    ),
-                    None,
+            Arc::new(
+                TrxDbClient::new(
+                    config.db_config.as_ref().expect("db-config not found"),
+                    hash,
                 )
+                .await,
+            )
+        }
+        _ => {
+            if let Some(slot) = slot {
+                let slot = slot.parse().expect("incorrect slot");
+                Arc::new(CallDbClient::new(
+                    config.db_config.as_ref().expect("db-config not found"),
+                    slot,
+                ))
+            } else {
+                Arc::new(RpcClient::new_with_commitment(
+                    config.json_rpc_url.clone(),
+                    config.commitment,
+                ))
             }
-            _ => {
-                if let Some(slot) = slot {
-                    let slot = slot.parse().expect("incorrect slot");
-                    (
-                        Arc::new(CallDbClient::new(
-                            config.db_config.as_ref().expect("db-config not found"),
-                            slot,
-                        )),
-                        None,
-                    )
-                } else {
-                    (
-                        Arc::new(RpcClient::new_with_commitment(
-                            config.json_rpc_url.clone(),
-                            config.commitment,
-                        )),
-                        Some(Arc::new(
-                            solana_client::rpc_client::RpcClient::new_with_commitment(
-                                config.json_rpc_url.clone(),
-                                config.commitment,
-                            ),
-                        )),
-                    )
-                }
-            }
-        };
+        }
+    };
 
-    Ok(neon_lib::context::create(
-        rpc_client,
-        config.clone(),
-        blocking_rpc_client,
-    ))
+    Ok(neon_lib::context::create(rpc_client, config.clone()))
 }

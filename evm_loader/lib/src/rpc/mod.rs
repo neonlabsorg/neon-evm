@@ -27,7 +27,7 @@ use solana_transaction_status::{
 use std::any::Any;
 
 #[async_trait]
-pub trait Rpc {
+pub trait Rpc: Send + Sync {
     fn commitment(&self) -> CommitmentConfig;
     async fn confirm_transaction_with_spinner(
         &self,
@@ -97,3 +97,20 @@ macro_rules! e {
     };
 }
 pub(crate) use e;
+
+pub(crate) async fn check_account_for_fee(
+    rpc_client: &RpcClient,
+    account_pubkey: &Pubkey,
+    message: &Message,
+) -> NeonResult<()> {
+    let fee = rpc_client.get_fee_for_message(message).await?;
+    let balance = rpc_client.get_balance(account_pubkey).await?;
+    if balance != 0 && balance >= fee {
+        return Ok(());
+    }
+
+    Err(NeonError::CliError(CliError::InsufficientFundsForFee(
+        lamports_to_sol(fee),
+        *account_pubkey,
+    )))
+}

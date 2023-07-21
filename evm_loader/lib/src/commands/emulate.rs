@@ -1,5 +1,5 @@
 use log::{debug, info};
-use std::fmt::Formatter;
+use std::fmt::{Display, Formatter};
 
 use ethnum::U256;
 use evm_loader::{
@@ -34,6 +34,20 @@ pub struct EmulationResult {
     pub actions: Vec<Action>,
 }
 
+impl Display for EmulationResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{{ exit_status: {}, steps_executed: {}, used_gas: {}, actions: {}, result: {} }}",
+            self.exit_status,
+            self.steps_executed,
+            self.used_gas,
+            self.actions.len(),
+            hex::encode(&self.result),
+        )
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulationResultWithAccounts {
     pub accounts: Vec<NeonAccount>,
@@ -41,6 +55,12 @@ pub struct EmulationResultWithAccounts {
     pub token_accounts: Vec<SolanaAccount>,
     #[serde(flatten)]
     pub emulation_result: EmulationResult,
+}
+
+impl Display for EmulationResultWithAccounts {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.emulation_result)
+    }
 }
 
 fn serde_hex_serialize<S>(value: &[u8], s: S) -> Result<S::Ok, S::Error>

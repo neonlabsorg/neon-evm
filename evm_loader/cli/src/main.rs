@@ -299,7 +299,7 @@ async fn execute<'a>(
                 &index,
             )
             .await
-            .map(|hash| json!(hex::encode(hash)))
+            .map(|hash| json!(hex::encode(hash.0)))
         }
         _ => unreachable!(),
     }

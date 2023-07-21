@@ -10,7 +10,9 @@ use crate::{
     },
 };
 use evm_loader::types::Address;
+use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
+use std::fmt::{Display, Formatter};
 
 #[allow(clippy::too_many_arguments)]
 pub async fn trace_transaction(
@@ -55,6 +57,15 @@ pub async fn trace_transaction(
     })
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct TraceBlockReturn(pub Vec<TracedCall>);
+
+impl Display for TraceBlockReturn {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{ traced call(s): {} }}", self.0.len())
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn trace_block(
     rpc_client: &dyn Rpc,
@@ -67,7 +78,7 @@ pub async fn trace_block(
     accounts: &[Address],
     solana_accounts: &[Pubkey],
     trace_config: &TraceConfig,
-) -> Result<Vec<TracedCall>, NeonError> {
+) -> Result<TraceBlockReturn, NeonError> {
     setup_syscall_stubs(rpc_client).await?;
 
     let storage = EmulatorAccountStorage::with_accounts(
@@ -89,7 +100,7 @@ pub async fn trace_block(
         results.push(result);
     }
 
-    Ok(results)
+    Ok(TraceBlockReturn(results))
 }
 
 async fn trace_trx<'a>(

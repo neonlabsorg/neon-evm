@@ -22,7 +22,6 @@ use neon_lib::{
 };
 
 const _MODULE_WM_: &WithMetadata<NeonLib> = &WithMetadata::new(NeonLib {
-    api_version: 1,
     hash,
     init_config,
     init_context,

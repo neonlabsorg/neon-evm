@@ -2328,7 +2328,7 @@ dependencies = [
 [[package]]
 name = "neon-interface"
 version = "0.1.0"
-source = "git+ssh://git@github.com/neonlabsorg/neon-interface.git?rev=b7050977563a5d5fe27f6e1852fcf311fa92f795#b7050977563a5d5fe27f6e1852fcf311fa92f795"
+source = "git+ssh://git@github.com/neonlabsorg/neon-interface.git?rev=1f6d854a1700e541fc6470d40bccbaa1b87c4e41#1f6d854a1700e541fc6470d40bccbaa1b87c4e41"
 dependencies = [
  "abi_stable",
  "async-ffi",

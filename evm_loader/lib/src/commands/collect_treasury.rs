@@ -1,11 +1,11 @@
 use crate::{
-    commands::get_neon_elf::read_elf_parameters_from_account, errors::NeonError, Config, Context,
-    NeonResult,
+    commands::get_neon_elf::read_elf_parameters_from_account, errors::NeonError,
+    rpc::check_account_for_fee, Config, Context, NeonResult,
 };
 use evm_loader::account::{MainTreasury, Treasury};
 use log::{info, warn};
 use serde::Serialize;
-use solana_cli::checks::check_account_for_fee;
+use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     message::Message,

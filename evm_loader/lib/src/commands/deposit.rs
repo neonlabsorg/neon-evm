@@ -1,9 +1,9 @@
 use log::debug;
 use serde::Serialize;
 
-use crate::{Config, Context, NeonResult};
+use crate::{rpc::check_account_for_fee, Config, Context, NeonResult};
 use evm_loader::types::Address;
-use solana_cli::checks::check_account_for_fee;
+use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     message::Message,
@@ -51,7 +51,13 @@ pub async fn execute(
     let blockhash = context.rpc_client.get_latest_blockhash().await?;
     finalize_message.recent_blockhash = blockhash;
 
-    check_account_for_fee(context.rpc_client, &signer.pubkey(), &finalize_message).await?;
+    let client = context
+        .rpc_client
+        .as_any()
+        .downcast_ref::<RpcClient>()
+        .expect("cast to solana_client::rpc_client::RpcClient error");
+
+    check_account_for_fee(client, &signer.pubkey(), &finalize_message).await?;
 
     let mut finalize_tx = Transaction::new_unsigned(finalize_message);
 

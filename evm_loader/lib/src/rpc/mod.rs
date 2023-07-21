@@ -7,8 +7,10 @@ pub use db_trx_client::TrxDbClient;
 
 use crate::types::TxParams;
 use async_trait::async_trait;
+use solana_cli::cli::CliError;
 use solana_client::{
     client_error::Result as ClientResult,
+    nonblocking::rpc_client::RpcClient,
     rpc_config::{RpcSendTransactionConfig, RpcTransactionConfig},
     rpc_response::RpcResult,
 };
@@ -17,6 +19,8 @@ use solana_sdk::{
     clock::{Slot, UnixTimestamp},
     commitment_config::CommitmentConfig,
     hash::Hash,
+    message::Message,
+    native_token::lamports_to_sol,
     pubkey::Pubkey,
     signature::Signature,
     transaction::Transaction,
@@ -96,6 +100,7 @@ macro_rules! e {
         )))
     };
 }
+use crate::{NeonError, NeonResult};
 pub(crate) use e;
 
 pub(crate) async fn check_account_for_fee(

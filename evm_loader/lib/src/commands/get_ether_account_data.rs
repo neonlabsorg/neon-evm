@@ -1,6 +1,7 @@
 use evm_loader::{account::EthereumAccount, types::Address};
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
+use std::fmt::{Display, Formatter};
 
 use crate::{
     account_storage::{account_info, EmulatorAccountStorage},
@@ -20,6 +21,21 @@ pub struct GetEtherAccountDataReturn {
     pub generation: u32,
     pub code_size: u32,
     pub code: String,
+}
+
+impl Display for GetEtherAccountDataReturn {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{{ address: {}, solana_address: {}, trx_count: {}, balance: {}, generation: {}, code_size: {} }}",
+            self.address,
+            self.solana_address,
+            self.trx_count,
+            self.balance,
+            self.generation,
+            self.code_size,
+        )
+    }
 }
 
 pub async fn execute(

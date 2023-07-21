@@ -69,7 +69,11 @@ impl Signer for NeonSigner {
     }
 }
 
+/// # Safety
+/// Every implementation of solana_sdk::signer::Signer should be Send
 unsafe impl Send for NeonSigner {}
+/// # Safety
+/// Every implementation of solana_sdk::signer::Signer should be Sync
 unsafe impl Sync for NeonSigner {}
 
 impl std::ops::Deref for NeonSigner {

@@ -39,9 +39,9 @@ impl IndexerDb {
             .client
             .query_one(
                 "SELECT S.sol_sig from solana_neon_transactions S, solana_blocks B \
-            where S.block_slot = B.block_slot \
-            and B.is_active = true \
-            and S.neon_sig = $1",
+                where S.block_slot = B.block_slot \
+                and B.is_active = true \
+                and S.neon_sig = $1",
                 &[&hex],
             )
             .await?;

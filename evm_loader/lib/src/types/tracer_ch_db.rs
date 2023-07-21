@@ -348,7 +348,7 @@ impl ClickHouseDb {
     ) -> ChResult<Option<AccountRow>> {
         let query = r#"
             SELECT owner, lamports, executable, rent_epoch, data, txn_signature
-            FROM events.older_account_distributed
+            FROM events.older_account_distributed FINAL
             WHERE pubkey = ? AND slot <= ?
             ORDER BY slot DESC
             LIMIT 1

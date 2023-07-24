@@ -68,7 +68,7 @@ fn get_version() -> RString {
 }
 
 #[sabi_extern_fn]
-fn init_config(params: &RStr) -> RResult<BoxedConfig<'static>, RString> {
+fn init_config(params: RStr) -> RResult<BoxedConfig<'static>, RString> {
     fn internal(params: &str) -> Result<Config, NeonError> {
         let api_config = serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
         create_from_api_comnfig(&api_config)
@@ -80,7 +80,7 @@ fn init_config(params: &RStr) -> RResult<BoxedConfig<'static>, RString> {
 }
 
 #[sabi_extern_fn]
-fn init_context(config: &BoxedConfig, params: &RStr) -> RResult<BoxedContext<'static>, RString> {
+fn init_context(config: &BoxedConfig, params: RStr) -> RResult<BoxedContext<'static>, RString> {
     fn internal(config: &Config, params: &str) -> Result<Context, NeonError> {
         let slot = serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
         let (rpc_client, blocking_rpc_client) = build_rpc_client(config, slot)?;
@@ -100,7 +100,7 @@ fn init_context(config: &BoxedConfig, params: &RStr) -> RResult<BoxedContext<'st
 #[sabi_extern_fn]
 fn init_hash_context<'a>(
     config: &'a BoxedConfig,
-    params: &'a RStr,
+    params: RStr<'a>,
 ) -> BorrowingFfiFuture<'a, RResult<BoxedContext<'static>, RString>> {
     async fn internal(config: &Config, params: &str) -> Result<Context, NeonError> {
         let slot = serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
@@ -126,8 +126,8 @@ fn init_hash_context<'a>(
 fn invoke<'a>(
     config: &'a BoxedConfig,
     context: &'a BoxedContext,
-    method: &'a RStr,
-    params: &'a RStr,
+    method: RStr<'a>,
+    params: RStr<'a>,
 ) -> RNeonResult<'a> {
     async move {
         dispatch(

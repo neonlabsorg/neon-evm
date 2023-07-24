@@ -46,6 +46,10 @@ fn neon_error_to_neon_lib_error(error: NeonError) -> NeonLibError {
     }
 }
 
+fn neon_error_to_rstring(error: NeonError) -> RString {
+    RString::from(serde_json::to_string(&neon_error_to_neon_lib_error(error)).unwrap())
+}
+
 const MODULE: NeonLib_Ref = NeonLib_Ref(_MODULE_WM_.static_as_prefix());
 
 #[export_root_module]
@@ -71,9 +75,7 @@ fn init_config(params: &RStr) -> RResult<BoxedConfig<'static>, RString> {
     }
     internal(params.as_str())
         .map(DynTrait::from_value)
-        .map_err(|e| {
-            RString::from(serde_json::to_string(&neon_error_to_neon_lib_error(e)).unwrap())
-        })
+        .map_err(neon_error_to_rstring)
         .into()
 }
 
@@ -91,9 +93,7 @@ fn init_context(config: &BoxedConfig, params: &RStr) -> RResult<BoxedContext<'st
     }
     internal(config.downcast_as().unwrap(), params.as_str())
         .map(DynTrait::from_value)
-        .map_err(|e| {
-            RString::from(serde_json::to_string(&neon_error_to_neon_lib_error(e)).unwrap())
-        })
+        .map_err(neon_error_to_rstring)
         .into()
 }
 
@@ -116,9 +116,7 @@ fn init_hash_context<'a>(
         internal(config.downcast_as::<Config>().unwrap(), params.as_str())
             .await
             .map(DynTrait::from_value)
-            .map_err(|e| {
-                RString::from(serde_json::to_string(&neon_error_to_neon_lib_error(e)).unwrap())
-            })
+            .map_err(neon_error_to_rstring)
             .into()
     }
     .into_ffi()
@@ -140,9 +138,7 @@ fn invoke<'a>(
         )
         .await
         .map(RString::from)
-        .map_err(|e| {
-            RString::from(serde_json::to_string(&neon_error_to_neon_lib_error(e)).unwrap())
-        })
+        .map_err(neon_error_to_rstring)
         .into()
     }
     .into_ffi()

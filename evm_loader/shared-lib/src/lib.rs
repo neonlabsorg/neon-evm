@@ -7,7 +7,7 @@ use abi_stable::{
 };
 use async_ffi::{BorrowingFfiFuture, FutureExt};
 use neon_interface::{
-    types::{BoxedConfig, BoxedContext, BoxedNeonError, RNeonResult},
+    types::{BoxedConfig, BoxedContext, NeonLibError, RNeonResult},
     NeonLib, NeonLib_Ref,
 };
 use neon_lib::{
@@ -18,23 +18,16 @@ use neon_lib::{
     config::create_from_api_comnfig,
     context::{build_hash_rpc_client, build_rpc_client},
     signer::NeonSigner,
-    Config, Context, NeonError, NeonResult,
+    Config, Context, NeonError,
 };
 
 const _MODULE_WM_: &WithMetadata<NeonLib> = &WithMetadata::new(NeonLib {
     hash,
+    get_version,
     init_config,
     init_context,
     init_hash_context,
-    cancel_trx,
-    collect_treasury,
-    create_ether_account,
-    deposit,
-    emulate,
-    get_ether_account_data,
-    get_neon_elf,
-    get_storage_at,
-    init_environment,
+    invoke,
 });
 
 fn params_to_neon_error(params: &str) -> NeonError {
@@ -43,6 +36,14 @@ fn params_to_neon_error(params: &str) -> NeonError {
             params.into(),
         ),
     )
+}
+
+fn neon_error_to_neon_lib_error(error: NeonError) -> NeonLibError {
+    NeonLibError {
+        code: error.error_code() as u32,
+        message: error.to_string(),
+        data: None,
+    }
 }
 
 const MODULE: NeonLib_Ref = NeonLib_Ref(_MODULE_WM_.static_as_prefix());
@@ -58,22 +59,26 @@ fn hash() -> RString {
 }
 
 #[sabi_extern_fn]
-fn init_config(params: &RStr) -> RResult<BoxedConfig<'static>, BoxedNeonError<'static>> {
+fn get_version() -> RString {
+    "".into()
+}
+
+#[sabi_extern_fn]
+fn init_config(params: &RStr) -> RResult<BoxedConfig<'static>, RString> {
     fn internal(params: &str) -> Result<Config, NeonError> {
         let api_config = serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
         create_from_api_comnfig(&api_config)
     }
     internal(params.as_str())
         .map(DynTrait::from_value)
-        .map_err(DynTrait::from_value)
+        .map_err(|e| {
+            RString::from(serde_json::to_string(&neon_error_to_neon_lib_error(e)).unwrap())
+        })
         .into()
 }
 
 #[sabi_extern_fn]
-fn init_context(
-    config: &BoxedConfig,
-    params: &RStr,
-) -> RResult<BoxedContext<'static>, BoxedNeonError<'static>> {
+fn init_context(config: &BoxedConfig, params: &RStr) -> RResult<BoxedContext<'static>, RString> {
     fn internal(config: &Config, params: &str) -> Result<Context, NeonError> {
         let slot = serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
         let (rpc_client, blocking_rpc_client) = build_rpc_client(config, slot)?;
@@ -86,7 +91,9 @@ fn init_context(
     }
     internal(config.downcast_as().unwrap(), params.as_str())
         .map(DynTrait::from_value)
-        .map_err(DynTrait::from_value)
+        .map_err(|e| {
+            RString::from(serde_json::to_string(&neon_error_to_neon_lib_error(e)).unwrap())
+        })
         .into()
 }
 
@@ -94,7 +101,7 @@ fn init_context(
 fn init_hash_context<'a>(
     config: &'a BoxedConfig,
     params: &'a RStr,
-) -> BorrowingFfiFuture<'a, RResult<BoxedContext<'static>, BoxedNeonError<'static>>> {
+) -> BorrowingFfiFuture<'a, RResult<BoxedContext<'static>, RString>> {
     async fn internal(config: &Config, params: &str) -> Result<Context, NeonError> {
         let slot = serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
         let (rpc_client, blocking_rpc_client) = build_hash_rpc_client(config, slot).await?;
@@ -109,263 +116,122 @@ fn init_hash_context<'a>(
         internal(config.downcast_as::<Config>().unwrap(), params.as_str())
             .await
             .map(DynTrait::from_value)
-            .map_err(DynTrait::from_value)
+            .map_err(|e| {
+                RString::from(serde_json::to_string(&neon_error_to_neon_lib_error(e)).unwrap())
+            })
             .into()
     }
     .into_ffi()
 }
 
 #[sabi_extern_fn]
-fn cancel_trx<'a>(
+fn invoke<'a>(
     config: &'a BoxedConfig,
     context: &'a BoxedContext,
+    method: &'a RStr,
     params: &'a RStr,
 ) -> RNeonResult<'a> {
-    async fn internal(config: &Config, context: &Context, params: &str) -> NeonResult<String> {
-        let storage_account =
-            serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
-        let result = cancel_trx::execute(config, context, &storage_account).await?;
-        Ok(serde_json::to_string(&result).unwrap())
-    }
     async move {
-        internal(
+        dispatch(
             config.downcast_as().unwrap(),
             context.downcast_as().unwrap(),
+            method.as_str(),
             params.as_str(),
         )
         .await
         .map(RString::from)
-        .map_err(DynTrait::from_value)
+        .map_err(|e| {
+            RString::from(serde_json::to_string(&neon_error_to_neon_lib_error(e)).unwrap())
+        })
         .into()
     }
     .into_ffi()
 }
 
-#[sabi_extern_fn]
-fn collect_treasury<'a>(
-    config: &'a BoxedConfig,
-    context: &'a BoxedContext,
-    _params: &'a RStr,
-) -> RNeonResult<'a> {
-    async fn internal(config: &Config, context: &Context) -> NeonResult<String> {
-        let result = collect_treasury::execute(config, context).await?;
-        Ok(serde_json::to_string(&result).unwrap())
+async fn dispatch(
+    config: &Config,
+    context: &Context,
+    method: &str,
+    params: &str,
+) -> Result<String, NeonError> {
+    match method {
+        "cancel_trx" => {
+            let storage_account =
+                serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
+            let result = cancel_trx::execute(config, context, &storage_account).await?;
+            Ok(serde_json::to_string(&result).unwrap())
+        }
+        "collect_treasury" => {
+            let result = collect_treasury::execute(config, context).await?;
+            Ok(serde_json::to_string(&result).unwrap())
+        }
+        "create_ether_account" => {
+            let ether_address =
+                serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
+            let result = create_ether_account::execute(config, context, &ether_address).await?;
+            Ok(serde_json::to_string(&result).unwrap())
+        }
+        "deposit" => {
+            let (amount, ether_address) =
+                serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
+            let result = deposit::execute(config, context, amount, &ether_address).await?;
+            Ok(serde_json::to_string(&result).unwrap())
+        }
+        "emulate" => {
+            let (tx_params, token, chain, steps, accounts, solana_accounts): (
+                _,
+                _,
+                _,
+                _,
+                Vec<_>,
+                Vec<_>,
+            ) = serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
+            let result = emulate::execute(
+                config,
+                context,
+                tx_params,
+                token,
+                chain,
+                steps,
+                &accounts,
+                &solana_accounts,
+            )
+            .await?;
+            Ok(serde_json::to_string(&result).unwrap())
+        }
+        "get_ether_account_data" => {
+            let ether_address =
+                serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
+            let result = get_ether_account_data::execute(config, context, &ether_address).await?;
+            Ok(serde_json::to_string(&result).unwrap())
+        }
+        "get_neon_elf" => {
+            let program_location: Option<String> =
+                serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
+            let result =
+                get_neon_elf::execute(config, context, program_location.as_deref()).await?;
+            Ok(serde_json::to_string(&result).unwrap())
+        }
+        "get_storage_at" => {
+            let (ether_address, index) =
+                serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
+            let result = get_storage_at::execute(config, context, ether_address, &index).await?;
+            Ok(serde_json::to_string(&result).unwrap())
+        }
+        "init_environment" => {
+            let (send_trx, force, keys_dir, file): (_, _, Option<String>, Option<String>) =
+                serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
+            let result = init_environment::execute(
+                config,
+                context,
+                send_trx,
+                force,
+                keys_dir.as_deref(),
+                file.as_deref(),
+            )
+            .await?;
+            Ok(serde_json::to_string(&result).unwrap())
+        }
+        _ => Err(params_to_neon_error(method)),
     }
-    async move {
-        internal(
-            config.downcast_as().unwrap(),
-            context.downcast_as().unwrap(),
-        )
-        .await
-        .map(RString::from)
-        .map_err(DynTrait::from_value)
-        .into()
-    }
-    .into_ffi()
-}
-
-#[sabi_extern_fn]
-fn create_ether_account<'a>(
-    config: &'a BoxedConfig,
-    context: &'a BoxedContext,
-    params: &'a RStr,
-) -> RNeonResult<'a> {
-    async fn internal(config: &Config, context: &Context, params: &str) -> NeonResult<String> {
-        let ether_address =
-            serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
-        let result = create_ether_account::execute(config, context, &ether_address).await?;
-        Ok(serde_json::to_string(&result).unwrap())
-    }
-    async move {
-        internal(
-            config.downcast_as().unwrap(),
-            context.downcast_as().unwrap(),
-            params.as_str(),
-        )
-        .await
-        .map(RString::from)
-        .map_err(DynTrait::from_value)
-        .into()
-    }
-    .into_ffi()
-}
-
-#[sabi_extern_fn]
-fn deposit<'a>(
-    config: &'a BoxedConfig,
-    context: &'a BoxedContext,
-    params: &'a RStr,
-) -> RNeonResult<'a> {
-    async fn internal(config: &Config, context: &Context, params: &str) -> NeonResult<String> {
-        let (amount, ether_address) =
-            serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
-        let result = deposit::execute(config, context, amount, &ether_address).await?;
-        Ok(serde_json::to_string(&result).unwrap())
-    }
-    async move {
-        internal(
-            config.downcast_as().unwrap(),
-            context.downcast_as().unwrap(),
-            params.as_str(),
-        )
-        .await
-        .map(RString::from)
-        .map_err(DynTrait::from_value)
-        .into()
-    }
-    .into_ffi()
-}
-
-#[sabi_extern_fn]
-fn emulate<'a>(
-    config: &'a BoxedConfig,
-    context: &'a BoxedContext,
-    params: &'a RStr,
-) -> RNeonResult<'a> {
-    async fn internal(config: &Config, context: &Context, params: &str) -> NeonResult<String> {
-        let (tx_params, token, chain, steps, accounts, solana_accounts): (
-            _,
-            _,
-            _,
-            _,
-            Vec<_>,
-            Vec<_>,
-        ) = serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
-        let result = emulate::execute(
-            config,
-            context,
-            tx_params,
-            token,
-            chain,
-            steps,
-            &accounts,
-            &solana_accounts,
-        )
-        .await?;
-        Ok(serde_json::to_string(&result).unwrap())
-    }
-    async move {
-        internal(
-            config.downcast_as().unwrap(),
-            context.downcast_as().unwrap(),
-            params.as_str(),
-        )
-        .await
-        .map(RString::from)
-        .map_err(DynTrait::from_value)
-        .into()
-    }
-    .into_ffi()
-}
-
-#[sabi_extern_fn]
-fn get_ether_account_data<'a>(
-    config: &'a BoxedConfig,
-    context: &'a BoxedContext,
-    params: &'a RStr,
-) -> RNeonResult<'a> {
-    async fn internal(config: &Config, context: &Context, params: &str) -> NeonResult<String> {
-        let ether_address =
-            serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
-        let result = get_ether_account_data::execute(config, context, &ether_address).await?;
-        Ok(serde_json::to_string(&result).unwrap())
-    }
-    async move {
-        internal(
-            config.downcast_as().unwrap(),
-            context.downcast_as().unwrap(),
-            params.as_str(),
-        )
-        .await
-        .map(RString::from)
-        .map_err(DynTrait::from_value)
-        .into()
-    }
-    .into_ffi()
-}
-
-#[sabi_extern_fn]
-fn get_neon_elf<'a>(
-    config: &'a BoxedConfig,
-    context: &'a BoxedContext,
-    params: &'a RStr,
-) -> RNeonResult<'a> {
-    async fn internal(config: &Config, context: &Context, params: &str) -> NeonResult<String> {
-        let program_location: Option<String> =
-            serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
-        let result = get_neon_elf::execute(config, context, program_location.as_deref()).await?;
-        Ok(serde_json::to_string(&result).unwrap())
-    }
-    async move {
-        internal(
-            config.downcast_as().unwrap(),
-            context.downcast_as().unwrap(),
-            params.as_str(),
-        )
-        .await
-        .map(RString::from)
-        .map_err(DynTrait::from_value)
-        .into()
-    }
-    .into_ffi()
-}
-
-#[sabi_extern_fn]
-fn get_storage_at<'a>(
-    config: &'a BoxedConfig,
-    context: &'a BoxedContext,
-    params: &'a RStr,
-) -> RNeonResult<'a> {
-    async fn internal(config: &Config, context: &Context, params: &str) -> NeonResult<String> {
-        let (ether_address, index) =
-            serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
-        let result = get_storage_at::execute(config, context, ether_address, &index).await?;
-        Ok(serde_json::to_string(&result).unwrap())
-    }
-    async move {
-        internal(
-            config.downcast_as().unwrap(),
-            context.downcast_as().unwrap(),
-            params.as_str(),
-        )
-        .await
-        .map(RString::from)
-        .map_err(DynTrait::from_value)
-        .into()
-    }
-    .into_ffi()
-}
-
-#[sabi_extern_fn]
-fn init_environment<'a>(
-    config: &'a BoxedConfig,
-    context: &'a BoxedContext,
-    params: &'a RStr,
-) -> RNeonResult<'a> {
-    async fn internal(config: &Config, context: &Context, params: &str) -> NeonResult<String> {
-        let (send_trx, force, keys_dir, file): (_, _, Option<String>, Option<String>) =
-            serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
-        let result = init_environment::execute(
-            config,
-            context,
-            send_trx,
-            force,
-            keys_dir.as_deref(),
-            file.as_deref(),
-        )
-        .await?;
-        Ok(serde_json::to_string(&result).unwrap())
-    }
-    async move {
-        internal(
-            config.downcast_as().unwrap(),
-            context.downcast_as().unwrap(),
-            params.as_str(),
-        )
-        .await
-        .map(RString::from)
-        .map_err(DynTrait::from_value)
-        .into()
-    }
-    .into_ffi()
 }

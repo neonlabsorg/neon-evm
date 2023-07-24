@@ -2328,10 +2328,12 @@ dependencies = [
 [[package]]
 name = "neon-interface"
 version = "0.1.0"
-source = "git+ssh://git@github.com/neonlabsorg/neon-interface.git?rev=1f6d854a1700e541fc6470d40bccbaa1b87c4e41#1f6d854a1700e541fc6470d40bccbaa1b87c4e41"
+source = "git+ssh://git@github.com/neonlabsorg/neon-interface.git?rev=21756f5bb7424e22d45d182f237de8f42376a386#21756f5bb7424e22d45d182f237de8f42376a386"
 dependencies = [
  "abi_stable",
  "async-ffi",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

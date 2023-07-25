@@ -4,6 +4,7 @@ use std::convert::TryInto;
 
 use super::Address;
 
+// Raven: we should switch this to enum
 #[derive(Debug, Default, Clone)]
 pub struct Transaction {
     pub nonce: u64,
@@ -43,10 +44,13 @@ impl Transaction {
 
 impl rlp::Decodable for Transaction {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
+        // It's an EIP-2718 typed TX envelope.
+        // Raven: new transactions parser should be here
         if !rlp.is_list() {
             return Err(rlp::DecoderError::RlpExpectedToBeList);
         }
 
+       // It's a legacy transaction.
         let rlp_len = {
             let info = rlp.payload_info()?;
             info.header_len + info.value_len

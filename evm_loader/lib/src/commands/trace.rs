@@ -98,14 +98,14 @@ pub async fn trace_block(
 
     let mut results = vec![];
     for tx_params in transactions {
-        let result = trace_trx(tx_params, &storage, chain_id, steps, trace_config).await?;
+        let result = trace_trx(tx_params, &storage, chain_id, steps, trace_config)?;
         results.push(result);
     }
 
     Ok(TraceBlockReturn(results))
 }
 
-async fn trace_trx<'a>(
+fn trace_trx<'a>(
     tx_params: TxParams,
     storage: &'a EmulatorAccountStorage<'a>,
     chain_id: u64,

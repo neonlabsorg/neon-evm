@@ -62,5 +62,5 @@ async fn trace_hash_helper(
     )
     .await?;
 
-    trace_transaction(tx, chain, steps, &trace_call_config.trace_config, storage).await
+    trace_transaction(tx, chain, steps, &trace_call_config.trace_config, storage)
 }

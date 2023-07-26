@@ -169,7 +169,6 @@ async fn execute<'a>(
             )
             .await?;
             trace::trace_transaction(tx, chain, steps, &trace_call_config.trace_config, storage)
-                .await
                 .map(|trace| json!(trace))
         }
         ("trace-hash", Some(params)) => {
@@ -197,7 +196,6 @@ async fn execute<'a>(
             .await?;
 
             trace::trace_transaction(tx, chain, steps, &trace_call_config.trace_config, storage)
-                .await
                 .map(|trace| json!(trace))
         }
         ("trace-next-block", Some(params)) => {

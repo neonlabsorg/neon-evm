@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use std::fmt::{Display, Formatter};
 
-pub async fn trace_transaction(
+pub fn trace_transaction(
     tx: TxParams,
     chain_id: u64,
     steps: u64,

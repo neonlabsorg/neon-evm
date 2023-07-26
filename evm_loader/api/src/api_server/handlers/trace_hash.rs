@@ -4,7 +4,7 @@ use crate::{context, types::request_models::TraceHashRequestModel, NeonApiState}
 use axum::{http::StatusCode, Json};
 use neon_lib::account_storage::EmulatorAccountStorage;
 use neon_lib::commands::emulate::setup_syscall_stubs;
-use neon_lib::commands::trace::trace_transaction;
+use neon_lib::commands::trace::trace_trx;
 use neon_lib::types::trace::{TraceCallConfig, TracedCall};
 use neon_lib::NeonError;
 
@@ -62,5 +62,5 @@ async fn trace_hash_helper(
     )
     .await?;
 
-    trace_transaction(tx, chain, steps, &trace_call_config.trace_config, storage)
+    trace_trx(tx, &storage, chain, steps, &trace_call_config.trace_config)
 }

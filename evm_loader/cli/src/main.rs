@@ -41,6 +41,7 @@ use crate::{
 use evm_loader::types::Address;
 use neon_lib::account_storage::EmulatorAccountStorage;
 use neon_lib::commands::emulate::setup_syscall_stubs;
+use neon_lib::commands::trace::trace_trx;
 
 type NeonCliResult = Result<serde_json::Value, NeonError>;
 
@@ -168,7 +169,8 @@ async fn execute<'a>(
                 trace_call_config.state_overrides,
             )
             .await?;
-            trace::trace_transaction(tx, chain, steps, &trace_call_config.trace_config, storage)
+
+            trace_trx(tx, &storage, chain, steps, &trace_call_config.trace_config)
                 .map(|trace| json!(trace))
         }
         ("trace-hash", Some(params)) => {
@@ -195,7 +197,7 @@ async fn execute<'a>(
             )
             .await?;
 
-            trace::trace_transaction(tx, chain, steps, &trace_call_config.trace_config, storage)
+            trace_trx(tx, &storage, chain, steps, &trace_call_config.trace_config)
                 .map(|trace| json!(trace))
         }
         ("trace-next-block", Some(params)) => {

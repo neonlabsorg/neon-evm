@@ -14,16 +14,6 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use std::fmt::{Display, Formatter};
 
-pub fn trace_transaction(
-    tx: TxParams,
-    chain_id: u64,
-    steps: u64,
-    trace_config: &TraceConfig,
-    storage: EmulatorAccountStorage<'_>,
-) -> Result<TracedCall, NeonError> {
-    trace_trx(tx, &storage, chain_id, steps, trace_config)
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct TraceBlockReturn(pub Vec<TracedCall>);
 
@@ -70,7 +60,7 @@ pub async fn trace_block(
     Ok(TraceBlockReturn(results))
 }
 
-fn trace_trx<'a>(
+pub fn trace_trx<'a>(
     tx_params: TxParams,
     storage: &'a EmulatorAccountStorage<'a>,
     chain_id: u64,

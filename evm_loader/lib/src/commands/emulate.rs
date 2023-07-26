@@ -139,7 +139,6 @@ pub async fn execute(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn emulate_transaction<'a>(
     tx_params: TxParams,
     chain_id: u64,

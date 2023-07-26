@@ -139,12 +139,12 @@ pub async fn execute(
     })
 }
 
-pub(crate) fn emulate_transaction<'a>(
+pub(crate) fn emulate_transaction(
     tx_params: TxParams,
     chain_id: u64,
     step_limit: u64,
-    storage: EmulatorAccountStorage<'a>,
-) -> Result<(EmulationResult, EmulatorAccountStorage<'a>), NeonError> {
+    storage: EmulatorAccountStorage,
+) -> Result<(EmulationResult, EmulatorAccountStorage), NeonError> {
     emulate_trx(tx_params, &storage, chain_id, step_limit).map(move |result| (result, storage))
 }
 

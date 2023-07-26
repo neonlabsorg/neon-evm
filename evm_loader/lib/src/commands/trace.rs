@@ -42,21 +42,13 @@ pub async fn trace_transaction(
     )
     .await?;
 
-    let mut tracer = Tracer::new(trace_call_config.trace_config.enable_return_data);
-
-    let emulation_result = evm_loader::evm::tracing::using(&mut tracer, || {
-        emulate_trx(tx, &storage, chain_id, steps)
-    })?;
-
-    let (vm_trace, full_trace_data) = tracer.into_traces();
-
-    Ok(TracedCall {
-        vm_trace,
-        full_trace_data,
-        used_gas: emulation_result.used_gas,
-        result: emulation_result.result,
-        exit_status: emulation_result.exit_status,
-    })
+    trace_trx(
+        tx,
+        &storage,
+        chain_id,
+        steps,
+        &trace_call_config.trace_config,
+    )
 }
 
 #[derive(Serialize, Deserialize)]

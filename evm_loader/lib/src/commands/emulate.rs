@@ -108,6 +108,8 @@ pub async fn execute(
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
 ) -> NeonResult<EmulationResultWithAccounts> {
+    setup_syscall_stubs(rpc_client).await?;
+
     let (emulation_result, storage) = emulate_transaction(
         rpc_client,
         evm_loader,
@@ -148,8 +150,6 @@ pub(crate) async fn emulate_transaction<'a>(
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
 ) -> Result<(EmulationResult, EmulatorAccountStorage<'a>), NeonError> {
-    setup_syscall_stubs(rpc_client).await?;
-
     let storage = EmulatorAccountStorage::with_accounts(
         rpc_client,
         evm_loader,

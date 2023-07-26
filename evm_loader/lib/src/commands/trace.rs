@@ -29,7 +29,9 @@ pub async fn trace_transaction(
 ) -> Result<TracedCall, NeonError> {
     let mut tracer = Tracer::new(trace_call_config.trace_config.enable_return_data);
 
-    let (emulation_result, _storage) = evm_loader::evm::tracing::using(&mut tracer, || {
+    let (emulation_result, _storage) = evm_loader::evm::tracing::using(&mut tracer, || async {
+        setup_syscall_stubs(rpc_client).await?;
+
         emulate_transaction(
             rpc_client,
             evm_loader,
@@ -42,6 +44,7 @@ pub async fn trace_transaction(
             solana_accounts,
             trace_call_config,
         )
+        .await
     })
     .await?;
 

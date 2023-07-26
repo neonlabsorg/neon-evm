@@ -39,6 +39,8 @@ use crate::{
     },
 };
 use evm_loader::types::Address;
+use neon_lib::account_storage::EmulatorAccountStorage;
+use neon_lib::commands::emulate::setup_syscall_stubs;
 
 type NeonCliResult = Result<serde_json::Value, NeonError>;
 
@@ -149,39 +151,54 @@ async fn execute<'a>(
             let (tx, trace_call_config) = parse_tx(params);
             let (token, chain, steps, accounts, solana_accounts) =
                 parse_tx_params(config, context, params).await;
-            trace::trace_transaction(
-                context.rpc_client.as_ref(),
+
+            let rpc_client = context.rpc_client.as_ref();
+
+            setup_syscall_stubs(rpc_client).await?;
+
+            let storage = EmulatorAccountStorage::with_accounts(
+                rpc_client,
                 config.evm_loader,
-                tx,
                 token,
                 chain,
-                steps,
                 config.commitment,
                 &accounts,
                 &solana_accounts,
-                trace_call_config,
+                &trace_call_config.block_overrides,
+                trace_call_config.state_overrides,
             )
-            .await
-            .map(|trace| json!(trace))
+            .await?;
+            trace::trace_transaction(tx, chain, steps, &trace_call_config.trace_config, storage)
+                .await
+                .map(|trace| json!(trace))
         }
         ("trace-hash", Some(params)) => {
             let (tx, trace_config) = parse_tx_hash(context.rpc_client.as_ref()).await;
             let (token, chain, steps, accounts, solana_accounts) =
                 parse_tx_params(config, context, params).await;
-            trace::trace_transaction(
-                context.rpc_client.as_ref(),
+
+            let rpc_client = context.rpc_client.as_ref();
+
+            setup_syscall_stubs(rpc_client).await?;
+
+            let trace_call_config = TraceCallConfig::from(trace_config);
+
+            let storage = EmulatorAccountStorage::with_accounts(
+                rpc_client,
                 config.evm_loader,
-                tx,
                 token,
                 chain,
-                steps,
                 config.commitment,
                 &accounts,
                 &solana_accounts,
-                trace_config.into(),
+                &trace_call_config.block_overrides,
+                trace_call_config.state_overrides,
             )
-            .await
-            .map(|trace| json!(trace))
+            .await?;
+
+            trace::trace_transaction(tx, chain, steps, &trace_call_config.trace_config, storage)
+                .await
+                .map(|trace| json!(trace))
         }
         ("trace-next-block", Some(params)) => {
             let slot = slot.expect("SLOT argument is not provided");

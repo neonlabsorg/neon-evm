@@ -5,7 +5,7 @@ use crate::{
     event_listener::tracer::Tracer,
     rpc::Rpc,
     types::{
-        trace::{TraceCallConfig, TraceConfig, TracedCall},
+        trace::{TraceConfig, TracedCall},
         TxParams,
     },
 };
@@ -14,41 +14,14 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use std::fmt::{Display, Formatter};
 
-#[allow(clippy::too_many_arguments)]
 pub async fn trace_transaction(
-    rpc_client: &dyn Rpc,
-    evm_loader: Pubkey,
     tx: TxParams,
-    token: Pubkey,
     chain_id: u64,
     steps: u64,
-    commitment: CommitmentConfig,
-    accounts: &[Address],
-    solana_accounts: &[Pubkey],
-    trace_call_config: TraceCallConfig,
+    trace_config: &TraceConfig,
+    storage: EmulatorAccountStorage<'_>,
 ) -> Result<TracedCall, NeonError> {
-    setup_syscall_stubs(rpc_client).await?;
-
-    let storage = EmulatorAccountStorage::with_accounts(
-        rpc_client,
-        evm_loader,
-        token,
-        chain_id,
-        commitment,
-        accounts,
-        solana_accounts,
-        &trace_call_config.block_overrides,
-        trace_call_config.state_overrides,
-    )
-    .await?;
-
-    trace_trx(
-        tx,
-        &storage,
-        chain_id,
-        steps,
-        &trace_call_config.trace_config,
-    )
+    trace_trx(tx, &storage, chain_id, steps, trace_config)
 }
 
 #[derive(Serialize, Deserialize)]

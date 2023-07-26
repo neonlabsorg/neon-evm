@@ -197,7 +197,7 @@ pub(crate) fn emulate_trx<'a>(
     })
 }
 
-pub(crate) async fn setup_syscall_stubs(rpc_client: &dyn Rpc) -> Result<(), NeonError> {
+pub async fn setup_syscall_stubs(rpc_client: &dyn Rpc) -> Result<(), NeonError> {
     let syscall_stubs = Stubs::new(rpc_client).await?;
     solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
 

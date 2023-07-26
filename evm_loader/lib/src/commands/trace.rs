@@ -1,4 +1,3 @@
-use crate::commands::emulate::EmulationResult;
 use crate::{
     account_storage::EmulatorAccountStorage,
     commands::emulate::{emulate_trx, setup_syscall_stubs},
@@ -45,9 +44,8 @@ pub async fn trace_transaction(
 
     let mut tracer = Tracer::new(trace_call_config.trace_config.enable_return_data);
 
-    let (emulation_result, _storage) = evm_loader::evm::tracing::using(&mut tracer, || {
-        let emulation_result = emulate_trx(tx, &storage, chain_id, steps)?;
-        Ok::<(EmulationResult, EmulatorAccountStorage<'_>), NeonError>((emulation_result, storage))
+    let emulation_result = evm_loader::evm::tracing::using(&mut tracer, || {
+        emulate_trx(tx, &storage, chain_id, steps)
     })?;
 
     let (vm_trace, full_trace_data) = tracer.into_traces();

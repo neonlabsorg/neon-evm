@@ -124,7 +124,7 @@ pub async fn execute(
     .await?;
 
     let (emulation_result, storage) =
-        emulate_transaction(tx_params, chain_id, step_limit, storage).await?;
+        emulate_transaction(tx_params, chain_id, step_limit, storage)?;
     let accounts = block(storage.accounts.read()).values().cloned().collect();
     let solana_accounts = block(storage.solana_accounts.read())
         .values()
@@ -139,7 +139,7 @@ pub async fn execute(
     })
 }
 
-pub(crate) async fn emulate_transaction<'a>(
+pub(crate) fn emulate_transaction<'a>(
     tx_params: TxParams,
     chain_id: u64,
     step_limit: u64,

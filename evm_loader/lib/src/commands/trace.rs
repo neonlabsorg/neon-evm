@@ -45,7 +45,7 @@ pub async fn trace_transaction(
         )
         .await?;
 
-        emulate_transaction(tx, chain_id, steps, storage).await
+        emulate_transaction(tx, chain_id, steps, storage)
     })
     .await?;
 

@@ -145,7 +145,8 @@ pub(crate) fn emulate_transaction(
     step_limit: u64,
     storage: EmulatorAccountStorage,
 ) -> Result<(EmulationResult, EmulatorAccountStorage), NeonError> {
-    emulate_trx(tx_params, &storage, chain_id, step_limit).map(move |result| (result, storage))
+    let result = emulate_trx(tx_params, &storage, chain_id, step_limit)?;
+    Ok((result, storage))
 }
 
 pub(crate) fn emulate_trx<'a>(

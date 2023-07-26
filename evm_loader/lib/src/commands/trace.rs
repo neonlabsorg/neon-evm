@@ -32,19 +32,20 @@ pub async fn trace_transaction(
     let (emulation_result, _storage) = evm_loader::evm::tracing::using(&mut tracer, || async {
         setup_syscall_stubs(rpc_client).await?;
 
-        emulate_transaction(
+        let storage = EmulatorAccountStorage::with_accounts(
             rpc_client,
             evm_loader,
-            tx,
             token,
             chain_id,
-            steps,
             commitment,
             accounts,
             solana_accounts,
-            trace_call_config,
+            &trace_call_config.block_overrides,
+            trace_call_config.state_overrides,
         )
-        .await
+        .await?;
+
+        emulate_transaction(tx, chain_id, steps, storage).await
     })
     .await?;
 

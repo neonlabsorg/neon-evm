@@ -1,3 +1,4 @@
+use crate::commands::emulate::EmulationResult;
 use crate::{
     account_storage::EmulatorAccountStorage,
     commands::emulate::{emulate_trx, setup_syscall_stubs},
@@ -27,28 +28,27 @@ pub async fn trace_transaction(
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
 ) -> Result<TracedCall, NeonError> {
+    setup_syscall_stubs(rpc_client).await?;
+
+    let storage = EmulatorAccountStorage::with_accounts(
+        rpc_client,
+        evm_loader,
+        token,
+        chain_id,
+        commitment,
+        accounts,
+        solana_accounts,
+        &trace_call_config.block_overrides,
+        trace_call_config.state_overrides,
+    )
+    .await?;
+
     let mut tracer = Tracer::new(trace_call_config.trace_config.enable_return_data);
 
-    let (emulation_result, _storage) = evm_loader::evm::tracing::using(&mut tracer, || async {
-        setup_syscall_stubs(rpc_client).await?;
-
-        let storage = EmulatorAccountStorage::with_accounts(
-            rpc_client,
-            evm_loader,
-            token,
-            chain_id,
-            commitment,
-            accounts,
-            solana_accounts,
-            &trace_call_config.block_overrides,
-            trace_call_config.state_overrides,
-        )
-        .await?;
-
+    let (emulation_result, _storage) = evm_loader::evm::tracing::using(&mut tracer, || {
         let emulation_result = emulate_trx(tx, &storage, chain_id, steps)?;
-        Ok((emulation_result, storage))
-    })
-    .await?;
+        Ok::<(EmulationResult, EmulatorAccountStorage<'_>), NeonError>((emulation_result, storage))
+    })?;
 
     let (vm_trace, full_trace_data) = tracer.into_traces();
 

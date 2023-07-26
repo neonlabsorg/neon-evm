@@ -1,6 +1,6 @@
 use crate::{
     account_storage::EmulatorAccountStorage,
-    commands::emulate::{emulate_transaction, emulate_trx, setup_syscall_stubs},
+    commands::emulate::{emulate_trx, setup_syscall_stubs},
     errors::NeonError,
     event_listener::tracer::Tracer,
     rpc::Rpc,
@@ -45,7 +45,8 @@ pub async fn trace_transaction(
         )
         .await?;
 
-        emulate_transaction(tx, chain_id, steps, storage)
+        let emulation_result = emulate_trx(tx, &storage, chain_id, steps)?;
+        Ok((emulation_result, storage))
     })
     .await?;
 

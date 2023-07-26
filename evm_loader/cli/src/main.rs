@@ -21,7 +21,7 @@ pub use context::Context;
 use std::io::Read;
 
 use ethnum::U256;
-use serde_json::json;
+use serde_json::{json, Value};
 use solana_clap_utils::input_parsers::{pubkey_of, value_of, values_of};
 use solana_client::client_error::{ClientError, ClientErrorKind};
 use solana_client::nonblocking::rpc_client::RpcClient;
@@ -150,55 +150,11 @@ async fn execute<'a>(
         }
         ("trace", Some(params)) => {
             let (tx, trace_call_config) = parse_tx(params);
-            let (token, chain, steps, accounts, solana_accounts) =
-                parse_tx_params(config, context, params).await;
-
-            let rpc_client = context.rpc_client.as_ref();
-
-            setup_syscall_stubs(rpc_client).await?;
-
-            let storage = EmulatorAccountStorage::with_accounts(
-                rpc_client,
-                config.evm_loader,
-                token,
-                chain,
-                config.commitment,
-                &accounts,
-                &solana_accounts,
-                &trace_call_config.block_overrides,
-                trace_call_config.state_overrides,
-            )
-            .await?;
-
-            trace_trx(tx, &storage, chain, steps, &trace_call_config.trace_config)
-                .map(|trace| json!(trace))
+            trace_helper(config, context, params, tx, trace_call_config).await?
         }
         ("trace-hash", Some(params)) => {
             let (tx, trace_config) = parse_tx_hash(context.rpc_client.as_ref()).await;
-            let (token, chain, steps, accounts, solana_accounts) =
-                parse_tx_params(config, context, params).await;
-
-            let rpc_client = context.rpc_client.as_ref();
-
-            setup_syscall_stubs(rpc_client).await?;
-
-            let trace_call_config = TraceCallConfig::from(trace_config);
-
-            let storage = EmulatorAccountStorage::with_accounts(
-                rpc_client,
-                config.evm_loader,
-                token,
-                chain,
-                config.commitment,
-                &accounts,
-                &solana_accounts,
-                &trace_call_config.block_overrides,
-                trace_call_config.state_overrides,
-            )
-            .await?;
-
-            trace_trx(tx, &storage, chain, steps, &trace_call_config.trace_config)
-                .map(|trace| json!(trace))
+            trace_helper(config, context, params, tx, trace_config.into()).await?
         }
         ("trace-next-block", Some(params)) => {
             let slot = slot.expect("SLOT argument is not provided");
@@ -326,6 +282,39 @@ async fn execute<'a>(
         }
         _ => unreachable!(),
     }
+}
+
+async fn trace_helper(
+    config: &Config,
+    context: &Context,
+    params: &ArgMatches<'_>,
+    tx: TxParams,
+    trace_call_config: TraceCallConfig,
+) -> Result<Result<Value, NeonError>, NeonError> {
+    let (token, chain, steps, accounts, solana_accounts) =
+        parse_tx_params(config, context, params).await;
+
+    let rpc_client = context.rpc_client.as_ref();
+
+    setup_syscall_stubs(rpc_client).await?;
+
+    let storage = EmulatorAccountStorage::with_accounts(
+        rpc_client,
+        config.evm_loader,
+        token,
+        chain,
+        config.commitment,
+        &accounts,
+        &solana_accounts,
+        &trace_call_config.block_overrides,
+        trace_call_config.state_overrides,
+    )
+    .await?;
+
+    Ok(
+        trace_trx(tx, &storage, chain, steps, &trace_call_config.trace_config)
+            .map(|trace| json!(trace)),
+    )
 }
 
 fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {

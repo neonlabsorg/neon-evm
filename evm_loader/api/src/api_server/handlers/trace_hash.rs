@@ -44,13 +44,13 @@ async fn trace_hash_helper(
 
     let rpc_client = context.rpc_client.as_ref();
 
-    setup_syscall_stubs(&*rpc_client).await?;
+    setup_syscall_stubs(rpc_client).await?;
 
     let trace_call_config: TraceCallConfig =
         trace_hash_request.trace_config.unwrap_or_default().into();
 
     let storage = EmulatorAccountStorage::with_accounts(
-        &*rpc_client,
+        rpc_client,
         state.config.evm_loader,
         token,
         chain,

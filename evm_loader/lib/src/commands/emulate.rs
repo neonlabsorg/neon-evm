@@ -123,8 +123,7 @@ pub async fn execute(
     )
     .await?;
 
-    let (emulation_result, storage) =
-        emulate_transaction(tx_params, chain_id, step_limit, storage)?;
+    let emulation_result = emulate_trx(tx_params, &storage, chain_id, step_limit)?;
     let accounts = block(storage.accounts.read()).values().cloned().collect();
     let solana_accounts = block(storage.solana_accounts.read())
         .values()
@@ -137,16 +136,6 @@ pub async fn execute(
         token_accounts: vec![],
         emulation_result,
     })
-}
-
-pub(crate) fn emulate_transaction(
-    tx_params: TxParams,
-    chain_id: u64,
-    step_limit: u64,
-    storage: EmulatorAccountStorage,
-) -> Result<(EmulationResult, EmulatorAccountStorage), NeonError> {
-    let result = emulate_trx(tx_params, &storage, chain_id, step_limit)?;
-    Ok((result, storage))
 }
 
 pub(crate) fn emulate_trx<'a>(

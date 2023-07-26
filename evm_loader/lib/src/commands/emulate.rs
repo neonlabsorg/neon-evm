@@ -163,12 +163,10 @@ pub(crate) async fn emulate_transaction<'a>(
     )
     .await?;
 
-    emulate_trx(tx_params, &storage, chain_id, step_limit)
-        .await
-        .map(move |result| (result, storage))
+    emulate_trx(tx_params, &storage, chain_id, step_limit).map(move |result| (result, storage))
 }
 
-pub(crate) async fn emulate_trx<'a>(
+pub(crate) fn emulate_trx<'a>(
     tx_params: TxParams,
     storage: &'a EmulatorAccountStorage<'a>,
     chain_id: u64,

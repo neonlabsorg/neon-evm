@@ -1,12 +1,15 @@
 use crate::{
-    api_server::handlers::process_error,
     commands::trace::trace_block,
-    context, errors,
+    context,
     types::{request_models::TraceNextBlockRequestModel, IndexerDb},
     NeonApiState,
 };
 use axum::http::StatusCode;
 use axum::Json;
+use neon_lib::account_storage::EmulatorAccountStorage;
+use neon_lib::commands::emulate::setup_syscall_stubs;
+use neon_lib::commands::trace::TraceBlockReturn;
+use neon_lib::NeonError;
 use std::sync::Arc;
 
 use super::{parse_emulation_params, process_result};
@@ -15,11 +18,18 @@ pub async fn trace_next_block(
     axum::extract::State(state): axum::extract::State<NeonApiState>,
     Json(trace_next_block_request): Json<TraceNextBlockRequestModel>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let rpc_client =
-        match context::build_call_db_client(&state.config, trace_next_block_request.slot) {
-            Ok(rpc_client) => rpc_client,
-            Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
-        };
+    process_result(
+        &trace_next_block_helper(state, trace_next_block_request)
+            .await
+            .map_err(Into::into),
+    )
+}
+
+async fn trace_next_block_helper(
+    state: NeonApiState,
+    trace_next_block_request: TraceNextBlockRequestModel,
+) -> Result<TraceBlockReturn, NeonError> {
+    let rpc_client = context::build_call_db_client(&state.config, trace_next_block_request.slot)?; // TODO 400 -> 500 error
 
     let context = context::create(rpc_client, Arc::clone(&state.config));
 
@@ -40,33 +50,33 @@ pub async fn trace_next_block(
     .await;
 
     // TODO: Query next block (which parent = slot) instead of getting slot + 1:
-    let transactions = match indexer_db
+    let transactions = indexer_db
         .get_block_transactions(trace_next_block_request.slot + 1)
-        .await
-    {
-        Ok(transactions) => transactions,
-        Err(e) => {
-            return process_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &errors::NeonError::PostgreError(e),
-            )
-        }
-    };
+        .await?; // TODO Changed error type
 
-    process_result(
-        &trace_block(
-            context.rpc_client.as_ref(),
-            state.config.evm_loader,
-            transactions,
-            token,
-            chain,
-            steps,
-            state.config.commitment,
-            &accounts,
-            &solana_accounts,
-            &trace_next_block_request.trace_config.unwrap_or_default(),
-        )
-        .await
-        .map_err(Into::into),
+    let rpc_client = context.rpc_client.as_ref();
+
+    setup_syscall_stubs(rpc_client).await?;
+
+    let storage = EmulatorAccountStorage::with_accounts(
+        rpc_client,
+        state.config.evm_loader,
+        token,
+        chain,
+        state.config.commitment,
+        &accounts,
+        &solana_accounts,
+        &None,
+        None,
     )
+    .await?;
+
+    trace_block(
+        transactions,
+        chain,
+        steps,
+        &trace_next_block_request.trace_config.unwrap_or_default(),
+        storage,
+    )
+    .await
 }

@@ -1,18 +1,17 @@
+use std::fmt::{Display, Formatter};
+
+use serde::{Deserialize, Serialize};
+
 use crate::{
     account_storage::EmulatorAccountStorage,
-    commands::emulate::{emulate_trx, setup_syscall_stubs},
+    commands::emulate::emulate_trx,
     errors::NeonError,
     event_listener::tracer::Tracer,
-    rpc::Rpc,
     types::{
         trace::{TraceConfig, TracedCall},
         TxParams,
     },
 };
-use evm_loader::types::Address;
-use serde::{Deserialize, Serialize};
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
-use std::fmt::{Display, Formatter};
 
 #[derive(Serialize, Deserialize)]
 pub struct TraceBlockReturn(pub Vec<TracedCall>);
@@ -23,35 +22,15 @@ impl Display for TraceBlockReturn {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn trace_block(
-    rpc_client: &dyn Rpc,
-    evm_loader: Pubkey,
     transactions: Vec<TxParams>,
-    token: Pubkey,
     chain_id: u64,
     steps: u64,
-    commitment: CommitmentConfig,
-    accounts: &[Address],
-    solana_accounts: &[Pubkey],
     trace_config: &TraceConfig,
+    storage: EmulatorAccountStorage<'_>,
 ) -> Result<TraceBlockReturn, NeonError> {
-    setup_syscall_stubs(rpc_client).await?;
-
-    let storage = EmulatorAccountStorage::with_accounts(
-        rpc_client,
-        evm_loader,
-        token,
-        chain_id,
-        commitment,
-        accounts,
-        solana_accounts,
-        &None,
-        None,
-    )
-    .await?;
-
     let mut results = vec![];
+
     for tx_params in transactions {
         let result = trace_trx(tx_params, &storage, chain_id, steps, trace_config)?;
         results.push(result);

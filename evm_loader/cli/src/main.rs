@@ -221,20 +221,26 @@ async fn execute<'a>(
                         "get_block_transactions error: {e}"
                     )))
                 })?;
-            trace::trace_block(
-                context.rpc_client.as_ref(),
+
+            let rpc_client = context.rpc_client.as_ref();
+
+            setup_syscall_stubs(rpc_client).await?;
+
+            let storage = EmulatorAccountStorage::with_accounts(
+                rpc_client,
                 config.evm_loader,
-                transactions,
                 token,
                 chain,
-                steps,
                 config.commitment,
                 &accounts,
                 &solana_accounts,
-                &trace_config,
+                &None,
+                None,
             )
-            .await
-            .map(|traces| json!(traces))
+            .await?;
+            trace::trace_block(transactions, chain, steps, &trace_config, storage)
+                .await
+                .map(|traces| json!(traces))
         }
         ("create-ether-account", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");

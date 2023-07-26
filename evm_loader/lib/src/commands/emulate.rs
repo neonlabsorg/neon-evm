@@ -110,19 +110,21 @@ pub async fn execute(
 ) -> NeonResult<EmulationResultWithAccounts> {
     setup_syscall_stubs(rpc_client).await?;
 
-    let (emulation_result, storage) = emulate_transaction(
+    let storage = EmulatorAccountStorage::with_accounts(
         rpc_client,
         evm_loader,
-        tx_params,
         token_mint,
         chain_id,
-        step_limit,
         commitment,
         accounts,
         solana_accounts,
-        trace_call_config,
+        &trace_call_config.block_overrides,
+        trace_call_config.state_overrides,
     )
     .await?;
+
+    let (emulation_result, storage) =
+        emulate_transaction(tx_params, chain_id, step_limit, storage).await?;
     let accounts = block(storage.accounts.read()).values().cloned().collect();
     let solana_accounts = block(storage.solana_accounts.read())
         .values()
@@ -139,30 +141,11 @@ pub async fn execute(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn emulate_transaction<'a>(
-    rpc_client: &'a dyn Rpc,
-    evm_loader: Pubkey,
     tx_params: TxParams,
-    token_mint: Pubkey,
     chain_id: u64,
     step_limit: u64,
-    commitment: CommitmentConfig,
-    accounts: &[Address],
-    solana_accounts: &[Pubkey],
-    trace_call_config: TraceCallConfig,
+    storage: EmulatorAccountStorage<'a>,
 ) -> Result<(EmulationResult, EmulatorAccountStorage<'a>), NeonError> {
-    let storage = EmulatorAccountStorage::with_accounts(
-        rpc_client,
-        evm_loader,
-        token_mint,
-        chain_id,
-        commitment,
-        accounts,
-        solana_accounts,
-        &trace_call_config.block_overrides,
-        trace_call_config.state_overrides,
-    )
-    .await?;
-
     emulate_trx(tx_params, &storage, chain_id, step_limit).map(move |result| (result, storage))
 }
 

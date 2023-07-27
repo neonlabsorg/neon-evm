@@ -1,10 +1,9 @@
 use axum::{http::StatusCode, Json};
+use neon_lib::event_listener::trace::TraceCallConfig;
 use std::convert::Into;
 
 use crate::{
-    commands::emulate as EmulateCommand,
-    context,
-    types::{request_models::EmulateHashRequestModel, trace::TraceCallConfig},
+    commands::emulate as EmulateCommand, context, types::request_models::EmulateHashRequestModel,
     NeonApiState,
 };
 

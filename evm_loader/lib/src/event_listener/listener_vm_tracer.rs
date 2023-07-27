@@ -1,7 +1,11 @@
-use super::vm_tracer::VmTracer;
-use crate::types::trace::{MemoryDiff, StorageDiff, VMTracer};
 use ethnum::U256;
+
 use evm_loader::evm::{Context, ExitStatus};
+
+use crate::event_listener::trace::VMTracer;
+use crate::event_listener::trace::{MemoryDiff, StorageDiff};
+
+use super::vm_tracer::VmTracer;
 
 pub trait ListenerVmTracer {
     fn begin_vm(&mut self, context: Context, code: Vec<u8>);

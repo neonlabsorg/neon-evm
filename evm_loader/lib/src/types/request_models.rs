@@ -1,4 +1,4 @@
-use crate::types::trace::{TraceCallConfig, TraceConfig};
+use crate::event_listener::trace::{TraceCallConfig, TraceConfig};
 use crate::types::{PubkeyBase58, TxParams};
 use ethnum::U256;
 use evm_loader::types::Address;

@@ -1,5 +1,7 @@
 mod listener_tracer;
 mod listener_vm_tracer;
+#[allow(clippy::all)]
+pub mod trace;
 pub mod tracer;
 mod vm_tracer;
 

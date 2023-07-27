@@ -12,13 +12,13 @@ use evm_loader::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::types::block;
+use crate::event_listener::trace::TraceCallConfig;
+use crate::types::{block, TxParams};
 use crate::{
     account_storage::{EmulatorAccountStorage, NeonAccount, SolanaAccount},
     errors::NeonError,
     rpc::Rpc,
     syscall_stubs::Stubs,
-    types::{trace::TraceCallConfig, TxParams},
     NeonResult,
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use {crate::types::Bytes, ethnum::U256, std::collections::HashMap};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq /*, RlpEncodable, RlpDecodable */)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq /*, RlpEncodable, RlpDecodable */)]
 /// A diff of some chunk of memory.
 pub struct MemoryDiff {
     /// Offset into memory the change begins.
@@ -13,7 +13,7 @@ pub struct MemoryDiff {
     pub data: Bytes,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq /*, RlpEncodable, RlpDecodable */)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq /*, RlpEncodable, RlpDecodable */)]
 /// A diff of some storage value.
 pub struct StorageDiff {
     /// Which key in storage is changed.
@@ -22,7 +22,7 @@ pub struct StorageDiff {
     pub value: [u8; 32],
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq /*, RlpEncodable, RlpDecodable */)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq /*, RlpEncodable, RlpDecodable */)]
 /// A record of an executed VM operation.
 pub struct VMExecutedOperation {
     /// The total gas used.
@@ -91,7 +91,7 @@ pub struct ExecutiveVMTracer {
 
 impl ExecutiveVMTracer {
     /// Create a new top-level instance.
-    pub fn toplevel() -> Self {
+    #[must_use] pub fn toplevel() -> Self {
         ExecutiveVMTracer {
             data: VMTrace {
                 parent_step: 0,

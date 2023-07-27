@@ -1,6 +1,8 @@
 use super::{Context, ExitStatus};
 use ethnum::U256;
 
+pub mod event_listener;
+
 environmental::environmental!(listener: dyn EventListener + 'static);
 
 pub trait EventListener {

@@ -21,6 +21,7 @@ pub use context::Context;
 use std::io::Read;
 
 use ethnum::U256;
+use evm_loader::evm::tracing::event_listener::trace::{TraceCallConfig, TraceConfig};
 use serde_json::json;
 use solana_clap_utils::input_parsers::{pubkey_of, value_of, values_of};
 use solana_client::client_error::{ClientError, ClientErrorKind};
@@ -36,7 +37,6 @@ use crate::{
     types::{IndexerDb, TraceNextBlockParams, TransactionHashParams, TransactionParams, TxParams},
 };
 use evm_loader::types::Address;
-use neon_lib::event_listener::trace::{TraceCallConfig, TraceConfig};
 
 type NeonCliResult = Result<serde_json::Value, NeonError>;
 

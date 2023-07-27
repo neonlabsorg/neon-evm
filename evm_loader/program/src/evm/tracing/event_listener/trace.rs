@@ -1,4 +1,5 @@
-use evm_loader::{account::EthereumAccount, types::Address};
+use crate::account::EthereumAccount;
+use crate::types::Address;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use {crate::types::Bytes, ethnum::U256, std::collections::HashMap};

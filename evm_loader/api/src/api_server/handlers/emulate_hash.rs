@@ -1,5 +1,5 @@
 use axum::{http::StatusCode, Json};
-use neon_lib::event_listener::trace::TraceCallConfig;
+use evm_loader::evm::tracing::event_listener::trace::TraceCallConfig;
 use std::convert::Into;
 
 use crate::{

@@ -33,12 +33,10 @@ use tokio::time::Instant;
 use crate::{
     errors::NeonError,
     rpc::Rpc,
-    types::{
-        trace::{TraceCallConfig, TraceConfig},
-        IndexerDb, TraceNextBlockParams, TransactionHashParams, TransactionParams, TxParams,
-    },
+    types::{IndexerDb, TraceNextBlockParams, TransactionHashParams, TransactionParams, TxParams},
 };
 use evm_loader::types::Address;
+use neon_lib::event_listener::trace::{TraceCallConfig, TraceConfig};
 
 type NeonCliResult = Result<serde_json::Value, NeonError>;
 

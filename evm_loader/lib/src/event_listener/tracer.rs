@@ -1,5 +1,7 @@
+use crate::event_listener::trace::VMTracer;
+use crate::event_listener::trace::{FullTraceData, VMTrace};
+
 use super::vm_tracer::VmTracer;
-use crate::types::trace::{FullTraceData, VMTrace, VMTracer};
 
 pub struct Tracer {
     pub vm: VmTracer,

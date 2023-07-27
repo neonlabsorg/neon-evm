@@ -36,7 +36,13 @@ pub struct VMExecutedOperation {
 }
 
 #[derive(
-    Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default /*, RlpEncodable, RlpDecodable */,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Default, /*, RlpEncodable, RlpDecodable */
 )]
 /// A record of the execution of a single VM operation.
 pub struct VMOperation {
@@ -91,7 +97,8 @@ pub struct ExecutiveVMTracer {
 
 impl ExecutiveVMTracer {
     /// Create a new top-level instance.
-    #[must_use] pub fn toplevel() -> Self {
+    #[must_use]
+    pub fn toplevel() -> Self {
         ExecutiveVMTracer {
             data: VMTrace {
                 parent_step: 0,

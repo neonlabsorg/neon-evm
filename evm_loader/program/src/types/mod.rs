@@ -16,7 +16,8 @@ pub struct Bytes(pub Vec<u8>);
 
 impl Bytes {
     /// Simple constructor.
-    #[must_use] pub fn new(bytes: Vec<u8>) -> Bytes {
+    #[must_use]
+    pub fn new(bytes: Vec<u8>) -> Bytes {
         Bytes(bytes)
     }
 }

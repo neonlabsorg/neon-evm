@@ -3,8 +3,6 @@ use ethnum::U256;
 
 pub mod event_listener;
 
-environmental::environmental!(listener: dyn EventListener + 'static);
-
 pub trait EventListener {
     fn enable_return_data(&self) -> bool;
     fn event(&mut self, event: Event);
@@ -45,15 +43,4 @@ pub enum Event {
         index: U256,
         value: [u8; 32],
     },
-}
-
-pub fn with<F: FnOnce(&mut (dyn EventListener + 'static))>(f: F) {
-    listener::with(f);
-}
-
-pub fn using<R, F: FnOnce() -> R>(
-    new: &mut (dyn EventListener + 'static + Send + Sync),
-    f: F,
-) -> R {
-    listener::using(new, f)
 }

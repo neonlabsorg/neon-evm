@@ -1,6 +1,10 @@
+use std::sync::{Arc, RwLock};
+
 use crate::evm::tracing::event_listener::trace::{FullTraceData, VMTrace, VMTracer};
 
 use super::vm_tracer::VmTracer;
+
+pub type TracerType = Option<Arc<RwLock<Option<Tracer>>>>;
 
 pub struct Tracer {
     pub vm: VmTracer,

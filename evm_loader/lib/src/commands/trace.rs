@@ -107,13 +107,13 @@ fn trace_trx<'a>(
     steps: u64,
     trace_config: &TraceConfig,
 ) -> Result<TracedCall, NeonError> {
-    let tracer = Some(Rc::new(RefCell::new(Some(Tracer::new(
+    let tracer = Rc::new(RefCell::new(Some(Tracer::new(
         trace_config.enable_return_data,
-    )))));
+    ))));
 
-    let emulation_result = emulate_trx(tx_params, storage, chain_id, steps, tracer.clone())?;
+    let emulation_result = emulate_trx(tx_params, storage, chain_id, steps, Some(tracer.clone()))?;
 
-    let (vm_trace, full_trace_data) = tracer.unwrap().borrow_mut().take().unwrap().into_traces();
+    let (vm_trace, full_trace_data) = tracer.borrow_mut().take().unwrap().into_traces();
 
     Ok(TracedCall {
         vm_trace,

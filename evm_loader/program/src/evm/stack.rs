@@ -1,7 +1,5 @@
 #![allow(clippy::inline_always)]
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::{
     alloc::{GlobalAlloc, Layout},
     convert::TryInto,
@@ -9,7 +7,7 @@ use std::{
 
 use ethnum::{I256, U256};
 
-use crate::evm::tracing::event_listener::tracer::Tracer;
+use crate::evm::tracing::event_listener::tracer::TracerType;
 use crate::evm::tracing::EventListener;
 use crate::{error::Error, types::Address};
 
@@ -22,11 +20,11 @@ pub struct Stack {
     begin: *mut u8,
     end: *mut u8,
     top: *mut u8,
-    tracer: Option<Rc<RefCell<Tracer>>>,
+    tracer: TracerType,
 }
 
 impl Stack {
-    pub fn new(tracer: Option<Rc<RefCell<Tracer>>>) -> Self {
+    pub fn new(tracer: TracerType) -> Self {
         let (begin, end) = unsafe {
             let layout = Layout::from_size_align_unchecked(STACK_SIZE, ELEMENT_SIZE);
             let begin = crate::allocator::EVM.alloc(layout);

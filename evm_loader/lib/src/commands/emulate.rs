@@ -1,9 +1,12 @@
-use log::{debug, info};
-use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
-use std::rc::Rc;
 
 use ethnum::U256;
+use log::{debug, info};
+use serde::{Deserialize, Serialize};
+use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
+
+use evm_loader::evm::tracing::event_listener::trace::TraceCallConfig;
+use evm_loader::evm::tracing::event_listener::tracer::TracerType;
 use evm_loader::{
     account_storage::AccountStorage,
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
@@ -12,7 +15,6 @@ use evm_loader::{
     gasometer::LAMPORTS_PER_SIGNATURE,
     types::{Address, Transaction},
 };
-use serde::{Deserialize, Serialize};
 
 use crate::types::{block, TxParams};
 use crate::{
@@ -22,9 +24,6 @@ use crate::{
     syscall_stubs::Stubs,
     NeonResult,
 };
-use evm_loader::evm::tracing::event_listener::trace::TraceCallConfig;
-use evm_loader::evm::tracing::event_listener::tracer::Tracer;
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulationResult {
@@ -146,7 +145,7 @@ pub(crate) fn emulate_trx<'a>(
     storage: &'a EmulatorAccountStorage<'a>,
     chain_id: u64,
     step_limit: u64,
-    tracer: Option<Rc<RefCell<Tracer>>>,
+    tracer: TracerType,
 ) -> Result<EmulationResult, NeonError> {
     let (exit_status, actions, steps_executed) = {
         let mut backend = ExecutorState::new(storage);

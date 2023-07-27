@@ -2,19 +2,25 @@
 #![allow(clippy::type_repetition_in_bounds)]
 #![allow(clippy::unsafe_derive_deserialize)]
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::{marker::PhantomData, ops::Range};
 
 use ethnum::U256;
 use serde::{Deserialize, Serialize};
 use solana_program::log::sol_log_data;
 
+pub use buffer::Buffer;
+pub use precompile::is_precompile_address;
+pub use precompile::precompile;
+
+use crate::evm::tracing::event_listener::tracer::TracerType;
+use crate::evm::tracing::EventListener;
 use crate::{
     error::{build_revert_message, Error, Result},
     evm::opcode::Action,
     types::{Address, Transaction},
 };
+
+use self::{database::Database, memory::Memory, stack::Stack};
 
 mod buffer;
 pub mod database;
@@ -26,22 +32,16 @@ mod stack;
 pub mod tracing;
 mod utils;
 
-use self::{database::Database, memory::Memory, stack::Stack};
-use crate::evm::tracing::EventListener;
-pub use buffer::Buffer;
-pub use precompile::is_precompile_address;
-pub use precompile::precompile;
-
 macro_rules! tracing_event {
     ($self:ident, $x:expr) => {
         if let Some(tracer) = &$self.tracer {
-            tracer.borrow_mut().event($x);
+            tracer.borrow_mut().as_mut().unwrap().event($x);
         }
     };
     ($self:ident, $condition:expr, $x:expr) => {
         if let Some(tracer) = &$self.tracer {
             if $condition {
-                tracer.borrow_mut().event($x);
+                tracer.borrow_mut().as_mut().unwrap().event($x);
             }
         }
     };
@@ -50,20 +50,18 @@ macro_rules! tracing_event {
 macro_rules! trace_end_step {
     ($self:ident, $return_data_vec:expr) => {
         if let Some(tracer) = &$self.tracer {
-            if tracer.borrow().enable_return_data() {
-                tracer
-                    .borrow_mut()
-                    .event(crate::evm::tracing::Event::EndStep {
-                        gas_used: 0_u64,
-                        return_data: $return_data_vec,
-                    })
+            let mut tracer = tracer.borrow_mut();
+            let tracer = tracer.as_mut().unwrap();
+            if tracer.enable_return_data() {
+                tracer.event(crate::evm::tracing::Event::EndStep {
+                    gas_used: 0_u64,
+                    return_data: $return_data_vec,
+                })
             } else {
-                tracer
-                    .borrow_mut()
-                    .event(crate::evm::tracing::Event::EndStep {
-                        gas_used: 0_u64,
-                        return_data: None,
-                    })
+                tracer.event(crate::evm::tracing::Event::EndStep {
+                    gas_used: 0_u64,
+                    return_data: None,
+                })
             }
         }
     };
@@ -74,7 +72,6 @@ macro_rules! trace_end_step {
     };
 }
 
-use crate::evm::tracing::event_listener::tracer::Tracer;
 pub(crate) use trace_end_step;
 pub(crate) use tracing_event;
 
@@ -132,7 +129,7 @@ pub struct Machine<B: Database> {
     phantom: PhantomData<*const B>,
 
     #[serde(skip)]
-    tracer: Option<Rc<RefCell<Tracer>>>,
+    tracer: TracerType,
 }
 
 impl<B: Database> Machine<B> {
@@ -171,7 +168,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        tracer: Option<Rc<RefCell<Tracer>>>,
+        tracer: TracerType,
     ) -> Result<Self> {
         let origin_nonce = backend.nonce(&origin)?;
 
@@ -212,7 +209,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        tracer: Option<Rc<RefCell<Tracer>>>,
+        tracer: TracerType,
     ) -> Result<Self> {
         assert!(trx.target.is_some());
 
@@ -255,7 +252,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        tracer: Option<Rc<RefCell<Tracer>>>,
+        tracer: TracerType,
     ) -> Result<Self> {
         assert!(trx.target.is_none());
 

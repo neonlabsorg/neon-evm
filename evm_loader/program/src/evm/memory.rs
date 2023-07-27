@@ -1,14 +1,14 @@
-use solana_program::program_memory::{sol_memcpy, sol_memset};
 use std::alloc::{GlobalAlloc, Layout};
-use std::cell::RefCell;
 use std::ops::Range;
-use std::rc::Rc;
+
+use solana_program::program_memory::{sol_memcpy, sol_memset};
+
+use crate::error::Error;
+use crate::evm::tracing::event_listener::tracer::TracerType;
+use crate::evm::tracing::EventListener;
 
 use super::utils::checked_next_multiple_of_32;
 use super::{tracing_event, Buffer};
-use crate::error::Error;
-use crate::evm::tracing::event_listener::tracer::Tracer;
-use crate::evm::tracing::EventListener;
 
 const MAX_MEMORY_SIZE: usize = 64 * 1024;
 const MEMORY_CAPACITY: usize = 1024;
@@ -20,15 +20,15 @@ pub struct Memory {
     data: *mut u8,
     capacity: usize,
     size: usize,
-    tracer: Option<Rc<RefCell<Tracer>>>,
+    tracer: TracerType,
 }
 
 impl Memory {
-    pub fn new(tracer: Option<Rc<RefCell<Tracer>>>) -> Self {
+    pub fn new(tracer: TracerType) -> Self {
         Self::with_capacity(MEMORY_CAPACITY, tracer)
     }
 
-    pub fn with_capacity(capacity: usize, tracer: Option<Rc<RefCell<Tracer>>>) -> Self {
+    pub fn with_capacity(capacity: usize, tracer: TracerType) -> Self {
         unsafe {
             let layout = Layout::from_size_align_unchecked(capacity, MEMORY_ALIGN);
             let data = crate::allocator::EVM.alloc_zeroed(layout);
@@ -45,7 +45,7 @@ impl Memory {
         }
     }
 
-    pub fn from_buffer(v: &[u8], tracer: Option<Rc<RefCell<Tracer>>>) -> Self {
+    pub fn from_buffer(v: &[u8], tracer: TracerType) -> Self {
         let capacity = v.len().next_power_of_two().max(MEMORY_CAPACITY);
 
         unsafe {

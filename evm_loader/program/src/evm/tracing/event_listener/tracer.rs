@@ -1,6 +1,11 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use crate::evm::tracing::event_listener::trace::{FullTraceData, VMTrace, VMTracer};
 
 use super::vm_tracer::VmTracer;
+
+pub type TracerType = Option<Rc<RefCell<Option<Tracer>>>>;
 
 pub struct Tracer {
     pub vm: VmTracer,

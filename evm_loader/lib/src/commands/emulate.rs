@@ -12,7 +12,6 @@ use evm_loader::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::event_listener::trace::TraceCallConfig;
 use crate::types::{block, TxParams};
 use crate::{
     account_storage::{EmulatorAccountStorage, NeonAccount, SolanaAccount},
@@ -21,6 +20,7 @@ use crate::{
     syscall_stubs::Stubs,
     NeonResult,
 };
+use evm_loader::evm::tracing::event_listener::trace::TraceCallConfig;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

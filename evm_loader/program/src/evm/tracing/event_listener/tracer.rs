@@ -1,12 +1,11 @@
-use crate::event_listener::trace::VMTracer;
-use crate::event_listener::trace::{FullTraceData, VMTrace};
+use crate::evm::tracing::event_listener::trace::{FullTraceData, VMTrace, VMTracer};
 
 use super::vm_tracer::VmTracer;
 
 pub struct Tracer {
     pub vm: VmTracer,
     pub data: Vec<FullTraceData>,
-    pub(crate) enable_return_data: bool,
+    pub enable_return_data: bool,
 }
 
 impl Tracer {

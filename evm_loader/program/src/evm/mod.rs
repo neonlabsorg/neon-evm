@@ -2,6 +2,8 @@
 #![allow(clippy::type_repetition_in_bounds)]
 #![allow(clippy::unsafe_derive_deserialize)]
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::{marker::PhantomData, ops::Range};
 
 use ethnum::U256;
@@ -25,41 +27,49 @@ pub mod tracing;
 mod utils;
 
 use self::{database::Database, memory::Memory, stack::Stack};
+use crate::evm::tracing::EventListener;
 pub use buffer::Buffer;
 pub use precompile::is_precompile_address;
 pub use precompile::precompile;
 
 macro_rules! tracing_event {
-    ($x:expr) => {
-        crate::evm::tracing::with(|listener| listener.event($x));
+    ($self:ident, $x:expr) => {
+        if let Some(tracer) = &$self.tracer {
+            tracer.borrow_mut().event($x);
+        }
     };
-    ($condition:expr; $x:expr) => {
-        if $condition {
-            crate::evm::tracing::with(|listener| listener.event($x));
+    ($self:ident, $condition:expr, $x:expr) => {
+        if let Some(tracer) = &$self.tracer {
+            if $condition {
+                tracer.borrow_mut().event($x);
+            }
         }
     };
 }
 
 macro_rules! trace_end_step {
-    ($return_data_vec:expr) => {
-        crate::evm::tracing::with(|listener| {
-            if listener.enable_return_data() {
-                listener.event(crate::evm::tracing::Event::EndStep {
-                    gas_used: 0_u64,
-                    return_data: $return_data_vec,
-                })
+    ($self:ident, $return_data_vec:expr) => {
+        if let Some(tracer) = &$self.tracer {
+            if tracer.borrow().enable_return_data() {
+                tracer
+                    .borrow_mut()
+                    .event(crate::evm::tracing::Event::EndStep {
+                        gas_used: 0_u64,
+                        return_data: $return_data_vec,
+                    })
             } else {
-                listener.event(crate::evm::tracing::Event::EndStep {
-                    gas_used: 0_u64,
-                    return_data: None,
-                })
+                tracer
+                    .borrow_mut()
+                    .event(crate::evm::tracing::Event::EndStep {
+                        gas_used: 0_u64,
+                        return_data: None,
+                    })
             }
-        })
+        }
     };
-
-    ($condition:expr; $return_data_vec:expr) => {
+    ($self:ident, $condition:expr; $return_data_vec:expr) => {
         if $condition {
-            trace_end_step!($return_data_vec)
+            trace_end_step!($self, $return_data_vec)
         }
     };
 }
@@ -122,7 +132,7 @@ pub struct Machine<B: Database> {
     phantom: PhantomData<*const B>,
 
     #[serde(skip)]
-    tracer: Option<Tracer>,
+    tracer: Option<Rc<RefCell<Tracer>>>,
 }
 
 impl<B: Database> Machine<B> {
@@ -216,6 +226,8 @@ impl<B: Database> Machine<B> {
 
         let execution_code = backend.code(&target)?;
 
+        let tracer = tracer.map(|tracer| Rc::new(RefCell::new(tracer)));
+
         Ok(Self {
             origin,
             context: Context {
@@ -230,8 +242,8 @@ impl<B: Database> Machine<B> {
             call_data: trx.call_data,
             return_data: Buffer::empty(),
             return_range: 0..0,
-            stack: Stack::new(),
-            memory: Memory::new(),
+            stack: Stack::new(tracer.clone()),
+            memory: Memory::new(tracer.clone()),
             pc: 0_usize,
             is_static: false,
             reason: Reason::Call,
@@ -262,6 +274,8 @@ impl<B: Database> Machine<B> {
         backend.increment_nonce(target)?;
         backend.transfer(origin, target, trx.value)?;
 
+        let tracer = tracer.map(|tracer| Rc::new(RefCell::new(tracer)));
+
         Ok(Self {
             origin,
             context: Context {
@@ -274,8 +288,8 @@ impl<B: Database> Machine<B> {
             gas_limit: trx.gas_limit,
             return_data: Buffer::empty(),
             return_range: 0..0,
-            stack: Stack::new(),
-            memory: Memory::new(),
+            stack: Stack::new(tracer.clone()),
+            memory: Memory::new(tracer.clone()),
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,
@@ -294,10 +308,13 @@ impl<B: Database> Machine<B> {
 
         let mut step = 0_u64;
 
-        tracing_event!(tracing::Event::BeginVM {
-            context: self.context,
-            code: self.execution_code.to_vec()
-        });
+        tracing_event!(
+            self,
+            tracing::Event::BeginVM {
+                context: self.context,
+                code: self.execution_code.to_vec()
+            }
+        );
 
         let status = loop {
             if is_precompile_address(&self.context.contract) {
@@ -315,12 +332,15 @@ impl<B: Database> Machine<B> {
 
             let opcode = self.execution_code.get_or_default(self.pc);
 
-            tracing_event!(tracing::Event::BeginStep {
-                opcode,
-                pc: self.pc,
-                stack: self.stack.to_vec(),
-                memory: self.memory.to_vec()
-            });
+            tracing_event!(
+                self,
+                tracing::Event::BeginStep {
+                    opcode,
+                    pc: self.pc,
+                    stack: self.stack.to_vec(),
+                    memory: self.memory.to_vec()
+                }
+            );
 
             // SAFETY: OPCODES.len() == 256, opcode <= 255
             let opcode_fn = unsafe { Self::OPCODES.get_unchecked(opcode as usize) };
@@ -333,7 +353,7 @@ impl<B: Database> Machine<B> {
                 }
             };
 
-            trace_end_step!(opcode_result != Action::Noop; match &opcode_result {
+            trace_end_step!(self, opcode_result != Action::Noop; match &opcode_result {
                 Action::Return(value) | Action::Revert(value) => Some(value.clone()),
                 _ => None,
             });
@@ -349,9 +369,12 @@ impl<B: Database> Machine<B> {
             };
         };
 
-        tracing_event!(tracing::Event::EndVM {
-            status: status.clone()
-        });
+        tracing_event!(
+            self,
+            tracing::Event::EndVM {
+                status: status.clone()
+            }
+        );
 
         Ok((status, step))
     }
@@ -364,6 +387,8 @@ impl<B: Database> Machine<B> {
         call_data: Buffer,
         gas_limit: Option<U256>,
     ) {
+        let tracer = self.tracer.take(); // TODO Check take
+
         let mut other = Self {
             origin: self.origin,
             context,
@@ -373,14 +398,14 @@ impl<B: Database> Machine<B> {
             call_data,
             return_data: Buffer::empty(),
             return_range: 0..0,
-            stack: Stack::new(),
-            memory: Memory::new(),
+            stack: Stack::new(tracer.clone()),
+            memory: Memory::new(tracer.clone()),
             pc: 0_usize,
             is_static: self.is_static,
             reason,
             parent: None,
             phantom: PhantomData,
-            tracer: self.tracer.take(), // TODO Check this
+            tracer,
         };
 
         core::mem::swap(self, &mut other);

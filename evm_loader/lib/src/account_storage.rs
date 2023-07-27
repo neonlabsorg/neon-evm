@@ -1,11 +1,8 @@
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 use tokio::sync::RwLock;
 
-use crate::{
-    rpc::Rpc,
-    types::trace::{AccountOverrides, BlockOverrides},
-    NeonError,
-};
+use crate::event_listener::trace::{AccountOverrides, BlockOverrides};
+use crate::{rpc::Rpc, NeonError};
 use ethnum::U256;
 use evm_loader::account::ether_contract;
 use evm_loader::account_storage::{find_slot_hash, AccountOperation, AccountsOperations};

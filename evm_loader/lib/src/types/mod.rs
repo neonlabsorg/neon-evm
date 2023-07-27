@@ -1,7 +1,5 @@
 mod indexer_db;
 pub mod request_models;
-#[allow(clippy::all)]
-pub mod trace;
 mod tracer_ch_db;
 
 pub use evm_loader::types::Address;
@@ -13,8 +11,8 @@ use tokio::runtime::Runtime;
 use tokio::task::block_in_place;
 pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
+use crate::event_listener::trace::{TraceCallConfig, TraceConfig};
 use {
-    crate::types::trace::{TraceCallConfig, TraceConfig},
     ethnum::U256,
     hex::FromHex,
     postgres::NoTls,

@@ -105,7 +105,13 @@ fn trace_trx<'a>(
     let mut tracer = Tracer::new(trace_config.enable_return_data);
 
     let emulation_result = evm_loader::evm::tracing::using(&mut tracer, || {
-        emulate_trx(tx_params, storage, chain_id, steps)
+        emulate_trx(
+            tx_params,
+            storage,
+            chain_id,
+            steps,
+            Some(Tracer::new(trace_config.enable_return_data)),
+        )
     })?;
 
     let (vm_trace, full_trace_data) = tracer.into_traces();

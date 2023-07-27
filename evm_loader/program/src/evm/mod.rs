@@ -21,7 +21,6 @@ mod opcode;
 mod opcode_table;
 mod precompile;
 mod stack;
-#[cfg(feature = "tracing")]
 pub mod tracing;
 mod utils;
 
@@ -32,11 +31,9 @@ pub use precompile::precompile;
 
 macro_rules! tracing_event {
     ($x:expr) => {
-        #[cfg(feature = "tracing")]
         crate::evm::tracing::with(|listener| listener.event($x));
     };
     ($condition:expr; $x:expr) => {
-        #[cfg(feature = "tracing")]
         if $condition {
             crate::evm::tracing::with(|listener| listener.event($x));
         }
@@ -45,7 +42,6 @@ macro_rules! tracing_event {
 
 macro_rules! trace_end_step {
     ($return_data_vec:expr) => {
-        #[cfg(feature = "tracing")]
         crate::evm::tracing::with(|listener| {
             if listener.enable_return_data() {
                 listener.event(crate::evm::tracing::Event::EndStep {
@@ -62,13 +58,13 @@ macro_rules! trace_end_step {
     };
 
     ($condition:expr; $return_data_vec:expr) => {
-        #[cfg(feature = "tracing")]
         if $condition {
             trace_end_step!($return_data_vec)
         }
     };
 }
 
+use crate::evm::tracing::event_listener::tracer::Tracer;
 pub(crate) use trace_end_step;
 pub(crate) use tracing_event;
 
@@ -124,6 +120,9 @@ pub struct Machine<B: Database> {
 
     #[serde(skip)]
     phantom: PhantomData<*const B>,
+
+    #[serde(skip)]
+    tracer: Option<Tracer>,
 }
 
 impl<B: Database> Machine<B> {
@@ -158,7 +157,12 @@ impl<B: Database> Machine<B> {
         Ok(evm)
     }
 
-    pub fn new(trx: Transaction, origin: Address, backend: &mut B) -> Result<Self> {
+    pub fn new(
+        trx: Transaction,
+        origin: Address,
+        backend: &mut B,
+        tracer: Option<Tracer>,
+    ) -> Result<Self> {
         let origin_nonce = backend.nonce(&origin)?;
 
         if origin_nonce == u64::MAX {
@@ -188,13 +192,18 @@ impl<B: Database> Machine<B> {
         }
 
         if trx.target.is_some() {
-            Self::new_call(trx, origin, backend)
+            Self::new_call(trx, origin, backend, tracer)
         } else {
-            Self::new_create(trx, origin, backend)
+            Self::new_create(trx, origin, backend, tracer)
         }
     }
 
-    fn new_call(trx: Transaction, origin: Address, backend: &mut B) -> Result<Self> {
+    fn new_call(
+        trx: Transaction,
+        origin: Address,
+        backend: &mut B,
+        tracer: Option<Tracer>,
+    ) -> Result<Self> {
         assert!(trx.target.is_some());
 
         let target = trx.target.unwrap();
@@ -228,10 +237,16 @@ impl<B: Database> Machine<B> {
             reason: Reason::Call,
             parent: None,
             phantom: PhantomData,
+            tracer,
         })
     }
 
-    fn new_create(trx: Transaction, origin: Address, backend: &mut B) -> Result<Self> {
+    fn new_create(
+        trx: Transaction,
+        origin: Address,
+        backend: &mut B,
+        tracer: Option<Tracer>,
+    ) -> Result<Self> {
         assert!(trx.target.is_none());
 
         let target = Address::from_create(&origin, trx.nonce);
@@ -268,6 +283,7 @@ impl<B: Database> Machine<B> {
             call_data: Buffer::empty(),
             parent: None,
             phantom: PhantomData,
+            tracer,
         })
     }
 
@@ -364,6 +380,7 @@ impl<B: Database> Machine<B> {
             reason,
             parent: None,
             phantom: PhantomData,
+            tracer: self.tracer.take(), // TODO Check this
         };
 
         core::mem::swap(self, &mut other);

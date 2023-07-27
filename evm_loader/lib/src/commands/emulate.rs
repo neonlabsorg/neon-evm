@@ -1,7 +1,12 @@
-use log::{debug, info};
 use std::fmt::{Display, Formatter};
 
 use ethnum::U256;
+use log::{debug, info};
+use serde::{Deserialize, Serialize};
+use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
+
+use evm_loader::evm::tracing::event_listener::trace::TraceCallConfig;
+use evm_loader::evm::tracing::event_listener::tracer::TracerType;
 use evm_loader::{
     account_storage::AccountStorage,
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
@@ -10,7 +15,6 @@ use evm_loader::{
     gasometer::LAMPORTS_PER_SIGNATURE,
     types::{Address, Transaction},
 };
-use serde::{Deserialize, Serialize};
 
 use crate::types::{block, TxParams};
 use crate::{
@@ -20,8 +24,6 @@ use crate::{
     syscall_stubs::Stubs,
     NeonResult,
 };
-use evm_loader::evm::tracing::event_listener::trace::TraceCallConfig;
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulationResult {
@@ -123,7 +125,7 @@ pub async fn execute(
     )
     .await?;
 
-    let emulation_result = emulate_trx(tx_params, &storage, chain_id, step_limit)?;
+    let emulation_result = emulate_trx(tx_params, &storage, chain_id, step_limit, None)?;
     let accounts = block(storage.accounts.read()).values().cloned().collect();
     let solana_accounts = block(storage.solana_accounts.read())
         .values()
@@ -143,6 +145,7 @@ pub(crate) fn emulate_trx<'a>(
     storage: &'a EmulatorAccountStorage<'a>,
     chain_id: u64,
     step_limit: u64,
+    tracer: TracerType,
 ) -> Result<EmulationResult, NeonError> {
     let (exit_status, actions, steps_executed) = {
         let mut backend = ExecutorState::new(storage);
@@ -158,7 +161,7 @@ pub(crate) fn emulate_trx<'a>(
             chain_id: Some(chain_id.into()),
             ..Transaction::default()
         };
-        let mut evm = Machine::new(trx, tx_params.from, &mut backend)?;
+        let mut evm = Machine::new(trx, tx_params.from, &mut backend, tracer)?;
 
         let (result, steps_executed) = evm.execute(step_limit, &mut backend)?;
         if result == ExitStatus::StepLimit {

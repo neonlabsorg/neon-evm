@@ -1,12 +1,12 @@
-use crate::event_listener::trace::{TraceCallConfig, TraceConfig, TracedCall};
 use crate::{
     account_storage::EmulatorAccountStorage,
     commands::emulate::{emulate_transaction, emulate_trx, setup_syscall_stubs},
     errors::NeonError,
-    event_listener::tracer::Tracer,
     rpc::Rpc,
     types::TxParams,
 };
+use evm_loader::evm::tracing::event_listener::trace::{TraceCallConfig, TraceConfig, TracedCall};
+use evm_loader::evm::tracing::event_listener::tracer::Tracer;
 use evm_loader::types::Address;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};

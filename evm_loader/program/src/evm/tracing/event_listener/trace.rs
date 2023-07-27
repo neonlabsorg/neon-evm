@@ -36,7 +36,7 @@ pub struct VMExecutedOperation {
 }
 
 #[derive(
-    Serialize, Deserialize, Debug, Clone, PartialEq, Default /*, RlpEncodable, RlpDecodable */,
+    Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default /*, RlpEncodable, RlpDecodable */,
 )]
 /// A record of the execution of a single VM operation.
 pub struct VMOperation {

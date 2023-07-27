@@ -10,7 +10,9 @@ use evm_loader::evm::tracing::event_listener::tracer::Tracer;
 use evm_loader::types::Address;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
+use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
+use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
 pub async fn trace_transaction(
@@ -102,19 +104,11 @@ fn trace_trx<'a>(
     steps: u64,
     trace_config: &TraceConfig,
 ) -> Result<TracedCall, NeonError> {
-    let mut tracer = Tracer::new(trace_config.enable_return_data);
+    let tracer = Rc::new(RefCell::new(Tracer::new(trace_config.enable_return_data)));
 
-    let emulation_result = evm_loader::evm::tracing::using(&mut tracer, || {
-        emulate_trx(
-            tx_params,
-            storage,
-            chain_id,
-            steps,
-            Some(Tracer::new(trace_config.enable_return_data)),
-        )
-    })?;
+    let emulation_result = emulate_trx(tx_params, storage, chain_id, steps, Some(tracer.clone()))?;
 
-    let (vm_trace, full_trace_data) = tracer.into_traces();
+    let (vm_trace, full_trace_data) = tracer.into_inner().into_traces();
 
     Ok(TracedCall {
         vm_trace,

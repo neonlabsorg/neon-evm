@@ -1,5 +1,7 @@
 use log::{debug, info};
+use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
+use std::rc::Rc;
 
 use ethnum::U256;
 use evm_loader::{
@@ -144,7 +146,7 @@ pub(crate) fn emulate_trx<'a>(
     storage: &'a EmulatorAccountStorage<'a>,
     chain_id: u64,
     step_limit: u64,
-    tracer: Option<Tracer>,
+    tracer: Option<Rc<RefCell<Tracer>>>,
 ) -> Result<EmulationResult, NeonError> {
     let (exit_status, actions, steps_executed) = {
         let mut backend = ExecutorState::new(storage);

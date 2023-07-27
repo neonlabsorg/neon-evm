@@ -119,8 +119,8 @@ pub struct Machine<B: Database> {
     return_data: Buffer,
     return_range: Range<usize>,
 
-    stack: stack::Stack,
-    memory: memory::Memory,
+    stack: Stack,
+    memory: Memory,
     pc: usize,
 
     is_static: bool,
@@ -171,7 +171,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        tracer: Option<Tracer>,
+        tracer: Option<Rc<RefCell<Tracer>>>,
     ) -> Result<Self> {
         let origin_nonce = backend.nonce(&origin)?;
 
@@ -212,7 +212,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        tracer: Option<Tracer>,
+        tracer: Option<Rc<RefCell<Tracer>>>,
     ) -> Result<Self> {
         assert!(trx.target.is_some());
 
@@ -225,8 +225,6 @@ impl<B: Database> Machine<B> {
         backend.transfer(origin, target, trx.value)?;
 
         let execution_code = backend.code(&target)?;
-
-        let tracer = tracer.map(|tracer| Rc::new(RefCell::new(tracer)));
 
         Ok(Self {
             origin,
@@ -257,7 +255,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        tracer: Option<Tracer>,
+        tracer: Option<Rc<RefCell<Tracer>>>,
     ) -> Result<Self> {
         assert!(trx.target.is_none());
 
@@ -273,8 +271,6 @@ impl<B: Database> Machine<B> {
 
         backend.increment_nonce(target)?;
         backend.transfer(origin, target, trx.value)?;
-
-        let tracer = tracer.map(|tracer| Rc::new(RefCell::new(tracer)));
 
         Ok(Self {
             origin,

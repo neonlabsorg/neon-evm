@@ -5,6 +5,7 @@ pub mod context;
 pub mod errors;
 pub mod event_listener;
 pub mod rpc;
+pub mod signer;
 pub mod syscall_stubs;
 pub mod types;
 

@@ -1,4 +1,4 @@
-use crate::rpc::Rpc;
+use crate::{rpc::Rpc, signer::NeonSigner};
 use solana_client::{
     client_error::Result as SolanaClientResult, rpc_config::RpcSendTransactionConfig,
 };
@@ -25,7 +25,7 @@ mod transaction_executor;
 
 pub async fn send_transaction(
     rpc_client: &dyn Rpc,
-    signer: &dyn Signer,
+    signer: &NeonSigner,
     instructions: &[Instruction],
 ) -> SolanaClientResult<Signature> {
     let message = Message::new(instructions, Some(&signer.pubkey()));

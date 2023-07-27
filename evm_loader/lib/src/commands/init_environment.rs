@@ -116,11 +116,11 @@ pub async fn execute(
         send_trx,
         force
     );
-    let second_signer: Arc<dyn Signer> = Arc::from(context.signer()?);
+    let second_signer = signer.clone();
     let fee_payer = config
         .fee_payer
         .as_ref()
-        .map_or_else(move || second_signer, |v| v.clone());
+        .map_or_else(move || second_signer, |v| v.clone().into());
     let executor = Arc::new(TransactionExecutor::new(
         context.rpc_client.clone(),
         fee_payer,

@@ -1,7 +1,6 @@
 use log::debug;
 use serde::{Deserialize, Serialize};
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::signer::Signer;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     message::Message,
@@ -13,6 +12,7 @@ use solana_sdk::{
 use evm_loader::types::Address;
 
 use crate::rpc::check_account_for_fee;
+use crate::signer::NeonSigner;
 use crate::NeonResult;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -23,9 +23,10 @@ pub struct CreateEtherAccountReturn {
 pub async fn execute(
     rpc_client: &RpcClient,
     evm_loader: Pubkey,
-    signer: &dyn Signer,
+    signer: &NeonSigner,
     ether_address: &Address,
 ) -> NeonResult<CreateEtherAccountReturn> {
+    let pubkey = signer.pubkey();
     let (solana_address, nonce) = ether_address.find_solana_address(&evm_loader);
     debug!("Create ethereum account {solana_address} <- {ether_address} {nonce}");
 
@@ -45,7 +46,7 @@ pub async fn execute(
     let blockhash = rpc_client.get_latest_blockhash().await?;
     finalize_message.recent_blockhash = blockhash;
 
-    check_account_for_fee(rpc_client, &signer.pubkey(), &finalize_message).await?;
+    check_account_for_fee(rpc_client, &pubkey, &finalize_message).await?;
 
     let mut finalize_tx = Transaction::new_unsigned(finalize_message);
 

@@ -24,6 +24,7 @@ pub struct CollectTreasuryReturn {
 pub async fn execute(config: &Config, context: &Context) -> NeonResult<CollectTreasuryReturn> {
     let neon_params = read_elf_parameters_from_account(config, context).await?;
     let signer = context.signer()?;
+    let pubkey = signer.pubkey();
 
     let pool_count: u32 = neon_params
         .get("NEON_POOL_COUNT")
@@ -69,12 +70,12 @@ pub async fn execute(config: &Config, context: &Context) -> NeonResult<CollectTr
                             AccountMeta::new_readonly(system_program::id(), false),
                         ],
                     )],
-                    Some(&signer.pubkey()),
+                    Some(&pubkey),
                 );
                 let blockhash = context.rpc_client.get_latest_blockhash().await?;
                 message.recent_blockhash = blockhash;
 
-                check_account_for_fee(client, &signer.pubkey(), &message).await?;
+                check_account_for_fee(client, &pubkey, &message).await?;
 
                 let mut trx = Transaction::new_unsigned(message);
                 trx.try_sign(&[&*signer], blockhash)?;
@@ -96,7 +97,7 @@ pub async fn execute(config: &Config, context: &Context) -> NeonResult<CollectTr
     let blockhash = context.rpc_client.get_latest_blockhash().await?;
     message.recent_blockhash = blockhash;
 
-    check_account_for_fee(client, &signer.pubkey(), &message).await?;
+    check_account_for_fee(client, &pubkey, &message).await?;
 
     let mut trx = Transaction::new_unsigned(message);
     trx.try_sign(&[&*signer], blockhash)?;

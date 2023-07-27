@@ -1,0 +1,18 @@
+[package]
+name = "shared-lib"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+abi_stable = "0.11.1"
+async-ffi = { version = "0.4.1", features = ["abi_stable"] }
+ethnum = { version = "1", default_features = false, features = [ "serde" ] }
+evm-loader = { path = "../program", default_features = false, features = ["log", "tracing"] }
+neon-interface = { git = "ssh://git@github.com/neonlabsorg/neon-interface.git", rev = "22fa1d0fe2cc4b15d4ca139980b26950de66c5d8" }
+neon-lib = { path = "../lib" }
+serde = "1.0.147"
+serde_json = "1.0.85"
+solana-client = "~1.14"
+solana-sdk = "~1.14"

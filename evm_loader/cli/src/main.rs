@@ -226,14 +226,9 @@ async fn execute<'a>(
                 .as_any()
                 .downcast_ref::<RpcClient>()
                 .expect("cast to solana_client::nonblocking::rpc_client::RpcClient error");
-            create_ether_account::execute(
-                rpc_client,
-                config.evm_loader,
-                context.signer()?.as_ref(),
-                &ether,
-            )
-            .await
-            .map(|result| json!(result))
+            create_ether_account::execute(rpc_client, config.evm_loader, &context.signer()?, &ether)
+                .await
+                .map(|result| json!(result))
         }
         ("deposit", Some(params)) => {
             let rpc_client = context
@@ -246,7 +241,7 @@ async fn execute<'a>(
             deposit::execute(
                 rpc_client,
                 config.evm_loader,
-                context.signer()?.as_ref(),
+                &context.signer()?,
                 amount,
                 &ether,
             )
@@ -264,7 +259,7 @@ async fn execute<'a>(
                 pubkey_of(params, "storage_account").expect("storage_account parse error");
             cancel_trx::execute(
                 context.rpc_client.as_ref(),
-                context.signer()?.as_ref(),
+                &context.signer()?,
                 config.evm_loader,
                 &storage_account,
             )

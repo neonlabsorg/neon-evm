@@ -2,10 +2,10 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 
 use crate::rpc::check_account_for_fee;
+use crate::signer::NeonSigner;
 use crate::NeonResult;
 use evm_loader::types::Address;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::signer::Signer;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     message::Message,
@@ -25,10 +25,11 @@ pub struct DepositReturn {
 pub async fn execute(
     rpc_client: &RpcClient,
     evm_loader: Pubkey,
-    signer: &dyn Signer,
+    signer: &NeonSigner,
     amount: u64,
     ether_address: &Address,
 ) -> NeonResult<DepositReturn> {
+    let pubkey = signer.pubkey();
     let (ether_pubkey, _) = ether_address.find_solana_address(&evm_loader);
 
     let token_mint_id = evm_loader::config::token_mint::id();
@@ -53,7 +54,7 @@ pub async fn execute(
     let blockhash = rpc_client.get_latest_blockhash().await?;
     finalize_message.recent_blockhash = blockhash;
 
-    check_account_for_fee(rpc_client, &signer.pubkey(), &finalize_message).await?;
+    check_account_for_fee(rpc_client, &pubkey, &finalize_message).await?;
 
     let mut finalize_tx = Transaction::new_unsigned(finalize_message);
 

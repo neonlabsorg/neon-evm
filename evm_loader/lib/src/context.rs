@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::{
     rpc::CallDbClient,
     rpc::{self, TrxDbClient},
+    signer::NeonSigner,
     Config, NeonError,
 };
 use hex::FromHex;
@@ -40,8 +41,8 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn signer(&self) -> Result<Box<dyn Signer>, NeonError> {
-        build_signer(&self.signer_config)
+    pub fn signer(&self) -> Result<NeonSigner, NeonError> {
+        Ok(NeonSigner::new(build_signer(&self.signer_config)?))
     }
 }
 

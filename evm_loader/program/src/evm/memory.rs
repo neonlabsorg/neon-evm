@@ -45,7 +45,7 @@ impl Memory {
         }
     }
 
-    pub fn from_buffer(v: &[u8], tracer: TracerType) -> Self {
+    pub fn from_buffer(v: &[u8]) -> Self {
         let capacity = v.len().next_power_of_two().max(MEMORY_CAPACITY);
 
         unsafe {
@@ -61,7 +61,7 @@ impl Memory {
                 data,
                 capacity,
                 size: v.len(),
-                tracer,
+                tracer: None,
             }
         }
     }
@@ -303,7 +303,7 @@ impl<'de> serde::Deserialize<'de> for Memory {
                     return Err(E::invalid_length(v.len(), &self));
                 }
 
-                Ok(Memory::from_buffer(v, None))
+                Ok(Memory::from_buffer(v))
             }
         }
 

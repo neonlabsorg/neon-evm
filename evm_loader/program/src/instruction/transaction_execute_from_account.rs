@@ -35,7 +35,7 @@ pub fn process<'a>(
 
     let caller_address = trx.recover_caller_address()?;
 
-    solana_program::log::sol_log_data(&[b"HASH", &trx.hash]);
+    solana_program::log::sol_log_data(&[b"HASH", trx.hash()]);
 
     let mut account_storage = ProgramAccountStorage::new(
         program_id,
@@ -54,7 +54,7 @@ pub fn process<'a>(
         accounts,
         &mut account_storage,
         gasometer,
-        trx,
+        &trx,
         caller_address,
     )
 }

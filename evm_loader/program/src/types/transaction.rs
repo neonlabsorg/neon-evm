@@ -1,26 +1,84 @@
-use crate::error::Error;
 use ethnum::U256;
+use rlp::Decodable;
 use std::convert::TryInto;
+
+use crate::error::Error;
 
 use super::Address;
 
+enum RlpTransactionEnvelope {
+    Legacy,
+    AccessList,
+    DynamicFee,
+    Blob,
+}
+
+impl RlpTransactionEnvelope {
+    pub fn from_rlp(rlp: &rlp::Rlp) -> RlpTransactionEnvelope {
+        RlpTransactionEnvelope::decode(rlp).expect("RlpTransactionEnvelope decoding never fails")
+    }
+}
+
+impl rlp::Decodable for RlpTransactionEnvelope {
+    fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
+        // Legacy transaction format
+        if rlp.is_list() {
+            return Ok(RlpTransactionEnvelope::Legacy);
+        }
+
+        let raw = rlp.as_raw();
+        let first_byte = raw[0];
+
+        // It's an EIP-2718 typed TX envelope.
+        match first_byte {
+            0x00 => Ok(RlpTransactionEnvelope::Legacy),
+            0x01 => Ok(RlpTransactionEnvelope::AccessList),
+            0x02 => Ok(RlpTransactionEnvelope::DynamicFee),
+            0x03 => Ok(RlpTransactionEnvelope::Blob),
+            byte => panic!("Unsupported EIP-2718 Transaction type | First byte: {byte}"),
+        }
+    }
+}
+
+// type AccAddress = [u8; 20];
+// type Bytes32 = [u8; 32];
+
 // Raven: we should switch this to enum
-#[derive(Debug, Default, Clone)]
-pub struct Transaction {
-    pub nonce: u64,
-    pub gas_price: U256,
-    pub gas_limit: U256,
-    pub target: Option<Address>,
-    pub value: U256,
-    pub call_data: crate::evm::Buffer,
-    pub v: U256,
-    pub r: U256,
-    pub s: U256,
-    pub chain_id: Option<U256>,
-    pub recovery_id: u8,
-    pub rlp_len: usize,
-    pub hash: [u8; 32],
-    pub signed_hash: [u8; 32],
+#[derive(Debug, Clone)]
+pub enum Transaction {
+    Legacy {
+        nonce: u64,
+        gas_price: U256,
+        gas_limit: U256,
+        target: Option<Address>,
+        value: U256,
+        call_data: crate::evm::Buffer,
+        v: U256,
+        r: U256,
+        s: U256,
+        chain_id: Option<U256>,
+        recovery_id: u8,
+        rlp_len: usize,
+        hash: [u8; 32],
+        signed_hash: [u8; 32],
+    },
+    AccessList {
+        nonce: u64,
+        gas_price: U256,
+        gas_limit: U256,
+        target: Option<Address>,
+        value: U256,
+        call_data: crate::evm::Buffer,
+        v: U256,
+        r: U256,
+        s: U256,
+        chain_id: Option<U256>,
+        recovery_id: u8,
+        // access_list: Vec<Vec<(AccAddress, Bytes32)>>,
+        rlp_len: usize,
+        hash: [u8; 32],
+        signed_hash: [u8; 32],
+    },
 }
 
 impl Transaction {
@@ -32,93 +90,279 @@ impl Transaction {
         use solana_program::keccak::{hash, Hash};
         use solana_program::secp256k1_recover::secp256k1_recover;
 
-        let signature = [self.r.to_be_bytes(), self.s.to_be_bytes()].concat();
-        let public_key = secp256k1_recover(&self.signed_hash, self.recovery_id, &signature)?;
+        let signature = [self.r().to_be_bytes(), self.s().to_be_bytes()].concat();
+        let public_key = secp256k1_recover(self.signed_hash(), self.recovery_id(), &signature)?;
 
         let Hash(address) = hash(&public_key.to_bytes());
         let address: [u8; 20] = address[12..32].try_into()?;
 
         Ok(Address::from(address))
     }
+
+    #[must_use]
+    pub fn nonce(&self) -> u64 {
+        match self {
+            Transaction::Legacy { nonce, .. } | Transaction::AccessList { nonce, .. } => *nonce,
+        }
+    }
+
+    #[must_use]
+    pub fn gas_price(&self) -> &U256 {
+        match self {
+            Transaction::Legacy { gas_price, .. } | Transaction::AccessList { gas_price, .. } => {
+                gas_price
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn gas_limit(&self) -> &U256 {
+        match self {
+            Transaction::Legacy { gas_limit, .. } | Transaction::AccessList { gas_limit, .. } => {
+                gas_limit
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn target(&self) -> Option<&Address> {
+        match self {
+            Transaction::Legacy { target, .. } | Transaction::AccessList { target, .. } => {
+                target.as_ref()
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn value(&self) -> &U256 {
+        match self {
+            Transaction::Legacy { value, .. } | Transaction::AccessList { value, .. } => value,
+        }
+    }
+
+    #[must_use]
+    pub fn call_data(&self) -> &crate::evm::Buffer {
+        match self {
+            Transaction::Legacy { call_data, .. } | Transaction::AccessList { call_data, .. } => {
+                call_data
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn v(&self) -> &U256 {
+        match self {
+            Transaction::Legacy { v, .. } | Transaction::AccessList { v, .. } => v,
+        }
+    }
+
+    #[must_use]
+    pub fn r(&self) -> &U256 {
+        match self {
+            Transaction::Legacy { r, .. } | Transaction::AccessList { r, .. } => r,
+        }
+    }
+
+    #[must_use]
+    pub fn s(&self) -> &U256 {
+        match self {
+            Transaction::Legacy { s, .. } | Transaction::AccessList { s, .. } => s,
+        }
+    }
+
+    #[must_use]
+    pub fn chain_id(&self) -> Option<&U256> {
+        match self {
+            Transaction::Legacy { chain_id, .. } | Transaction::AccessList { chain_id, .. } => {
+                chain_id.as_ref()
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn recovery_id(&self) -> u8 {
+        match self {
+            Transaction::Legacy { recovery_id, .. }
+            | Transaction::AccessList { recovery_id, .. } => *recovery_id,
+        }
+    }
+
+    #[must_use]
+    pub fn rlp_len(&self) -> usize {
+        match self {
+            Transaction::Legacy { rlp_len, .. } | Transaction::AccessList { rlp_len, .. } => {
+                *rlp_len
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn hash(&self) -> &[u8; 32] {
+        match self {
+            Transaction::Legacy { hash, .. } | Transaction::AccessList { hash, .. } => hash,
+        }
+    }
+
+    #[must_use]
+    pub fn signed_hash(&self) -> &[u8; 32] {
+        match self {
+            Transaction::Legacy { signed_hash, .. }
+            | Transaction::AccessList { signed_hash, .. } => signed_hash,
+        }
+    }
 }
 
 impl rlp::Decodable for Transaction {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
-        // It's an EIP-2718 typed TX envelope.
-        // Raven: new transactions parser should be here
-        if !rlp.is_list() {
-            return Err(rlp::DecoderError::RlpExpectedToBeList);
-        }
+        match RlpTransactionEnvelope::from_rlp(rlp) {
+            RlpTransactionEnvelope::Legacy => {
+                let rlp_len = {
+                    let info = rlp.payload_info()?;
+                    info.header_len + info.value_len
+                };
 
-       // It's a legacy transaction.
-        let rlp_len = {
-            let info = rlp.payload_info()?;
-            info.header_len + info.value_len
-        };
+                if rlp.as_raw().len() != rlp_len {
+                    return Err(rlp::DecoderError::RlpInconsistentLengthAndData);
+                }
 
-        if rlp.as_raw().len() != rlp_len {
-            return Err(rlp::DecoderError::RlpInconsistentLengthAndData);
-        }
+                let nonce: u64 = rlp.val_at(0)?;
+                let gas_price: U256 = u256(&rlp.at(1)?)?;
+                let gas_limit: U256 = u256(&rlp.at(2)?)?;
+                let target: Option<Address> = {
+                    let target = rlp.at(3)?;
+                    if target.is_empty() {
+                        if target.is_data() {
+                            None
+                        } else {
+                            return Err(rlp::DecoderError::RlpExpectedToBeData);
+                        }
+                    } else {
+                        Some(target.as_val()?)
+                    }
+                };
+                let value: U256 = u256(&rlp.at(4)?)?;
+                let call_data = crate::evm::Buffer::from_slice(rlp.at(5)?.data()?);
+                let v: U256 = u256(&rlp.at(6)?)?;
+                let r: U256 = u256(&rlp.at(7)?)?;
+                let s: U256 = u256(&rlp.at(8)?)?;
 
-        let nonce: u64 = rlp.val_at(0)?;
-        let gas_price: U256 = u256(&rlp.at(1)?)?;
-        let gas_limit: U256 = u256(&rlp.at(2)?)?;
-        let target: Option<Address> = {
-            let target = rlp.at(3)?;
-            if target.is_empty() {
-                if target.is_data() {
-                    None
+                if rlp.at(9).is_ok() {
+                    return Err(rlp::DecoderError::RlpIncorrectListLen);
+                }
+
+                let (chain_id, recovery_id) = if v >= 35 {
+                    let chain_id = (v - 1) / 2 - 17;
+                    let recovery_id = u8::from((v % 2) == U256::ZERO);
+                    (Some(chain_id), recovery_id)
+                } else if v == 27 {
+                    (None, 0_u8)
+                } else if v == 28 {
+                    (None, 1_u8)
                 } else {
                     return Err(rlp::DecoderError::RlpExpectedToBeData);
-                }
-            } else {
-                Some(target.as_val()?)
+                };
+
+                let hash = solana_program::keccak::hash(rlp.as_raw()).to_bytes();
+                let signed_hash = signed_hash(rlp, chain_id)?;
+
+                let tx = Transaction::Legacy {
+                    nonce,
+                    gas_price,
+                    gas_limit,
+                    target,
+                    value,
+                    call_data,
+                    v,
+                    r,
+                    s,
+                    chain_id,
+                    recovery_id,
+                    rlp_len,
+                    hash,
+                    signed_hash,
+                };
+
+                Ok(tx)
             }
-        };
-        let value: U256 = u256(&rlp.at(4)?)?;
-        let call_data = crate::evm::Buffer::from_slice(rlp.at(5)?.data()?);
-        let v: U256 = u256(&rlp.at(6)?)?;
-        let r: U256 = u256(&rlp.at(7)?)?;
-        let s: U256 = u256(&rlp.at(8)?)?;
-
-        if rlp.at(9).is_ok() {
-            return Err(rlp::DecoderError::RlpIncorrectListLen);
+            RlpTransactionEnvelope::AccessList => parse_access_list_rlp(rlp),
+            RlpTransactionEnvelope::DynamicFee => {
+                unimplemented!("Dynamic Fee Transaction is not supported");
+            }
+            RlpTransactionEnvelope::Blob => {
+                unimplemented!("Blob Transaction is not supported");
+            }
         }
-
-        let (chain_id, recovery_id) = if v >= 35 {
-            let chain_id = (v - 1) / 2 - 17;
-            let recovery_id = u8::from((v % 2) == U256::ZERO);
-            (Some(chain_id), recovery_id)
-        } else if v == 27 {
-            (None, 0_u8)
-        } else if v == 28 {
-            (None, 1_u8)
-        } else {
-            return Err(rlp::DecoderError::RlpExpectedToBeData);
-        };
-
-        let hash = solana_program::keccak::hash(rlp.as_raw()).to_bytes();
-        let signed_hash = signed_hash(rlp, chain_id)?;
-
-        let tx = Self {
-            nonce,
-            gas_price,
-            gas_limit,
-            target,
-            value,
-            call_data,
-            v,
-            r,
-            s,
-            chain_id,
-            recovery_id,
-            rlp_len,
-            hash,
-            signed_hash,
-        };
-
-        Ok(tx)
     }
+}
+
+fn parse_access_list_rlp(rlp: &rlp::Rlp) -> Result<Transaction, rlp::DecoderError> {
+    let rlp_len = {
+        let info = rlp.payload_info()?;
+        info.header_len + info.value_len
+    };
+
+    if rlp.as_raw().len() != rlp_len {
+        return Err(rlp::DecoderError::RlpInconsistentLengthAndData);
+    }
+
+    let nonce: u64 = rlp.val_at(0)?;
+    let gas_price: U256 = u256(&rlp.at(1)?)?;
+    let gas_limit: U256 = u256(&rlp.at(2)?)?;
+    let target: Option<Address> = {
+        let target = rlp.at(3)?;
+        if target.is_empty() {
+            if target.is_data() {
+                None
+            } else {
+                return Err(rlp::DecoderError::RlpExpectedToBeData);
+            }
+        } else {
+            Some(target.as_val()?)
+        }
+    };
+    let value: U256 = u256(&rlp.at(4)?)?;
+    let call_data = crate::evm::Buffer::from_slice(rlp.at(5)?.data()?);
+    let v: U256 = u256(&rlp.at(6)?)?;
+    let r: U256 = u256(&rlp.at(7)?)?;
+    let s: U256 = u256(&rlp.at(8)?)?;
+
+    if rlp.at(9).is_ok() {
+        return Err(rlp::DecoderError::RlpIncorrectListLen);
+    }
+
+    let (chain_id, recovery_id) = if v >= 35 {
+        let chain_id = (v - 1) / 2 - 17;
+        let recovery_id = u8::from((v % 2) == U256::ZERO);
+        (Some(chain_id), recovery_id)
+    } else if v == 27 {
+        (None, 0_u8)
+    } else if v == 28 {
+        (None, 1_u8)
+    } else {
+        return Err(rlp::DecoderError::RlpExpectedToBeData);
+    };
+
+    let hash = solana_program::keccak::hash(rlp.as_raw()).to_bytes();
+    let signed_hash = signed_hash(rlp, chain_id)?;
+
+    let tx = Transaction::AccessList {
+        nonce,
+        gas_price,
+        gas_limit,
+        target,
+        value,
+        call_data,
+        v,
+        r,
+        s,
+        chain_id,
+        recovery_id,
+        rlp_len,
+        hash,
+        signed_hash,
+    };
+
+    Ok(tx)
 }
 
 fn signed_hash(

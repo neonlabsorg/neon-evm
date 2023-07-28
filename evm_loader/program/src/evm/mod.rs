@@ -380,8 +380,6 @@ impl<B: Database> Machine<B> {
         call_data: Buffer,
         gas_limit: Option<U256>,
     ) {
-        let tracer = self.tracer.take(); // TODO Check take
-
         let mut other = Self {
             origin: self.origin,
             context,
@@ -391,14 +389,14 @@ impl<B: Database> Machine<B> {
             call_data,
             return_data: Buffer::empty(),
             return_range: 0..0,
-            stack: Stack::new(tracer.clone()),
-            memory: Memory::new(tracer.clone()),
+            stack: Stack::new(self.tracer.clone()),
+            memory: Memory::new(self.tracer.clone()),
             pc: 0_usize,
             is_static: self.is_static,
             reason,
             parent: None,
             phantom: PhantomData,
-            tracer,
+            tracer: self.tracer.clone(),
         };
 
         core::mem::swap(self, &mut other);

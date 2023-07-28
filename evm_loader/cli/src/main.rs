@@ -321,6 +321,7 @@ fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
         .unwrap_or_default();
     let value = u256_of(params, "value");
     let gas_limit = u256_of(params, "gas_limit");
+    let access_list = if to.is_some() { Some(vec![from, to.unwrap()]) } else { Some(vec![from]) };
 
     let tx_params = TxParams {
         nonce: None,
@@ -329,6 +330,7 @@ fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
         data,
         value,
         gas_limit,
+        access_list,
     };
 
     (tx_params, trace_config)

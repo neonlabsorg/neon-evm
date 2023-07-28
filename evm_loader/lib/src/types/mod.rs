@@ -127,6 +127,7 @@ pub struct TxParams {
     pub data: Option<Vec<u8>>,
     pub value: Option<U256>,
     pub gas_limit: Option<U256>,
+    pub access_list: Option<Vec<Address>>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

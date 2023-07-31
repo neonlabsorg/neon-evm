@@ -15,12 +15,17 @@ from .solana_utils import EvmLoader, OperatorAccount, create_treasury_pool_addre
 from .utils.contract import deploy_contract
 from .utils.storage import create_holder
 from .utils.types import TreasuryPool, Caller, Contract
+from .utils.neon_api_client import NeonApiClient
 
 
 def pytest_addoption(parser):
     parser.addoption(
         "--operator-keys", action="store", default="~/.config/solana/id.json,~/.config/solana/id2.json",
         help="Path to 2 comma separated operator keypairs"
+    )
+    parser.addoption(
+        "--neon-api-uri", action="store", default="http://dk-neon-api:8085/api",
+        help=""
     )
 
 
@@ -129,3 +134,9 @@ def rw_lock_caller(evm_loader: EvmLoader, operator_keypair: Keypair,
 def string_setter_contract(evm_loader: EvmLoader, operator_keypair: Keypair, session_user: Caller,
                            treasury_pool) -> Contract:
     return deploy_contract(operator_keypair, session_user, "string_setter.binary", evm_loader, treasury_pool)
+
+
+@pytest.fixture(scope="session")
+def neon_api_client(request):
+    client = NeonApiClient(url=request.config.getoption("--neon-api-uri"))
+    return client

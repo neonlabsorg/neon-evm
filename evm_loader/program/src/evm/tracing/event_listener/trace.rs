@@ -91,6 +91,7 @@ pub struct ExecutiveVMTracer {
 
 impl ExecutiveVMTracer {
     /// Create a new top-level instance.
+    #[must_use]
     pub fn toplevel() -> Self {
         ExecutiveVMTracer {
             data: VMTrace {

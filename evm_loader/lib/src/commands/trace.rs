@@ -10,11 +10,8 @@ use evm_loader::evm::tracing::event_listener::tracer::Tracer;
 use evm_loader::types::Address;
 
 use crate::{
-    account_storage::EmulatorAccountStorage,
-    commands::emulate::{emulate_trx, setup_syscall_stubs},
-    errors::NeonError,
-    rpc::Rpc,
-    types::TxParams,
+    account_storage::EmulatorAccountStorage, commands::emulate::emulate_trx, errors::NeonError,
+    rpc::Rpc, types::TxParams,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -30,8 +27,6 @@ pub async fn trace_transaction(
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
 ) -> Result<TracedCall, NeonError> {
-    setup_syscall_stubs(rpc_client).await?;
-
     let storage = EmulatorAccountStorage::with_accounts(
         rpc_client,
         evm_loader,
@@ -76,8 +71,6 @@ pub async fn trace_block(
     solana_accounts: &[Pubkey],
     trace_config: &TraceConfig,
 ) -> Result<TraceBlockReturn, NeonError> {
-    setup_syscall_stubs(rpc_client).await?;
-
     let storage = EmulatorAccountStorage::with_accounts(
         rpc_client,
         evm_loader,

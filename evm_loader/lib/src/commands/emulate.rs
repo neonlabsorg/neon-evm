@@ -110,8 +110,6 @@ pub async fn execute(
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
 ) -> NeonResult<EmulationResultWithAccounts> {
-    setup_syscall_stubs(rpc_client).await?;
-
     let storage = EmulatorAccountStorage::with_accounts(
         rpc_client,
         evm_loader,

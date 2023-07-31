@@ -1,6 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 use tokio::sync::RwLock;
 
+use crate::commands::emulate::setup_syscall_stubs;
 use crate::{rpc::Rpc, NeonError};
 use ethnum::U256;
 use evm_loader::account::ether_contract;
@@ -175,6 +176,8 @@ impl<'a> EmulatorAccountStorage<'a> {
         block_overrides: &Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
     ) -> Result<EmulatorAccountStorage<'a>, NeonError> {
+        setup_syscall_stubs(rpc_client).await?;
+
         let storage = Self::new(
             rpc_client,
             evm_loader,

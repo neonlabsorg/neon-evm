@@ -3,7 +3,7 @@ use std::{future::Future, sync::Arc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
-use crate::signer::NeonSigner;
+use crate::{signer::NeonSigner, types::block};
 
 use {
     crate::{errors::NeonError, rpc},
@@ -123,12 +123,11 @@ impl TransactionExecutor {
         Ok(transaction)
     }
 
-    pub async fn create_transaction_with_payer_only(
+    pub fn create_transaction_with_payer_only(
         &self,
         instructions: &[Instruction],
     ) -> Result<Transaction, NeonError> {
-        self.create_transaction::<[&dyn Signer; 0]>(instructions, &[])
-            .await
+        block(self.create_transaction::<[&dyn Signer; 0]>(instructions, &[]))
     }
 
     pub async fn send_transaction(

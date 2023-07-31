@@ -16,7 +16,7 @@ use neon_interface::{
 use neon_lib::{
     commands::{
         cancel_trx, collect_treasury, create_ether_account, deposit, emulate,
-        get_ether_account_data, get_neon_elf, get_storage_at,
+        get_ether_account_data, get_neon_elf, get_storage_at, init_environment,
     },
     config::create_from_api_comnfig,
     context, NeonError,
@@ -238,6 +238,34 @@ async fn dispatch(method: &str, params: &str) -> Result<String, NeonError> {
                     &config.evm_loader,
                     ether_address,
                     &index,
+                )
+                .await?,
+            )
+            .unwrap())
+        }
+        "init_environment" => {
+            let param_types::Params {
+                api_options,
+                slot,
+                params:
+                    param_types::InitEnvironment {
+                        send_trx,
+                        force,
+                        keys_dir,
+                        file,
+                    },
+            } = serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
+            let config = Arc::new(create_from_api_comnfig(&api_options)?);
+            let rpc_client = context::build_rpc_client(&config, slot)?;
+            let context = context::create(rpc_client, config.clone());
+            Ok(serde_json::to_string(
+                &init_environment::execute(
+                    &config,
+                    &context,
+                    send_trx,
+                    force,
+                    keys_dir.as_deref(),
+                    file.as_deref(),
                 )
                 .await?,
             )

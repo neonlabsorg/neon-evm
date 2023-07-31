@@ -57,3 +57,11 @@ pub struct GetStorageAt {
     pub ether_address: Address,
     pub index: U256,
 }
+
+#[derive(Deserialize)]
+pub struct InitEnvironment {
+    pub send_trx: bool,
+    pub force: bool,
+    pub keys_dir: Option<String>,
+    pub file: Option<String>,
+}

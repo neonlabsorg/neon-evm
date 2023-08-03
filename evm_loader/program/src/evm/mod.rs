@@ -28,6 +28,7 @@ mod utils;
 use self::{database::Database, memory::Memory, stack::Stack};
 pub use buffer::Buffer;
 pub use precompile::is_precompile_address;
+pub use precompile::precompile;
 
 macro_rules! tracing_event {
     ($x:expr) => {
@@ -41,6 +42,34 @@ macro_rules! tracing_event {
         }
     };
 }
+
+macro_rules! trace_end_step {
+    ($return_data_vec:expr) => {
+        #[cfg(feature = "tracing")]
+        crate::evm::tracing::with(|listener| {
+            if listener.enable_return_data() {
+                listener.event(crate::evm::tracing::Event::EndStep {
+                    gas_used: 0_u64,
+                    return_data: $return_data_vec,
+                })
+            } else {
+                listener.event(crate::evm::tracing::Event::EndStep {
+                    gas_used: 0_u64,
+                    return_data: None,
+                })
+            }
+        })
+    };
+
+    ($condition:expr; $return_data_vec:expr) => {
+        #[cfg(feature = "tracing")]
+        if $condition {
+            trace_end_step!($return_data_vec)
+        }
+    };
+}
+
+pub(crate) use trace_end_step;
 pub(crate) use tracing_event;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -255,6 +284,14 @@ impl<B: Database> Machine<B> {
         });
 
         let status = loop {
+            if is_precompile_address(&self.context.contract) {
+                let value = precompile(&self.context.contract, &self.call_data).unwrap_or_default();
+
+                backend.commit_snapshot();
+
+                break ExitStatus::Return(value);
+            }
+
             step += 1;
             if step > step_limit {
                 break ExitStatus::StepLimit;
@@ -280,8 +317,9 @@ impl<B: Database> Machine<B> {
                 }
             };
 
-            tracing_event!(opcode_result != Action::Noop; tracing::Event::EndStep {
-                gas_used: 0_u64
+            trace_end_step!(opcode_result != Action::Noop; match &opcode_result {
+                Action::Return(value) | Action::Revert(value) => Some(value.clone()),
+                _ => None,
             });
 
             match opcode_result {
@@ -292,7 +330,7 @@ impl<B: Database> Machine<B> {
                 Action::Revert(value) => break ExitStatus::Revert(value),
                 Action::Suicide => break ExitStatus::Suicide,
                 Action::Noop => {}
-            }
+            };
         };
 
         tracing_event!(tracing::Event::EndVM {

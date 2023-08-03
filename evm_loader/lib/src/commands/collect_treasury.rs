@@ -1,11 +1,12 @@
+use crate::rpc::check_account_for_fee;
 use crate::{
     commands::get_neon_elf::read_elf_parameters_from_account, errors::NeonError, Config, Context,
     NeonResult,
 };
 use evm_loader::account::{MainTreasury, Treasury};
 use log::{info, warn};
-use serde::Serialize;
-use solana_cli::checks::check_account_for_fee;
+use serde::{Deserialize, Serialize};
+use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     message::Message,
@@ -14,7 +15,7 @@ use solana_sdk::{
 };
 use spl_token::instruction::sync_native;
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CollectTreasuryReturn {
     pub pool_address: String,
     pub balance: u64,
@@ -22,6 +23,7 @@ pub struct CollectTreasuryReturn {
 
 pub async fn execute(config: &Config, context: &Context) -> NeonResult<CollectTreasuryReturn> {
     let neon_params = read_elf_parameters_from_account(config, context).await?;
+    let signer = context.signer()?;
 
     let pool_count: u32 = neon_params
         .get("NEON_POOL_COUNT")
@@ -33,9 +35,10 @@ pub async fn execute(config: &Config, context: &Context) -> NeonResult<CollectTr
     info!("Main pool balance: {}", main_balance_address);
 
     let client = context
-        .blocking_rpc_client
-        .as_ref()
-        .expect("Blocking RPC client not initialized");
+        .rpc_client
+        .as_any()
+        .downcast_ref::<RpcClient>()
+        .expect("cast to solana_client::rpc_client::RpcClient error");
 
     for i in 0..pool_count {
         let (aux_balance_address, _) = Treasury::address(&config.evm_loader, i);
@@ -66,15 +69,15 @@ pub async fn execute(config: &Config, context: &Context) -> NeonResult<CollectTr
                             AccountMeta::new_readonly(system_program::id(), false),
                         ],
                     )],
-                    Some(&context.signer.pubkey()),
+                    Some(&signer.pubkey()),
                 );
                 let blockhash = context.rpc_client.get_latest_blockhash().await?;
                 message.recent_blockhash = blockhash;
 
-                check_account_for_fee(client, &context.signer.pubkey(), &message)?;
+                check_account_for_fee(client, &signer.pubkey(), &message).await?;
 
                 let mut trx = Transaction::new_unsigned(message);
-                trx.try_sign(&[&*context.signer], blockhash)?;
+                trx.try_sign(&[&*signer], blockhash)?;
                 context
                     .rpc_client
                     .send_and_confirm_transaction_with_spinner(&trx)
@@ -88,15 +91,15 @@ pub async fn execute(config: &Config, context: &Context) -> NeonResult<CollectTr
     }
     let mut message = Message::new(
         &[sync_native(&spl_token::id(), &main_balance_address)?],
-        Some(&context.signer.pubkey()),
+        Some(&signer.pubkey()),
     );
     let blockhash = context.rpc_client.get_latest_blockhash().await?;
     message.recent_blockhash = blockhash;
 
-    check_account_for_fee(client, &context.signer.pubkey(), &message)?;
+    check_account_for_fee(client, &signer.pubkey(), &message).await?;
 
     let mut trx = Transaction::new_unsigned(message);
-    trx.try_sign(&[&*context.signer], blockhash)?;
+    trx.try_sign(&[&*signer], blockhash)?;
     context
         .rpc_client
         .send_and_confirm_transaction_with_spinner(&trx)

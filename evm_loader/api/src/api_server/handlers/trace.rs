@@ -1,30 +1,24 @@
+use axum::{http::StatusCode, Json};
 use std::convert::Into;
 
-use actix_web::{http::StatusCode, post, web, Responder};
-
+use crate::commands::trace::trace_transaction;
 use crate::{context, types::request_models::TraceRequestModel, NeonApiState};
 
 use super::{parse_emulation_params, process_error, process_result};
 
-#[post("/trace")]
 pub async fn trace(
-    state: web::Data<NeonApiState>,
-    web::Json(trace_request): web::Json<TraceRequestModel>,
-) -> impl Responder {
+    axum::extract::State(state): axum::extract::State<NeonApiState>,
+    Json(trace_request): Json<TraceRequestModel>,
+) -> (StatusCode, Json<serde_json::Value>) {
     let tx = trace_request.emulate_request.tx_params.into();
 
-    let signer = match context::build_signer(&state.config) {
-        Ok(signer) => signer,
-        Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
-    };
-
-    let (rpc_client, blocking_rpc_client) =
+    let rpc_client =
         match context::build_rpc_client(&state.config, trace_request.emulate_request.slot) {
             Ok(rpc_client) => rpc_client,
             Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
         };
 
-    let context = context::create(rpc_client, signer, blocking_rpc_client);
+    let context = context::create(rpc_client, state.config.clone());
 
     let (token, chain, steps, accounts, solana_accounts) = parse_emulation_params(
         &state.config,
@@ -34,15 +28,17 @@ pub async fn trace(
     .await;
 
     process_result(
-        &crate::commands::trace::execute(
-            &state.config,
-            &context,
+        &trace_transaction(
+            context.rpc_client.as_ref(),
+            state.config.evm_loader,
             tx,
             token,
             chain,
             steps,
+            state.config.commitment,
             &accounts,
             &solana_accounts,
+            trace_request.trace_call_config.unwrap_or_default(),
         )
         .await
         .map_err(Into::into),

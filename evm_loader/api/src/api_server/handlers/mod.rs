@@ -1,5 +1,6 @@
-use actix_web::http::StatusCode;
-use actix_web::web::Json;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::Json;
 use ethnum::U256;
 use evm_loader::types::Address;
 use serde::Serialize;
@@ -20,6 +21,7 @@ pub mod get_ether_account_data;
 pub mod get_storage_at;
 pub mod trace;
 pub mod trace_hash;
+pub mod trace_next_block;
 
 #[derive(Debug)]
 pub struct NeonApiError(pub NeonError);
@@ -45,6 +47,19 @@ impl From<NeonApiError> for NeonError {
 impl From<AddrParseError> for NeonApiError {
     fn from(value: AddrParseError) -> Self {
         NeonApiError(value.into())
+    }
+}
+
+impl IntoResponse for NeonApiError {
+    fn into_response(self) -> Response {
+        let (status, error_message) = (StatusCode::INTERNAL_SERVER_ERROR, self.0.to_string());
+
+        let body = Json(json!({
+            "result": "error",
+            "error":error_message,
+        }));
+
+        (status, body).into_response()
     }
 }
 
@@ -104,31 +119,25 @@ pub(crate) async fn parse_emulation_params(
 
 fn process_result<T: Serialize>(
     result: &NeonApiResult<T>,
-) -> (Json<serde_json::Value>, StatusCode) {
+) -> (StatusCode, Json<serde_json::Value>) {
     match result {
         Ok(value) => (
+            StatusCode::OK,
             Json(json!({
                 "result": "success",
                 "value": value,
             })),
-            StatusCode::OK,
         ),
-        Err(e) => (
-            Json(json!({
-                "result": "error",
-                "error": e.0.to_string(),
-            })),
-            StatusCode::INTERNAL_SERVER_ERROR,
-        ),
+        Err(e) => process_error(StatusCode::INTERNAL_SERVER_ERROR, &e.0),
     }
 }
 
-fn process_error(status_code: StatusCode, e: &NeonError) -> (Json<Value>, StatusCode) {
+fn process_error(status_code: StatusCode, e: &NeonError) -> (StatusCode, Json<Value>) {
     (
+        status_code,
         Json(json!({
             "result": "error",
             "error": e.to_string(),
         })),
-        status_code,
     )
 }

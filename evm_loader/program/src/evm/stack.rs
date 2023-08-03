@@ -7,7 +7,9 @@ use std::{
 
 use ethnum::{I256, U256};
 
+#[cfg(feature = "tracing")]
 use crate::evm::tracing::event_listener::tracer::TracerType;
+#[cfg(feature = "tracing")]
 use crate::evm::tracing::EventListener;
 use crate::{error::Error, types::Address};
 
@@ -20,11 +22,12 @@ pub struct Stack {
     begin: *mut u8,
     end: *mut u8,
     top: *mut u8,
+    #[cfg(feature = "tracing")]
     tracer: TracerType,
 }
 
 impl Stack {
-    pub fn new(tracer: TracerType) -> Self {
+    pub fn new(#[cfg(feature = "tracing")] tracer: TracerType) -> Self {
         let (begin, end) = unsafe {
             let layout = Layout::from_size_align_unchecked(STACK_SIZE, ELEMENT_SIZE);
             let begin = crate::allocator::EVM.alloc(layout);
@@ -41,6 +44,7 @@ impl Stack {
             begin,
             end,
             top: begin,
+            #[cfg(feature = "tracing")]
             tracer,
         }
     }
@@ -313,7 +317,10 @@ impl<'de> serde::Deserialize<'de> for Stack {
                     return Err(E::invalid_length(v.len(), &self));
                 }
 
-                let mut stack = Stack::new(None);
+                let mut stack = Stack::new(
+                    #[cfg(feature = "tracing")]
+                    None,
+                );
                 unsafe {
                     stack.top = stack.begin.add(v.len());
 

@@ -12,7 +12,9 @@ pub use buffer::Buffer;
 pub use precompile::is_precompile_address;
 pub use precompile::precompile;
 
+#[cfg(feature = "tracing")]
 use crate::evm::tracing::event_listener::tracer::TracerType;
+#[cfg(feature = "tracing")]
 use crate::evm::tracing::EventListener;
 use crate::{
     error::{build_revert_message, Error, Result},
@@ -29,16 +31,19 @@ mod opcode;
 mod opcode_table;
 mod precompile;
 mod stack;
+#[cfg(feature = "tracing")]
 pub mod tracing;
 mod utils;
 
 macro_rules! tracing_event {
     ($self:ident, $x:expr) => {
+        #[cfg(feature = "tracing")]
         if let Some(tracer) = &$self.tracer {
             tracer.write().unwrap().as_mut().unwrap().event($x);
         }
     };
     ($self:ident, $condition:expr, $x:expr) => {
+        #[cfg(feature = "tracing")]
         if let Some(tracer) = &$self.tracer {
             if $condition {
                 tracer.write().unwrap().as_mut().unwrap().event($x);
@@ -49,6 +54,7 @@ macro_rules! tracing_event {
 
 macro_rules! trace_end_step {
     ($self:ident, $return_data_vec:expr) => {
+        #[cfg(feature = "tracing")]
         if let Some(tracer) = &$self.tracer {
             let mut tracer = tracer.write().unwrap();
             let tracer = tracer.as_mut().unwrap();
@@ -66,6 +72,7 @@ macro_rules! trace_end_step {
         }
     };
     ($self:ident, $condition:expr; $return_data_vec:expr) => {
+        #[cfg(feature = "tracing")]
         if $condition {
             trace_end_step!($self, $return_data_vec)
         }
@@ -129,6 +136,7 @@ pub struct Machine<B: Database> {
     phantom: PhantomData<*const B>,
 
     #[serde(skip)]
+    #[cfg(feature = "tracing")]
     tracer: TracerType,
 }
 
@@ -168,7 +176,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        tracer: TracerType,
+        #[cfg(feature = "tracing")] tracer: TracerType,
     ) -> Result<Self> {
         let origin_nonce = backend.nonce(&origin)?;
 
@@ -199,9 +207,21 @@ impl<B: Database> Machine<B> {
         }
 
         if trx.target.is_some() {
-            Self::new_call(trx, origin, backend, tracer)
+            Self::new_call(
+                trx,
+                origin,
+                backend,
+                #[cfg(feature = "tracing")]
+                tracer,
+            )
         } else {
-            Self::new_create(trx, origin, backend, tracer)
+            Self::new_create(
+                trx,
+                origin,
+                backend,
+                #[cfg(feature = "tracing")]
+                tracer,
+            )
         }
     }
 
@@ -209,7 +229,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        tracer: TracerType,
+        #[cfg(feature = "tracing")] tracer: TracerType,
     ) -> Result<Self> {
         assert!(trx.target.is_some());
 
@@ -237,13 +257,20 @@ impl<B: Database> Machine<B> {
             call_data: trx.call_data,
             return_data: Buffer::empty(),
             return_range: 0..0,
-            stack: Stack::new(tracer.clone()),
-            memory: Memory::new(tracer.clone()),
+            stack: Stack::new(
+                #[cfg(feature = "tracing")]
+                tracer.clone(),
+            ),
+            memory: Memory::new(
+                #[cfg(feature = "tracing")]
+                tracer.clone(),
+            ),
             pc: 0_usize,
             is_static: false,
             reason: Reason::Call,
             parent: None,
             phantom: PhantomData,
+            #[cfg(feature = "tracing")]
             tracer,
         })
     }
@@ -252,7 +279,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        tracer: TracerType,
+        #[cfg(feature = "tracing")] tracer: TracerType,
     ) -> Result<Self> {
         assert!(trx.target.is_none());
 
@@ -281,8 +308,14 @@ impl<B: Database> Machine<B> {
             gas_limit: trx.gas_limit,
             return_data: Buffer::empty(),
             return_range: 0..0,
-            stack: Stack::new(tracer.clone()),
-            memory: Memory::new(tracer.clone()),
+            stack: Stack::new(
+                #[cfg(feature = "tracing")]
+                tracer.clone(),
+            ),
+            memory: Memory::new(
+                #[cfg(feature = "tracing")]
+                tracer.clone(),
+            ),
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,
@@ -290,6 +323,7 @@ impl<B: Database> Machine<B> {
             call_data: Buffer::empty(),
             parent: None,
             phantom: PhantomData,
+            #[cfg(feature = "tracing")]
             tracer,
         })
     }
@@ -389,13 +423,20 @@ impl<B: Database> Machine<B> {
             call_data,
             return_data: Buffer::empty(),
             return_range: 0..0,
-            stack: Stack::new(self.tracer.clone()),
-            memory: Memory::new(self.tracer.clone()),
+            stack: Stack::new(
+                #[cfg(feature = "tracing")]
+                self.tracer.clone(),
+            ),
+            memory: Memory::new(
+                #[cfg(feature = "tracing")]
+                self.tracer.clone(),
+            ),
             pc: 0_usize,
             is_static: self.is_static,
             reason,
             parent: None,
             phantom: PhantomData,
+            #[cfg(feature = "tracing")]
             tracer: self.tracer.clone(),
         };
 

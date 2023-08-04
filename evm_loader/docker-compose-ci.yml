@@ -15,7 +15,7 @@ services:
       /opt/solana/bin/solana-run-neon.sh
     networks:
       - net
-      -
+
   dk-neon-api:
     restart: unless-stopped
     container_name: dk-neon-api

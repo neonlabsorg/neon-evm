@@ -5,6 +5,8 @@ use evm_loader::types::Address;
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
 
+use super::AccessListItem;
+
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct GetEtherRequest {
     pub ether: Address,
@@ -25,7 +27,7 @@ pub struct TxParamsRequestModel {
     pub data: Option<Vec<u8>>,
     pub value: Option<U256>,
     pub gas_limit: Option<U256>,
-    pub access_list: Option<Vec<Address>>
+    pub access_list: Option<Vec<AccessListItem>>,
 }
 
 impl From<TxParamsRequestModel> for TxParams {

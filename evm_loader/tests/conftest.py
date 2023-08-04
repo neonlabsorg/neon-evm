@@ -24,7 +24,7 @@ def pytest_addoption(parser):
         help="Path to 2 comma separated operator keypairs"
     )
     parser.addoption(
-        "--neon-api-uri", action="store", default="http://dk-neon-api:8085/api",
+        "--neon-api-uri", action="store", default="http://neon_api:8085/api",
         help=""
     )
 

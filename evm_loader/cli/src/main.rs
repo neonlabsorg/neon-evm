@@ -12,7 +12,8 @@ use neon_lib::{
         get_ether_account_data, get_neon_elf, get_neon_elf::CachedElfParams, get_storage_at,
         init_environment, trace,
     },
-    errors, rpc, types,
+    errors, rpc,
+    types::{self, AccessListItem},
 };
 
 use clap::ArgMatches;
@@ -319,9 +320,13 @@ fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
             )
         })
         .unwrap_or_default();
+
     let value = u256_of(params, "value");
+
     let gas_limit = u256_of(params, "gas_limit");
-    let access_list = if to.is_some() { Some(vec![from, to.unwrap()]) } else { Some(vec![from]) };
+
+    // add to and from if required: Some(vec![from, to.unwrap()])
+    let access_list = access_list_of(params, "access_list");
 
     let tx_params = TxParams {
         nonce: None,
@@ -403,6 +408,18 @@ fn address_of(matches: &ArgMatches<'_>, name: &str) -> Option<Address> {
     matches
         .value_of(name)
         .map(|value| Address::from_hex(value).unwrap())
+}
+
+fn access_list_of(matches: &ArgMatches<'_>, name: &str) -> Option<Vec<AccessListItem>> {
+    matches.value_of(name).map(|value| {
+        let address = Address::from_hex(value).unwrap();
+        let keys = vec![];
+        let item = AccessListItem {
+            address,
+            storage_keys: keys,
+        };
+        vec![item]
+    })
 }
 
 fn u256_of(matches: &ArgMatches<'_>, name: &str) -> Option<U256> {

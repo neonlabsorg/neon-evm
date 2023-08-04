@@ -48,7 +48,12 @@ pub async fn trace_transaction(
     )
     .await?;
 
-    let (vm_trace, full_trace_data) = tracer.write().unwrap().take().unwrap().into_traces();
+    let (vm_trace, full_trace_data) = tracer
+        .write()
+        .expect("lock acquire should be successful")
+        .take()
+        .expect("Option should not be empty")
+        .into_traces();
 
     Ok(TracedCall {
         vm_trace,
@@ -119,7 +124,12 @@ async fn trace_trx<'a>(
     let emulation_result =
         emulate_trx(tx_params, storage, chain_id, steps, Some(tracer.clone())).await?;
 
-    let (vm_trace, full_trace_data) = tracer.write().unwrap().take().unwrap().into_traces();
+    let (vm_trace, full_trace_data) = tracer
+        .write()
+        .expect("lock acquire should be successful")
+        .take()
+        .expect("Option should not be empty")
+        .into_traces();
 
     Ok(TracedCall {
         vm_trace,

@@ -8,9 +8,11 @@ from .solana_utils import solana_client
 def test_get_storage_at(neon_api_client, operator_keypair, user_account, evm_loader, treasury_pool):
     contract = deploy_contract(operator_keypair, user_account, "hello_world.binary", evm_loader, treasury_pool)
     storage = neon_api_client.get_storage_at(contract.eth_address.hex())["value"]
-    assert storage == '0000000000000000000000000000000000000000000000000000000000000005'
+    zero_array = [0 for _ in range(31)]
+    assert storage == zero_array + [5]
+
     storage = neon_api_client.get_storage_at(contract.eth_address.hex(), index='0x2')["value"]
-    assert storage == '0000000000000000000000000000000000000000000000000000000000000000'
+    assert storage == zero_array + [0]
 
 
 def test_get_ether_account_data(neon_api_client, user_account):

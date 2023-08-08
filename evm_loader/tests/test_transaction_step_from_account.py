@@ -307,6 +307,55 @@ class TestTransactionStepFromAccount:
                                                [sender_with_tokens.solana_account_address,
                                                 session_user.solana_account_address], 1, operator_keypair)
 
+    def test_transaction_with_access_list(self, operator_keypair, holder_acc, treasury_pool,
+                                          sender_with_tokens, evm_loader, calculator_contract,
+                                          calculator_caller_contract):
+        access_list = (
+            {
+                "address": '0x' + calculator_contract.eth_address.hex(),
+                "storageKeys": (
+                    "0x0100000000000000000000000000000000000000000000000000000000000000",
+                    "0x0000000000000000000000000000000000000000000000000000000000000001",
+                )
+            },
+        )
+        signed_tx = make_contract_call_trx(sender_with_tokens, calculator_caller_contract, "callCalculator()", [],
+                                           access_list=access_list)
+        write_transaction_to_holder_account(signed_tx, holder_acc, operator_keypair)
+
+        resp = execute_transaction_steps_from_account(operator_keypair, evm_loader, treasury_pool, holder_acc,
+                                                      [calculator_caller_contract.solana_address,
+                                                       calculator_contract.solana_address,
+                                                       sender_with_tokens.solana_account_address])
+
+        check_holder_account_tag(holder_acc, FINALIZED_STORAGE_ACCOUNT_INFO_LAYOUT, TAG_FINALIZED_STATE)
+        check_transaction_logs_have_text(resp.value.transaction.transaction.signatures[0], "exit_status=0x12")
+
+    def test_bad_access_list(self, operator_keypair, holder_acc, treasury_pool,
+                             sender_with_tokens, evm_loader, calculator_contract,
+                             calculator_caller_contract):
+        access_list = (
+            {
+                "address": '0x' + calculator_contract.eth_address.hex(),
+                "storageKeys": (
+                    "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "0x0000000000000000000000000000000000000000000000000000000000000001",
+                )
+            },
+        )
+
+        signed_tx = make_contract_call_trx(sender_with_tokens, calculator_caller_contract, "callCalculator()", [],
+                                           access_list=access_list)
+        write_transaction_to_holder_account(signed_tx, holder_acc, operator_keypair)
+
+        resp = execute_transaction_steps_from_account(operator_keypair, evm_loader, treasury_pool, holder_acc,
+                                                      [calculator_caller_contract.solana_address,
+                                                       calculator_contract.solana_address,
+                                                       sender_with_tokens.solana_account_address])
+
+        check_holder_account_tag(holder_acc, FINALIZED_STORAGE_ACCOUNT_INFO_LAYOUT, TAG_FINALIZED_STATE)
+        check_transaction_logs_have_text(resp.value.transaction.transaction.signatures[0], "exit_status=0x12")
+
 
 class TestAccountStepContractCallContractInteractions:
     def test_contract_call_unchange_storage_function(self, rw_lock_contract, rw_lock_caller, session_user, evm_loader,
@@ -358,9 +407,9 @@ class TestAccountStepContractCallContractInteractions:
         func_name = abi.function_signature_to_4byte_selector('update_storage_map(uint256)')
         data = func_name + eth_abi.encode(['uint256'], [3])
         result = neon_cli().emulate(evm_loader.loader_id,
-                               session_user.eth_address.hex(),
-                               rw_lock_caller.eth_address.hex(),
-                               data.hex())
+                                    session_user.eth_address.hex(),
+                                    rw_lock_caller.eth_address.hex(),
+                                    data.hex())
         additional_accounts = [session_user.solana_account_address, rw_lock_contract.solana_address,
                                rw_lock_caller.solana_address]
         for acc in result['solana_accounts']:
@@ -469,9 +518,10 @@ class TestStepFromAccountChangingOperatorsDuringTrxRun:
 
         # next operator can't continue trx during OPERATOR_PRIORITY_SLOTS*0.4
         with pytest.raises(solana.rpc.core.RPCException,
-                           match=rf"{InstructionAsserts.INVALID_OPERATOR_KEY}|{InstructionAsserts.INVALID_HOLDER_OWNER}"):            send_transaction_step_from_account(second_operator_keypair, evm_loader, treasury_pool, new_holder_acc,
-                                               [user_account.solana_account_address,
-                                                rw_lock_contract.solana_address], 500, second_operator_keypair)
+                           match=rf"{InstructionAsserts.INVALID_OPERATOR_KEY}|{InstructionAsserts.INVALID_HOLDER_OWNER}"):            send_transaction_step_from_account(
+            second_operator_keypair, evm_loader, treasury_pool, new_holder_acc,
+            [user_account.solana_account_address,
+             rw_lock_contract.solana_address], 500, second_operator_keypair)
 
         time.sleep(15)
         send_transaction_step_from_account(second_operator_keypair, evm_loader, treasury_pool, new_holder_acc,

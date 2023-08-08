@@ -307,6 +307,30 @@ class TestTransactionStepFromInstruction:
                                                    [sender_with_tokens.solana_account_address,
                                                     session_user.solana_account_address], 1, operator_keypair)
 
+    def test_transaction_with_access_list(self, operator_keypair, treasury_pool, sender_with_tokens,
+                                          evm_loader, holder_acc, calculator_contract,
+                                          calculator_caller_contract):
+        access_list = (
+            {
+                "address": '0x' + calculator_contract.eth_address.hex(),
+                "storageKeys": (
+                    "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "0x0000000000000000000000000000000000000000000000000000000000000001",
+                )
+            },
+        )
+        signed_tx = make_contract_call_trx(sender_with_tokens, calculator_caller_contract, "callCalculator()", [],
+                                           access_list=access_list)
+
+        resp = execute_transaction_steps_from_instruction(operator_keypair, evm_loader, treasury_pool, holder_acc,
+                                                          signed_tx, [calculator_caller_contract.solana_address,
+                                                                      calculator_contract.solana_address,
+                                                                      sender_with_tokens.solana_account_address]
+                                                          )
+
+        check_holder_account_tag(holder_acc, FINALIZED_STORAGE_ACCOUNT_INFO_LAYOUT, TAG_FINALIZED_STATE)
+        check_transaction_logs_have_text(resp.value, "exit_status=0x12")
+
 
 class TestInstructionStepContractCallContractInteractions:
     def test_contract_call_unchange_storage_function(self, rw_lock_contract, session_user, evm_loader, operator_keypair,
@@ -502,5 +526,5 @@ class TestStepFromInstructionWithChangedRLPTrx:
         )
         with pytest.raises(RPCException, match="Program log: RLP error: RlpInconsistentLengthAndData"):
             execute_transaction_steps_from_instruction(operator_keypair, evm_loader, treasury_pool, holder_acc,
-                                                          signed_tx_new, [sender_with_tokens.solana_account_address,
-                                                                          string_setter_contract.solana_address])
+                                                       signed_tx_new, [sender_with_tokens.solana_account_address,
+                                                                       string_setter_contract.solana_address])

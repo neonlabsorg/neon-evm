@@ -31,7 +31,7 @@ def create_contract_address(user: Caller, evm_loader: EvmLoader) -> Contract:
 
 
 def make_eth_transaction(to_addr: bytes, data: Union[bytes, None], signer: Keypair, from_solana_user: PublicKey,
-                         value: int = 0, chain_id = 111, gas = 9999999999):
+                         value: int = 0, chain_id = 111, gas = 9999999999, access_list=None, type=None):
     nonce = get_transaction_count(solana_client, from_solana_user)
     tx = {'to': to_addr, 'value': value, 'gas': gas, 'gasPrice': 0,
           'nonce': nonce}
@@ -42,5 +42,7 @@ def make_eth_transaction(to_addr: bytes, data: Union[bytes, None], signer: Keypa
     if data is not None:
         tx['data'] = data
 
+    if access_list is not None:
+        tx['accessList'] = access_list
+        tx['type'] = 1
     return w3.eth.account.sign_transaction(tx, signer.secret_key[:32])
-

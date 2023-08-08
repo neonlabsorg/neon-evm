@@ -176,7 +176,7 @@ pub(crate) async fn emulate_trx<'a>(
 ) -> Result<EmulationResult, NeonError> {
     let (exit_status, actions, steps_executed) = {
         let mut backend = ExecutorState::new(storage);
-        let trx = Transaction::Legacy {
+        let trx = Transaction::Legacy(evm_loader::types::LegacyTx {
             nonce: tx_params
                 .nonce
                 .unwrap_or_else(|| storage.nonce(&tx_params.from)),
@@ -193,7 +193,7 @@ pub(crate) async fn emulate_trx<'a>(
             rlp_len: usize::default(),
             hash: <[u8; 32]>::default(),
             signed_hash: <[u8; 32]>::default(),
-        };
+        });
         let mut evm = Machine::new(&trx, tx_params.from, &mut backend)?;
 
         let (result, steps_executed) = evm.execute(step_limit, &mut backend)?;

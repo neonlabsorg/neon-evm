@@ -1,3 +1,4 @@
+#[cfg(feature = "tracing")]
 use crate::evm::tracing::EventListener;
 /// <https://ethereum.github.io/yellowpaper/paper.pdf>
 use ethnum::{I256, U256};

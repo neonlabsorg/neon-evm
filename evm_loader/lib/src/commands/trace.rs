@@ -106,7 +106,11 @@ fn trace_trx<'a>(
 
     let emulation_result = emulate_trx(tx_params, storage, chain_id, steps, Some(tracer.clone()))?;
 
-    let (vm_trace, full_trace_data) = tracer.borrow_mut().take().unwrap().into_traces();
+    let (vm_trace, full_trace_data) = tracer
+        .borrow_mut()
+        .take()
+        .expect("Option should not be empty")
+        .into_traces();
 
     Ok(TracedCall {
         vm_trace,

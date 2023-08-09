@@ -12,7 +12,7 @@ use tokio::task::block_in_place;
 pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use evm_loader::evm::tracing::event_listener::trace::{TraceCallConfig, TraceConfig};
-use evm_loader::types::bytes::Bytes;
+use evm_loader::types::hexbytes::HexBytes;
 use {
     ethnum::U256,
     postgres::NoTls,
@@ -45,7 +45,7 @@ pub struct TxParams {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionParams {
-    pub data: Option<Bytes>,
+    pub data: Option<HexBytes>,
     pub trace_config: Option<TraceCallConfig>,
 }
 

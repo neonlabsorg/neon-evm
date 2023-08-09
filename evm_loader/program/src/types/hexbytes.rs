@@ -7,17 +7,17 @@ use std::ops::Deref;
 /// TODO Maybe replace with #[serde(with = "hex")], but pay attention to "0x" prefix missing from "hex" serialization
 /// Wrapper structure around vector of bytes.
 #[derive(Debug, PartialEq, Eq, Default, Hash, Clone)]
-pub struct Bytes(pub Vec<u8>);
+pub struct HexBytes(pub Vec<u8>);
 
-impl Bytes {
+impl HexBytes {
     /// Simple constructor.
     #[must_use]
-    pub fn new(bytes: Vec<u8>) -> Bytes {
-        Bytes(bytes)
+    pub fn new(bytes: Vec<u8>) -> HexBytes {
+        HexBytes(bytes)
     }
 }
 
-impl Deref for Bytes {
+impl Deref for HexBytes {
     type Target = Vec<u8>;
 
     fn deref(&self) -> &Self::Target {
@@ -25,19 +25,19 @@ impl Deref for Bytes {
     }
 }
 
-impl From<Vec<u8>> for Bytes {
-    fn from(bytes: Vec<u8>) -> Bytes {
-        Bytes(bytes)
+impl From<Vec<u8>> for HexBytes {
+    fn from(bytes: Vec<u8>) -> HexBytes {
+        HexBytes(bytes)
     }
 }
 
-impl From<Bytes> for Vec<u8> {
-    fn from(value: Bytes) -> Self {
+impl From<HexBytes> for Vec<u8> {
+    fn from(value: HexBytes) -> Self {
         value.0
     }
 }
 
-impl Serialize for Bytes {
+impl Serialize for HexBytes {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -48,8 +48,8 @@ impl Serialize for Bytes {
     }
 }
 
-impl<'a> Deserialize<'a> for Bytes {
-    fn deserialize<D>(deserializer: D) -> Result<Bytes, D::Error>
+impl<'a> Deserialize<'a> for HexBytes {
+    fn deserialize<D>(deserializer: D) -> Result<HexBytes, D::Error>
     where
         D: Deserializer<'a>,
     {
@@ -60,7 +60,7 @@ impl<'a> Deserialize<'a> for Bytes {
 struct BytesVisitor;
 
 impl<'a> Visitor<'a> for BytesVisitor {
-    type Value = Bytes;
+    type Value = HexBytes;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "a 0x-prefixed, hex-encoded vector of bytes")
@@ -71,9 +71,9 @@ impl<'a> Visitor<'a> for BytesVisitor {
         E: serde::de::Error,
     {
         if value.len() >= 2 && value.starts_with("0x") && value.len() & 1 == 0 {
-            Ok(Bytes::new(FromHex::from_hex(&value[2..]).map_err(|e| {
-                serde::de::Error::custom(format!("Invalid hex: {e}"))
-            })?))
+            Ok(HexBytes::new(FromHex::from_hex(&value[2..]).map_err(
+                |e| serde::de::Error::custom(format!("Invalid hex: {e}")),
+            )?))
         } else {
             Err(serde::de::Error::custom(
                 "Invalid bytes format. Expected a 0x-prefixed hex string with even length",

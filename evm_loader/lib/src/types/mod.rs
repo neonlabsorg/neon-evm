@@ -12,7 +12,7 @@ use tokio::task::block_in_place;
 pub use tracer_ch_db::{ChError, ChResult, ClickHouseDb as TracerDb};
 
 use evm_loader::evm::tracing::event_listener::trace::{TraceCallConfig, TraceConfig};
-use evm_loader::types::Bytes;
+use evm_loader::types::bytes::Bytes;
 use {
     ethnum::U256,
     postgres::NoTls,

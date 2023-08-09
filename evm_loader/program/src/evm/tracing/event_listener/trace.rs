@@ -1,8 +1,9 @@
 use crate::account::EthereumAccount;
+use crate::types::bytes::Bytes;
 use crate::types::Address;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-use {crate::types::Bytes, ethnum::U256, std::collections::HashMap};
+use {ethnum::U256, std::collections::HashMap};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq /*, RlpEncodable, RlpDecodable */)]
 /// A diff of some chunk of memory.

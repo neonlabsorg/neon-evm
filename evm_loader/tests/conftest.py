@@ -137,6 +137,7 @@ def string_setter_contract(evm_loader: EvmLoader, operator_keypair: Keypair, ses
     return deploy_contract(operator_keypair, session_user, "string_setter.binary", evm_loader, treasury_pool)
 
 
+@pytest.fixture(scope="session")
 def calculator_contract(evm_loader: EvmLoader, operator_keypair: Keypair, session_user: Caller,
                         treasury_pool) -> Contract:
     return deploy_contract(operator_keypair, session_user, "Calculator.binary", evm_loader, treasury_pool)

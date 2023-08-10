@@ -6,7 +6,8 @@
 #![allow(
     clippy::module_name_repetitions,
     clippy::missing_const_for_fn,
-    clippy::use_self
+    clippy::use_self,
+    clippy::future_not_send
 )]
 #![allow(missing_docs, clippy::missing_panics_doc, clippy::missing_errors_doc)]
 

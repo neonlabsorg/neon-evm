@@ -329,6 +329,7 @@ impl<B: Database> Machine<B> {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     #[maybe_async]
     pub async fn execute(&mut self, step_limit: u64, backend: &mut B) -> Result<(ExitStatus, u64)> {
         assert!(self.execution_code.uninit_data().is_none());

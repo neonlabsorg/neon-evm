@@ -1,11 +1,13 @@
 use std::convert::Into;
 
 use crate::{context, types::request_models::TraceHashRequestModel, NeonApiState};
-use actix_web::{http::StatusCode, post, web, Responder};
+use actix_web::{http::StatusCode, routes, web, Responder};
 use neon_lib::commands::trace::trace_transaction;
 
 use super::{parse_emulation_params, process_error, process_result};
 
+#[routes]
+#[post("/trace_hash")] // Obsolete
 #[post("/trace-hash")]
 pub async fn trace_hash(
     state: web::Data<NeonApiState>,

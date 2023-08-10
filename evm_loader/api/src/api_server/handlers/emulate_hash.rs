@@ -1,4 +1,4 @@
-use actix_web::{http::StatusCode, post, web, Responder};
+use actix_web::{http::StatusCode, routes, web, Responder};
 use evm_loader::evm::tracing::event_listener::trace::TraceCallConfig;
 use std::convert::Into;
 
@@ -9,6 +9,8 @@ use crate::{
 
 use super::{parse_emulation_params, process_error, process_result};
 
+#[routes]
+#[post("/emulate_hash")] // Obsolete
 #[post("/emulate-hash")]
 pub async fn emulate_hash(
     state: web::Data<NeonApiState>,

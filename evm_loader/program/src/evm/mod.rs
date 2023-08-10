@@ -5,6 +5,7 @@
 use std::{marker::PhantomData, ops::Range};
 
 use ethnum::U256;
+use maybe_async::maybe_async;
 use serde::{Deserialize, Serialize};
 use solana_program::log::sol_log_data;
 
@@ -171,7 +172,7 @@ impl<B: Database> Machine<B> {
         Ok(evm)
     }
 
-    #[maybe_async::maybe_async]
+    #[maybe_async]
     pub async fn new(
         trx: Transaction,
         origin: Address,
@@ -328,7 +329,7 @@ impl<B: Database> Machine<B> {
         })
     }
 
-    #[maybe_async::maybe_async]
+    #[maybe_async]
     pub async fn execute(&mut self, step_limit: u64, backend: &mut B) -> Result<(ExitStatus, u64)> {
         assert!(self.execution_code.uninit_data().is_none());
         assert!(self.call_data.uninit_data().is_none());

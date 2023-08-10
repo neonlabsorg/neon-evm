@@ -2448,7 +2448,6 @@ dependencies = [
  "hex",
  "lazy_static",
  "log",
- "maybe-async",
  "postgres",
  "rand 0.8.5",
  "scroll",

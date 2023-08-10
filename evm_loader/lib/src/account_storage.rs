@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 use tokio::sync::RwLock;
 
@@ -485,7 +486,7 @@ impl<'a> EmulatorAccountStorage<'a> {
     }
 }
 
-#[maybe_async::must_be_async(?Send)]
+#[async_trait(?Send)]
 impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     fn neon_token_mint(&self) -> &Pubkey {
         info!("neon_token_mint");

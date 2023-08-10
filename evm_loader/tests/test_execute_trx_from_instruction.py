@@ -275,3 +275,26 @@ class TestExecuteTrxFromInstruction:
                                          [sender_with_tokens.solana_account_address,
                                           session_user.solana_account_address],
                                          operator_without_money.solana_account)
+
+    def test_transaction_with_access_list(self, operator_keypair, treasury_pool, sender_with_tokens,
+                                          evm_loader, calculator_contract, calculator_caller_contract):
+        access_list = (
+            {
+                "address": '0x' + calculator_contract.eth_address.hex(),
+                "storageKeys": (
+                    "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "0x0000000000000000000000000000000000000000000000000000000000000001",
+                )
+            },
+        )
+        signed_tx = make_contract_call_trx(sender_with_tokens, calculator_caller_contract, "callCalculator()", [],
+                                           access_list=access_list)
+
+        resp = execute_trx_from_instruction(operator_keypair, evm_loader, treasury_pool.account, treasury_pool.buffer,
+                                            signed_tx,
+                                            [sender_with_tokens.solana_account_address,
+                                             calculator_caller_contract.solana_address,
+                                             calculator_contract.solana_address],
+                                            operator_keypair)
+
+        check_transaction_logs_have_text(resp.value, "exit_status=0x12")

@@ -205,7 +205,7 @@ impl rlp::Decodable for AccessListTx {
             }
         }
 
-        let v: U256 = u256(&rlp.at(7)?)?;
+        let v: U256 = U256::default(); // u256(&rlp.at(7)?)?;
         let r: U256 = u256(&rlp.at(8)?)?;
         let s: U256 = u256(&rlp.at(9)?)?;
 

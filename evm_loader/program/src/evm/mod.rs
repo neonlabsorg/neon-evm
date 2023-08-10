@@ -328,7 +328,8 @@ impl<B: Database> Machine<B> {
         })
     }
 
-    pub fn execute(&mut self, step_limit: u64, backend: &mut B) -> Result<(ExitStatus, u64)> {
+    #[maybe_async::maybe_async]
+    pub async fn execute(&mut self, step_limit: u64, backend: &mut B) -> Result<(ExitStatus, u64)> {
         assert!(self.execution_code.uninit_data().is_none());
         assert!(self.call_data.uninit_data().is_none());
         assert!(self.return_data.uninit_data().is_none());

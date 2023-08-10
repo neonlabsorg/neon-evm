@@ -198,7 +198,7 @@ pub(crate) async fn emulate_trx<'a>(
         };
         let mut evm = Machine::new(trx, tx_params.from, &mut backend, tracer)?;
 
-        let (result, steps_executed) = evm.execute(step_limit, &mut backend)?;
+        let (result, steps_executed) = evm.execute(step_limit, &mut backend).await?;
         if result == ExitStatus::StepLimit {
             return Err(NeonError::TooManySteps);
         }

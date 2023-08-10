@@ -1,9 +1,13 @@
+#[cfg(not(feature = "tracing"))]
+use crate::account::program;
+#[cfg(not(feature = "tracing"))]
+use crate::types::{Address, Transaction};
 use crate::{
-    account::{program, EthereumAccount, FinalizedState, Holder, Incinerator, Operator, State},
+    account::{EthereumAccount, FinalizedState, Holder, Incinerator, Operator, State},
     config::OPERATOR_PRIORITY_SLOTS,
     error::Error,
-    types::{Address, Transaction},
 };
+#[cfg(not(feature = "tracing"))]
 use ethnum::U256;
 use solana_program::{
     account_info::AccountInfo, clock::Clock, program_error::ProgramError, pubkey::Pubkey,
@@ -34,6 +38,7 @@ impl<'a> FinalizedState<'a> {
 }
 
 impl<'a> State<'a> {
+    #[cfg(not(feature = "tracing"))]
     pub fn new(
         program_id: &'a Pubkey,
         info: &'a AccountInfo<'a>,
@@ -136,6 +141,7 @@ impl<'a> State<'a> {
         Ok(finalized)
     }
 
+    #[cfg(not(feature = "tracing"))]
     fn make_deposit(
         &self,
         system_program: &program::System<'a>,
@@ -186,6 +192,7 @@ impl<'a> State<'a> {
         Ok(accounts)
     }
 
+    #[cfg(not(feature = "tracing"))]
     fn write_blocked_accounts(
         &mut self,
         program_id: &Pubkey,

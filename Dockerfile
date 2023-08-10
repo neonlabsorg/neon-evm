@@ -18,13 +18,13 @@ ENV NEON_REVISION=${REVISION}
 RUN cargo fmt --check && \
     cargo clippy --release && \
     cargo build --release && \
-    cargo build-sbf --arch bpf --features devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
-    cargo build-sbf --arch bpf --features testnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet.so && \
-    cargo build-sbf --arch bpf --features govertest && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest.so && \
-    cargo build-sbf --arch bpf --features govertest,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest-emergency.so && \
-    cargo build-sbf --arch bpf --features mainnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet.so && \
-    cargo build-sbf --arch bpf --features mainnet,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet-emergency.so && \
-    cargo build-sbf --arch bpf --features ci --dump
+    cargo build-sbf --arch bpf --features devnet,maybe-async/is_sync && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
+    cargo build-sbf --arch bpf --features testnet,maybe-async/is_sync && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet.so && \
+    cargo build-sbf --arch bpf --features govertest,maybe-async/is_sync && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest.so && \
+    cargo build-sbf --arch bpf --features govertest,emergency,maybe-async/is_sync && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest-emergency.so && \
+    cargo build-sbf --arch bpf --features mainnet,maybe-async/is_sync && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet.so && \
+    cargo build-sbf --arch bpf --features mainnet,emergency,maybe-async/is_sync && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet-emergency.so && \
+    cargo build-sbf --arch bpf --features ci,maybe-async/is_sync --dump
 
 # Build Solidity contracts
 FROM ethereum/solc:0.8.0 AS solc

@@ -9,7 +9,7 @@ impl<B: Database> Machine<B> {
         let mut opcodes: [fn(&mut Self, &mut B) -> Result<Action>; 256] =
             [Self::opcode_unknown; 256];
 
-        opcodes[0x00] = Self::opcode_stop;
+        // opcodes[0x00] = Self::opcode_stop;
         opcodes[0x01] = Self::opcode_add;
         opcodes[0x02] = Self::opcode_mul;
         opcodes[0x03] = Self::opcode_sub;

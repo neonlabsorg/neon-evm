@@ -371,6 +371,11 @@ impl<B: Database> Machine<B> {
                 }
             );
 
+            let _ = match opcode {
+                0x00 => self.opcode_stop(backend).await,
+                _ => self.opcode_unknown(backend),
+            };
+
             // SAFETY: OPCODES.len() == 256, opcode <= 255
             let opcode_fn = unsafe { Self::OPCODES.get_unchecked(opcode as usize) };
 

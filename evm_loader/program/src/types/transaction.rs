@@ -155,9 +155,8 @@ pub struct AccessListTx {
 }
 
 impl rlp::Decodable for AccessListTx {
-    #[allow(unreachable_code)]
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
-        panic!("{}", rlp);
+        solana_program::msg!("{}", rlp);
         // let rlp_len = {
         //     let info = rlp.payload_info()?;
         //     info.header_len + info.value_len
@@ -168,9 +167,17 @@ impl rlp::Decodable for AccessListTx {
         // }
 
         let chain_id: U256 = u256(&rlp.at(0)?)?;
+        solana_program::msg!("{}", chain_id);
+
         let nonce: u64 = rlp.val_at(1)?;
+        solana_program::msg!("{}", nonce);
+
         let gas_price: U256 = u256(&rlp.at(2)?)?;
+        solana_program::msg!("{}", gas_price);
+
         let gas_limit: U256 = u256(&rlp.at(3)?)?;
+        solana_program::msg!("{}", gas_limit);
+
         let target: Option<Address> = {
             let target = rlp.at(3)?;
             if target.is_empty() {
@@ -183,8 +190,13 @@ impl rlp::Decodable for AccessListTx {
                 Some(target.as_val()?)
             }
         };
+        solana_program::msg!("{:?}", target);
+
         let value: U256 = u256(&rlp.at(4)?)?;
+        solana_program::msg!("{}", value);
+
         let call_data = crate::evm::Buffer::from_slice(rlp.at(5)?.data()?);
+        solana_program::msg!("{:?}", call_data);
 
         // Vec<(Address, Vec<Pubkey>)>
         let rlp_access_list = rlp.at(6)?;
@@ -206,17 +218,24 @@ impl rlp::Decodable for AccessListTx {
                 access_list.push((address, storage_keys));
             }
         }
+        solana_program::msg!("{}", value);
 
         let v: U256 = U256::default(); // u256(&rlp.at(7)?)?;
+        solana_program::msg!("{}", v);
         let r: U256 = u256(&rlp.at(8)?)?;
+        solana_program::msg!("{}", r);
         let s: U256 = u256(&rlp.at(9)?)?;
+        solana_program::msg!("{}", s);
 
         if rlp.at(10).is_ok() {
             return Err(rlp::DecoderError::RlpIncorrectListLen);
         }
+        solana_program::msg!("{10 value is ok}");
 
         let hash = solana_program::keccak::hash(rlp.as_raw()).to_bytes();
+        solana_program::msg!("{Calculated hash}");
         let signed_hash = signed_hash(rlp, Some(chain_id))?;
+        solana_program::msg!("{Passed signed_hash}");
 
         let tx = AccessListTx {
             nonce,

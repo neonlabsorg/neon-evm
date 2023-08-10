@@ -74,7 +74,7 @@ fn print_result(result: &NeonCliResult) {
     println!("{}", serde_json::to_string_pretty(&result).unwrap());
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     let time_start = Instant::now();
 

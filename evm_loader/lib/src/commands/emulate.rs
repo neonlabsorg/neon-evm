@@ -196,7 +196,7 @@ pub(crate) async fn emulate_trx<'a>(
             chain_id: Some(chain_id.into()),
             ..Transaction::default()
         };
-        let mut evm = Machine::new(trx, tx_params.from, &mut backend, tracer)?;
+        let mut evm = Machine::new(trx, tx_params.from, &mut backend, tracer).await?;
 
         let (result, steps_executed) = evm.execute(step_limit, &mut backend).await?;
         if result == ExitStatus::StepLimit {

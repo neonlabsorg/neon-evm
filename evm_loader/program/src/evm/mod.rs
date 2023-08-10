@@ -172,7 +172,8 @@ impl<B: Database> Machine<B> {
         Ok(evm)
     }
 
-    pub fn new(
+    #[maybe_async::maybe_async]
+    pub async fn new(
         trx: Transaction,
         origin: Address,
         backend: &mut B,

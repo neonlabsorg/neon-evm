@@ -3,6 +3,8 @@ use crate::evm::tracing::EventListener;
 /// <https://ethereum.github.io/yellowpaper/paper.pdf>
 use ethnum::{I256, U256};
 use solana_program::log::sol_log_data;
+use std::future::Future;
+use std::pin::Pin;
 
 use super::{database::Database, tracing_event, Context, Machine, Reason};
 use crate::{
@@ -24,11 +26,16 @@ pub enum Action {
 
 impl<B: Database> Machine<B> {
     /// Unknown instruction
-    pub fn opcode_unknown(&mut self, _backend: &mut B) -> Result<Action> {
-        Err(Error::UnknownOpcode(
-            self.context.contract,
-            self.execution_code[self.pc],
-        ))
+    pub fn opcode_unknown(
+        &mut self,
+        _backend: &mut B,
+    ) -> Pin<Box<dyn Future<Output = Result<Action>> + '_>> {
+        Box::pin(async {
+            Err(Error::UnknownOpcode(
+                self.context.contract,
+                self.execution_code[self.pc],
+            ))
+        })
     }
 
     /// (u)int256 addition modulo 2**256

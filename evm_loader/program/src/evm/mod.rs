@@ -374,7 +374,7 @@ impl<B: Database> Machine<B> {
             // SAFETY: OPCODES.len() == 256, opcode <= 255
             let opcode_fn = unsafe { Self::OPCODES.get_unchecked(opcode as usize) };
 
-            let opcode_result = match opcode_fn(self, backend) {
+            let opcode_result = match opcode_fn(self, backend).await {
                 Ok(result) => result,
                 Err(e) => {
                     let message = build_revert_message(&e.to_string());

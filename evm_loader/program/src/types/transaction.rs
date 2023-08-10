@@ -156,14 +156,14 @@ pub struct AccessListTx {
 
 impl rlp::Decodable for AccessListTx {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
-        let rlp_len = {
-            let info = rlp.payload_info()?;
-            info.header_len + info.value_len
-        };
+        // let rlp_len = {
+        //     let info = rlp.payload_info()?;
+        //     info.header_len + info.value_len
+        // };
 
-        if rlp.as_raw().len() != rlp_len {
-            return Err(rlp::DecoderError::RlpInconsistentLengthAndData);
-        }
+        // if rlp.as_raw().len() != rlp_len {
+        //     return Err(rlp::DecoderError::RlpInconsistentLengthAndData);
+        // }
 
         let chain_id: U256 = u256(&rlp.at(0)?)?;
         let nonce: u64 = rlp.val_at(1)?;

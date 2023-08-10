@@ -1347,8 +1347,7 @@ impl<B: Database> Machine<B> {
     }
 
     /// Halts execution of the contract
-    #[maybe_async::maybe_async]
-    pub async fn opcode_stop(&mut self, backend: &mut B) -> Result<Action> {
+    pub fn opcode_stop(&mut self, backend: &mut B) -> Result<Action> {
         backend.commit_snapshot();
         sol_log_data(&[b"EXIT", b"STOP"]);
 

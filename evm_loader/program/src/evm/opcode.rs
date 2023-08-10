@@ -2,6 +2,7 @@
 use crate::evm::tracing::EventListener;
 /// <https://ethereum.github.io/yellowpaper/paper.pdf>
 use ethnum::{I256, U256};
+use maybe_async::maybe_async;
 use solana_program::log::sol_log_data;
 
 use super::{database::Database, tracing_event, Context, Machine, Reason};
@@ -615,11 +616,12 @@ impl<B: Database> Machine<B> {
 
     /// hash of the specific block, only valid for the 256 most recent blocks, excluding the current one
     /// Solana limits to 150 most recent blocks
-    pub fn opcode_blockhash(&mut self, backend: &mut B) -> Result<Action> {
+    #[maybe_async]
+    pub async fn opcode_blockhash(&mut self, backend: &mut B) -> Result<Action> {
         let block_hash = {
             let block_number = self.stack.pop_u256()?;
 
-            backend.block_hash(block_number)?
+            backend.block_hash(block_number).await?
         };
 
         self.stack.push_array(&block_hash)?;

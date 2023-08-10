@@ -2,6 +2,7 @@ use crate::account::{EthereumAccount, EthereumStorage};
 use crate::executor::{Action, OwnedAccountInfo};
 use crate::types::Address;
 use ethnum::U256;
+use maybe_async::maybe_async;
 use solana_program::account_info::AccountInfo;
 use solana_program::clock::Clock;
 use solana_program::pubkey::Pubkey;
@@ -45,6 +46,7 @@ pub struct ProgramAccountStorage<'a> {
 
 /// Account storage
 /// Trait to access account info
+#[maybe_async(?Send)]
 pub trait AccountStorage {
     /// Get `NEON` token mint
     fn neon_token_mint(&self) -> &Pubkey;
@@ -60,7 +62,7 @@ pub trait AccountStorage {
     /// Get block timestamp
     fn block_timestamp(&self) -> U256;
     /// Get block hash
-    fn block_hash(&self, number: u64) -> [u8; 32];
+    async fn block_hash(&self, number: u64) -> [u8; 32];
     /// Get chain id
     fn chain_id(&self) -> u64;
 

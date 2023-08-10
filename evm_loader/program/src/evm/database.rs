@@ -1,8 +1,10 @@
 use super::{Buffer, Context};
 use crate::{error::Result, types::Address};
 use ethnum::U256;
+use maybe_async::maybe_async;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
+#[maybe_async(?Send)]
 pub trait Database {
     fn chain_id(&self) -> U256;
 
@@ -21,7 +23,7 @@ pub trait Database {
     fn storage(&self, address: &Address, index: &U256) -> Result<[u8; 32]>;
     fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
 
-    fn block_hash(&self, number: U256) -> Result<[u8; 32]>;
+    async fn block_hash(&self, number: U256) -> Result<[u8; 32]>;
     fn block_number(&self) -> Result<U256>;
     fn block_timestamp(&self) -> Result<U256>;
 

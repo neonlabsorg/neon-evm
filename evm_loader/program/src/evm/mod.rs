@@ -417,7 +417,7 @@ impl<B: Database> Machine<B> {
                 0x3D => self.opcode_returndatasize(backend),
                 0x3E => self.opcode_returndatacopy(backend),
                 0x3F => self.opcode_extcodehash(backend),
-                0x40 => self.opcode_blockhash(backend),
+                0x40 => self.opcode_blockhash(backend).await,
                 0x41 => self.opcode_coinbase(backend),
                 0x42 => self.opcode_timestamp(backend),
                 0x43 => self.opcode_number(backend),

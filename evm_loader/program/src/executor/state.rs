@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use ethnum::{AsU256, U256};
+use maybe_async::maybe_async;
 use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 
@@ -171,6 +172,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     }
 }
 
+#[maybe_async(?Send)]
 impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     fn chain_id(&self) -> U256 {
         let chain_id = self.backend.chain_id();
@@ -345,7 +347,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
-    fn block_hash(&self, number: U256) -> Result<[u8; 32]> {
+    async fn block_hash(&self, number: U256) -> Result<[u8; 32]> {
         // geth:
         //  - checks the overflow
         //  - converts to u64
@@ -367,7 +369,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             return Ok(<[u8; 32]>::default());
         }
 
-        Ok(self.backend.block_hash(number))
+        Ok(self.backend.block_hash(number).await)
     }
 
     fn block_number(&self) -> Result<U256> {

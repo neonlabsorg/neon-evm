@@ -485,6 +485,7 @@ impl<'a> EmulatorAccountStorage<'a> {
     }
 }
 
+#[maybe_async::must_be_async(?Send)]
 impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     fn neon_token_mint(&self) -> &Pubkey {
         info!("neon_token_mint");
@@ -511,10 +512,10 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         self.block_timestamp.try_into().unwrap()
     }
 
-    fn block_hash(&self, slot: u64) -> [u8; 32] {
+    async fn block_hash(&self, slot: u64) -> [u8; 32] {
         info!("block_hash {slot}");
 
-        block(self.add_solana_account(slot_hashes::ID, false));
+        self.add_solana_account(slot_hashes::ID, false).await;
 
         if let Ok(Some(slot_hashes_account)) = block(self.get_account(&slot_hashes::ID)) {
             let slot_hashes_data = slot_hashes_account.data.as_slice();

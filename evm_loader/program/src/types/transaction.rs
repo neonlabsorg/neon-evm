@@ -143,7 +143,7 @@ pub struct AccessListTx {
     target: Option<Address>,
     value: U256,
     call_data: crate::evm::Buffer,
-    v: U256,
+    y_parity: U256,
     r: U256,
     s: U256,
     chain_id: U256,
@@ -157,14 +157,14 @@ pub struct AccessListTx {
 impl rlp::Decodable for AccessListTx {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
         solana_program::msg!("{}", rlp);
-        // let rlp_len = {
-        //     let info = rlp.payload_info()?;
-        //     info.header_len + info.value_len
-        // };
+        let rlp_len = {
+            let info = rlp.payload_info()?;
+            info.header_len + info.value_len
+        };
 
-        // if rlp.as_raw().len() != rlp_len {
-        //     return Err(rlp::DecoderError::RlpInconsistentLengthAndData);
-        // }
+        if rlp.as_raw().len() != rlp_len {
+            return Err(rlp::DecoderError::RlpInconsistentLengthAndData);
+        }
 
         let chain_id: U256 = u256(&rlp.at(0)?)?;
         solana_program::msg!("{}", chain_id);
@@ -220,7 +220,7 @@ impl rlp::Decodable for AccessListTx {
         }
         solana_program::msg!("{}", value);
 
-        let v: U256 = U256::default(); // u256(&rlp.at(8)?)?;
+        let y_parity: U256 = U256::default(); // u256(&rlp.at(8)?)?;
         solana_program::msg!("{}", v);
         let r: U256 = u256(&rlp.at(9)?)?;
         solana_program::msg!("{}", r);
@@ -244,13 +244,13 @@ impl rlp::Decodable for AccessListTx {
             target,
             value,
             call_data,
-            v,
+            y_parity,
             r,
             s,
             chain_id,
             recovery_id: 0,
             access_list,
-            rlp_len: 0,
+            rlp_len,
             hash,
             signed_hash,
         };
@@ -352,8 +352,8 @@ impl Transaction {
     #[must_use]
     pub fn v(&self) -> &U256 {
         match self {
-            Transaction::Legacy(LegacyTx { v, .. })
-            | Transaction::AccessList(AccessListTx { v, .. }) => v,
+            Transaction::Legacy(LegacyTx { v, .. }) => v,
+             Transaction::AccessList(_) => &U256::default(),
         }
     }
 

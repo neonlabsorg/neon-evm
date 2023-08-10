@@ -143,7 +143,8 @@ pub struct AccessListTx {
     target: Option<Address>,
     value: U256,
     call_data: crate::evm::Buffer,
-    y_parity: U256,
+    #[allow(dead_code)]
+    y_parity: u8,
     r: U256,
     s: U256,
     chain_id: U256,
@@ -220,7 +221,7 @@ impl rlp::Decodable for AccessListTx {
         }
         solana_program::msg!("{}", value);
 
-        let y_parity: U256 = U256::default(); // u256(&rlp.at(8)?)?;
+        let y_parity: u8 = rlp.at(8)?.as_val()?;
         solana_program::msg!("{}", y_parity);
         let r: U256 = u256(&rlp.at(9)?)?;
         solana_program::msg!("{}", r);
@@ -350,10 +351,10 @@ impl Transaction {
     }
 
     #[must_use]
-    pub fn v(&self) -> &U256 {
+    pub fn v(&self) -> Option<&U256> {
         match self {
-            Transaction::Legacy(LegacyTx { v, .. }) => v,
-            Transaction::AccessList(_) => &U256::default(),
+            Transaction::Legacy(LegacyTx { v, .. }) => Some(v),
+            Transaction::AccessList(_) => None,
         }
     }
 

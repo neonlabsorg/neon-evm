@@ -36,7 +36,7 @@ pub struct ChDbConfig {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct AccessListItem {
     pub address: Address,
-    pub storage_keys: Vec<Bytes>,
+    pub storage_keys: Vec<HexBytes>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]

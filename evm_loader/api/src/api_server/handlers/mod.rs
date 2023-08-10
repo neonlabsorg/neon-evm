@@ -1,6 +1,5 @@
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
-use axum::Json;
+use actix_web::http::StatusCode;
+use actix_web::web::Json;
 use ethnum::U256;
 use evm_loader::types::Address;
 use serde::Serialize;
@@ -47,19 +46,6 @@ impl From<NeonApiError> for NeonError {
 impl From<AddrParseError> for NeonApiError {
     fn from(value: AddrParseError) -> Self {
         NeonApiError(value.into())
-    }
-}
-
-impl IntoResponse for NeonApiError {
-    fn into_response(self) -> Response {
-        let (status, error_message) = (StatusCode::INTERNAL_SERVER_ERROR, self.0.to_string());
-
-        let body = Json(json!({
-            "result": "error",
-            "error":error_message,
-        }));
-
-        (status, body).into_response()
     }
 }
 
@@ -119,25 +105,25 @@ pub(crate) async fn parse_emulation_params(
 
 fn process_result<T: Serialize>(
     result: &NeonApiResult<T>,
-) -> (StatusCode, Json<serde_json::Value>) {
+) -> (Json<serde_json::Value>, StatusCode) {
     match result {
         Ok(value) => (
-            StatusCode::OK,
             Json(json!({
                 "result": "success",
                 "value": value,
             })),
+            StatusCode::OK,
         ),
         Err(e) => process_error(StatusCode::INTERNAL_SERVER_ERROR, &e.0),
     }
 }
 
-fn process_error(status_code: StatusCode, e: &NeonError) -> (StatusCode, Json<Value>) {
+fn process_error(status_code: StatusCode, e: &NeonError) -> (Json<Value>, StatusCode) {
     (
-        status_code,
         Json(json!({
             "result": "error",
             "error": e.to_string(),
         })),
+        status_code,
     )
 }

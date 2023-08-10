@@ -1,4 +1,4 @@
-use axum::{http::StatusCode, Json};
+use actix_web::{http::StatusCode, post, web, Responder};
 use evm_loader::evm::tracing::event_listener::trace::TraceCallConfig;
 use std::convert::Into;
 
@@ -9,10 +9,11 @@ use crate::{
 
 use super::{parse_emulation_params, process_error, process_result};
 
+#[post("/emulate")]
 pub async fn emulate(
-    axum::extract::State(state): axum::extract::State<NeonApiState>,
-    Json(emulate_request): Json<EmulateRequestModel>,
-) -> (StatusCode, Json<serde_json::Value>) {
+    state: web::Data<NeonApiState>,
+    web::Json(emulate_request): web::Json<EmulateRequestModel>,
+) -> impl Responder {
     let tx = emulate_request.tx_params.into();
 
     let rpc_client = match context::build_rpc_client(&state.config, emulate_request.slot) {

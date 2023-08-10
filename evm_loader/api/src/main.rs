@@ -4,8 +4,10 @@
 mod api_options;
 mod api_server;
 
+use actix_web::web;
+use actix_web::App;
+use actix_web::HttpServer;
 use api_server::handlers::NeonApiError;
-use axum::Router;
 pub use neon_lib::account_storage;
 pub use neon_lib::commands;
 pub use neon_lib::config;
@@ -22,10 +24,15 @@ pub use config::Config;
 pub use context::Context;
 use tokio::signal::{self};
 
+use crate::api_server::handlers::{
+    emulate::emulate, emulate_hash::emulate_hash, get_ether_account_data::get_ether_account_data,
+    get_storage_at::get_storage_at, trace::trace, trace_hash::trace_hash,
+};
+
 type NeonApiResult<T> = Result<T, NeonApiError>;
 type NeonApiState = Arc<api_server::state::State>;
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 512)]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> NeonApiResult<()> {
     let options = api_options::parse();
 
@@ -38,10 +45,6 @@ async fn main() -> NeonApiResult<()> {
 
     let state: NeonApiState = Arc::new(api_server::state::State::new(config));
 
-    let app = Router::new()
-        .nest("/api", api_server::routes::register(state.clone()))
-        .with_state(state.clone());
-
     let listener_addr = options
         .value_of("host")
         .map(std::borrow::ToOwned::to_owned)
@@ -52,11 +55,23 @@ async fn main() -> NeonApiResult<()> {
 
     let addr = SocketAddr::from_str(listener_addr.as_str())?;
     tracing::debug!("listening on {}", addr);
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .unwrap();
+    HttpServer::new(move || {
+        App::new().service(
+            web::scope("/api")
+                .app_data(state.clone())
+                .service(emulate)
+                .service(emulate_hash)
+                .service(get_ether_account_data)
+                .service(get_storage_at)
+                .service(trace)
+                .service(trace_hash),
+        )
+    })
+    .bind(&addr)
+    .unwrap()
+    .run()
+    .await
+    .unwrap();
 
     Ok(())
 }

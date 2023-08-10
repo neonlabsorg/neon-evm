@@ -1,4 +1,4 @@
-use axum::{http::StatusCode, Json};
+use actix_web::{http::StatusCode, post, web, Responder};
 use std::convert::Into;
 
 use crate::commands::trace::trace_transaction;
@@ -6,10 +6,11 @@ use crate::{context, types::request_models::TraceRequestModel, NeonApiState};
 
 use super::{parse_emulation_params, process_error, process_result};
 
+#[post("/trace")]
 pub async fn trace(
-    axum::extract::State(state): axum::extract::State<NeonApiState>,
-    Json(trace_request): Json<TraceRequestModel>,
-) -> (StatusCode, Json<serde_json::Value>) {
+    state: web::Data<NeonApiState>,
+    web::Json(trace_request): web::Json<TraceRequestModel>,
+) -> impl Responder {
     let tx = trace_request.emulate_request.tx_params.into();
 
     let rpc_client =

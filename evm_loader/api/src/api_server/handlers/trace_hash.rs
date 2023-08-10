@@ -1,15 +1,16 @@
 use std::convert::Into;
 
 use crate::{context, types::request_models::TraceHashRequestModel, NeonApiState};
-use axum::{http::StatusCode, Json};
+use actix_web::{http::StatusCode, post, web, Responder};
 use neon_lib::commands::trace::trace_transaction;
 
 use super::{parse_emulation_params, process_error, process_result};
 
+#[post("/trace-hash")]
 pub async fn trace_hash(
-    axum::extract::State(state): axum::extract::State<NeonApiState>,
-    Json(trace_hash_request): Json<TraceHashRequestModel>,
-) -> (StatusCode, Json<serde_json::Value>) {
+    state: web::Data<NeonApiState>,
+    web::Json(trace_hash_request): web::Json<TraceHashRequestModel>,
+) -> impl Responder {
     let rpc_client = match context::build_hash_rpc_client(
         &state.config,
         &trace_hash_request.emulate_hash_request.hash,

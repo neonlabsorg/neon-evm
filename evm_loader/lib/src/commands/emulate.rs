@@ -16,7 +16,7 @@ use evm_loader::{
     types::{Address, Transaction},
 };
 
-use crate::types::{block, TxParams};
+use crate::types::TxParams;
 use crate::{
     account_storage::{EmulatorAccountStorage, NeonAccount, SolanaAccount},
     errors::NeonError,
@@ -124,8 +124,11 @@ pub async fn execute(
         None,
     )
     .await?;
-    let accounts = block(storage.accounts.read()).values().cloned().collect();
-    let solana_accounts = block(storage.solana_accounts.read())
+    let accounts = storage.accounts.read().await.values().cloned().collect();
+    let solana_accounts = storage
+        .solana_accounts
+        .read()
+        .await
         .values()
         .cloned()
         .collect();
@@ -212,8 +215,8 @@ pub(crate) async fn emulate_trx<'a>(
     let max_iterations = (steps_executed + (EVM_STEPS_MIN - 1)) / EVM_STEPS_MIN;
     let steps_gas = max_iterations * (LAMPORTS_PER_SIGNATURE + PAYMENT_TO_TREASURE);
     let begin_end_gas = 2 * LAMPORTS_PER_SIGNATURE;
-    let actions_gas = block(storage.apply_actions(&actions));
-    let accounts_gas = block(storage.apply_accounts_operations(accounts_operations));
+    let actions_gas = storage.apply_actions(&actions).await;
+    let accounts_gas = storage.apply_accounts_operations(accounts_operations).await;
     info!("Gas - steps: {steps_gas}, actions: {actions_gas}, accounts: {accounts_gas}");
 
     let (result, status) = match exit_status {

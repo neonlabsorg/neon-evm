@@ -221,7 +221,7 @@ impl rlp::Decodable for AccessListTx {
         solana_program::msg!("{}", value);
 
         let y_parity: U256 = U256::default(); // u256(&rlp.at(8)?)?;
-        solana_program::msg!("{}", v);
+        solana_program::msg!("{}", y_parity);
         let r: U256 = u256(&rlp.at(9)?)?;
         solana_program::msg!("{}", r);
         let s: U256 = u256(&rlp.at(10)?)?;

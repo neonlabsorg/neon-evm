@@ -353,7 +353,7 @@ impl Transaction {
     pub fn v(&self) -> &U256 {
         match self {
             Transaction::Legacy(LegacyTx { v, .. }) => v,
-             Transaction::AccessList(_) => &U256::default(),
+            Transaction::AccessList(_) => &U256::default(),
         }
     }
 

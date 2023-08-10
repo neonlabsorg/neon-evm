@@ -155,7 +155,9 @@ pub struct AccessListTx {
 }
 
 impl rlp::Decodable for AccessListTx {
+    #[allow(unreachable_code)]
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
+        panic!("{}", rlp);
         // let rlp_len = {
         //     let info = rlp.payload_info()?;
         //     info.header_len + info.value_len

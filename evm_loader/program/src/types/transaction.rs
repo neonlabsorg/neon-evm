@@ -229,7 +229,7 @@ impl rlp::Decodable for AccessListTx {
             chain_id,
             recovery_id: 0,
             access_list,
-            rlp_len,
+            rlp_len: 0,
             hash,
             signed_hash,
         };

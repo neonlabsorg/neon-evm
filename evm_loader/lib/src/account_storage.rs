@@ -723,7 +723,9 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     {
         self.add_solana_account(*address, false).await;
 
-        let mut account = block(self.get_account(address))
+        let mut account = self
+            .get_account(address)
+            .await
             .unwrap_or_default()
             .unwrap_or_default();
         let info = account_info(address, &mut account);

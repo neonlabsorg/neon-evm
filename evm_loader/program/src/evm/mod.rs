@@ -211,7 +211,7 @@ impl<B: Database> Machine<B> {
             return Err(Error::InsufficientBalance(origin, trx.value));
         }
 
-        if backend.code_size(&origin)? != 0 {
+        if backend.code_size(&origin).await? != 0 {
             return Err(Error::SenderHasDeployedCode(origin));
         }
 
@@ -232,6 +232,7 @@ impl<B: Database> Machine<B> {
                 #[cfg(feature = "tracing")]
                 tracer,
             )
+            .await
         }
     }
 
@@ -286,7 +287,8 @@ impl<B: Database> Machine<B> {
         })
     }
 
-    fn new_create(
+    #[maybe_async]
+    async fn new_create(
         trx: Transaction,
         origin: Address,
         backend: &mut B,
@@ -297,7 +299,7 @@ impl<B: Database> Machine<B> {
         let target = Address::from_create(&origin, trx.nonce);
         sol_log_data(&[b"ENTER", b"CREATE", target.as_bytes()]);
 
-        if (backend.nonce(&target)? != 0) || (backend.code_size(&target)? != 0) {
+        if (backend.nonce(&target)? != 0) || (backend.code_size(&target).await? != 0) {
             return Err(Error::DeployToExistingAccount(target, origin));
         }
 
@@ -460,7 +462,7 @@ impl<B: Database> Machine<B> {
             0x38 => self.opcode_codesize(backend),
             0x39 => self.opcode_codecopy(backend),
             0x3A => self.opcode_gasprice(backend),
-            0x3B => self.opcode_extcodesize(backend),
+            0x3B => self.opcode_extcodesize(backend).await,
             0x3C => self.opcode_extcodecopy(backend).await,
             0x3D => self.opcode_returndatasize(backend),
             0x3E => self.opcode_returndatacopy(backend),
@@ -562,12 +564,12 @@ impl<B: Database> Machine<B> {
             0xA3 => self.opcode_log_0_4::<3>(backend),
             0xA4 => self.opcode_log_0_4::<4>(backend),
 
-            0xF0 => self.opcode_create(backend),
+            0xF0 => self.opcode_create(backend).await,
             0xF1 => self.opcode_call(backend).await,
             0xF2 => self.opcode_callcode(backend).await,
             0xF3 => self.opcode_return(backend),
             0xF4 => self.opcode_delegatecall(backend).await,
-            0xF5 => self.opcode_create2(backend),
+            0xF5 => self.opcode_create2(backend).await,
 
             0xFA => self.opcode_staticcall(backend).await,
 

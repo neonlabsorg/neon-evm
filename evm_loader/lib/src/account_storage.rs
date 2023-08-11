@@ -547,10 +547,11 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         block(self.ethereum_account_map_or(address, U256::ZERO, |a| a.balance))
     }
 
-    fn code_size(&self, address: &Address) -> usize {
+    async fn code_size(&self, address: &Address) -> usize {
         info!("code_size {address}");
 
-        block(self.ethereum_account_map_or(address, 0, |a| a.code_size as usize))
+        self.ethereum_account_map_or(address, 0, |a| a.code_size as usize)
+            .await
     }
 
     async fn code_hash(&self, address: &Address) -> [u8; 32] {

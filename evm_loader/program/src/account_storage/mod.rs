@@ -84,7 +84,7 @@ pub trait AccountStorage {
     fn balance(&self, address: &Address) -> U256;
 
     /// Get code size
-    fn code_size(&self, address: &Address) -> usize;
+    async fn code_size(&self, address: &Address) -> usize;
     /// Get code hash
     async fn code_hash(&self, address: &Address) -> [u8; 32];
     /// Get code data

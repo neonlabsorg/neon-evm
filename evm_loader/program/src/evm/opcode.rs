@@ -553,10 +553,11 @@ impl<B: Database> Machine<B> {
 
     /// length of the contract bytecode at addr, in bytes
     /// address(addr).code.size
-    pub fn opcode_extcodesize(&mut self, backend: &mut B) -> Result<Action> {
+    #[maybe_async]
+    pub async fn opcode_extcodesize(&mut self, backend: &mut B) -> Result<Action> {
         let code_size = {
             let address = self.stack.pop_address()?;
-            backend.code_size(address)?
+            backend.code_size(address).await?
         };
 
         self.stack.push_usize(code_size)?;
@@ -926,7 +927,8 @@ impl<B: Database> Machine<B> {
     }
 
     /// Create a new account with associated code.
-    pub fn opcode_create(&mut self, backend: &mut B) -> Result<Action> {
+    #[maybe_async]
+    pub async fn opcode_create(&mut self, backend: &mut B) -> Result<Action> {
         if self.is_static {
             return Err(Error::StaticModeViolation(self.context.contract));
         }
@@ -941,10 +943,12 @@ impl<B: Database> Machine<B> {
         };
 
         self.opcode_create_impl(created_address, value, offset, length, backend)
+            .await
     }
 
     /// Constantinople harfork, EIP-1014: creates a create a new account with a deterministic address
-    pub fn opcode_create2(&mut self, backend: &mut B) -> Result<Action> {
+    #[maybe_async]
+    pub async fn opcode_create2(&mut self, backend: &mut B) -> Result<Action> {
         if self.is_static {
             return Err(Error::StaticModeViolation(self.context.contract));
         }
@@ -960,9 +964,11 @@ impl<B: Database> Machine<B> {
         };
 
         self.opcode_create_impl(created_address, value, offset, length, backend)
+            .await
     }
 
-    fn opcode_create_impl(
+    #[maybe_async]
+    async fn opcode_create_impl(
         &mut self,
         address: Address,
         value: U256,
@@ -1001,7 +1007,7 @@ impl<B: Database> Machine<B> {
 
         sol_log_data(&[b"ENTER", b"CREATE", address.as_bytes()]);
 
-        if (backend.nonce(&address)? != 0) || (backend.code_size(&address)? != 0) {
+        if (backend.nonce(&address)? != 0) || (backend.code_size(&address).await? != 0) {
             return Err(Error::DeployToExistingAccount(address, self.context.caller));
         }
 

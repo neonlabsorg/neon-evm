@@ -279,7 +279,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
-    fn code_size(&self, from_address: &Address) -> Result<usize> {
+    async fn code_size(&self, from_address: &Address) -> Result<usize> {
         if self.is_precompile_extension(from_address) {
             return Ok(1); // This is required in order to make a normal call to an extension contract
         }
@@ -292,7 +292,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             }
         }
 
-        Ok(self.backend.code_size(from_address))
+        Ok(self.backend.code_size(from_address).await)
     }
 
     async fn code_hash(&self, from_address: &Address) -> Result<[u8; 32]> {

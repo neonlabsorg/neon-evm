@@ -212,6 +212,7 @@ macro_rules! E {
     });
 }
 
+#[cfg(not(feature = "tracing"))]
 #[must_use]
 fn format_revert_error(msg: &[u8]) -> Option<&str> {
     if msg.starts_with(&[0x08, 0xc3, 0x79, 0xa0]) {
@@ -239,6 +240,7 @@ fn format_revert_error(msg: &[u8]) -> Option<&str> {
     }
 }
 
+#[cfg(not(feature = "tracing"))]
 #[must_use]
 fn format_revert_panic(msg: &[u8]) -> Option<U256> {
     if msg.starts_with(&[0x4e, 0x48, 0x7b, 0x71]) {
@@ -255,6 +257,7 @@ fn format_revert_panic(msg: &[u8]) -> Option<U256> {
     }
 }
 
+#[cfg(not(feature = "tracing"))]
 pub fn print_revert_message(msg: &[u8]) {
     if msg.is_empty() {
         return solana_program::msg!("Revert");

@@ -518,7 +518,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
 
         self.add_solana_account(slot_hashes::ID, false).await;
 
-        if let Ok(Some(slot_hashes_account)) = block(self.get_account(&slot_hashes::ID)) {
+        if let Ok(Some(slot_hashes_account)) = self.get_account(&slot_hashes::ID).await {
             let slot_hashes_data = slot_hashes_account.data.as_slice();
             find_slot_hash(slot, slot_hashes_data)
         } else {

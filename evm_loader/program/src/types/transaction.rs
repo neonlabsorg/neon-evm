@@ -206,7 +206,7 @@ impl rlp::Decodable for AccessListTx {
             }
         }
 
-        let y_parity: u8 = rlp.at(8)?.as_val()?;
+        let y_parity: u8 = rlp.at(8)?.as_val()?; // ???
         let r: U256 = u256(&rlp.at(9)?)?;
         let s: U256 = u256(&rlp.at(10)?)?;
 
@@ -215,7 +215,7 @@ impl rlp::Decodable for AccessListTx {
         }
 
         let hash = solana_program::keccak::hashv(&[&[0x01], rlp.as_raw()]).to_bytes();
-        let signed_hash = eip2718_signed_hash(rlp, 8)?;
+        let signed_hash = eip2718_signed_hash(&[0x01], rlp, 8)?;
 
         let tx = AccessListTx {
             nonce,
@@ -395,6 +395,7 @@ impl Transaction {
 }
 
 fn eip2718_signed_hash(
+    transaction_type: &[u8],
     transaction: &rlp::Rlp,
     middle_offset: usize,
 ) -> Result<[u8; 32], rlp::DecoderError> {
@@ -425,7 +426,9 @@ fn eip2718_signed_hash(
         }
     };
 
-    let hash = solana_program::keccak::hashv(&[&header, body]).to_bytes();
+    let hash = solana_program::keccak::hashv(&[transaction_type, &header, body]).to_bytes();
+
+    // log hash
 
     Ok(hash)
 }

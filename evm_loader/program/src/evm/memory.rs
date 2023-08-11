@@ -53,6 +53,7 @@ impl Memory {
         }
     }
 
+    #[cfg(not(feature = "tracing"))]
     pub fn from_buffer(v: &[u8]) -> Self {
         let capacity = v.len().next_power_of_two().max(MEMORY_CAPACITY);
 
@@ -69,8 +70,6 @@ impl Memory {
                 data,
                 capacity,
                 size: v.len(),
-                #[cfg(feature = "tracing")]
-                tracer: None,
             }
         }
     }
@@ -280,6 +279,7 @@ impl Drop for Memory {
     }
 }
 
+#[cfg(not(feature = "tracing"))]
 impl serde::Serialize for Memory {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -290,6 +290,7 @@ impl serde::Serialize for Memory {
     }
 }
 
+#[cfg(not(feature = "tracing"))]
 impl<'de> serde::Deserialize<'de> for Memory {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

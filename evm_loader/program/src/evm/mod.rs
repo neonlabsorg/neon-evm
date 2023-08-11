@@ -107,15 +107,18 @@ pub struct Context {
     pub code_address: Option<Address>,
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(bound = "B: Database")]
+#[cfg_attr(
+    not(feature = "tracing"),
+    derive(Serialize, Deserialize),
+    serde(bound = "B: Database")
+)]
 pub struct Machine<B: Database> {
     origin: Address,
     context: Context,
 
-    #[serde(with = "ethnum::serde::bytes::le")]
+    #[cfg_attr(not(feature = "tracing"), serde(with = "ethnum::serde::bytes::le"))]
     gas_price: U256,
-    #[serde(with = "ethnum::serde::bytes::le")]
+    #[cfg_attr(not(feature = "tracing"), serde(with = "ethnum::serde::bytes::le"))]
     gas_limit: U256,
 
     execution_code: Buffer,
@@ -132,15 +135,16 @@ pub struct Machine<B: Database> {
 
     parent: Option<Box<Self>>,
 
-    #[serde(skip)]
+    #[cfg_attr(not(feature = "tracing"), serde(skip))]
     phantom: PhantomData<*const B>,
 
-    #[serde(skip)]
+    #[cfg_attr(not(feature = "tracing"), serde(skip))]
     #[cfg(feature = "tracing")]
     tracer: TracerType,
 }
 
 impl<B: Database> Machine<B> {
+    #[cfg(not(feature = "tracing"))]
     pub fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize> {
         let mut cursor = std::io::Cursor::new(buffer);
 
@@ -149,23 +153,19 @@ impl<B: Database> Machine<B> {
         cursor.position().try_into().map_err(Error::from)
     }
 
-    #[maybe_async]
-    pub async fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
-        #[maybe_async]
-        async fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &B) {
+    #[cfg(not(feature = "tracing"))]
+    pub fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
+        fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &B) {
             if let Some((key, range)) = buffer.uninit_data() {
-                *buffer = backend
-                    .map_solana_account(&key, |i| Buffer::from_account(i, range))
-                    .await;
+                *buffer = backend.map_solana_account(&key, |i| Buffer::from_account(i, range));
             }
         }
 
-        #[maybe_async]
-        async fn reinit_machine<B: Database>(mut machine: &mut Machine<B>, backend: &B) {
+        fn reinit_machine<B: Database>(mut machine: &mut Machine<B>, backend: &B) {
             loop {
-                reinit_buffer(&mut machine.call_data, backend).await;
-                reinit_buffer(&mut machine.execution_code, backend).await;
-                reinit_buffer(&mut machine.return_data, backend).await;
+                reinit_buffer(&mut machine.call_data, backend);
+                reinit_buffer(&mut machine.execution_code, backend);
+                reinit_buffer(&mut machine.return_data, backend);
 
                 match &mut machine.parent {
                     None => break,
@@ -175,7 +175,7 @@ impl<B: Database> Machine<B> {
         }
 
         let mut evm: Self = bincode::deserialize(buffer)?;
-        reinit_machine(&mut evm, backend).await;
+        reinit_machine(&mut evm, backend);
 
         Ok(evm)
     }

@@ -281,6 +281,7 @@ impl Drop for Stack {
     }
 }
 
+#[cfg(not(feature = "tracing"))]
 impl serde::Serialize for Stack {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -295,6 +296,7 @@ impl serde::Serialize for Stack {
     }
 }
 
+#[cfg(not(feature = "tracing"))]
 impl<'de> serde::Deserialize<'de> for Stack {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -317,10 +319,7 @@ impl<'de> serde::Deserialize<'de> for Stack {
                     return Err(E::invalid_length(v.len(), &self));
                 }
 
-                let mut stack = Stack::new(
-                    #[cfg(feature = "tracing")]
-                    None,
-                );
+                let mut stack = Stack::new();
                 unsafe {
                     stack.top = stack.begin.add(v.len());
 

@@ -104,7 +104,8 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         self.actions.push(action);
     }
 
-    pub fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
+    #[maybe_async]
+    pub async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
         let mut cache = self.cache.borrow_mut();
 
         let metas = self
@@ -121,18 +122,23 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
             .collect::<Vec<_>>();
 
         if !metas.iter().any(|m| (m.pubkey == address) && m.is_writable) {
-            return Ok(cache.get_account_or_insert(address, self.backend).clone());
+            return Ok(cache
+                .get_account_or_insert(address, self.backend)
+                .await
+                .clone());
         }
 
-        let mut accounts = metas
-            .into_iter()
-            .map(|m| {
-                (
-                    m.pubkey,
-                    cache.get_account_or_insert(m.pubkey, self.backend).clone(),
-                )
-            })
-            .collect::<BTreeMap<Pubkey, OwnedAccountInfo>>();
+        let mut accounts = BTreeMap::<Pubkey, OwnedAccountInfo>::new();
+
+        for m in metas.into_iter() {
+            accounts.insert(
+                m.pubkey,
+                cache
+                    .get_account_or_insert(m.pubkey, self.backend)
+                    .await
+                    .clone(),
+            );
+        }
 
         for action in &self.actions {
             if let Action::ExternalInstruction {

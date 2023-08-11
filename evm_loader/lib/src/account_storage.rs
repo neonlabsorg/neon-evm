@@ -681,7 +681,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         self.chain_id
     }
 
-    fn clone_solana_account(&self, address: &Pubkey) -> OwnedAccountInfo {
+    async fn clone_solana_account(&self, address: &Pubkey) -> OwnedAccountInfo {
         info!("clone_solana_account {}", address);
 
         if address == &FAKE_OPERATOR {
@@ -696,9 +696,11 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
                 rent_epoch: 0,
             }
         } else {
-            block(self.add_solana_account(*address, false));
+            self.add_solana_account(*address, false).await;
 
-            let mut account = block(self.get_account(address))
+            let mut account = self
+                .get_account(address)
+                .await
                 .unwrap_or_default()
                 .unwrap_or_default();
             let info = account_info(address, &mut account);

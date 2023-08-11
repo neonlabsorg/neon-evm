@@ -1,6 +1,8 @@
 use ethnum::U256;
+use maybe_async::maybe_async;
 use serde::{Deserialize, Serialize};
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use std::collections::btree_map::Entry::{Occupied, Vacant};
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use crate::account_storage::AccountStorage;
@@ -65,13 +67,15 @@ pub struct Cache {
 }
 
 impl Cache {
-    pub fn get_account_or_insert<B: AccountStorage>(
+    #[maybe_async]
+    pub async fn get_account_or_insert<B: AccountStorage>(
         &mut self,
         key: Pubkey,
         backend: &B,
     ) -> &mut OwnedAccountInfo {
-        self.solana_accounts
-            .entry(key)
-            .or_insert_with(|| backend.clone_solana_account(&key))
+        match self.solana_accounts.entry(key) {
+            Occupied(entry) => entry.into_mut(),
+            Vacant(entry) => entry.insert(backend.clone_solana_account(&key).await),
+        }
     }
 }

@@ -215,7 +215,7 @@ impl rlp::Decodable for AccessListTx {
         }
 
         let hash = solana_program::keccak::hash(rlp.as_raw()).to_bytes();
-        let signed_hash = signed_hash(rlp, Some(chain_id))?;
+        let signed_hash = eip2718_signed_hash(rlp, 8)?;
 
         let tx = AccessListTx {
             nonce,
@@ -228,7 +228,7 @@ impl rlp::Decodable for AccessListTx {
             r,
             s,
             chain_id,
-            recovery_id: 0,
+            recovery_id: y_parity,
             access_list,
             rlp_len,
             hash,
@@ -330,14 +330,6 @@ impl Transaction {
     }
 
     #[must_use]
-    pub fn v(&self) -> Option<&U256> {
-        match self {
-            Transaction::Legacy(LegacyTx { v, .. }) => Some(v),
-            Transaction::AccessList(_) => None,
-        }
-    }
-
-    #[must_use]
     pub fn r(&self) -> &U256 {
         match self {
             Transaction::Legacy(LegacyTx { r, .. })
@@ -400,6 +392,42 @@ impl Transaction {
             Transaction::Legacy(_) => None,
         }
     }
+}
+
+fn eip2718_signed_hash(
+    transaction: &rlp::Rlp,
+    middle_offset: usize,
+) -> Result<[u8; 32], rlp::DecoderError> {
+    let raw = transaction.as_raw();
+    let payload_info = transaction.payload_info()?;
+    let (_, middle_offset) = transaction.at_with_offset(middle_offset)?;
+
+    let body = &raw[payload_info.header_len..middle_offset];
+
+    let header: Vec<u8> = {
+        let len = body.len();
+        if len <= 55 {
+            let len: u8 = len.try_into().unwrap();
+            vec![0xC0 + len]
+        } else {
+            let len_bytes = {
+                let leading_empty_bytes = (len.leading_zeros() as usize) / 8;
+                let bytes = len.to_be_bytes();
+                bytes[leading_empty_bytes..].to_vec()
+            };
+            let len_bytes_len: u8 = len_bytes.len().try_into().unwrap();
+
+            let mut header = Vec::with_capacity(10);
+            header.extend_from_slice(&[0xF7 + len_bytes_len]);
+            header.extend_from_slice(&len_bytes);
+
+            header
+        }
+    };
+
+    let hash = solana_program::keccak::hashv(&[&header, body]).to_bytes();
+
+    Ok(hash)
 }
 
 fn signed_hash(

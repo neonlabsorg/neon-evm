@@ -90,7 +90,7 @@ pub trait AccountStorage {
     /// Get code data
     fn code(&self, address: &Address) -> crate::evm::Buffer;
     /// Get contract generation
-    fn generation(&self, address: &Address) -> u32;
+    async fn generation(&self, address: &Address) -> u32;
 
     /// Get data from storage
     async fn storage(&self, address: &Address, index: &U256) -> [u8; 32];

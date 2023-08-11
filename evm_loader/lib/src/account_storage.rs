@@ -594,8 +594,10 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         )
     }
 
-    fn generation(&self, address: &Address) -> u32 {
-        let value = block(self.ethereum_account_map_or(address, 0_u32, |c| c.generation));
+    async fn generation(&self, address: &Address) -> u32 {
+        let value = self
+            .ethereum_account_map_or(address, 0_u32, |c| c.generation)
+            .await;
 
         info!("account generation {address} - {value}");
         value
@@ -654,7 +656,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
                         .expect("EthereumAccount ctor error");
                     if (storage.address != *address)
                         || (storage.index != index)
-                        || (storage.generation != self.generation(address))
+                        || (storage.generation != self.generation(address).await)
                     {
                         debug!("storage collision");
                         <[u8; 32]>::default()

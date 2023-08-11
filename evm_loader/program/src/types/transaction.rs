@@ -214,7 +214,7 @@ impl rlp::Decodable for AccessListTx {
             return Err(rlp::DecoderError::RlpIncorrectListLen);
         }
 
-        let hash = solana_program::keccak::hash(rlp.as_raw()).to_bytes();
+        let hash = solana_program::keccak::hashv(&[&[0x01], rlp.as_raw()]).to_bytes();
         let signed_hash = eip2718_signed_hash(rlp, 8)?;
 
         let tx = AccessListTx {

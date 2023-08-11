@@ -362,7 +362,7 @@ impl<'a> EmulatorAccountStorage<'a> {
                         self.add_solana_account(*storage_account.pubkey(), true)
                             .await;
 
-                        if self.storage(address, index) == [0_u8; 32] {
+                        if self.storage(address, index).await == [0_u8; 32] {
                             let metadata_size = EthereumStorage::SIZE;
                             let element_size = 1 + std::mem::size_of_val(value);
 
@@ -601,7 +601,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         value
     }
 
-    fn storage(&self, address: &Address, index: &U256) -> [u8; 32] {
+    async fn storage(&self, address: &Address, index: &U256) -> [u8; 32] {
         if let Some(account_overrides) = &self.state_overrides {
             if let Some(account_override) = account_overrides.get(address) {
                 match (&account_override.state, &account_override.state_diff) {
@@ -625,11 +625,10 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         }
         let value = if *index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT) {
             let index: usize = index.as_usize() * 32;
-            block(
-                self.ethereum_contract_map_or(address, <[u8; 32]>::default(), |c| {
-                    c.storage()[index..index + 32].try_into().unwrap()
-                }),
-            )
+            self.ethereum_contract_map_or(address, <[u8; 32]>::default(), |c| {
+                c.storage()[index..index + 32].try_into().unwrap()
+            })
+            .await
         } else {
             let subindex = (index & 0xFF).as_u8();
             let index = index & !U256::new(0xFF);
@@ -637,9 +636,12 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             let (base, _) = address.find_solana_address(self.program_id());
             let storage_address = EthereumStorageAddress::new(self.program_id(), &base, &index);
 
-            block(self.add_solana_account(*storage_address.pubkey(), false));
+            self.add_solana_account(*storage_address.pubkey(), false)
+                .await;
 
-            let rpc_response = block(self.get_account(storage_address.pubkey()))
+            let rpc_response = self
+                .get_account(storage_address.pubkey())
+                .await
                 .expect("Error querying account from Solana");
 
             if let Some(mut account) = rpc_response {

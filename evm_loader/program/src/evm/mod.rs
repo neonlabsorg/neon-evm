@@ -477,7 +477,7 @@ impl<B: Database> Machine<B> {
             0x51 => self.opcode_mload(backend),
             0x52 => self.opcode_mstore(backend),
             0x53 => self.opcode_mstore8(backend),
-            0x54 => self.opcode_sload(backend),
+            0x54 => self.opcode_sload(backend).await,
             0x55 => self.opcode_sstore(backend),
             0x56 => self.opcode_jump(backend),
             0x57 => self.opcode_jumpi(backend),

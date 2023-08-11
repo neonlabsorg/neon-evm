@@ -553,27 +553,28 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         block(self.ethereum_account_map_or(address, 0, |a| a.code_size as usize))
     }
 
-    fn code_hash(&self, address: &Address) -> [u8; 32] {
+    async fn code_hash(&self, address: &Address) -> [u8; 32] {
         use solana_sdk::keccak::hash;
 
         info!("code_hash {address}");
 
         // https://eips.ethereum.org/EIPS/eip-1052
         // https://eips.ethereum.org/EIPS/eip-161
-        let is_non_existent_account = block(self.ethereum_account_map_or(address, true, |a| {
-            a.trx_count == 0 && a.balance == 0 && a.code_size == 0
-        }));
+        let is_non_existent_account = self
+            .ethereum_account_map_or(address, true, |a| {
+                a.trx_count == 0 && a.balance == 0 && a.code_size == 0
+            })
+            .await;
 
         if is_non_existent_account {
             return <[u8; 32]>::default();
         }
 
         // return empty hash(&[]) as a default value, or code's hash if contract exists
-        block(
-            self.ethereum_contract_map_or(address, hash(&[]).to_bytes(), |c| {
-                hash(&c.code()).to_bytes()
-            }),
-        )
+        self.ethereum_contract_map_or(address, hash(&[]).to_bytes(), |c| {
+            hash(&c.code()).to_bytes()
+        })
+        .await
     }
 
     async fn code(&self, address: &Address) -> evm_loader::evm::Buffer {

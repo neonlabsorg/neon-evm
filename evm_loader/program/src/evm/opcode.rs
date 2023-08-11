@@ -604,10 +604,11 @@ impl<B: Database> Machine<B> {
     }
 
     /// Constantinople hardfork, EIP-1052: hash of the contract bytecode at addr
-    pub fn opcode_extcodehash(&mut self, backend: &mut B) -> Result<Action> {
+    #[maybe_async]
+    pub async fn opcode_extcodehash(&mut self, backend: &mut B) -> Result<Action> {
         let code_hash = {
             let address = self.stack.pop_address()?;
-            backend.code_hash(address)?
+            backend.code_hash(address).await?
         };
 
         self.stack.push_array(&code_hash)?;

@@ -295,7 +295,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(self.backend.code_size(from_address))
     }
 
-    fn code_hash(&self, from_address: &Address) -> Result<[u8; 32]> {
+    async fn code_hash(&self, from_address: &Address) -> Result<[u8; 32]> {
         use solana_program::keccak::hash;
 
         for action in &self.actions {
@@ -306,7 +306,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             }
         }
 
-        Ok(self.backend.code_hash(from_address))
+        Ok(self.backend.code_hash(from_address).await)
     }
 
     async fn code(&self, from_address: &Address) -> Result<crate::evm::Buffer> {

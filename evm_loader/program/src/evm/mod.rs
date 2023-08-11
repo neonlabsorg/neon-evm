@@ -149,25 +149,33 @@ impl<B: Database> Machine<B> {
         cursor.position().try_into().map_err(Error::from)
     }
 
-    pub fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
-        fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &B) {
+    #[maybe_async]
+    pub async fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
+        #[maybe_async]
+        async fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &B) {
             if let Some((key, range)) = buffer.uninit_data() {
-                *buffer = backend.map_solana_account(&key, |i| Buffer::from_account(i, range));
+                *buffer = backend
+                    .map_solana_account(&key, |i| Buffer::from_account(i, range))
+                    .await;
             }
         }
 
-        fn reinit_machine<B: Database>(machine: &mut Machine<B>, backend: &B) {
-            reinit_buffer(&mut machine.call_data, backend);
-            reinit_buffer(&mut machine.execution_code, backend);
-            reinit_buffer(&mut machine.return_data, backend);
+        #[maybe_async]
+        async fn reinit_machine<B: Database>(mut machine: &mut Machine<B>, backend: &B) {
+            loop {
+                reinit_buffer(&mut machine.call_data, backend).await;
+                reinit_buffer(&mut machine.execution_code, backend).await;
+                reinit_buffer(&mut machine.return_data, backend).await;
 
-            if let Some(parent) = &mut machine.parent {
-                reinit_machine(parent, backend);
+                match &mut machine.parent {
+                    None => break,
+                    Some(parent) => machine = parent,
+                }
             }
         }
 
         let mut evm: Self = bincode::deserialize(buffer)?;
-        reinit_machine(&mut evm, backend);
+        reinit_machine(&mut evm, backend).await;
 
         Ok(evm)
     }
@@ -553,13 +561,13 @@ impl<B: Database> Machine<B> {
             0xA4 => self.opcode_log_0_4::<4>(backend),
 
             0xF0 => self.opcode_create(backend),
-            0xF1 => self.opcode_call(backend),
-            0xF2 => self.opcode_callcode(backend),
+            0xF1 => self.opcode_call(backend).await,
+            0xF2 => self.opcode_callcode(backend).await,
             0xF3 => self.opcode_return(backend),
-            0xF4 => self.opcode_delegatecall(backend),
+            0xF4 => self.opcode_delegatecall(backend).await,
             0xF5 => self.opcode_create2(backend),
 
-            0xFA => self.opcode_staticcall(backend),
+            0xFA => self.opcode_staticcall(backend).await,
 
             0xFD => self.opcode_revert(backend),
             0xFE => self.opcode_invalid(backend),

@@ -1013,7 +1013,8 @@ impl<B: Database> Machine<B> {
     }
 
     /// Message-call into an account
-    pub fn opcode_call(&mut self, backend: &mut B) -> Result<Action> {
+    #[maybe_async]
+    pub async fn opcode_call(&mut self, backend: &mut B) -> Result<Action> {
         let gas_limit = self.stack.pop_u256()?;
         let address = *self.stack.pop_address()?;
         let value = self.stack.pop_u256()?;
@@ -1058,11 +1059,12 @@ impl<B: Database> Machine<B> {
 
         backend.transfer(self.context.caller, self.context.contract, value)?;
 
-        self.opcode_call_precompile_impl(backend, &address)
+        self.opcode_call_precompile_impl(backend, &address).await
     }
 
     /// Message-call into this account with an alternative account’s code
-    pub fn opcode_callcode(&mut self, backend: &mut B) -> Result<Action> {
+    #[maybe_async]
+    pub async fn opcode_callcode(&mut self, backend: &mut B) -> Result<Action> {
         let gas_limit = self.stack.pop_u256()?;
         let address = *self.stack.pop_address()?;
         let value = self.stack.pop_u256()?;
@@ -1101,12 +1103,13 @@ impl<B: Database> Machine<B> {
             return Err(Error::InsufficientBalance(self.context.caller, value));
         }
 
-        self.opcode_call_precompile_impl(backend, &address)
+        self.opcode_call_precompile_impl(backend, &address).await
     }
 
     /// Homestead hardfork, EIP-7: Message-call into this account with an alternative account’s code,
     /// but persisting the current values for sender and value
-    pub fn opcode_delegatecall(&mut self, backend: &mut B) -> Result<Action> {
+    #[maybe_async]
+    pub async fn opcode_delegatecall(&mut self, backend: &mut B) -> Result<Action> {
         let gas_limit = self.stack.pop_u256()?;
         let address = *self.stack.pop_address()?;
         let args_offset = self.stack.pop_usize()?;
@@ -1138,12 +1141,13 @@ impl<B: Database> Machine<B> {
 
         sol_log_data(&[b"ENTER", b"DELEGATECALL", address.as_bytes()]);
 
-        self.opcode_call_precompile_impl(backend, &address)
+        self.opcode_call_precompile_impl(backend, &address).await
     }
 
     /// Byzantium hardfork, EIP-214: Static message-call into an account
     /// Disallowed contract creation, event emission, storage modification and contract destruction
-    pub fn opcode_staticcall(&mut self, backend: &mut B) -> Result<Action> {
+    #[maybe_async]
+    pub async fn opcode_staticcall(&mut self, backend: &mut B) -> Result<Action> {
         let gas_limit = self.stack.pop_u256()?;
         let address = *self.stack.pop_address()?;
         let args_offset = self.stack.pop_usize()?;
@@ -1179,20 +1183,25 @@ impl<B: Database> Machine<B> {
 
         sol_log_data(&[b"ENTER", b"STATICCALL", address.as_bytes()]);
 
-        self.opcode_call_precompile_impl(backend, &address)
+        self.opcode_call_precompile_impl(backend, &address).await
     }
 
     /// Call precompile contract.
     /// Returns `Action::Noop` if address is not a precompile
-    fn opcode_call_precompile_impl(
+    #[maybe_async]
+    async fn opcode_call_precompile_impl(
         &mut self,
         backend: &mut B,
         address: &Address,
     ) -> Result<Action> {
-        let result = Self::precompile(address, &self.call_data).map(Ok);
-        let result = result.or_else(|| {
-            backend.precompile_extension(&self.context, address, &self.call_data, self.is_static)
-        });
+        let result = match Self::precompile(address, &self.call_data).map(Ok) {
+            Some(x) => Some(x),
+            None => {
+                backend
+                    .precompile_extension(&self.context, address, &self.call_data, self.is_static)
+                    .await
+            }
+        };
 
         if result.is_none() {
             return Ok(Action::Noop);

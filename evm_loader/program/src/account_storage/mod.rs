@@ -99,7 +99,7 @@ pub trait AccountStorage {
     fn clone_solana_account(&self, address: &Pubkey) -> OwnedAccountInfo;
 
     /// Map existing solana account
-    fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
+    async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
         F: FnOnce(&AccountInfo) -> R;
 

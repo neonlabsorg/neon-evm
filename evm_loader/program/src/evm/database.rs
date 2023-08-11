@@ -27,7 +27,7 @@ pub trait Database {
     fn block_number(&self) -> Result<U256>;
     fn block_timestamp(&self) -> Result<U256>;
 
-    fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
+    async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
         F: FnOnce(&AccountInfo) -> R;
 
@@ -35,7 +35,7 @@ pub trait Database {
     fn revert_snapshot(&mut self);
     fn commit_snapshot(&mut self);
 
-    fn precompile_extension(
+    async fn precompile_extension(
         &mut self,
         context: &Context,
         address: &Address,

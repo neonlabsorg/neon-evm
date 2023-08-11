@@ -382,11 +382,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(cache.block_timestamp)
     }
 
-    fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
+    async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
         F: FnOnce(&solana_program::account_info::AccountInfo) -> R,
     {
-        self.backend.map_solana_account(address, action)
+        self.backend.map_solana_account(address, action).await
     }
 
     fn snapshot(&mut self) {
@@ -414,7 +414,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             .expect("Fatal Error: Inconsistent EVM Call Stack");
     }
 
-    fn precompile_extension(
+    async fn precompile_extension(
         &mut self,
         context: &Context,
         address: &Address,
@@ -422,5 +422,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         is_static: bool,
     ) -> Option<Result<Vec<u8>>> {
         self.call_precompile_extension(context, address, data, is_static)
+            .await
     }
 }

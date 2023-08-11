@@ -707,11 +707,11 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         }
     }
 
-    fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
+    async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
         F: FnOnce(&AccountInfo) -> R,
     {
-        block(self.add_solana_account(*address, false));
+        self.add_solana_account(*address, false).await;
 
         let mut account = block(self.get_account(address))
             .unwrap_or_default()

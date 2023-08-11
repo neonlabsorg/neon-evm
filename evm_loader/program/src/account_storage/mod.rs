@@ -77,7 +77,7 @@ pub trait AccountStorage {
     fn chain_id(&self) -> u64;
 
     /// Check if ethereum account exists
-    fn exists(&self, address: &Address) -> bool;
+    async fn exists(&self, address: &Address) -> bool;
     /// Get account nonce
     async fn nonce(&self, address: &Address) -> u64;
     /// Get account balance

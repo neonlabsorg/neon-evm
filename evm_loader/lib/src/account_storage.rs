@@ -526,12 +526,12 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         }
     }
 
-    fn exists(&self, address: &Address) -> bool {
+    async fn exists(&self, address: &Address) -> bool {
         info!("exists {address}");
 
-        block(self.add_ethereum_account(address, false));
+        self.add_ethereum_account(address, false).await;
 
-        let accounts = block(self.accounts.read());
+        let accounts = self.accounts.read().await;
         accounts.contains_key(address)
     }
 

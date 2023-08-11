@@ -13,15 +13,13 @@ pub use buffer::Buffer;
 pub use precompile::is_precompile_address;
 pub use precompile::precompile;
 
-#[cfg(feature = "tracing")]
-use crate::evm::tracing::event_listener::tracer::TracerType;
-#[cfg(feature = "tracing")]
-use crate::evm::tracing::EventListener;
 use crate::{
     error::{build_revert_message, Error, Result},
     evm::opcode::Action,
     types::{Address, Transaction},
 };
+#[cfg(feature = "tracing")]
+use {crate::evm::tracing::event_listener::tracer::TracerType, crate::evm::tracing::EventListener};
 
 use self::{database::Database, memory::Memory, stack::Stack};
 

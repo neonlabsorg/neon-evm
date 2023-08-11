@@ -7,11 +7,9 @@ use std::{
 
 use ethnum::{I256, U256};
 
-#[cfg(feature = "tracing")]
-use crate::evm::tracing::event_listener::tracer::TracerType;
-#[cfg(feature = "tracing")]
-use crate::evm::tracing::EventListener;
 use crate::{error::Error, types::Address};
+#[cfg(feature = "tracing")]
+use {crate::evm::tracing::event_listener::tracer::TracerType, crate::evm::tracing::EventListener};
 
 use super::tracing_event;
 

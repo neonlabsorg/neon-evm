@@ -187,7 +187,7 @@ impl<B: Database> Machine<B> {
         backend: &mut B,
         #[cfg(feature = "tracing")] tracer: TracerType,
     ) -> Result<Self> {
-        let origin_nonce = backend.nonce(&origin)?;
+        let origin_nonce = backend.nonce(&origin).await?;
 
         if origin_nonce == u64::MAX {
             return Err(Error::NonceOverflow(origin));
@@ -299,7 +299,7 @@ impl<B: Database> Machine<B> {
         let target = Address::from_create(&origin, trx.nonce);
         sol_log_data(&[b"ENTER", b"CREATE", target.as_bytes()]);
 
-        if (backend.nonce(&target)? != 0) || (backend.code_size(&target).await? != 0) {
+        if (backend.nonce(&target).await? != 0) || (backend.code_size(&target).await? != 0) {
             return Err(Error::DeployToExistingAccount(target, origin));
         }
 

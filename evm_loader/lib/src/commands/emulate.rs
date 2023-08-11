@@ -185,9 +185,10 @@ pub(crate) async fn emulate_trx<'a>(
     let (exit_status, actions, steps_executed) = {
         let mut backend = ExecutorState::new(storage);
         let trx = Transaction {
-            nonce: tx_params
-                .nonce
-                .unwrap_or_else(|| storage.nonce(&tx_params.from)),
+            nonce: match tx_params.nonce {
+                Some(nonce) => nonce,
+                None => storage.nonce(&tx_params.from).await,
+            },
             gas_price: U256::ZERO,
             gas_limit: tx_params.gas_limit.unwrap_or(U256::MAX),
             target: tx_params.to,

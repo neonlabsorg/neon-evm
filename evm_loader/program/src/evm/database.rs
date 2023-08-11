@@ -8,7 +8,7 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 pub trait Database {
     fn chain_id(&self) -> U256;
 
-    fn nonce(&self, address: &Address) -> Result<u64>;
+    async fn nonce(&self, address: &Address) -> Result<u64>;
     fn increment_nonce(&mut self, address: Address) -> Result<()>;
 
     async fn balance(&self, address: &Address) -> Result<U256>;

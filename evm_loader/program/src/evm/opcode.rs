@@ -940,7 +940,7 @@ impl<B: Database> Machine<B> {
         let length = self.stack.pop_usize()?;
 
         let created_address = {
-            let nonce = backend.nonce(&self.context.contract)?;
+            let nonce = backend.nonce(&self.context.contract).await?;
             Address::from_create(&self.context.contract, nonce)
         };
 
@@ -978,7 +978,7 @@ impl<B: Database> Machine<B> {
         length: usize,
         backend: &mut B,
     ) -> Result<Action> {
-        if backend.nonce(&self.context.contract)? == u64::MAX {
+        if backend.nonce(&self.context.contract).await? == u64::MAX {
             return Err(Error::NonceOverflow(self.context.contract));
         }
 
@@ -1009,7 +1009,7 @@ impl<B: Database> Machine<B> {
 
         sol_log_data(&[b"ENTER", b"CREATE", address.as_bytes()]);
 
-        if (backend.nonce(&address)? != 0) || (backend.code_size(&address).await? != 0) {
+        if (backend.nonce(&address).await? != 0) || (backend.code_size(&address).await? != 0) {
             return Err(Error::DeployToExistingAccount(address, self.context.caller));
         }
 

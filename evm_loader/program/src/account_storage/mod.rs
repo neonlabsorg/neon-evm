@@ -79,7 +79,7 @@ pub trait AccountStorage {
     /// Check if ethereum account exists
     fn exists(&self, address: &Address) -> bool;
     /// Get account nonce
-    fn nonce(&self, address: &Address) -> u64;
+    async fn nonce(&self, address: &Address) -> u64;
     /// Get account balance
     async fn balance(&self, address: &Address) -> U256;
 

@@ -535,10 +535,11 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         accounts.contains_key(address)
     }
 
-    fn nonce(&self, address: &Address) -> u64 {
+    async fn nonce(&self, address: &Address) -> u64 {
         info!("nonce {address}");
 
-        block(self.ethereum_account_map_or(address, 0_u64, |a| a.trx_count))
+        self.ethereum_account_map_or(address, 0_u64, |a| a.trx_count)
+            .await
     }
 
     async fn balance(&self, address: &Address) -> U256 {

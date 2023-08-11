@@ -205,8 +205,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         U256::from(chain_id)
     }
 
-    fn nonce(&self, from_address: &Address) -> Result<u64> {
-        let mut nonce = self.backend.nonce(from_address);
+    async fn nonce(&self, from_address: &Address) -> Result<u64> {
+        let mut nonce = self.backend.nonce(from_address).await;
 
         for action in &self.actions {
             if let Action::EvmIncrementNonce { address } = action {

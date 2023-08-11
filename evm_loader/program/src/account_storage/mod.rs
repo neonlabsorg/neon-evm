@@ -131,7 +131,7 @@ pub trait AccountStorage {
 
         let mut result = AccountsOperations::new();
 
-        for (address, space_needed) in accounts.into_iter() {
+        for (address, space_needed) in accounts {
             match self.solana_account_space(address).await {
                 None => result.push((
                     *address,

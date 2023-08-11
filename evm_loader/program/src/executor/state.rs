@@ -106,8 +106,6 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 
     #[maybe_async]
     pub async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
-        let mut cache = self.cache.borrow_mut();
-
         let metas = self
             .actions
             .iter()
@@ -122,20 +120,27 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
             .collect::<Vec<_>>();
 
         if !metas.iter().any(|m| (m.pubkey == address) && m.is_writable) {
-            return Ok(cache
-                .get_account_or_insert(address, self.backend)
-                .await
+            insert_account_if_not_present(&self.cache, address, self.backend).await;
+            return Ok(self
+                .cache
+                .borrow()
+                .solana_accounts
+                .get(&address)
+                .unwrap()
                 .clone());
         }
 
         let mut accounts = BTreeMap::<Pubkey, OwnedAccountInfo>::new();
 
-        for m in metas.into_iter() {
+        for m in metas {
+            insert_account_if_not_present(&self.cache, m.pubkey, self.backend).await;
             accounts.insert(
                 m.pubkey,
-                cache
-                    .get_account_or_insert(m.pubkey, self.backend)
-                    .await
+                self.cache
+                    .borrow()
+                    .solana_accounts
+                    .get(&m.pubkey)
+                    .unwrap()
                     .clone(),
             );
         }
@@ -175,6 +180,21 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         }
 
         Ok(accounts[&address].clone())
+    }
+}
+
+#[maybe_async]
+async fn insert_account_if_not_present<B: AccountStorage>(
+    cache: &RefCell<Cache>,
+    key: Pubkey,
+    backend: &B,
+) {
+    if !cache.borrow().solana_accounts.contains_key(&key) {
+        let owned_account_info = backend.clone_solana_account(&key).await;
+        cache
+            .borrow_mut()
+            .solana_accounts
+            .insert(key, owned_account_info);
     }
 }
 

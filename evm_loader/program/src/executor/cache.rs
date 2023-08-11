@@ -1,11 +1,8 @@
-use ethnum::U256;
-use maybe_async::maybe_async;
-use serde::{Deserialize, Serialize};
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
-use std::collections::btree_map::Entry::{Occupied, Vacant};
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
-use crate::account_storage::AccountStorage;
+use ethnum::U256;
+use serde::{Deserialize, Serialize};
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct OwnedAccountInfo {
@@ -64,18 +61,4 @@ pub struct Cache {
     pub block_number: U256,
     #[serde(with = "ethnum::serde::bytes::le")]
     pub block_timestamp: U256,
-}
-
-impl Cache {
-    #[maybe_async]
-    pub async fn get_account_or_insert<B: AccountStorage>(
-        &mut self,
-        key: Pubkey,
-        backend: &B,
-    ) -> &mut OwnedAccountInfo {
-        match self.solana_accounts.entry(key) {
-            Occupied(entry) => entry.into_mut(),
-            Vacant(entry) => entry.insert(backend.clone_solana_account(&key).await),
-        }
-    }
 }

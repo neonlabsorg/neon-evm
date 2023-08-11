@@ -1,27 +1,20 @@
 #[cfg(not(feature = "tracing"))]
-use crate::account::program;
-#[cfg(not(feature = "tracing"))]
-use crate::account::EthereumAccount;
-#[cfg(not(feature = "tracing"))]
-use crate::account::Holder;
+use {
+    crate::account::program,
+    crate::account::EthereumAccount,
+    crate::account::Holder,
+    crate::config::OPERATOR_PRIORITY_SLOTS,
+    crate::error::Error,
+    crate::types::{Address, Transaction},
+    ethnum::U256,
+    solana_program::account_info::AccountInfo,
+    solana_program::clock::Clock,
+    solana_program::sysvar::Sysvar,
+    std::cell::{Ref, RefMut},
+};
+
 use crate::account::{FinalizedState, Incinerator, Operator, State};
-#[cfg(not(feature = "tracing"))]
-use crate::config::OPERATOR_PRIORITY_SLOTS;
-#[cfg(not(feature = "tracing"))]
-use crate::error::Error;
-#[cfg(not(feature = "tracing"))]
-use crate::types::{Address, Transaction};
-#[cfg(not(feature = "tracing"))]
-use ethnum::U256;
-#[cfg(not(feature = "tracing"))]
-use solana_program::account_info::AccountInfo;
-#[cfg(not(feature = "tracing"))]
-use solana_program::clock::Clock;
-#[cfg(not(feature = "tracing"))]
-use solana_program::sysvar::Sysvar;
 use solana_program::{program_error::ProgramError, pubkey::Pubkey};
-#[cfg(not(feature = "tracing"))]
-use std::cell::{Ref, RefMut};
 
 const ACCOUNT_CHUNK_LEN: usize = 1 + 1 + 32;
 

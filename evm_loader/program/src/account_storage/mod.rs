@@ -1,21 +1,19 @@
 use crate::account::EthereumAccount;
-#[cfg(not(feature = "tracing"))]
-use crate::account::EthereumStorage;
 use crate::executor::{Action, OwnedAccountInfo};
 use crate::types::Address;
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::account_info::AccountInfo;
 #[cfg(not(feature = "tracing"))]
-use solana_program::clock::Clock;
+use {
+    crate::account::EthereumStorage, solana_program::clock::Clock, std::cell::RefCell,
+    std::collections::HashSet,
+};
+
 use solana_program::pubkey::Pubkey;
 use solana_program::slot_history::Slot;
-#[cfg(not(feature = "tracing"))]
-use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-#[cfg(not(feature = "tracing"))]
-use std::collections::HashSet;
 
 #[cfg(not(feature = "tracing"))]
 mod apply;

@@ -89,6 +89,7 @@ class TestTransactionStepFromAccountNoChainId:
             neon_cli().call_contract_get_function(evm_loader, sender_with_tokens, string_setter_contract,
                                                   "get()"))
 
+    @pytest.mark.xfail(reason="Delete if trx without chainID should be supported by access list type")
     def test_transaction_with_access_list(self, operator_keypair, treasury_pool,
                                           sender_with_tokens, calculator_contract, calculator_caller_contract,
                                           holder_acc, evm_loader):

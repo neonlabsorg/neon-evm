@@ -199,6 +199,7 @@ macro_rules! Err {
 /// #    map_err(|s| E!(ProgramError::InvalidArgument; "s={:?}", s))
 /// ```
 ///
+#[cfg(not(feature = "tracing"))]
 macro_rules! E {
     ( $n:expr; $($args:expr),* ) => ({
         #[cfg(target_os = "solana")]

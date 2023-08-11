@@ -1,18 +1,26 @@
 #[cfg(not(feature = "tracing"))]
 use crate::account::program;
 #[cfg(not(feature = "tracing"))]
+use crate::account::EthereumAccount;
+#[cfg(not(feature = "tracing"))]
+use crate::account::Holder;
+use crate::account::{FinalizedState, Incinerator, Operator, State};
+#[cfg(not(feature = "tracing"))]
+use crate::config::OPERATOR_PRIORITY_SLOTS;
+#[cfg(not(feature = "tracing"))]
+use crate::error::Error;
+#[cfg(not(feature = "tracing"))]
 use crate::types::{Address, Transaction};
-use crate::{
-    account::{EthereumAccount, FinalizedState, Holder, Incinerator, Operator, State},
-    config::OPERATOR_PRIORITY_SLOTS,
-    error::Error,
-};
 #[cfg(not(feature = "tracing"))]
 use ethnum::U256;
-use solana_program::{
-    account_info::AccountInfo, clock::Clock, program_error::ProgramError, pubkey::Pubkey,
-    sysvar::Sysvar,
-};
+#[cfg(not(feature = "tracing"))]
+use solana_program::account_info::AccountInfo;
+#[cfg(not(feature = "tracing"))]
+use solana_program::clock::Clock;
+#[cfg(not(feature = "tracing"))]
+use solana_program::sysvar::Sysvar;
+use solana_program::{program_error::ProgramError, pubkey::Pubkey};
+#[cfg(not(feature = "tracing"))]
 use std::cell::{Ref, RefMut};
 
 const ACCOUNT_CHUNK_LEN: usize = 1 + 1 + 32;
@@ -90,6 +98,7 @@ impl<'a> State<'a> {
         Ok(storage)
     }
 
+    #[cfg(not(feature = "tracing"))]
     pub fn restore(
         program_id: &Pubkey,
         info: &'a AccountInfo<'a>,
@@ -124,6 +133,7 @@ impl<'a> State<'a> {
         Ok((storage, blocked_accounts))
     }
 
+    #[cfg(not(feature = "tracing"))]
     pub fn finalize(self, deposit: Deposit<'a>) -> Result<FinalizedState<'a>, ProgramError> {
         debug_print!("Finalize Storage {}", self.info.key);
 
@@ -150,6 +160,7 @@ impl<'a> State<'a> {
         system_program.transfer(source, self.info, crate::config::PAYMENT_TO_DEPOSIT)
     }
 
+    #[cfg(not(feature = "tracing"))]
     fn withdraw_deposit(&self, target: &AccountInfo<'a>) -> Result<(), ProgramError> {
         let source_lamports = self
             .info
@@ -218,6 +229,7 @@ impl<'a> State<'a> {
         Ok(())
     }
 
+    #[cfg(not(feature = "tracing"))]
     pub fn update_blocked_accounts<I>(&mut self, accounts: I) -> Result<(), Error>
     where
         I: ExactSizeIterator<Item = BlockedAccountMeta>,
@@ -245,6 +257,7 @@ impl<'a> State<'a> {
         Ok(())
     }
 
+    #[cfg(not(feature = "tracing"))]
     fn check_blocked_accounts(
         &self,
         program_id: &Pubkey,
@@ -278,6 +291,7 @@ impl<'a> State<'a> {
         Ok(blocked_accounts)
     }
 
+    #[cfg(not(feature = "tracing"))]
     #[must_use]
     pub fn evm_data(&self) -> Ref<[u8]> {
         let (begin, end) = self.evm_data_region();
@@ -286,6 +300,7 @@ impl<'a> State<'a> {
         Ref::map(data, |d| &d[begin..end])
     }
 
+    #[cfg(not(feature = "tracing"))]
     #[must_use]
     pub fn evm_data_mut(&mut self) -> RefMut<[u8]> {
         let (begin, end) = self.evm_data_region();
@@ -294,6 +309,7 @@ impl<'a> State<'a> {
         RefMut::map(data, |d| &mut d[begin..end])
     }
 
+    #[cfg(not(feature = "tracing"))]
     #[must_use]
     fn evm_data_region(&self) -> (usize, usize) {
         let (_, accounts_region_end) = self.blocked_accounts_region();
@@ -312,6 +328,7 @@ impl<'a> State<'a> {
         (begin, end)
     }
 
+    #[cfg(not(feature = "tracing"))]
     #[must_use]
     fn account_exists(program_id: &Pubkey, info: &AccountInfo) -> bool {
         (info.owner == program_id)

@@ -32,7 +32,7 @@ use solana_sdk::{
     sysvar::{slot_hashes, Sysvar},
 };
 
-use crate::types::{block, PubkeyBase58};
+use crate::types::PubkeyBase58;
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 

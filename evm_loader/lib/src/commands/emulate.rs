@@ -210,7 +210,7 @@ pub(crate) async fn emulate_trx<'a>(
     debug!("Execute done, result={exit_status:?}");
     debug!("{steps_executed} steps executed");
 
-    let accounts_operations = storage.calc_accounts_operations(&actions);
+    let accounts_operations = storage.calc_accounts_operations(&actions).await;
 
     let max_iterations = (steps_executed + (EVM_STEPS_MIN - 1)) / EVM_STEPS_MIN;
     let steps_gas = max_iterations * (LAMPORTS_PER_SIGNATURE + PAYMENT_TO_TREASURE);

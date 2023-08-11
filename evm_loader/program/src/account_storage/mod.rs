@@ -109,9 +109,9 @@ pub trait AccountStorage {
     }
 
     /// Solana account data len
-    fn solana_account_space(&self, address: &Address) -> Option<usize>;
+    async fn solana_account_space(&self, address: &Address) -> Option<usize>;
 
-    fn calc_accounts_operations(&self, actions: &[Action]) -> AccountsOperations {
+    async fn calc_accounts_operations(&self, actions: &[Action]) -> AccountsOperations {
         let mut accounts = HashMap::new();
         for action in actions {
             let (address, code_size) = match action {
@@ -129,27 +129,28 @@ pub trait AccountStorage {
             accounts.insert(address, space_needed);
         }
 
-        accounts
-            .into_iter()
-            .filter_map(
-                |(address, space_needed)| match self.solana_account_space(address) {
-                    None => Some((
-                        *address,
-                        AccountOperation::Create {
-                            space: space_needed,
-                        },
-                    )),
-                    Some(space_current) if space_current < space_needed => Some((
-                        *address,
-                        AccountOperation::Resize {
-                            from: space_current,
-                            to: space_needed,
-                        },
-                    )),
-                    _ => None,
-                },
-            )
-            .collect()
+        let mut result = AccountsOperations::new();
+
+        for (address, space_needed) in accounts.into_iter() {
+            match self.solana_account_space(address).await {
+                None => result.push((
+                    *address,
+                    AccountOperation::Create {
+                        space: space_needed,
+                    },
+                )),
+                Some(space_current) if space_current < space_needed => result.push((
+                    *address,
+                    AccountOperation::Resize {
+                        from: space_current,
+                        to: space_needed,
+                    },
+                )),
+                _ => (),
+            }
+        }
+
+        result
     }
 }
 

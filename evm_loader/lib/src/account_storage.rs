@@ -671,8 +671,9 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         value
     }
 
-    fn solana_account_space(&self, address: &Address) -> Option<usize> {
-        block(self.ethereum_account_map_or(address, None, |account| Some(account.info.data_len())))
+    async fn solana_account_space(&self, address: &Address) -> Option<usize> {
+        self.ethereum_account_map_or(address, None, |account| Some(account.info.data_len()))
+            .await
     }
 
     fn chain_id(&self) -> u64 {

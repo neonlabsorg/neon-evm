@@ -1,6 +1,5 @@
 use actix_web::http::StatusCode;
 use actix_web::web::Json;
-use ethnum::U256;
 use evm_loader::types::Address;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -47,14 +46,6 @@ impl From<AddrParseError> for NeonApiError {
     fn from(value: AddrParseError) -> Self {
         NeonApiError(value.into())
     }
-}
-
-pub fn u256_of(index: &str) -> Option<U256> {
-    if index.is_empty() {
-        return Some(U256::ZERO);
-    }
-
-    U256::from_str_prefixed(index).ok()
 }
 
 pub(crate) async fn parse_emulation_params(

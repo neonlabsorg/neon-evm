@@ -28,7 +28,6 @@ pub enum ChError {
 
 pub type ChResult<T> = std::result::Result<T, ChError>;
 
-#[allow(dead_code)]
 #[derive(Clone)]
 pub struct ClickHouseDb {
     pub client: Arc<Client>,
@@ -86,7 +85,6 @@ impl TryInto<Account> for AccountRow {
     }
 }
 
-#[allow(dead_code)]
 impl ClickHouseDb {
     pub fn new(config: &ChDbConfig) -> Self {
         let url_id = rand::thread_rng().gen_range(0..config.clickhouse_url.len());

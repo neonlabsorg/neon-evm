@@ -72,7 +72,7 @@ impl Memory {
         }
     }
 
-    #[allow(dead_code)]
+    #[cfg(feature = "library")]
     pub fn to_vec(&self) -> Vec<u8> {
         let slice = unsafe { std::slice::from_raw_parts(self.data, self.size) };
         slice.to_vec()

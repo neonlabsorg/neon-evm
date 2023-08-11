@@ -47,7 +47,7 @@ impl Stack {
         }
     }
 
-    #[allow(dead_code)]
+    #[cfg(feature = "library")]
     pub fn to_vec(&self) -> Vec<[u8; 32]> {
         let slice = unsafe {
             let start = self.begin.cast::<[u8; 32]>();

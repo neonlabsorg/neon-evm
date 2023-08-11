@@ -1,4 +1,3 @@
-#![allow(dead_code)] // TODO Investigate this
 #![deny(warnings)]
 #![deny(clippy::all, clippy::pedantic)]
 mod api_options;

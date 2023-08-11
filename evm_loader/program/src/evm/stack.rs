@@ -8,7 +8,7 @@ use std::{
 use ethnum::{I256, U256};
 
 use crate::{error::Error, types::Address};
-#[cfg(feature = "tracing")]
+#[cfg(feature = "library")]
 use {crate::evm::tracing::event_listener::tracer::TracerType, crate::evm::tracing::EventListener};
 
 use super::tracing_event;
@@ -20,12 +20,12 @@ pub struct Stack {
     begin: *mut u8,
     end: *mut u8,
     top: *mut u8,
-    #[cfg(feature = "tracing")]
+    #[cfg(feature = "library")]
     tracer: TracerType,
 }
 
 impl Stack {
-    pub fn new(#[cfg(feature = "tracing")] tracer: TracerType) -> Self {
+    pub fn new(#[cfg(feature = "library")] tracer: TracerType) -> Self {
         let (begin, end) = unsafe {
             let layout = Layout::from_size_align_unchecked(STACK_SIZE, ELEMENT_SIZE);
             let begin = crate::allocator::EVM.alloc(layout);
@@ -42,7 +42,7 @@ impl Stack {
             begin,
             end,
             top: begin,
-            #[cfg(feature = "tracing")]
+            #[cfg(feature = "library")]
             tracer,
         }
     }
@@ -279,7 +279,7 @@ impl Drop for Stack {
     }
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(feature = "library"))]
 impl serde::Serialize for Stack {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -294,7 +294,7 @@ impl serde::Serialize for Stack {
     }
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(feature = "library"))]
 impl<'de> serde::Deserialize<'de> for Stack {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

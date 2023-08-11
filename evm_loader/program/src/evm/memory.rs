@@ -4,7 +4,7 @@ use std::ops::Range;
 use solana_program::program_memory::{sol_memcpy, sol_memset};
 
 use crate::error::Error;
-#[cfg(feature = "tracing")]
+#[cfg(feature = "library")]
 use {crate::evm::tracing::event_listener::tracer::TracerType, crate::evm::tracing::EventListener};
 
 use super::utils::checked_next_multiple_of_32;
@@ -20,20 +20,20 @@ pub struct Memory {
     data: *mut u8,
     capacity: usize,
     size: usize,
-    #[cfg(feature = "tracing")]
+    #[cfg(feature = "library")]
     tracer: TracerType,
 }
 
 impl Memory {
-    pub fn new(#[cfg(feature = "tracing")] tracer: TracerType) -> Self {
+    pub fn new(#[cfg(feature = "library")] tracer: TracerType) -> Self {
         Self::with_capacity(
             MEMORY_CAPACITY,
-            #[cfg(feature = "tracing")]
+            #[cfg(feature = "library")]
             tracer,
         )
     }
 
-    pub fn with_capacity(capacity: usize, #[cfg(feature = "tracing")] tracer: TracerType) -> Self {
+    pub fn with_capacity(capacity: usize, #[cfg(feature = "library")] tracer: TracerType) -> Self {
         unsafe {
             let layout = Layout::from_size_align_unchecked(capacity, MEMORY_ALIGN);
             let data = crate::allocator::EVM.alloc_zeroed(layout);
@@ -45,13 +45,13 @@ impl Memory {
                 data,
                 capacity,
                 size: 0,
-                #[cfg(feature = "tracing")]
+                #[cfg(feature = "library")]
                 tracer,
             }
         }
     }
 
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     pub fn from_buffer(v: &[u8]) -> Self {
         let capacity = v.len().next_power_of_two().max(MEMORY_CAPACITY);
 
@@ -277,7 +277,7 @@ impl Drop for Memory {
     }
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(feature = "library"))]
 impl serde::Serialize for Memory {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -288,7 +288,7 @@ impl serde::Serialize for Memory {
     }
 }
 
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(feature = "library"))]
 impl<'de> serde::Deserialize<'de> for Memory {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

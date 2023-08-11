@@ -19,13 +19,13 @@ pub mod error;
 pub mod account;
 pub mod account_storage;
 pub mod config;
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(feature = "library"))]
 pub mod entrypoint;
 pub mod evm;
 pub mod executor;
 pub mod external_programs;
 pub mod gasometer;
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(feature = "library"))]
 pub mod instruction;
 pub mod state_account;
 pub mod types;

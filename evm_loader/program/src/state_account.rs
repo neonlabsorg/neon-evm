@@ -1,4 +1,4 @@
-#[cfg(not(feature = "tracing"))]
+#[cfg(not(feature = "library"))]
 use {
     crate::account::program,
     crate::account::EthereumAccount,
@@ -39,7 +39,7 @@ impl<'a> FinalizedState<'a> {
 }
 
 impl<'a> State<'a> {
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     pub fn new(
         program_id: &'a Pubkey,
         info: &'a AccountInfo<'a>,
@@ -91,7 +91,7 @@ impl<'a> State<'a> {
         Ok(storage)
     }
 
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     pub fn restore(
         program_id: &Pubkey,
         info: &'a AccountInfo<'a>,
@@ -126,7 +126,7 @@ impl<'a> State<'a> {
         Ok((storage, blocked_accounts))
     }
 
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     pub fn finalize(self, deposit: Deposit<'a>) -> Result<FinalizedState<'a>, ProgramError> {
         debug_print!("Finalize Storage {}", self.info.key);
 
@@ -144,7 +144,7 @@ impl<'a> State<'a> {
         Ok(finalized)
     }
 
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     fn make_deposit(
         &self,
         system_program: &program::System<'a>,
@@ -153,7 +153,7 @@ impl<'a> State<'a> {
         system_program.transfer(source, self.info, crate::config::PAYMENT_TO_DEPOSIT)
     }
 
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     fn withdraw_deposit(&self, target: &AccountInfo<'a>) -> Result<(), ProgramError> {
         let source_lamports = self
             .info
@@ -196,7 +196,7 @@ impl<'a> State<'a> {
         Ok(accounts)
     }
 
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     fn write_blocked_accounts(
         &mut self,
         program_id: &Pubkey,
@@ -222,7 +222,7 @@ impl<'a> State<'a> {
         Ok(())
     }
 
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     pub fn update_blocked_accounts<I>(&mut self, accounts: I) -> Result<(), Error>
     where
         I: ExactSizeIterator<Item = BlockedAccountMeta>,
@@ -250,7 +250,7 @@ impl<'a> State<'a> {
         Ok(())
     }
 
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     fn check_blocked_accounts(
         &self,
         program_id: &Pubkey,
@@ -284,7 +284,7 @@ impl<'a> State<'a> {
         Ok(blocked_accounts)
     }
 
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     #[must_use]
     pub fn evm_data(&self) -> Ref<[u8]> {
         let (begin, end) = self.evm_data_region();
@@ -293,7 +293,7 @@ impl<'a> State<'a> {
         Ref::map(data, |d| &d[begin..end])
     }
 
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     #[must_use]
     pub fn evm_data_mut(&mut self) -> RefMut<[u8]> {
         let (begin, end) = self.evm_data_region();
@@ -302,7 +302,7 @@ impl<'a> State<'a> {
         RefMut::map(data, |d| &mut d[begin..end])
     }
 
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     #[must_use]
     fn evm_data_region(&self) -> (usize, usize) {
         let (_, accounts_region_end) = self.blocked_accounts_region();
@@ -321,7 +321,7 @@ impl<'a> State<'a> {
         (begin, end)
     }
 
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     #[must_use]
     fn account_exists(program_id: &Pubkey, info: &AccountInfo) -> bool {
         (info.owner == program_id)

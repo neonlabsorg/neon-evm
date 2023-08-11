@@ -18,7 +18,7 @@ use crate::{
     evm::opcode::Action,
     types::{Address, Transaction},
 };
-#[cfg(feature = "tracing")]
+#[cfg(feature = "library")]
 use {crate::evm::tracing::event_listener::tracer::TracerType, crate::evm::tracing::EventListener};
 
 use self::{database::Database, memory::Memory, stack::Stack};
@@ -29,19 +29,19 @@ mod memory;
 mod opcode;
 mod precompile;
 mod stack;
-#[cfg(feature = "tracing")]
+#[cfg(feature = "library")]
 pub mod tracing;
 mod utils;
 
 macro_rules! tracing_event {
     ($self:ident, $x:expr) => {
-        #[cfg(feature = "tracing")]
+        #[cfg(feature = "library")]
         if let Some(tracer) = &$self.tracer {
             tracer.borrow_mut().as_mut().unwrap().event($x);
         }
     };
     ($self:ident, $condition:expr, $x:expr) => {
-        #[cfg(feature = "tracing")]
+        #[cfg(feature = "library")]
         if let Some(tracer) = &$self.tracer {
             if $condition {
                 tracer.borrow_mut().as_mut().unwrap().event($x);
@@ -52,7 +52,7 @@ macro_rules! tracing_event {
 
 macro_rules! trace_end_step {
     ($self:ident, $return_data_vec:expr) => {
-        #[cfg(feature = "tracing")]
+        #[cfg(feature = "library")]
         if let Some(tracer) = &$self.tracer {
             let mut tracer = tracer.borrow_mut();
             let tracer = tracer.as_mut().unwrap();
@@ -70,7 +70,7 @@ macro_rules! trace_end_step {
         }
     };
     ($self:ident, $condition:expr; $return_data_vec:expr) => {
-        #[cfg(feature = "tracing")]
+        #[cfg(feature = "library")]
         if $condition {
             trace_end_step!($self, $return_data_vec)
         }
@@ -106,7 +106,7 @@ pub struct Context {
 }
 
 #[cfg_attr(
-    not(feature = "tracing"),
+    not(feature = "library"),
     derive(Serialize, Deserialize),
     serde(bound = "B: Database")
 )]
@@ -114,9 +114,9 @@ pub struct Machine<B: Database> {
     origin: Address,
     context: Context,
 
-    #[cfg_attr(not(feature = "tracing"), serde(with = "ethnum::serde::bytes::le"))]
+    #[cfg_attr(not(feature = "library"), serde(with = "ethnum::serde::bytes::le"))]
     gas_price: U256,
-    #[cfg_attr(not(feature = "tracing"), serde(with = "ethnum::serde::bytes::le"))]
+    #[cfg_attr(not(feature = "library"), serde(with = "ethnum::serde::bytes::le"))]
     gas_limit: U256,
 
     execution_code: Buffer,
@@ -133,16 +133,16 @@ pub struct Machine<B: Database> {
 
     parent: Option<Box<Self>>,
 
-    #[cfg_attr(not(feature = "tracing"), serde(skip))]
+    #[cfg_attr(not(feature = "library"), serde(skip))]
     phantom: PhantomData<*const B>,
 
-    #[cfg_attr(not(feature = "tracing"), serde(skip))]
-    #[cfg(feature = "tracing")]
+    #[cfg_attr(not(feature = "library"), serde(skip))]
+    #[cfg(feature = "library")]
     tracer: TracerType,
 }
 
 impl<B: Database> Machine<B> {
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     pub fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize> {
         let mut cursor = std::io::Cursor::new(buffer);
 
@@ -151,7 +151,7 @@ impl<B: Database> Machine<B> {
         cursor.position().try_into().map_err(Error::from)
     }
 
-    #[cfg(not(feature = "tracing"))]
+    #[cfg(not(feature = "library"))]
     pub fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
         fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &B) {
             if let Some((key, range)) = buffer.uninit_data() {
@@ -183,7 +183,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(feature = "tracing")] tracer: TracerType,
+        #[cfg(feature = "library")] tracer: TracerType,
     ) -> Result<Self> {
         let origin_nonce = backend.nonce(&origin).await?;
 
@@ -218,7 +218,7 @@ impl<B: Database> Machine<B> {
                 trx,
                 origin,
                 backend,
-                #[cfg(feature = "tracing")]
+                #[cfg(feature = "library")]
                 tracer,
             )
             .await
@@ -227,7 +227,7 @@ impl<B: Database> Machine<B> {
                 trx,
                 origin,
                 backend,
-                #[cfg(feature = "tracing")]
+                #[cfg(feature = "library")]
                 tracer,
             )
             .await
@@ -239,7 +239,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(feature = "tracing")] tracer: TracerType,
+        #[cfg(feature = "library")] tracer: TracerType,
     ) -> Result<Self> {
         assert!(trx.target.is_some());
 
@@ -268,11 +268,11 @@ impl<B: Database> Machine<B> {
             return_data: Buffer::empty(),
             return_range: 0..0,
             stack: Stack::new(
-                #[cfg(feature = "tracing")]
+                #[cfg(feature = "library")]
                 tracer.clone(),
             ),
             memory: Memory::new(
-                #[cfg(feature = "tracing")]
+                #[cfg(feature = "library")]
                 tracer.clone(),
             ),
             pc: 0_usize,
@@ -280,7 +280,7 @@ impl<B: Database> Machine<B> {
             reason: Reason::Call,
             parent: None,
             phantom: PhantomData,
-            #[cfg(feature = "tracing")]
+            #[cfg(feature = "library")]
             tracer,
         })
     }
@@ -290,7 +290,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(feature = "tracing")] tracer: TracerType,
+        #[cfg(feature = "library")] tracer: TracerType,
     ) -> Result<Self> {
         assert!(trx.target.is_none());
 
@@ -320,11 +320,11 @@ impl<B: Database> Machine<B> {
             return_data: Buffer::empty(),
             return_range: 0..0,
             stack: Stack::new(
-                #[cfg(feature = "tracing")]
+                #[cfg(feature = "library")]
                 tracer.clone(),
             ),
             memory: Memory::new(
-                #[cfg(feature = "tracing")]
+                #[cfg(feature = "library")]
                 tracer.clone(),
             ),
             pc: 0_usize,
@@ -334,7 +334,7 @@ impl<B: Database> Machine<B> {
             call_data: Buffer::empty(),
             parent: None,
             phantom: PhantomData,
-            #[cfg(feature = "tracing")]
+            #[cfg(feature = "library")]
             tracer,
         })
     }
@@ -597,11 +597,11 @@ impl<B: Database> Machine<B> {
             return_data: Buffer::empty(),
             return_range: 0..0,
             stack: Stack::new(
-                #[cfg(feature = "tracing")]
+                #[cfg(feature = "library")]
                 self.tracer.clone(),
             ),
             memory: Memory::new(
-                #[cfg(feature = "tracing")]
+                #[cfg(feature = "library")]
                 self.tracer.clone(),
             ),
             pc: 0_usize,
@@ -609,7 +609,7 @@ impl<B: Database> Machine<B> {
             reason,
             parent: None,
             phantom: PhantomData,
-            #[cfg(feature = "tracing")]
+            #[cfg(feature = "library")]
             tracer: self.tracer.clone(),
         };
 

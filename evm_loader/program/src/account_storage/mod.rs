@@ -88,7 +88,7 @@ pub trait AccountStorage {
     /// Get code hash
     fn code_hash(&self, address: &Address) -> [u8; 32];
     /// Get code data
-    fn code(&self, address: &Address) -> crate::evm::Buffer;
+    async fn code(&self, address: &Address) -> crate::evm::Buffer;
     /// Get contract generation
     async fn generation(&self, address: &Address) -> u32;
 

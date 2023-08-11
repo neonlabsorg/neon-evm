@@ -576,22 +576,21 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         )
     }
 
-    fn code(&self, address: &Address) -> evm_loader::evm::Buffer {
+    async fn code(&self, address: &Address) -> evm_loader::evm::Buffer {
         use evm_loader::evm::Buffer;
 
         info!("code {address}");
 
-        block(
-            self.ethereum_contract_map_or(address, Buffer::empty(), |c| {
-                self.state_overrides
-                    .as_ref()
-                    .and_then(|account_overrides| account_overrides.get(address)?.code.as_ref())
-                    .map_or_else(
-                        || Buffer::from_slice(&c.code()),
-                        |code| Buffer::from_slice(&code.0),
-                    )
-            }),
-        )
+        self.ethereum_contract_map_or(address, Buffer::empty(), |c| {
+            self.state_overrides
+                .as_ref()
+                .and_then(|account_overrides| account_overrides.get(address)?.code.as_ref())
+                .map_or_else(
+                    || Buffer::from_slice(&c.code()),
+                    |code| Buffer::from_slice(&code.0),
+                )
+        })
+        .await
     }
 
     async fn generation(&self, address: &Address) -> u32 {

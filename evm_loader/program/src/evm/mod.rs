@@ -223,6 +223,7 @@ impl<B: Database> Machine<B> {
                 #[cfg(feature = "tracing")]
                 tracer,
             )
+            .await
         } else {
             Self::new_create(
                 trx,
@@ -234,7 +235,8 @@ impl<B: Database> Machine<B> {
         }
     }
 
-    fn new_call(
+    #[maybe_async]
+    async fn new_call(
         trx: Transaction,
         origin: Address,
         backend: &mut B,
@@ -250,7 +252,7 @@ impl<B: Database> Machine<B> {
 
         backend.transfer(origin, target, trx.value)?;
 
-        let execution_code = backend.code(&target)?;
+        let execution_code = backend.code(&target).await?;
 
         Ok(Self {
             origin,
@@ -459,7 +461,7 @@ impl<B: Database> Machine<B> {
             0x39 => self.opcode_codecopy(backend),
             0x3A => self.opcode_gasprice(backend),
             0x3B => self.opcode_extcodesize(backend),
-            0x3C => self.opcode_extcodecopy(backend),
+            0x3C => self.opcode_extcodecopy(backend).await,
             0x3D => self.opcode_returndatasize(backend),
             0x3E => self.opcode_returndatacopy(backend),
             0x3F => self.opcode_extcodehash(backend),

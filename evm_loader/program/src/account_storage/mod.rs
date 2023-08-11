@@ -81,7 +81,7 @@ pub trait AccountStorage {
     /// Get account nonce
     fn nonce(&self, address: &Address) -> u64;
     /// Get account balance
-    fn balance(&self, address: &Address) -> U256;
+    async fn balance(&self, address: &Address) -> U256;
 
     /// Get code size
     async fn code_size(&self, address: &Address) -> usize;

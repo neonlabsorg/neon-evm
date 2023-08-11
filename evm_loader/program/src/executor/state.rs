@@ -226,8 +226,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
-    fn balance(&self, from_address: &Address) -> Result<U256> {
-        let mut balance = self.backend.balance(from_address);
+    async fn balance(&self, from_address: &Address) -> Result<U256> {
+        let mut balance = self.backend.balance(from_address).await;
 
         for action in &self.actions {
             match action {
@@ -256,7 +256,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(balance)
     }
 
-    fn transfer(&mut self, source: Address, target: Address, value: U256) -> Result<()> {
+    async fn transfer(&mut self, source: Address, target: Address, value: U256) -> Result<()> {
         if value == U256::ZERO {
             return Ok(());
         }
@@ -265,7 +265,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             return Ok(());
         }
 
-        if self.balance(&source)? < value {
+        if self.balance(&source).await? < value {
             return Err(Error::InsufficientBalance(source, value));
         }
 

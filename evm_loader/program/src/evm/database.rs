@@ -11,8 +11,8 @@ pub trait Database {
     fn nonce(&self, address: &Address) -> Result<u64>;
     fn increment_nonce(&mut self, address: Address) -> Result<()>;
 
-    fn balance(&self, address: &Address) -> Result<U256>;
-    fn transfer(&mut self, source: Address, target: Address, value: U256) -> Result<()>;
+    async fn balance(&self, address: &Address) -> Result<U256>;
+    async fn transfer(&mut self, source: Address, target: Address, value: U256) -> Result<()>;
 
     async fn code_size(&self, address: &Address) -> Result<usize>;
     async fn code_hash(&self, address: &Address) -> Result<[u8; 32]>;

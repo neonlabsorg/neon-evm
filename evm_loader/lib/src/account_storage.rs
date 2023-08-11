@@ -541,10 +541,11 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         block(self.ethereum_account_map_or(address, 0_u64, |a| a.trx_count))
     }
 
-    fn balance(&self, address: &Address) -> U256 {
+    async fn balance(&self, address: &Address) -> U256 {
         info!("balance {address}");
 
-        block(self.ethereum_account_map_or(address, U256::ZERO, |a| a.balance))
+        self.ethereum_account_map_or(address, U256::ZERO, |a| a.balance)
+            .await
     }
 
     async fn code_size(&self, address: &Address) -> usize {

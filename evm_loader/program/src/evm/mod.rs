@@ -207,7 +207,7 @@ impl<B: Database> Machine<B> {
             }
         }
 
-        if backend.balance(&origin)? < trx.value {
+        if backend.balance(&origin).await? < trx.value {
             return Err(Error::InsufficientBalance(origin, trx.value));
         }
 
@@ -251,7 +251,7 @@ impl<B: Database> Machine<B> {
         backend.increment_nonce(origin)?;
         backend.snapshot();
 
-        backend.transfer(origin, target, trx.value)?;
+        backend.transfer(origin, target, trx.value).await?;
 
         let execution_code = backend.code(&target).await?;
 
@@ -307,7 +307,7 @@ impl<B: Database> Machine<B> {
         backend.snapshot();
 
         backend.increment_nonce(target)?;
-        backend.transfer(origin, target, trx.value)?;
+        backend.transfer(origin, target, trx.value).await?;
 
         Ok(Self {
             origin,
@@ -452,7 +452,7 @@ impl<B: Database> Machine<B> {
             0x20 => self.opcode_sha3(backend),
 
             0x30 => self.opcode_address(backend),
-            0x31 => self.opcode_balance(backend),
+            0x31 => self.opcode_balance(backend).await,
             0x32 => self.opcode_origin(backend),
             0x33 => self.opcode_caller(backend),
             0x34 => self.opcode_callvalue(backend),
@@ -474,7 +474,7 @@ impl<B: Database> Machine<B> {
             0x44 => self.opcode_difficulty(backend),
             0x45 => self.opcode_gaslimit(backend),
             0x46 => self.opcode_chainid(backend),
-            0x47 => self.opcode_selfbalance(backend),
+            0x47 => self.opcode_selfbalance(backend).await,
             0x48 => self.opcode_basefee(backend),
 
             0x50 => self.opcode_pop(backend),
@@ -576,7 +576,7 @@ impl<B: Database> Machine<B> {
             0xFD => self.opcode_revert(backend),
             0xFE => self.opcode_invalid(backend),
 
-            0xFF => self.opcode_selfdestruct(backend),
+            0xFF => self.opcode_selfdestruct(backend).await,
             _ => self.opcode_unknown(backend),
         }
     }

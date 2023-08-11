@@ -447,10 +447,11 @@ impl<B: Database> Machine<B> {
     }
 
     /// address balance in wei
-    pub fn opcode_balance(&mut self, backend: &mut B) -> Result<Action> {
+    #[maybe_async]
+    pub async fn opcode_balance(&mut self, backend: &mut B) -> Result<Action> {
         let balance = {
             let address = self.stack.pop_address()?;
-            backend.balance(address)?
+            backend.balance(address).await?
         };
 
         self.stack.push_u256(balance)?;
@@ -684,8 +685,9 @@ impl<B: Database> Machine<B> {
     }
 
     /// Istanbul hardfork, EIP-1884: balance of the executing contract in wei
-    pub fn opcode_selfbalance(&mut self, backend: &mut B) -> Result<Action> {
-        let balance = backend.balance(&self.context.contract)?;
+    #[maybe_async]
+    pub async fn opcode_selfbalance(&mut self, backend: &mut B) -> Result<Action> {
+        let balance = backend.balance(&self.context.contract).await?;
 
         self.stack.push_u256(balance)?;
 
@@ -1011,12 +1013,14 @@ impl<B: Database> Machine<B> {
             return Err(Error::DeployToExistingAccount(address, self.context.caller));
         }
 
-        if backend.balance(&self.context.caller)? < value {
+        if backend.balance(&self.context.caller).await? < value {
             return Err(Error::InsufficientBalance(self.context.caller, value));
         }
 
         backend.increment_nonce(address)?;
-        backend.transfer(self.context.caller, address, value)?;
+        backend
+            .transfer(self.context.caller, address, value)
+            .await?;
 
         Ok(Action::Noop)
     }
@@ -1062,11 +1066,13 @@ impl<B: Database> Machine<B> {
             return Err(Error::StaticModeViolation(self.context.caller));
         }
 
-        if backend.balance(&self.context.caller)? < value {
+        if backend.balance(&self.context.caller).await? < value {
             return Err(Error::InsufficientBalance(self.context.caller, value));
         }
 
-        backend.transfer(self.context.caller, self.context.contract, value)?;
+        backend
+            .transfer(self.context.caller, self.context.contract, value)
+            .await?;
 
         self.opcode_call_precompile_impl(backend, &address).await
     }
@@ -1108,7 +1114,7 @@ impl<B: Database> Machine<B> {
 
         sol_log_data(&[b"ENTER", b"CALLCODE", address.as_bytes()]);
 
-        if backend.balance(&self.context.caller)? < value {
+        if backend.balance(&self.context.caller).await? < value {
             return Err(Error::InsufficientBalance(self.context.caller, value));
         }
 
@@ -1326,15 +1332,18 @@ impl<B: Database> Machine<B> {
     }
 
     /// Halt execution, destroys the contract and send all funds to address
-    pub fn opcode_selfdestruct(&mut self, backend: &mut B) -> Result<Action> {
+    #[maybe_async]
+    pub async fn opcode_selfdestruct(&mut self, backend: &mut B) -> Result<Action> {
         if self.is_static {
             return Err(Error::StaticModeViolation(self.context.contract));
         }
 
         let address = *self.stack.pop_address()?;
 
-        let value = backend.balance(&self.context.contract)?;
-        backend.transfer(self.context.contract, address, value)?;
+        let value = backend.balance(&self.context.contract).await?;
+        backend
+            .transfer(self.context.contract, address, value)
+            .await?;
         backend.selfdestruct(self.context.contract)?;
 
         backend.commit_snapshot();

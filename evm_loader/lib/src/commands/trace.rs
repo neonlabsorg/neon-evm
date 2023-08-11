@@ -1,5 +1,6 @@
+use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
-use std::sync::{Arc, RwLock};
+use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
@@ -29,7 +30,7 @@ pub async fn trace_transaction(
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
 ) -> Result<TracedCall, NeonError> {
-    let tracer = Arc::new(RwLock::new(Some(Tracer::new(
+    let tracer = Rc::new(RefCell::new(Some(Tracer::new(
         trace_call_config.trace_config.enable_return_data,
     ))));
 
@@ -49,8 +50,7 @@ pub async fn trace_transaction(
     .await?;
 
     let (vm_trace, full_trace_data) = tracer
-        .write()
-        .expect("lock acquire should be successful")
+        .borrow_mut()
         .take()
         .expect("Option should not be empty")
         .into_traces();
@@ -117,7 +117,7 @@ async fn trace_trx<'a>(
     steps: u64,
     trace_config: &TraceConfig,
 ) -> Result<TracedCall, NeonError> {
-    let tracer = Arc::new(RwLock::new(Some(Tracer::new(
+    let tracer = Rc::new(RefCell::new(Some(Tracer::new(
         trace_config.enable_return_data,
     ))));
 
@@ -125,8 +125,7 @@ async fn trace_trx<'a>(
         emulate_trx(tx_params, storage, chain_id, steps, Some(tracer.clone())).await?;
 
     let (vm_trace, full_trace_data) = tracer
-        .write()
-        .expect("lock acquire should be successful")
+        .borrow_mut()
         .take()
         .expect("Option should not be empty")
         .into_traces();

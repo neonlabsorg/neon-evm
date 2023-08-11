@@ -39,14 +39,14 @@ macro_rules! tracing_event {
     ($self:ident, $x:expr) => {
         #[cfg(feature = "tracing")]
         if let Some(tracer) = &$self.tracer {
-            tracer.write().unwrap().as_mut().unwrap().event($x);
+            tracer.borrow_mut().as_mut().unwrap().event($x);
         }
     };
     ($self:ident, $condition:expr, $x:expr) => {
         #[cfg(feature = "tracing")]
         if let Some(tracer) = &$self.tracer {
             if $condition {
-                tracer.write().unwrap().as_mut().unwrap().event($x);
+                tracer.borrow_mut().as_mut().unwrap().event($x);
             }
         }
     };
@@ -56,7 +56,7 @@ macro_rules! trace_end_step {
     ($self:ident, $return_data_vec:expr) => {
         #[cfg(feature = "tracing")]
         if let Some(tracer) = &$self.tracer {
-            let mut tracer = tracer.write().unwrap();
+            let mut tracer = tracer.borrow_mut();
             let tracer = tracer.as_mut().unwrap();
             if tracer.enable_return_data() {
                 tracer.event(crate::evm::tracing::Event::EndStep {

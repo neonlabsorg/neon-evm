@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code)] // TODO Investigate this
 #![deny(warnings)]
 #![deny(clippy::all, clippy::pedantic)]
 mod api_options;
@@ -8,13 +8,10 @@ use actix_web::web;
 use actix_web::App;
 use actix_web::HttpServer;
 use api_server::handlers::NeonApiError;
-pub use neon_lib::account_storage;
 pub use neon_lib::commands;
 pub use neon_lib::config;
 pub use neon_lib::context;
 pub use neon_lib::errors;
-pub use neon_lib::rpc;
-pub use neon_lib::syscall_stubs;
 pub use neon_lib::types;
 
 use std::sync::Arc;
@@ -22,7 +19,6 @@ use std::{env, net::SocketAddr, str::FromStr};
 
 pub use config::Config;
 pub use context::Context;
-use tokio::signal::{self};
 
 use crate::api_server::handlers::{
     emulate::emulate, emulate_hash::emulate_hash, get_ether_account_data::get_ether_account_data,
@@ -74,30 +70,4 @@ async fn main() -> NeonApiResult<()> {
     .unwrap();
 
     Ok(())
-}
-
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
-    }
-
-    println!("signal received, starting graceful shutdown");
 }

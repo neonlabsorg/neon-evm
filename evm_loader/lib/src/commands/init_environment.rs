@@ -327,12 +327,15 @@ pub async fn execute(
 
     executor.checkpoint(context.rpc_client.commitment()).await?;
 
-    let stats = executor.stats.borrow();
-    info!("Stats: {:?}", stats);
+    {
+        let stats = executor.stats.borrow();
+        info!("Stats: {:?}", stats);
+    }
 
     let signatures = executor
         .signatures
-        .borrow()
+        .read()
+        .await
         .iter()
         .map(|s| bs58::encode(s).into_string())
         .collect::<Vec<String>>();
@@ -340,6 +343,8 @@ pub async fn execute(
     let result = InitEnvironmentReturn {
         transactions: signatures,
     };
+
+    let stats = executor.stats.borrow();
 
     if stats.total_objects == stats.corrected_objects {
         Ok(result)

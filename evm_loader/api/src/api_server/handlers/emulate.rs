@@ -21,14 +21,14 @@ pub async fn emulate(
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 
-    let context = context::create(rpc_client, &state.config);
+    let context = context::create(&*rpc_client, &state.config);
 
     let (token, chain, steps, accounts, solana_accounts) =
         parse_emulation_params(&state.config, &context, &emulate_request.emulation_params).await;
 
     process_result(
         &EmulateCommand::execute(
-            context.rpc_client.as_ref(),
+            context.rpc_client,
             state.config.evm_loader,
             tx,
             token,

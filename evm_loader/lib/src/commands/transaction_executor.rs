@@ -45,16 +45,16 @@ impl Stats {
         self.created_objects += 1;
     }
 }
-pub struct TransactionExecutor {
-    pub client: Arc<dyn rpc::Rpc>,
+pub struct TransactionExecutor<'a> {
+    pub client: &'a dyn rpc::Rpc,
     pub send_trx: bool,
     pub signatures: RwLock<Vec<Signature>>,
     pub stats: RwLock<Stats>,
     pub fee_payer: Arc<dyn Signer>,
 }
 
-impl TransactionExecutor {
-    pub fn new(client: Arc<dyn rpc::Rpc>, fee_payer: Arc<dyn Signer>, send_trx: bool) -> Self {
+impl<'a> TransactionExecutor<'a> {
+    pub fn new(client: &'a dyn rpc::Rpc, fee_payer: Arc<dyn Signer>, send_trx: bool) -> Self {
         Self {
             client,
             send_trx,

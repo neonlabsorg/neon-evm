@@ -16,11 +16,11 @@ pub async fn get_storage_at(
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 
-    let context = context::create(rpc_client, &state.config);
+    let context = context::create(&*rpc_client, &state.config);
 
     process_result(
         &GetStorageAtCommand::execute(
-            context.rpc_client.as_ref(),
+            context.rpc_client,
             &state.config.evm_loader,
             req_params.contract_id,
             &req_params.index,

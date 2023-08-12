@@ -20,7 +20,7 @@ pub async fn trace_next_block(
             Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
         };
 
-    let context = context::create(rpc_client, &state.config);
+    let context = context::create(&*rpc_client, &state.config);
 
     let (token, chain, steps, accounts, solana_accounts) = parse_emulation_params(
         &state.config,
@@ -54,7 +54,7 @@ pub async fn trace_next_block(
 
     process_result(
         &trace_block(
-            context.rpc_client.as_ref(),
+            context.rpc_client,
             state.config.evm_loader,
             transactions,
             token,

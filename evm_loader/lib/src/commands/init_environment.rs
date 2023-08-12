@@ -122,7 +122,7 @@ pub async fn execute(
         .as_ref()
         .map_or_else(move || second_signer, |v| v.clone());
     let executor = Arc::new(TransactionExecutor::new(
-        context.rpc_client.clone(),
+        context.rpc_client,
         fee_payer,
         send_trx,
     ));

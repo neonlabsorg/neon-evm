@@ -15,11 +15,11 @@ pub async fn get_ether_account_data(
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 
-    let context = context::create(rpc_client, &state.config);
+    let context = context::create(&*rpc_client, &state.config);
 
     process_result(
         &GetEtherAccountDataCommand::execute(
-            context.rpc_client.as_ref(),
+            context.rpc_client,
             &state.config.evm_loader,
             &req_params.ether,
         )

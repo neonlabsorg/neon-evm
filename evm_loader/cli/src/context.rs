@@ -12,11 +12,11 @@ use neon_lib::NeonError;
 use solana_client::nonblocking::rpc_client::RpcClient;
 
 /// # Errors
-pub async fn create_from_config_and_options<'a>(
+pub async fn create_from_config_and_options<'a, 'b>(
     options: &'a ArgMatches<'a>,
-    config: Arc<Config>,
+    config: &'b Config,
     slot: &'a Option<u64>,
-) -> Result<Context, NeonError> {
+) -> Result<Context<'b>, NeonError> {
     let (cmd, params) = options.subcommand();
 
     let rpc_client: Arc<dyn rpc::Rpc> = match (cmd, params) {
@@ -47,5 +47,5 @@ pub async fn create_from_config_and_options<'a>(
         }
     };
 
-    Ok(neon_lib::context::create(rpc_client, config.clone()))
+    Ok(neon_lib::context::create(rpc_client, config))
 }

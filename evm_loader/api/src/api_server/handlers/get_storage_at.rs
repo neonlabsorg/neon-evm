@@ -16,7 +16,7 @@ pub async fn get_storage_at(
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 
-    let context = context::create(rpc_client, state.config.clone());
+    let context = context::create(rpc_client, &state.config);
 
     process_result(
         &GetStorageAtCommand::execute(

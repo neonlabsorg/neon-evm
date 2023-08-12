@@ -50,7 +50,7 @@ impl From<AddrParseError> for NeonApiError {
 
 pub(crate) async fn parse_emulation_params(
     config: &Config,
-    context: &Context,
+    context: &Context<'_>,
     params: &EmulationParamsRequestModel,
 ) -> (Pubkey, u64, u64, Vec<Address>, Vec<Pubkey>) {
     // Read ELF params only if token_mint or chain_id is not set.

@@ -103,7 +103,7 @@ fn read_keys_dir(keys_dir: &str) -> Result<HashMap<Pubkey, Keypair>, NeonError> 
 #[allow(clippy::too_many_lines)]
 pub async fn execute(
     config: &Config,
-    context: &Context,
+    context: &Context<'_>,
     send_trx: bool,
     force: bool,
     keys_dir: Option<&str>,

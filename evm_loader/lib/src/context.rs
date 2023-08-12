@@ -34,19 +34,19 @@ pub fn truncate_0x(in_str: &str) -> &str {
     }
 }
 
-pub struct Context {
+pub struct Context<'a> {
     pub rpc_client: Arc<dyn rpc::Rpc>,
-    signer_config: Arc<Config>,
+    signer_config: &'a Config,
 }
 
-impl Context {
+impl Context<'_> {
     pub fn signer(&self) -> Result<Box<dyn Signer>, NeonError> {
-        build_signer(&self.signer_config)
+        build_signer(self.signer_config)
     }
 }
 
 #[must_use]
-pub fn create(rpc_client: Arc<dyn rpc::Rpc>, signer_config: Arc<Config>) -> Context {
+pub fn create(rpc_client: Arc<dyn rpc::Rpc>, signer_config: &Config) -> Context {
     Context {
         rpc_client,
         signer_config,

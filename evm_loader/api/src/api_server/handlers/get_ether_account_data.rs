@@ -15,7 +15,7 @@ pub async fn get_ether_account_data(
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 
-    let context = context::create(rpc_client, state.config.clone());
+    let context = context::create(rpc_client, &state.config);
 
     process_result(
         &GetEtherAccountDataCommand::execute(

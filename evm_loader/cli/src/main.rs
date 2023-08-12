@@ -28,7 +28,6 @@ use solana_client::client_error::{ClientError, ClientErrorKind};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
-use std::sync::Arc;
 use tokio::time::Instant;
 
 use crate::{
@@ -45,9 +44,8 @@ async fn run<'a>(options: &'a ArgMatches<'a>) -> NeonCliResult {
         .value_of("slot")
         .map(|slot_str| slot_str.parse().expect("slot parse error"));
     let (cmd, params) = options.subcommand();
-    let config = Arc::new(config::create(options)?);
-    let context: Context =
-        context::create_from_config_and_options(options, config.clone(), &slot).await?;
+    let config = config::create(options)?;
+    let context: Context = context::create_from_config_and_options(options, &config, &slot).await?;
 
     execute(cmd, params, &config, &context, slot).await
 }
@@ -101,7 +99,7 @@ async fn execute<'a>(
     cmd: &str,
     params: Option<&'a ArgMatches<'a>>,
     config: &'a Config,
-    context: &'a Context,
+    context: &'a Context<'_>,
     slot: Option<u64>,
 ) -> NeonCliResult {
     match (cmd, params) {
@@ -348,7 +346,7 @@ async fn parse_tx_hash(rpc_client: &dyn Rpc) -> (TxParams, TraceConfig) {
 
 pub async fn parse_tx_params<'a>(
     config: &Config,
-    context: &Context,
+    context: &Context<'_>,
     params: &'a ArgMatches<'a>,
 ) -> (Pubkey, u64, u64, Vec<Address>, Vec<Pubkey>) {
     // Read ELF params only if token_mint or chain_id is not set.

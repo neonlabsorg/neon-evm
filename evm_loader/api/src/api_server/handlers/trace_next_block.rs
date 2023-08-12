@@ -6,7 +6,6 @@ use crate::{
     NeonApiState,
 };
 use actix_web::{http::StatusCode, post, web, Responder};
-use std::sync::Arc;
 
 use super::{parse_emulation_params, process_result};
 
@@ -21,7 +20,7 @@ pub async fn trace_next_block(
             Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
         };
 
-    let context = context::create(rpc_client, Arc::clone(&state.config));
+    let context = context::create(rpc_client, &state.config);
 
     let (token, chain, steps, accounts, solana_accounts) = parse_emulation_params(
         &state.config,

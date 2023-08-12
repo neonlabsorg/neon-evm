@@ -3,16 +3,13 @@ use {
     ethnum::U256,
     evm_loader::types::Address,
     solana_sdk::clock::Slot,
-    std::{
-        convert::{TryFrom, TryInto},
-        sync::Arc,
-    },
+    std::convert::{TryFrom, TryInto},
     tokio_postgres::Client,
 };
 
 #[derive(Debug)]
 pub struct IndexerDb {
-    pub client: Arc<Client>,
+    pub client: Client,
 }
 
 const TXPARAMS_FIELDS: &str =
@@ -28,9 +25,7 @@ impl IndexerDb {
             &config.indexer_password,
         )
         .await;
-        Self {
-            client: Arc::new(client),
-        }
+        Self { client }
     }
 
     pub async fn get_sol_sig(&self, hash: &[u8; 32]) -> PgResult<[u8; 64]> {

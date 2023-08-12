@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -121,7 +122,7 @@ pub async fn execute(
         .fee_payer
         .as_ref()
         .map_or_else(move || second_signer, |v| v.clone());
-    let executor = Arc::new(TransactionExecutor::new(
+    let executor = Rc::new(TransactionExecutor::new(
         context.rpc_client,
         fee_payer,
         send_trx,

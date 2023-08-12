@@ -125,13 +125,7 @@ pub async fn execute(
     )
     .await?;
     let accounts = storage.accounts.borrow().values().cloned().collect();
-    let solana_accounts = storage
-        .solana_accounts
-        .read()
-        .await
-        .values()
-        .cloned()
-        .collect();
+    let solana_accounts = storage.solana_accounts.borrow().values().cloned().collect();
 
     Ok(EmulationResultWithAccounts {
         accounts,

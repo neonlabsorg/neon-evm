@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
-use tokio::sync::RwLock;
 
 use crate::{rpc::Rpc, NeonError};
 use ethnum::U256;
@@ -111,7 +110,7 @@ pub struct SolanaAccount {
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'a> {
     pub accounts: RefCell<HashMap<Address, NeonAccount>>,
-    pub solana_accounts: RwLock<HashMap<Pubkey, SolanaAccount>>,
+    pub solana_accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
     rpc_client: &'a dyn Rpc,
     evm_loader: Pubkey,
     block_number: u64,
@@ -152,7 +151,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         Ok(Self {
             accounts: RefCell::new(HashMap::new()),
-            solana_accounts: RwLock::new(HashMap::new()),
+            solana_accounts: RefCell::new(HashMap::new()),
             rpc_client,
             evm_loader,
             block_number,
@@ -217,7 +216,7 @@ impl<'a> EmulatorAccountStorage<'a> {
             }
 
             let entries = accounts.iter().skip(addresses.len()).zip(solana_accounts);
-            let mut solana_accounts_storage = self.solana_accounts.write().await;
+            let mut solana_accounts_storage = self.solana_accounts.borrow_mut();
             for (account, &pubkey) in entries {
                 solana_accounts_storage.insert(
                     pubkey,
@@ -232,9 +231,7 @@ impl<'a> EmulatorAccountStorage<'a> {
     }
 
     pub async fn get_account(&self, pubkey: &Pubkey) -> client_error::Result<Option<Account>> {
-        let mut accounts = self.solana_accounts.write().await;
-
-        if let Some(account) = accounts.get(pubkey) {
+        if let Some(account) = self.solana_accounts.borrow().get(pubkey) {
             if let Some(ref data) = account.data {
                 return Ok(Some(data.clone()));
             }
@@ -245,7 +242,8 @@ impl<'a> EmulatorAccountStorage<'a> {
             .get_account_with_commitment(pubkey, self.commitment)
             .await?;
 
-        accounts
+        self.solana_accounts
+            .borrow_mut()
             .entry(*pubkey)
             .and_modify(|a| a.data = result.value.clone())
             .or_insert(SolanaAccount {
@@ -301,7 +299,7 @@ impl<'a> EmulatorAccountStorage<'a> {
             return;
         }
 
-        let mut solana_accounts = self.solana_accounts.write().await;
+        let mut solana_accounts = self.solana_accounts.borrow_mut();
 
         let account = SolanaAccount {
             pubkey: pubkey.into(),

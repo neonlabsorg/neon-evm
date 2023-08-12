@@ -124,7 +124,7 @@ pub async fn execute(
         None,
     )
     .await?;
-    let accounts = storage.accounts.read().await.values().cloned().collect();
+    let accounts = storage.accounts.borrow().values().cloned().collect();
     let solana_accounts = storage
         .solana_accounts
         .read()

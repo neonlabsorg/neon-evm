@@ -110,7 +110,7 @@ pub struct SolanaAccount {
 
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'a> {
-    pub accounts: RwLock<HashMap<Address, NeonAccount>>,
+    pub accounts: RefCell<HashMap<Address, NeonAccount>>,
     pub solana_accounts: RwLock<HashMap<Pubkey, SolanaAccount>>,
     rpc_client: &'a dyn Rpc,
     evm_loader: Pubkey,
@@ -151,7 +151,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         };
 
         Ok(Self {
-            accounts: RwLock::new(HashMap::new()),
+            accounts: RefCell::new(HashMap::new()),
             solana_accounts: RwLock::new(HashMap::new()),
             rpc_client,
             evm_loader,
@@ -209,7 +209,7 @@ impl<'a> EmulatorAccountStorage<'a> {
                 .iter()
                 .zip(accounts.iter().take(addresses.len()))
                 .zip(pubkeys.iter().take(addresses.len()));
-            let mut accounts_storage = self.accounts.write().await;
+            let mut accounts_storage = self.accounts.borrow_mut();
             for ((&address, account), &pubkey) in entries {
                 accounts_storage.insert(
                     address,
@@ -280,7 +280,7 @@ impl<'a> EmulatorAccountStorage<'a> {
     }
 
     async fn add_ethereum_account(&self, address: &Address, writable: bool) -> bool {
-        let mut accounts = self.accounts.write().await;
+        let mut accounts = self.accounts.borrow_mut();
 
         if let Some(ref mut account) = accounts.get_mut(address) {
             account.writable |= writable;
@@ -415,7 +415,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         let mut iterations = 0_usize;
 
-        let mut accounts = self.accounts.write().await;
+        let mut accounts = self.accounts.borrow_mut();
         for (address, operation) in operations {
             let new_size = match operation {
                 AccountOperation::Create { space } => space,
@@ -444,7 +444,7 @@ impl<'a> EmulatorAccountStorage<'a> {
     {
         self.add_ethereum_account(address, false).await;
 
-        let mut accounts = self.accounts.write().await;
+        let mut accounts = self.accounts.borrow_mut();
         let solana_account = accounts.get_mut(address).expect("get account error");
 
         if let Some(account_data) = &mut solana_account.data {
@@ -470,7 +470,7 @@ impl<'a> EmulatorAccountStorage<'a> {
     {
         self.add_ethereum_account(address, false).await;
 
-        let mut accounts = self.accounts.write().await;
+        let mut accounts = self.accounts.borrow_mut();
         let solana_account = accounts.get_mut(address).expect("get account error");
 
         if let Some(account_data) = &mut solana_account.data {
@@ -531,7 +531,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
 
         self.add_ethereum_account(address, false).await;
 
-        let accounts = self.accounts.read().await;
+        let accounts = self.accounts.borrow();
         accounts.contains_key(address)
     }
 

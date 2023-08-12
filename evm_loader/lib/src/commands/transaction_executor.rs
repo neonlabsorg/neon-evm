@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::future::Future;
 
 use serde::{Deserialize, Serialize};
@@ -48,7 +49,7 @@ impl Stats {
 pub struct TransactionExecutor<'a, 'b> {
     pub client: &'a dyn rpc::Rpc,
     pub send_trx: bool,
-    pub signatures: RwLock<Vec<Signature>>,
+    pub signatures: RefCell<Vec<Signature>>,
     pub stats: RwLock<Stats>,
     pub fee_payer: &'b dyn Signer,
 }
@@ -58,7 +59,7 @@ impl<'a, 'b> TransactionExecutor<'a, 'b> {
         Self {
             client,
             send_trx,
-            signatures: RwLock::new(vec![]),
+            signatures: RefCell::new(vec![]),
             stats: RwLock::new(Stats::default()),
             fee_payer,
         }
@@ -98,7 +99,7 @@ impl<'a, 'b> TransactionExecutor<'a, 'b> {
 
     pub async fn checkpoint(&self, commitment: CommitmentConfig) -> Result<(), NeonError> {
         let recent_blockhash = self.client.get_latest_blockhash().await?;
-        for sig in self.signatures.read().await.iter() {
+        for sig in self.signatures.borrow().iter() {
             self.client
                 .confirm_transaction_with_spinner(sig, &recent_blockhash, commitment)
                 .await?;
@@ -169,7 +170,7 @@ impl<'a, 'b> TransactionExecutor<'a, 'b> {
                         match result {
                             Ok(signature) => {
                                 warn!("{}: updated in trx {}", name, signature);
-                                self.signatures.write().await.push(signature);
+                                self.signatures.borrow_mut().push(signature);
                                 self.stats.write().await.inc_modified_objects();
                                 return Ok(Some(signature));
                             }
@@ -204,7 +205,7 @@ impl<'a, 'b> TransactionExecutor<'a, 'b> {
                         match result {
                             Ok(signature) => {
                                 warn!("{}: created in trx {}", name, signature);
-                                self.signatures.write().await.push(signature);
+                                self.signatures.borrow_mut().push(signature);
                                 self.stats.write().await.inc_created_objects();
                                 return Ok(Some(signature));
                             }

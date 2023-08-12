@@ -332,8 +332,7 @@ pub async fn execute(
 
     let signatures = executor
         .signatures
-        .read()
-        .await
+        .borrow()
         .iter()
         .map(|s| bs58::encode(s).into_string())
         .collect::<Vec<String>>();

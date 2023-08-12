@@ -13,7 +13,6 @@ use std::{
         Ordering::{Equal, Greater, Less},
     },
     convert::TryFrom,
-    sync::Arc,
     time::Instant,
 };
 use thiserror::Error;
@@ -29,7 +28,7 @@ pub enum ChError {
 pub type ChResult<T> = std::result::Result<T, ChError>;
 
 pub struct ClickHouseDb {
-    pub client: Arc<Client>,
+    pub client: Client,
 }
 
 pub enum SlotStatus {
@@ -98,9 +97,7 @@ impl ClickHouseDb {
                 .with_password(password),
         };
 
-        ClickHouseDb {
-            client: Arc::new(client),
-        }
+        ClickHouseDb { client }
     }
 
     // return value is not used for tracer methods

@@ -1,7 +1,6 @@
 use crate::Config;
 use std::sync::Arc;
 
-#[derive(Clone)]
 pub struct State {
     pub config: Arc<Config>,
 }

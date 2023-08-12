@@ -66,6 +66,7 @@ pub fn build_signer(config: &Config) -> Result<Box<dyn Signer>, NeonError> {
     Ok(signer)
 }
 
+/// TODO Break usages of this function into separate slot endpoints
 /// # Errors
 pub fn build_rpc_client(
     config: &Config,

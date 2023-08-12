@@ -8,7 +8,7 @@ use super::{parse_emulation_params, process_error, process_result};
 
 #[post("/trace")]
 pub async fn trace(
-    state: web::Data<NeonApiState>,
+    state: NeonApiState,
     web::Json(trace_request): web::Json<TraceRequestModel>,
 ) -> impl Responder {
     let tx = trace_request.emulate_request.tx_params.into();

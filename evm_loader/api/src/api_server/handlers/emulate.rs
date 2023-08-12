@@ -11,7 +11,7 @@ use super::{parse_emulation_params, process_error, process_result};
 
 #[post("/emulate")]
 pub async fn emulate(
-    state: web::Data<NeonApiState>,
+    state: NeonApiState,
     web::Json(emulate_request): web::Json<EmulateRequestModel>,
 ) -> impl Responder {
     let tx = emulate_request.tx_params.into();

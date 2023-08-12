@@ -13,7 +13,7 @@ use super::{parse_emulation_params, process_error, process_result};
 #[post("/emulate_hash")] // Obsolete
 #[post("/emulate-hash")]
 pub async fn emulate_hash(
-    state: web::Data<NeonApiState>,
+    state: NeonApiState,
     web::Json(emulate_hash_request): web::Json<EmulateHashRequestModel>,
 ) -> impl Responder {
     let rpc_client =

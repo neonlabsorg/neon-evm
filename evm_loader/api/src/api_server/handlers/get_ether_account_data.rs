@@ -8,7 +8,7 @@ use super::{process_error, process_result};
 #[get("/get-ether-account-data")]
 pub async fn get_ether_account_data(
     web::Query(req_params): web::Query<GetEtherRequest>,
-    state: web::Data<NeonApiState>,
+    state: NeonApiState,
 ) -> impl Responder {
     let rpc_client = match context::build_rpc_client(&state.config, req_params.slot) {
         Ok(rpc_client) => rpc_client,

@@ -13,7 +13,7 @@ pub use neon_lib::context;
 pub use neon_lib::errors;
 pub use neon_lib::types;
 
-use std::sync::Arc;
+use actix_web::web::Data;
 use std::{env, net::SocketAddr, str::FromStr};
 
 pub use config::Config;
@@ -25,7 +25,7 @@ use crate::api_server::handlers::{
 };
 
 type NeonApiResult<T> = Result<T, NeonApiError>;
-type NeonApiState = Arc<api_server::state::State>;
+type NeonApiState = Data<api_server::state::State>;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> NeonApiResult<()> {
@@ -38,7 +38,7 @@ async fn main() -> NeonApiResult<()> {
 
     let config = config::create_from_api_comnfig(&api_config)?;
 
-    let state: NeonApiState = Arc::new(api_server::state::State::new(config));
+    let state: NeonApiState = Data::new(api_server::state::State::new(config));
 
     let listener_addr = options
         .value_of("host")

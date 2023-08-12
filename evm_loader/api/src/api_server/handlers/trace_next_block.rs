@@ -12,7 +12,7 @@ use super::{parse_emulation_params, process_result};
 
 #[post("/trace-next-block")]
 pub async fn trace_next_block(
-    state: web::Data<NeonApiState>,
+    state: NeonApiState,
     web::Json(trace_next_block_request): web::Json<TraceNextBlockRequestModel>,
 ) -> impl Responder {
     let rpc_client =

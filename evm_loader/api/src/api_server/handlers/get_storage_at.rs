@@ -9,7 +9,7 @@ use super::{process_error, process_result};
 #[get("/get-storage-at")]
 pub async fn get_storage_at(
     web::Query(req_params): web::Query<GetStorageAtRequest>,
-    state: web::Data<NeonApiState>,
+    state: NeonApiState,
 ) -> impl Responder {
     let rpc_client = match context::build_rpc_client(&state.config, req_params.slot) {
         Ok(rpc_client) => rpc_client,

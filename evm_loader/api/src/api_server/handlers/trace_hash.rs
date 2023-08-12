@@ -10,7 +10,7 @@ use super::{parse_emulation_params, process_error, process_result};
 #[post("/trace_hash")] // Obsolete
 #[post("/trace-hash")]
 pub async fn trace_hash(
-    state: web::Data<NeonApiState>,
+    state: NeonApiState,
     web::Json(trace_hash_request): web::Json<TraceHashRequestModel>,
 ) -> impl Responder {
     let rpc_client = match context::build_hash_rpc_client(

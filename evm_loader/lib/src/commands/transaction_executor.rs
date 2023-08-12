@@ -96,6 +96,7 @@ impl<'a, 'b> TransactionExecutor<'a, 'b> {
         }
     }
 
+    #[allow(clippy::await_holding_refcell_ref)] // TODO: Remove this
     pub async fn checkpoint(&self, commitment: CommitmentConfig) -> Result<(), NeonError> {
         let recent_blockhash = self.client.get_latest_blockhash().await?;
         for sig in self.signatures.borrow().iter() {

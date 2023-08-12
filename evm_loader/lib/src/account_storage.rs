@@ -209,9 +209,8 @@ impl<'a> EmulatorAccountStorage<'a> {
                 .iter()
                 .zip(accounts.iter().take(addresses.len()))
                 .zip(pubkeys.iter().take(addresses.len()));
-            let mut accounts_storage = self.accounts.borrow_mut();
             for ((&address, account), &pubkey) in entries {
-                accounts_storage.insert(
+                self.accounts.borrow_mut().insert(
                     address,
                     NeonAccount::new(address, pubkey, account.clone(), false),
                 );
@@ -280,19 +279,17 @@ impl<'a> EmulatorAccountStorage<'a> {
     }
 
     async fn add_ethereum_account(&self, address: &Address, writable: bool) -> bool {
-        let mut accounts = self.accounts.borrow_mut();
-
-        if let Some(ref mut account) = accounts.get_mut(address) {
+        if let Some(ref mut account) = self.accounts.borrow_mut().get_mut(address) {
             account.writable |= writable;
 
-            true
-        } else {
-            let account =
-                NeonAccount::rpc_load(self.rpc_client, &self.evm_loader, *address, writable).await;
-            accounts.insert(*address, account);
-
-            false
+            return true;
         }
+
+        let account =
+            NeonAccount::rpc_load(self.rpc_client, &self.evm_loader, *address, writable).await;
+        self.accounts.borrow_mut().insert(*address, account);
+
+        false
     }
 
     async fn add_solana_account(&self, pubkey: Pubkey, is_writable: bool) {

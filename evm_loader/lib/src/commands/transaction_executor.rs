@@ -2,7 +2,6 @@ use std::cell::RefCell;
 use std::future::Future;
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 
 use {
     crate::{errors::NeonError, rpc},
@@ -50,7 +49,7 @@ pub struct TransactionExecutor<'a, 'b> {
     pub client: &'a dyn rpc::Rpc,
     pub send_trx: bool,
     pub signatures: RefCell<Vec<Signature>>,
-    pub stats: RwLock<Stats>,
+    pub stats: RefCell<Stats>,
     pub fee_payer: &'b dyn Signer,
 }
 
@@ -60,7 +59,7 @@ impl<'a, 'b> TransactionExecutor<'a, 'b> {
             client,
             send_trx,
             signatures: RefCell::new(vec![]),
-            stats: RwLock::new(Stats::default()),
+            stats: RefCell::new(Stats::default()),
             fee_payer,
         }
     }
@@ -162,7 +161,7 @@ impl<'a, 'b> TransactionExecutor<'a, 'b> {
             match verify(data.clone()).await {
                 Ok(None) => {
                     info!("{}: correct", name);
-                    self.stats.write().await.inc_corrected_objects();
+                    self.stats.borrow_mut().inc_corrected_objects();
                 }
                 Ok(Some(transaction)) => {
                     if self.send_trx {
@@ -171,23 +170,23 @@ impl<'a, 'b> TransactionExecutor<'a, 'b> {
                             Ok(signature) => {
                                 warn!("{}: updated in trx {}", name, signature);
                                 self.signatures.borrow_mut().push(signature);
-                                self.stats.write().await.inc_modified_objects();
+                                self.stats.borrow_mut().inc_modified_objects();
                                 return Ok(Some(signature));
                             }
                             Err(error) => {
                                 error!("{}: failed update with {}", name, error);
-                                self.stats.write().await.inc_invalid_objects();
+                                self.stats.borrow_mut().inc_invalid_objects();
                                 return Err(error);
                             }
                         };
                     };
                     debug!("{}: {:?}", name, transaction);
-                    self.stats.write().await.inc_invalid_objects();
+                    self.stats.borrow_mut().inc_invalid_objects();
                     warn!("{}: will be updated", name);
                 }
                 Err(error) => {
                     error!("{}: wrong object {:?}", name, error);
-                    self.stats.write().await.inc_invalid_objects();
+                    self.stats.borrow_mut().inc_invalid_objects();
                     if self.send_trx {
                         return Err(error);
                     }
@@ -197,7 +196,7 @@ impl<'a, 'b> TransactionExecutor<'a, 'b> {
             match create().await {
                 Ok(None) => {
                     info!("{}: missed ok", name);
-                    self.stats.write().await.inc_corrected_objects();
+                    self.stats.borrow_mut().inc_corrected_objects();
                 }
                 Ok(Some(transaction)) => {
                     if self.send_trx {
@@ -206,23 +205,23 @@ impl<'a, 'b> TransactionExecutor<'a, 'b> {
                             Ok(signature) => {
                                 warn!("{}: created in trx {}", name, signature);
                                 self.signatures.borrow_mut().push(signature);
-                                self.stats.write().await.inc_created_objects();
+                                self.stats.borrow_mut().inc_created_objects();
                                 return Ok(Some(signature));
                             }
                             Err(error) => {
                                 error!("{}: failed create with {}", name, error);
-                                self.stats.write().await.inc_invalid_objects();
+                                self.stats.borrow_mut().inc_invalid_objects();
                                 return Err(error);
                             }
                         };
                     };
                     debug!("{}: {:?}", name, transaction);
                     warn!("{}: will be created", name);
-                    self.stats.write().await.inc_created_objects();
+                    self.stats.borrow_mut().inc_created_objects();
                 }
                 Err(error) => {
                     error!("{}: can't be created: {:?}", name, error);
-                    self.stats.write().await.inc_invalid_objects();
+                    self.stats.borrow_mut().inc_invalid_objects();
                     if self.send_trx {
                         return Err(error);
                     }

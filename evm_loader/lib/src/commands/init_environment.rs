@@ -327,7 +327,7 @@ pub async fn execute(
 
     executor.checkpoint(context.rpc_client.commitment()).await?;
 
-    let stats = executor.stats.read().await;
+    let stats = executor.stats.borrow();
     info!("Stats: {:?}", stats);
 
     let signatures = executor

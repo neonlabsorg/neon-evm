@@ -10,7 +10,7 @@ use {
     tokio_postgres::Client,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct IndexerDb {
     pub client: Arc<Client>,
 }

@@ -38,10 +38,8 @@ services:
       KEYPAIR: /opt/id.json
       FEEPAIR: /opt/id.json
     image: ${EVM_LOADER_IMAGE}
-    expose:
-    - "8085"
     ports:
-    - 8085:8085
+    - 8085
     volumes:
     - ./files/id.json:/opt/id.json
     networks:

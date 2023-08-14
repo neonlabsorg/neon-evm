@@ -21,6 +21,12 @@ pub fn process<'a>(
 
     let holder_or_storage_info = &accounts[0];
 
+    solana_program::msg!("Holder account: {:?}", holder_or_storage_info);
+    solana_program::msg!(
+        "Holder tag: {}",
+        crate::account::tag(program_id, holder_or_storage_info)?
+    );
+
     let accounts = Accounts {
         operator: Operator::from_account(&accounts[1])?,
         treasury: Treasury::from_account(program_id, treasury_index, &accounts[2])?,

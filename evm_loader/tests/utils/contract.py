@@ -21,7 +21,7 @@ def make_deployment_transaction(
         user: Caller,
         contract_path: tp.Union[pathlib.Path, str],
         encoded_args=None,
-        gas: int = 999999999, chain_id=111
+        gas: int = 999999999, chain_id=111, access_list=None
 ) -> SignedTransaction:
     if isinstance(contract_path, str):
         contract_path = pathlib.Path(contract_path)
@@ -41,8 +41,11 @@ def make_deployment_transaction(
         'nonce': get_transaction_count(solana_client, user.solana_account_address),
         'data': data
     }
-    if chain_id is not None:
+    if chain_id:
         tx['chainId'] = chain_id
+    if access_list:
+        tx['accessList'] = access_list
+        tx['type'] = 1
     print(tx)
     return w3.eth.account.sign_transaction(tx, user.solana_account.secret_key[:32])
 

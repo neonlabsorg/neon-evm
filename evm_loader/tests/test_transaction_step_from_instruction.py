@@ -18,6 +18,7 @@ from solana.rpc.core import RPCException
 
 from .solana_utils import get_neon_balance, solana_client, execute_transaction_steps_from_instruction, neon_cli, \
     create_treasury_pool_address, send_transaction_step_from_instruction
+from .test_cli import gen_hash_of_block
 from .utils.assert_messages import InstructionAsserts
 from .utils.constants import TAG_FINALIZED_STATE
 from .utils.contract import make_deployment_transaction, make_contract_call_trx, deploy_contract
@@ -307,9 +308,10 @@ class TestTransactionStepFromInstruction:
                                                    [sender_with_tokens.solana_account_address,
                                                     session_user.solana_account_address], 1, operator_keypair)
 
+    @pytest.mark.parametrize("value", [0, 10])
     def test_transaction_with_access_list(self, operator_keypair, treasury_pool, sender_with_tokens,
                                           evm_loader, holder_acc, calculator_contract,
-                                          calculator_caller_contract):
+                                          calculator_caller_contract, value):
         access_list = (
             {
                 "address": '0x' + calculator_contract.eth_address.hex(),
@@ -320,7 +322,7 @@ class TestTransactionStepFromInstruction:
             },
         )
         signed_tx = make_contract_call_trx(sender_with_tokens, calculator_caller_contract, "callCalculator()", [],
-                                           access_list=access_list)
+                                           access_list=access_list, value=value)
 
         resp = execute_transaction_steps_from_instruction(operator_keypair, evm_loader, treasury_pool, holder_acc,
                                                           signed_tx, [calculator_caller_contract.solana_address,
@@ -329,6 +331,31 @@ class TestTransactionStepFromInstruction:
                                                           )
 
         check_holder_account_tag(holder_acc, FINALIZED_STORAGE_ACCOUNT_INFO_LAYOUT, TAG_FINALIZED_STATE)
+        check_transaction_logs_have_text(resp.value, "exit_status=0x12")
+
+    def test_deploy_contract_with_access_list(self, operator_keypair, holder_acc, treasury_pool, evm_loader,
+                                              sender_with_tokens):
+        contract_filename = "small.binary"
+        contract = create_contract_address(sender_with_tokens, evm_loader)
+
+        access_list = (
+            {
+                "address": contract.eth_address.hex(),
+                "storageKeys": (
+                    "0x0000000000000000000000000000000000000000000000000000000000000000",
+                )
+            },
+        )
+        signed_tx = make_deployment_transaction(sender_with_tokens, contract_filename, access_list=access_list)
+        contract_path = pytest.CONTRACTS_PATH / contract_filename
+        with open(contract_path, 'rb') as f:
+            contract_code = f.read()
+
+        steps_count = neon_cli().get_steps_count(evm_loader, sender_with_tokens, "deploy", contract_code.hex())
+        resp = execute_transaction_steps_from_instruction(operator_keypair, evm_loader, treasury_pool, holder_acc,
+                                                          signed_tx, [contract.solana_address,
+                                                                      sender_with_tokens.solana_account_address],
+                                                          steps_count)
         check_transaction_logs_have_text(resp.value, "exit_status=0x12")
 
 

@@ -213,7 +213,7 @@ impl rlp::Decodable for AccessListTx {
             }
         }
 
-        solana_program::msg!("{:?}", access_list);
+        // solana_program::msg!("{:?}", access_list);
 
         let y_parity: u8 = rlp.at(8)?.as_val()?; // ???
         solana_program::msg!("{}", y_parity);

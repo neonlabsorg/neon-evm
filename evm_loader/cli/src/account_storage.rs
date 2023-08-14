@@ -8,6 +8,7 @@ use std::{
 
 use log::{debug, info, trace, warn};
 use ethnum::U256;
+use solana_client::client_error;
 use solana_sdk::{
     account::Account,
     account_info::AccountInfo,
@@ -63,17 +64,17 @@ fn deserialize_pubkey_from_str<'de, D>(deserializer: D) -> Result<Pubkey, D::Err
 
 #[derive(serde::Serialize, Clone)]
 pub struct NeonAccount {
-    address: Address,
+    pub address: Address,
     #[serde(serialize_with = "serde_pubkey_bs58")]
     #[serde(deserialize_with = "deserialize_pubkey_from_str")]
-    account: Pubkey,
+    pub account: Pubkey,
     writable: bool,
     new: bool,
     size: usize,
     size_current: usize,
     additional_resize_steps: usize,
     #[serde(skip)]
-    data: Option<Account>,
+    pub data: Option<Account>,
 }
 
 impl NeonAccount {
@@ -116,7 +117,9 @@ impl NeonAccount {
 pub struct SolanaAccount {
     #[serde(serialize_with = "serde_pubkey_bs58")]
     pubkey: Pubkey,
-    is_writable: bool
+    is_writable: bool,
+    #[serde(skip)]
+    data: Option<Account>,
 }
 
 
@@ -149,8 +152,38 @@ impl<'a> EmulatorAccountStorage<'a> {
         }
     }
 
-    pub fn get_account_from_solana(config: &'a Config, address: &Address) -> (Pubkey, Option<Account>) {
-        let (solana_address, _solana_nonce) = make_solana_program_address(address, &config.evm_loader);
+    pub fn get_account(&self, pubkey: &Pubkey) -> client_error::Result<Option<Account>> {
+        let mut accounts = self.solana_accounts.borrow_mut();
+
+        if let Some(account) = accounts.get(pubkey) {
+            if let Some(ref data) = account.data {
+                return Ok(Some(data.clone()));
+            }
+        }
+
+        let result = self
+            .config
+            .rpc_client
+            .get_account_with_commitment(pubkey, self.config.commitment)?;
+
+        accounts
+            .entry(*pubkey)
+            .and_modify(|a| a.data = result.value.clone())
+            .or_insert(SolanaAccount {
+                pubkey: *pubkey,
+                is_writable: false,
+                data: result.value.clone(),
+            });
+
+        Ok(result.value)
+    }
+
+    pub fn get_account_from_solana(
+        config: &'a Config,
+        address: &Address,
+    ) -> (Pubkey, Option<Account>) {
+        let (solana_address, _solana_nonce) =
+            make_solana_program_address(address, &config.evm_loader);
         info!("get_account_from_solana {} => {}", address, solana_address);
 
         if let Ok(acc) = config.rpc_client.get_account(&solana_address) {
@@ -192,9 +225,13 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         let mut solana_accounts = self.solana_accounts.borrow_mut();
         
-        let account = SolanaAccount { pubkey, is_writable };
+        let account = SolanaAccount { pubkey, is_writable, data: None };
         if is_writable {
-            solana_accounts.insert(pubkey, account);
+            solana_accounts
+                .entry(pubkey)
+                // If account is present in cache ensure the data is not lost
+                .and_modify(|a| a.is_writable = true)
+                .or_insert(account);
         } else {
             solana_accounts.entry(pubkey).or_insert(account);
         }
@@ -359,7 +396,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
 
         self.add_solana_account(slot_hashes::ID, false);
 
-        if let Ok(slot_hashes_account) = self.config.rpc_client.get_account(&slot_hashes::ID) {
+        if let Ok(Some(slot_hashes_account)) = self.get_account(&slot_hashes::ID) {
             let slot_hashes_data = slot_hashes_account.data.as_slice();
             find_slot_hash(slot, slot_hashes_data)
         } else {
@@ -445,12 +482,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
 
             self.add_solana_account(solana_address, false);
 
-            let rpc_response = self.config.rpc_client.get_account_with_commitment(
-                &solana_address,
-                self.config.rpc_client.commitment(),
-            ).expect("Error querying account from Solana");
-        
-            if let Some(mut account) = rpc_response.value {
+            if let Some(mut account) = self.get_account(&solana_address).expect("Error querying account from Solana") {
                 if solana_sdk::system_program::check_id(&account.owner) {
                     debug!("read storage system owned");
                     <[u8; 32]>::default()
@@ -502,7 +534,11 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         } else {
             self.add_solana_account(*address, false);
 
-            let mut account = self.config.rpc_client.get_account(address).unwrap_or_default();
+            let mut account = self
+                .get_account(address)
+                .unwrap()
+                .unwrap_or_default();
+
             let info = account_info(address, &mut account);
     
             OwnedAccountInfo::from_account_info(self.program_id(), &info)
@@ -515,7 +551,10 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     {
         self.add_solana_account(*address, false);
 
-        let mut account = self.config.rpc_client.get_account(address).unwrap_or_default();
+        let mut account = self.get_account(address)
+            .unwrap()
+            .unwrap_or_default();
+
         let info = account_info(address, &mut account);
 
         action(&info)

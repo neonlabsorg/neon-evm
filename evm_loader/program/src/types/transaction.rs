@@ -167,9 +167,13 @@ impl rlp::Decodable for AccessListTx {
         }
 
         let chain_id: U256 = u256(&rlp.at(0)?)?;
+        solana_program::msg!("{}", chain_id);
         let nonce: u64 = rlp.val_at(1)?;
+        solana_program::msg!("{}", nonce);
         let gas_price: U256 = u256(&rlp.at(2)?)?;
+        solana_program::msg!("{}", gas_price);
         let gas_limit: U256 = u256(&rlp.at(3)?)?;
+        solana_program::msg!("{}", gas_limit);
         let target: Option<Address> = {
             let target = rlp.at(4)?;
             if target.is_empty() {
@@ -182,9 +186,12 @@ impl rlp::Decodable for AccessListTx {
                 Some(target.as_val()?)
             }
         };
+        solana_program::msg!("{:?}", target);
 
         let value: U256 = u256(&rlp.at(5)?)?;
+        solana_program::msg!("{}", value);
         let call_data = crate::evm::Buffer::from_slice(rlp.at(6)?.data()?);
+        solana_program::msg!("{:?}", call_data);
 
         let rlp_access_list = rlp.at(7)?;
         let mut access_list = vec![];
@@ -206,9 +213,14 @@ impl rlp::Decodable for AccessListTx {
             }
         }
 
+        solana_program::msg!("{:?}", access_list);
+
         let y_parity: u8 = rlp.at(8)?.as_val()?; // ???
+        solana_program::msg!("{}", y_parity);
         let r: U256 = u256(&rlp.at(9)?)?;
+        solana_program::msg!("{}", r);
         let s: U256 = u256(&rlp.at(10)?)?;
+        solana_program::msg!("{}", s);
 
         if rlp.at(11).is_ok() {
             return Err(rlp::DecoderError::RlpIncorrectListLen);

@@ -6,6 +6,7 @@ use std::{marker::PhantomData, ops::Range};
 
 use ethnum::U256;
 use maybe_async::maybe_async;
+#[cfg(not(feature = "library"))]
 use serde::{Deserialize, Serialize};
 use solana_program::log::sol_log_data;
 
@@ -80,26 +81,29 @@ macro_rules! trace_end_step {
 pub(crate) use trace_end_step;
 pub(crate) use tracing_event;
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq)]
+#[cfg_attr(not(feature = "library"), derive(Serialize, Deserialize))]
 pub enum ExitStatus {
     Stop,
-    Return(#[serde(with = "serde_bytes")] Vec<u8>),
-    Revert(#[serde(with = "serde_bytes")] Vec<u8>),
+    Return(#[cfg_attr(not(feature = "library"), serde(with = "serde_bytes"))] Vec<u8>),
+    Revert(#[cfg_attr(not(feature = "library"), serde(with = "serde_bytes"))] Vec<u8>),
     Suicide,
     StepLimit,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq)]
+#[cfg_attr(not(feature = "library"), derive(Serialize, Deserialize))]
 pub enum Reason {
     Call,
     Create,
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone)]
+#[cfg_attr(not(feature = "library"), derive(Serialize, Deserialize))]
 pub struct Context {
     pub caller: Address,
     pub contract: Address,
-    #[serde(with = "ethnum::serde::bytes::le")]
+    #[cfg_attr(not(feature = "library"), serde(with = "ethnum::serde::bytes::le"))]
     pub value: U256,
 
     pub code_address: Option<Address>,

@@ -27,6 +27,7 @@ pub struct ExecutorState<'a, B: AccountStorage> {
 }
 
 impl<'a, B: AccountStorage> ExecutorState<'a, B> {
+    #[cfg(not(feature = "library"))]
     pub fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize> {
         let mut cursor = std::io::Cursor::new(buffer);
 
@@ -36,6 +37,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         cursor.position().try_into().map_err(Error::from)
     }
 
+    #[cfg(not(feature = "library"))]
     pub fn deserialize_from(buffer: &[u8], backend: &'a B) -> Result<Self> {
         let (cache, actions, stack, exit_status) = bincode::deserialize(buffer)?;
         Ok(Self {

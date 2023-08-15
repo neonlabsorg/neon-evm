@@ -1,4 +1,3 @@
-import json
 import random
 import string
 import time
@@ -32,10 +31,9 @@ def generate_access_lists():
     addr2 = gen_hash_of_block(20)
     key1, key2, key3, key4 = (f"0x000000000000000000000000000000000000000000000000000000000000000{item}" for item in
                               (0, 1, 2, 3))
-    return (({"address": addr1, "storageKeys": ()},),
+    return (({"address": addr1, "storageKeys": []},),
             ({"address": addr1, "storageKeys": (key1, key2, key3, key4)},),
-            ({"address": addr1, "storageKeys": (key1, key2)}, {"address": addr2, "storageKeys": ()}),
-
+            ({"address": addr1, "storageKeys": (key1, key2)}, {"address": addr2, "storageKeys": []}),
             ({"address": addr1, "storageKeys": (key1, key2)}, {"address": addr2, "storageKeys": (key3,)}))
 
 
@@ -346,21 +344,22 @@ class TestTransactionStepFromAccount:
 
     @pytest.mark.parametrize("access_list", generate_access_lists())
     def test_access_list_structure(self, operator_keypair, holder_acc, treasury_pool, evm_loader,
-                                   sender_with_tokens, rw_lock_caller, rw_lock_contract, access_list):
+                                   sender_with_tokens, string_setter_contract, access_list):
         text = ''.join(random.choice(string.ascii_letters) for _ in range(10))
-        signed_tx = make_contract_call_trx(sender_with_tokens, rw_lock_caller, 'update_storage_str(string)', [text],
-                                           access_list=access_list, value=10)
+
+        signed_tx = make_contract_call_trx(sender_with_tokens, string_setter_contract, "set(string)", [text],
+                                           value=10, access_list=access_list)
         write_transaction_to_holder_account(signed_tx, holder_acc, operator_keypair)
         resp = execute_transaction_steps_from_account(operator_keypair, evm_loader, treasury_pool, holder_acc,
-                                                      [rw_lock_caller.solana_address,
-                                                       rw_lock_contract.solana_address,
-                                                       sender_with_tokens.solana_account_address], 1000)
+                                                      [string_setter_contract.solana_address,
+                                                       sender_with_tokens.solana_account_address])
 
         check_holder_account_tag(holder_acc, FINALIZED_STORAGE_ACCOUNT_INFO_LAYOUT, TAG_FINALIZED_STATE)
         check_transaction_logs_have_text(resp.value.transaction.transaction.signatures[0], "exit_status=0x11")
 
-        assert text in to_text(neon_cli().call_contract_get_function(evm_loader, sender_with_tokens, rw_lock_contract,
-                                                                     "get_text()"))
+        assert text in to_text(
+            neon_cli().call_contract_get_function(evm_loader, sender_with_tokens, string_setter_contract,
+                                                  "get()"))
 
 
 class TestAccountStepContractCallContractInteractions:

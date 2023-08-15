@@ -1,4 +1,3 @@
-import json
 import random
 import string
 import time
@@ -18,7 +17,6 @@ from solana.rpc.core import RPCException
 
 from .solana_utils import get_neon_balance, solana_client, execute_transaction_steps_from_instruction, neon_cli, \
     create_treasury_pool_address, send_transaction_step_from_instruction
-from .test_cli import gen_hash_of_block
 from .utils.assert_messages import InstructionAsserts
 from .utils.constants import TAG_FINALIZED_STATE
 from .utils.contract import make_deployment_transaction, make_contract_call_trx, deploy_contract
@@ -310,28 +308,26 @@ class TestTransactionStepFromInstruction:
 
     @pytest.mark.parametrize("value", [0, 10])
     def test_transaction_with_access_list(self, operator_keypair, treasury_pool, sender_with_tokens,
-                                          evm_loader, holder_acc, calculator_contract,
-                                          calculator_caller_contract, value):
+                                          evm_loader, holder_acc,
+                                          string_setter_contract, value):
         access_list = (
             {
-                "address": '0x' + calculator_contract.eth_address.hex(),
+                "address": '0x' + string_setter_contract.eth_address.hex(),
                 "storageKeys": (
                     "0x0000000000000000000000000000000000000000000000000000000000000000",
                     "0x0000000000000000000000000000000000000000000000000000000000000001",
                 )
             },
         )
-        signed_tx = make_contract_call_trx(sender_with_tokens, calculator_caller_contract, "callCalculator()", [],
-                                           access_list=access_list, value=value)
-
+        signed_tx = make_contract_call_trx(sender_with_tokens, string_setter_contract, "set(string)", ["text"],
+                                           value=value, access_list=access_list)
         resp = execute_transaction_steps_from_instruction(operator_keypair, evm_loader, treasury_pool, holder_acc,
-                                                          signed_tx, [calculator_caller_contract.solana_address,
-                                                                      calculator_contract.solana_address,
+                                                          signed_tx, [string_setter_contract.solana_address,
                                                                       sender_with_tokens.solana_account_address]
                                                           )
 
         check_holder_account_tag(holder_acc, FINALIZED_STORAGE_ACCOUNT_INFO_LAYOUT, TAG_FINALIZED_STATE)
-        check_transaction_logs_have_text(resp.value, "exit_status=0x12")
+        check_transaction_logs_have_text(resp.value, "exit_status=0x11")
 
     def test_deploy_contract_with_access_list(self, operator_keypair, holder_acc, treasury_pool, evm_loader,
                                               sender_with_tokens):

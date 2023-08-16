@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
 use evm_loader::evm::tracing::event_listener::trace::TraceCallConfig;
-use evm_loader::evm::tracing::event_listener::tracer::TracerType;
+use evm_loader::evm::tracing::event_listener::tracer::TracerTypeOpt;
 use evm_loader::{
     account_storage::AccountStorage,
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
@@ -150,7 +150,7 @@ pub(crate) async fn emulate_transaction<'a>(
     accounts: &[Address],
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
-    tracer: TracerType,
+    tracer: TracerTypeOpt,
 ) -> Result<(EmulationResult, EmulatorAccountStorage<'a>), NeonError> {
     setup_syscall_stubs(rpc_client).await?;
 
@@ -177,7 +177,7 @@ pub(crate) async fn emulate_trx<'a>(
     storage: &'a EmulatorAccountStorage<'a>,
     chain_id: u64,
     step_limit: u64,
-    tracer: TracerType,
+    tracer: TracerTypeOpt,
 ) -> Result<EmulationResult, NeonError> {
     let (exit_status, actions, steps_executed) = {
         let mut backend = ExecutorState::new(storage);

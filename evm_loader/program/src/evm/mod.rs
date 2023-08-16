@@ -13,9 +13,7 @@ pub use precompile::is_precompile_address;
 pub use precompile::precompile;
 
 #[cfg(feature = "tracing")]
-use crate::evm::tracing::event_listener::tracer::TracerType;
-#[cfg(feature = "tracing")]
-use crate::evm::tracing::EventListener;
+use crate::evm::tracing::event_listener::tracer::TracerTypeOpt;
 use crate::{
     error::{build_revert_message, Error, Result},
     evm::opcode::Action,
@@ -136,7 +134,7 @@ pub struct Machine<B: Database> {
 
     #[serde(skip)]
     #[cfg(feature = "tracing")]
-    tracer: TracerType,
+    tracer: TracerTypeOpt,
 }
 
 impl<B: Database> Machine<B> {
@@ -175,7 +173,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(feature = "tracing")] tracer: TracerType,
+        #[cfg(feature = "tracing")] tracer: TracerTypeOpt,
     ) -> Result<Self> {
         let origin_nonce = backend.nonce(&origin)?;
 
@@ -228,7 +226,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(feature = "tracing")] tracer: TracerType,
+        #[cfg(feature = "tracing")] tracer: TracerTypeOpt,
     ) -> Result<Self> {
         assert!(trx.target.is_some());
 
@@ -278,7 +276,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(feature = "tracing")] tracer: TracerType,
+        #[cfg(feature = "tracing")] tracer: TracerTypeOpt,
     ) -> Result<Self> {
         assert!(trx.target.is_none());
 

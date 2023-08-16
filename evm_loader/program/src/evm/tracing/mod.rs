@@ -3,7 +3,7 @@ use ethnum::U256;
 
 pub mod event_listener;
 
-pub trait EventListener {
+pub trait EventListener: Send + Sync {
     fn enable_return_data(&self) -> bool;
     fn event(&mut self, event: Event);
 }

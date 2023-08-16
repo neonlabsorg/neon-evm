@@ -20,25 +20,25 @@ impl rlp::Decodable for StorageKey {
     }
 }
 
-enum RlpTransactionEnvelope {
+enum TransactionEnvelope {
     Legacy,
     AccessList,
     DynamicFee,
     Blob,
 }
 
-impl RlpTransactionEnvelope {
-    pub fn get_type(bytes: &[u8]) -> (RlpTransactionEnvelope, &[u8]) {
+impl TransactionEnvelope {
+    pub fn get_type(bytes: &[u8]) -> (TransactionEnvelope, &[u8]) {
         // Legacy transaction format
         if rlp::Rlp::new(bytes).is_list() {
-            (RlpTransactionEnvelope::Legacy, bytes)
+            (TransactionEnvelope::Legacy, bytes)
         // It's an EIP-2718 typed TX envelope.
         } else {
             match bytes[0] {
-                0x00 => (RlpTransactionEnvelope::Legacy, &bytes[1..]),
-                0x01 => (RlpTransactionEnvelope::AccessList, &bytes[1..]),
-                0x02 => (RlpTransactionEnvelope::DynamicFee, &bytes[1..]),
-                0x03 => (RlpTransactionEnvelope::Blob, &bytes[1..]),
+                0x00 => (TransactionEnvelope::Legacy, &bytes[1..]),
+                0x01 => (TransactionEnvelope::AccessList, &bytes[1..]),
+                0x02 => (TransactionEnvelope::DynamicFee, &bytes[1..]),
+                0x03 => (TransactionEnvelope::Blob, &bytes[1..]),
                 byte => panic!("Unsupported EIP-2718 Transaction type | First byte: {byte}"),
             }
         }
@@ -143,8 +143,6 @@ pub struct AccessListTx {
     target: Option<Address>,
     value: U256,
     call_data: crate::evm::Buffer,
-    #[allow(dead_code)]
-    y_parity: u8,
     r: U256,
     s: U256,
     chain_id: U256,
@@ -206,7 +204,7 @@ impl rlp::Decodable for AccessListTx {
             }
         }
 
-        let y_parity: u8 = rlp.at(8)?.as_val()?; // ???
+        let y_parity: u8 = rlp.at(8)?.as_val()?;
         let r: U256 = u256(&rlp.at(9)?)?;
         let s: U256 = u256(&rlp.at(10)?)?;
 
@@ -224,7 +222,6 @@ impl rlp::Decodable for AccessListTx {
             target,
             value,
             call_data,
-            y_parity,
             r,
             s,
             chain_id,
@@ -253,13 +250,13 @@ pub enum Transaction {
 
 impl Transaction {
     pub fn from_rlp(transaction: &[u8]) -> Result<Self, Error> {
-        let (transaction_type, transaction) = RlpTransactionEnvelope::get_type(transaction);
+        let (transaction_type, transaction) = TransactionEnvelope::get_type(transaction);
 
         let tx = match transaction_type {
-            RlpTransactionEnvelope::Legacy => {
+            TransactionEnvelope::Legacy => {
                 Transaction::Legacy(rlp::decode::<LegacyTx>(transaction).map_err(Error::from)?)
             }
-            RlpTransactionEnvelope::AccessList => Transaction::AccessList(
+            TransactionEnvelope::AccessList => Transaction::AccessList(
                 rlp::decode::<AccessListTx>(transaction).map_err(Error::from)?,
             ),
             _ => unimplemented!(),
@@ -427,8 +424,6 @@ fn eip2718_signed_hash(
     };
 
     let hash = solana_program::keccak::hashv(&[transaction_type, &header, body]).to_bytes();
-
-    // log hash
 
     Ok(hash)
 }

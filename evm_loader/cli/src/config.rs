@@ -28,9 +28,7 @@ pub fn create(options: &ArgMatches) -> Result<Config, NeonError> {
             .unwrap_or(&solana_cli_config.json_rpc_url),
     );
 
-    let evm_loader = if let Some(value) = pubkey_of(options, "evm_loader") {
-        value
-    } else {
+    let Some(evm_loader) = pubkey_of(options, "evm_loader") else {
         return Err(NeonError::EvmLoaderNotSpecified);
     };
 

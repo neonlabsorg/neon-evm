@@ -7,3 +7,14 @@ members = [
     'program',
     'program-macro'
 ]
+
+[patch.crates-io]
+solana-sdk = { git = 'https://github.com/neonlabsorg/solana.git', branch = 'backport-32430' }
+solana-client = { git = 'https://github.com/neonlabsorg/solana.git', branch = 'backport-32430' }
+solana-clap-utils = { git = 'https://github.com/neonlabsorg/solana.git', branch = 'backport-32430' }
+solana-cli-config = { git = 'https://github.com/neonlabsorg/solana.git', branch = 'backport-32430' }
+solana-cli = { git = 'https://github.com/neonlabsorg/solana.git', branch = 'backport-32430' }
+solana-transaction-status = { git = 'https://github.com/neonlabsorg/solana.git', branch = 'backport-32430' }
+solana-program = { git = 'https://github.com/neonlabsorg/solana.git', branch = 'backport-32430' }
+solana-account-decoder = { git = 'https://github.com/neonlabsorg/solana.git', branch = 'backport-32430' }
+solana-zk-token-sdk = { git = 'https://github.com/neonlabsorg/solana.git', branch = 'backport-32430' }

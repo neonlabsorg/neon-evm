@@ -39,10 +39,10 @@ tracing = []
 [dependencies]
 linked_list_allocator = { version = "0.10", default_features = false }
 evm-loader-macro = { path = "../program-macro" }
-solana-program = { version = "=1.16.8", default_features = false }
+solana-program = { version = "=1.16.10", default_features = false }
 spl-token = { version = "~3.5", default_features = false, features = ["no-entrypoint"] }
 spl-associated-token-account = { version = "~1.1", default_features = false, features = ["no-entrypoint"] }
-mpl-token-metadata = { version = "1.12", default_features = false, features = ["no-entrypoint"] }
+mpl-token-metadata = { version = "1.13.2", default_features = false, features = ["no-entrypoint"] }
 thiserror = "1.0"
 arrayref = "0.3.6"
 hex = "0.4.2"

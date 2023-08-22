@@ -1229,6 +1229,7 @@ impl<B: Database> Machine<B> {
             return Ok(Action::Return(Arc::new(return_data.to_vec())));
         }
 
+        #[cfg(feature = "tracing")]
         let return_data = {
             let return_data_arc = Arc::new(return_data);
             let return_data_arc_cloned = Arc::clone(&return_data_arc);
@@ -1280,6 +1281,7 @@ impl<B: Database> Machine<B> {
             return Ok(Action::Revert(Arc::new(return_data.to_vec())));
         }
 
+        #[cfg(feature = "tracing")]
         let return_data = {
             let return_data_arc = Arc::new(return_data);
             let return_data_arc_cloned = Arc::clone(&return_data_arc);

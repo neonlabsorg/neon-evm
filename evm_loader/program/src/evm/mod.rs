@@ -2,6 +2,7 @@
 #![allow(clippy::type_repetition_in_bounds)]
 #![allow(clippy::unsafe_derive_deserialize)]
 
+use std::sync::Arc;
 use std::{marker::PhantomData, ops::Range};
 
 use ethnum::U256;
@@ -13,7 +14,7 @@ pub use precompile::is_precompile_address;
 pub use precompile::precompile;
 
 #[cfg(feature = "tracing")]
-use crate::evm::tracing::event_listener::tracer::TracerTypeOpt;
+use crate::evm::tracing::TracerTypeOpt;
 use crate::{
     error::{build_revert_message, Error, Result},
     evm::opcode::Action,
@@ -51,27 +52,22 @@ macro_rules! tracing_event {
 }
 
 macro_rules! trace_end_step {
-    ($self:ident, $return_data_vec:expr) => {
+    ($self:ident, $return_data_getter:expr) => {
         #[cfg(feature = "tracing")]
         if let Some(tracer) = &$self.tracer {
-            let mut tracer_write_guard = tracer.write().expect("Poisoned RwLock");
-            if tracer_write_guard.enable_return_data() {
-                tracer_write_guard.event(crate::evm::tracing::Event::EndStep {
+            tracer
+                .write()
+                .expect("Poisoned RwLock")
+                .event(crate::evm::tracing::Event::EndStep {
                     gas_used: 0_u64,
-                    return_data: $return_data_vec,
+                    return_data_getter: $return_data_getter,
                 })
-            } else {
-                tracer_write_guard.event(crate::evm::tracing::Event::EndStep {
-                    gas_used: 0_u64,
-                    return_data: None,
-                })
-            }
         }
     };
-    ($self:ident, $condition:expr; $return_data_vec:expr) => {
+    ($self:ident, $condition:expr; $return_data_getter:expr) => {
         #[cfg(feature = "tracing")]
         if $condition {
-            trace_end_step!($self, $return_data_vec)
+            trace_end_step!($self, $return_data_getter)
         }
     };
 }
@@ -86,6 +82,34 @@ pub enum ExitStatus {
     Revert(#[serde(with = "serde_bytes")] Vec<u8>),
     Suicide,
     StepLimit,
+}
+
+impl ExitStatus {
+    #[must_use]
+    pub fn status(&self) -> &'static str {
+        match self {
+            ExitStatus::Return(_) | ExitStatus::Stop | ExitStatus::Suicide => "succeed",
+            ExitStatus::Revert(_) => "revert",
+            ExitStatus::StepLimit => "step limit exceeded",
+        }
+    }
+
+    #[must_use]
+    pub fn is_succeed(&self) -> Option<bool> {
+        match self {
+            ExitStatus::Stop | ExitStatus::Return(_) | ExitStatus::Suicide => Some(true),
+            ExitStatus::Revert(_) => Some(false),
+            ExitStatus::StepLimit => None,
+        }
+    }
+
+    #[must_use]
+    pub fn into_result(self) -> Option<Vec<u8>> {
+        match self {
+            ExitStatus::Return(v) | ExitStatus::Revert(v) => Some(v),
+            ExitStatus::Stop | ExitStatus::Suicide | ExitStatus::StepLimit => None,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -367,7 +391,7 @@ impl<B: Database> Machine<B> {
             );
 
             // SAFETY: OPCODES.len() == 256, opcode <= 255
-            let opcode_fn = unsafe { Self::OPCODES.get_unchecked(opcode as usize) };
+            let (_, opcode_fn) = unsafe { Self::OPCODES.get_unchecked(opcode as usize) };
 
             let opcode_result = match opcode_fn(self, backend) {
                 Ok(result) => result,
@@ -378,7 +402,10 @@ impl<B: Database> Machine<B> {
             };
 
             trace_end_step!(self, opcode_result != Action::Noop; match &opcode_result {
-                Action::Return(value) | Action::Revert(value) => Some(value.clone()),
+                Action::Return(value) | Action::Revert(value) => {
+                    let value = Arc::clone(value);
+                    Some(Box::new(move || value.to_vec()))
+                },
                 _ => None,
             });
 
@@ -386,8 +413,16 @@ impl<B: Database> Machine<B> {
                 Action::Continue => self.pc += 1,
                 Action::Jump(target) => self.pc = target,
                 Action::Stop => break ExitStatus::Stop,
-                Action::Return(value) => break ExitStatus::Return(value),
-                Action::Revert(value) => break ExitStatus::Revert(value),
+                Action::Return(value) => {
+                    break ExitStatus::Return(
+                        Arc::try_unwrap(value).expect("Only one reference must exist here"),
+                    )
+                }
+                Action::Revert(value) => {
+                    break ExitStatus::Revert(
+                        Arc::try_unwrap(value).expect("Only one reference must exist here"),
+                    )
+                }
                 Action::Suicide => break ExitStatus::Suicide,
                 Action::Noop => {}
             };

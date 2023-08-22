@@ -1,4 +1,4 @@
-use crate::evm::tracing::event_listener::trace::{MemoryDiff, StorageDiff, VMTracer};
+use crate::evm::tracing::trace::{MemoryDiff, StorageDiff, VMTracer};
 use crate::evm::{Context, ExitStatus};
 use ethnum::U256;
 

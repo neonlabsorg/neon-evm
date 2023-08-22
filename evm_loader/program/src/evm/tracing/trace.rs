@@ -2,7 +2,7 @@ use crate::account::EthereumAccount;
 use crate::types::hexbytes::HexBytes;
 use crate::types::Address;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
+use serde_json::Value;
 use {ethnum::U256, std::collections::HashMap};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq /*, RlpEncodable, RlpDecodable */)]
@@ -204,29 +204,6 @@ pub trait VMTracer: Send {
     fn drain(self) -> Option<Self::Output>;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TracedCall {
-    pub vm_trace: Option<VMTrace>,
-    pub full_trace_data: Vec<FullTraceData>,
-    pub used_gas: u64,
-    pub result: Vec<u8>,
-    pub exit_status: String,
-}
-
-impl Display for TracedCall {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{{ exit_status: {}, used_gas: {}, vm_trace: {}, full_trace_data: {}, result: {} }}",
-            self.exit_status,
-            self.used_gas,
-            if self.vm_trace.is_some() { "yes" } else { "no" },
-            self.full_trace_data.len(),
-            hex::encode(&self.result),
-        )
-    }
-}
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockOverrides {
@@ -285,6 +262,7 @@ pub struct TraceConfig {
     pub enable_return_data: bool,
     pub tracer: Option<String>,
     pub timeout: Option<String>,
+    pub tracer_config: Value,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

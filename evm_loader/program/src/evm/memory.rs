@@ -5,7 +5,7 @@ use solana_program::program_memory::{sol_memcpy, sol_memset};
 
 use crate::error::Error;
 #[cfg(feature = "tracing")]
-use crate::evm::tracing::event_listener::tracer::TracerTypeOpt;
+use crate::evm::tracing::TracerTypeOpt;
 
 use super::utils::checked_next_multiple_of_32;
 use super::{tracing_event, Buffer};

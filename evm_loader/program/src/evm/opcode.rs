@@ -1,6 +1,7 @@
 /// <https://ethereum.github.io/yellowpaper/paper.pdf>
 use ethnum::{I256, U256};
 use solana_program::log::sol_log_data;
+use std::sync::Arc;
 
 use super::{database::Database, tracing_event, Context, Machine, Reason};
 use crate::{
@@ -14,8 +15,8 @@ pub enum Action {
     Continue,
     Jump(usize),
     Stop,
-    Return(Vec<u8>),
-    Revert(Vec<u8>),
+    Return(Arc<Vec<u8>>),
+    Revert(Arc<Vec<u8>>),
     Suicide,
     Noop,
 }
@@ -1225,10 +1226,18 @@ impl<B: Database> Machine<B> {
         sol_log_data(&[b"EXIT", b"RETURN"]);
 
         if self.parent.is_none() {
-            return Ok(Action::Return(return_data.to_vec()));
+            return Ok(Action::Return(Arc::new(return_data.to_vec())));
         }
 
-        trace_end_step!(self, Some(return_data.to_vec()));
+        let return_data = {
+            let return_data_arc = Arc::new(return_data);
+            let return_data_arc_cloned = Arc::clone(&return_data_arc);
+            trace_end_step!(
+                self,
+                Some(Box::new(move || return_data_arc_cloned.to_vec()))
+            );
+            Arc::try_unwrap(return_data_arc).expect("Only one reference must exist here")
+        };
         tracing_event!(
             self,
             super::tracing::Event::EndVM {
@@ -1268,10 +1277,18 @@ impl<B: Database> Machine<B> {
         sol_log_data(&[b"EXIT", b"REVERT", &return_data]);
 
         if self.parent.is_none() {
-            return Ok(Action::Revert(return_data.to_vec()));
+            return Ok(Action::Revert(Arc::new(return_data.to_vec())));
         }
 
-        trace_end_step!(self, Some(return_data.to_vec()));
+        let return_data = {
+            let return_data_arc = Arc::new(return_data);
+            let return_data_arc_cloned = Arc::clone(&return_data_arc);
+            trace_end_step!(
+                self,
+                Some(Box::new(move || return_data_arc_cloned.to_vec()))
+            );
+            Arc::try_unwrap(return_data_arc).expect("Only one reference must exist here")
+        };
         tracing_event!(
             self,
             super::tracing::Event::EndVM {

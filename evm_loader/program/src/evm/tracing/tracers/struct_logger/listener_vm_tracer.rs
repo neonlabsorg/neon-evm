@@ -40,10 +40,8 @@ impl ListenerVmTracer for VmTracer {
 
     fn end_step(&mut self, gas_used: u64) {
         let gas_used = U256::from(gas_used);
-        let diff = self.step_diff().clone();
 
-        self.tracer
-            .trace_executed(gas_used, diff.stack_push, diff.memory_set, diff.storage_set);
+        self.tracer.trace_executed(gas_used);
     }
 
     fn storage_access(&mut self, index: U256, value: [u8; 32]) {

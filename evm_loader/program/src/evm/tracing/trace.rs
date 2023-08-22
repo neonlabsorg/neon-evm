@@ -7,7 +7,7 @@ use serde_json::Value;
 use std::sync::Arc;
 use {ethnum::U256, std::collections::HashMap};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq /*, RlpEncodable, RlpDecodable */)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 /// A diff of some chunk of memory.
 pub struct MemoryDiff {
     /// Offset into memory the change begins.
@@ -16,7 +16,7 @@ pub struct MemoryDiff {
     pub data: HexBytes,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq /*, RlpEncodable, RlpDecodable */)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 /// A diff of some storage value.
 pub struct StorageDiff {
     /// Which key in storage is changed.
@@ -25,22 +25,14 @@ pub struct StorageDiff {
     pub value: [u8; 32],
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq /*, RlpEncodable, RlpDecodable */)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 /// A record of an executed VM operation.
 pub struct VMExecutedOperation {
     /// The total gas used.
     pub gas_used: U256,
-    /// The stack item placed, if any.
-    pub stack_push: Vec<[u8; 32]>,
-    /// If altered, the memory delta.
-    pub mem_diff: Option<MemoryDiff>,
-    /// The altered storage value, if any.
-    pub store_diff: Option<StorageDiff>,
 }
 
-#[derive(
-    Serialize, Deserialize, Debug, Clone, PartialEq, Default /*, RlpEncodable, RlpDecodable */,
-)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 /// A record of the execution of a single VM operation.
 pub struct VMOperation {
     /// The program counter.
@@ -53,9 +45,7 @@ pub struct VMOperation {
     pub executed: Option<VMExecutedOperation>,
 }
 
-#[derive(
-    Serialize, Deserialize, Debug, Clone, PartialEq, Default /*, RlpEncodable, RlpDecodable */,
-)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 /// A record of a full VM trace for a CALL/CREATE.
 #[allow(clippy::module_name_repetitions)]
 pub struct VMTrace {
@@ -68,14 +58,6 @@ pub struct VMTrace {
     /// The sub traces for each interior action performed as part of this call/create.
     /// Thre is a 1:1 correspondance between these and a CALL/CREATE/CALLCODE/DELEGATECALL instruction.
     pub subs: Vec<VMTrace>,
-}
-
-// OpenEthereum tracer ethcore/trace/src/executive_tracer.rs
-#[derive(Debug)]
-#[allow(clippy::module_name_repetitions)]
-pub struct TraceData {
-    pub mem_written: Option<(usize, usize)>,
-    pub store_written: Option<(U256, [u8; 32])>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -91,7 +73,6 @@ pub struct FullTraceData {
 pub struct ExecutiveVMTracer {
     data: VMTrace,
     pub depth: usize,
-    trace_stack: Vec<TraceData>,
 }
 
 impl ExecutiveVMTracer {
@@ -106,7 +87,6 @@ impl ExecutiveVMTracer {
                 subs: vec![],
             },
             depth: 0,
-            trace_stack: vec![],
         }
     }
 
@@ -133,26 +113,10 @@ impl VMTracer for ExecutiveVMTracer {
         });
     }
 
-    fn trace_executed(
-        &mut self,
-        gas_used: U256,
-        stack_push: Vec<[u8; 32]>,
-        mem_diff: Option<MemoryDiff>,
-        store_diff: Option<StorageDiff>,
-    ) {
-        self.trace_stack.push(TraceData {
-            mem_written: mem_diff.as_ref().map(|d| (d.offset, d.data.len())),
-            store_written: store_diff.as_ref().map(|d| (d.location, d.value)),
-        });
-
+    fn trace_executed(&mut self, gas_used: U256) {
         Self::with_trace_in_depth(&mut self.data, self.depth, move |trace| {
             let operation = trace.operations.last_mut().expect("trace_executed is always called after a trace_prepare_execute; trace.operations cannot be empty; qed");
-            operation.executed = Some(VMExecutedOperation {
-                gas_used,
-                stack_push,
-                mem_diff,
-                store_diff,
-            });
+            operation.executed = Some(VMExecutedOperation { gas_used });
         });
     }
 
@@ -187,14 +151,7 @@ pub trait VMTracer: Send {
     fn trace_prepare_execute(&mut self, _pc: usize, _instruction: u8) {}
 
     /// Trace the finalised execution of a single valid instruction.
-    fn trace_executed(
-        &mut self,
-        _gas_used: U256,
-        _stack_push: Vec<[u8; 32]>,
-        _mem_diff: Option<MemoryDiff>,
-        _storage_diff: Option<StorageDiff>,
-    ) {
-    }
+    fn trace_executed(&mut self, _gas_used: U256) {}
 
     /// Spawn subtracer which will be used to trace deeper levels of execution.
     fn prepare_subtrace(&mut self, _code: Vec<u8>) {}

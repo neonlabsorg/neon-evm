@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
+use crate::evm::Buffer;
 use crate::executor::Action;
 use ethnum::U256;
 use serde_json::Value;
@@ -44,7 +45,7 @@ pub enum Event {
     },
     EndStep {
         gas_used: u64,
-        return_data_getter: Option<Box<dyn Fn() -> Vec<u8>>>,
+        return_data: Option<Arc<Buffer>>,
     },
     StackPush {
         value: [u8; 32],

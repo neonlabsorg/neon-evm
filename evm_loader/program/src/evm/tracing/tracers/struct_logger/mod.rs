@@ -1,10 +1,11 @@
 use crate::account_storage::ProgramAccountStorage;
-use crate::evm::Machine;
+use crate::evm::{Buffer, Machine};
 use ethnum::U256;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::iter;
+use std::sync::Arc;
 use vm_tracer::VmTracer;
 
 use crate::evm::tracing::trace::{FullTraceData, TraceConfig, VMOperation, VMTrace, VMTracer};
@@ -56,7 +57,7 @@ pub struct StructLog {
     // pub stack: Option<Vec<[u8; 32]>>,
     pub stack: Option<Vec<U256>>,
     /// Result of the step
-    pub return_data: Option<Vec<u8>>,
+    pub return_data: Option<Arc<Buffer>>,
     /// Snapshot of the current storage
     #[serde(skip_serializing_if = "Option::is_none")]
     // pub storage: Option<BTreeMap<U256, [u8; 32]>>,
@@ -148,7 +149,7 @@ impl StructLogger {
 
 pub trait ListenerTracer {
     fn begin_step(&mut self, stack: Vec<[u8; 32]>, memory: Vec<u8>);
-    fn end_step(&mut self, return_data: Option<Vec<u8>>);
+    fn end_step(&mut self, return_data: Option<Arc<Buffer>>);
 }
 
 impl ListenerTracer for StructLogger {
@@ -167,7 +168,7 @@ impl ListenerTracer for StructLogger {
         });
     }
 
-    fn end_step(&mut self, return_data: Option<Vec<u8>>) {
+    fn end_step(&mut self, return_data: Option<Arc<Buffer>>) {
         let data = self
             .data
             .last_mut()
@@ -199,10 +200,10 @@ impl EventListener for StructLogger {
             }
             Event::EndStep {
                 gas_used,
-                return_data_getter,
+                return_data,
             } => {
                 self.end_step(if self.enable_return_data {
-                    return_data_getter.map(|getter| getter())
+                    return_data
                 } else {
                     None
                 });

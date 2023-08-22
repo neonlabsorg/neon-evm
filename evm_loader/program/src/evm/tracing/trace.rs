@@ -1,8 +1,10 @@
 use crate::account::EthereumAccount;
+use crate::evm::Buffer;
 use crate::types::hexbytes::HexBytes;
 use crate::types::Address;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::Arc;
 use {ethnum::U256, std::collections::HashMap};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq /*, RlpEncodable, RlpDecodable */)]
@@ -81,7 +83,7 @@ pub struct FullTraceData {
     pub stack: Vec<[u8; 32]>,
     pub memory: Vec<u8>,
     pub storage: HashMap<U256, [u8; 32]>,
-    pub return_data: Option<Vec<u8>>,
+    pub return_data: Option<Arc<Buffer>>,
 }
 
 /// Simple VM tracer. Traces all operations.

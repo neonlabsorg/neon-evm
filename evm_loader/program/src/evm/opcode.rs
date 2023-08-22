@@ -15,8 +15,8 @@ pub enum Action {
     Continue,
     Jump(usize),
     Stop,
-    Return(Arc<Vec<u8>>),
-    Revert(Arc<Vec<u8>>),
+    Return(Arc<Buffer>),
+    Revert(Arc<Buffer>),
     Suicide,
     Noop,
 }
@@ -970,10 +970,10 @@ impl<B: Database> Machine<B> {
 
         backend.increment_nonce(self.context.contract)?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = Arc::new(Buffer::empty());
         self.return_range = 0..0;
 
-        let init_code = self.memory.read_buffer(offset, length)?;
+        let init_code = Arc::new(self.memory.read_buffer(offset, length)?);
 
         let context = Context {
             caller: self.context.contract,
@@ -990,7 +990,13 @@ impl<B: Database> Machine<B> {
             }
         );
 
-        self.fork(Reason::Create, context, init_code, Buffer::empty(), None);
+        self.fork(
+            Reason::Create,
+            context,
+            init_code,
+            Arc::new(Buffer::empty()),
+            None,
+        );
         backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"CREATE", address.as_bytes()]);
@@ -1019,10 +1025,10 @@ impl<B: Database> Machine<B> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = Arc::new(Buffer::empty());
         self.return_range = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let call_data = Arc::new(self.memory.read_buffer(args_offset, args_length)?);
         let code = backend.code(&address)?;
 
         let context = Context {
@@ -1068,10 +1074,10 @@ impl<B: Database> Machine<B> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = Arc::new(Buffer::empty());
         self.return_range = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let call_data = Arc::new(self.memory.read_buffer(args_offset, args_length)?);
         let code = backend.code(&address)?;
 
         let context = Context {
@@ -1111,10 +1117,10 @@ impl<B: Database> Machine<B> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = Arc::new(Buffer::empty());
         self.return_range = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let call_data = Arc::new(self.memory.read_buffer(args_offset, args_length)?);
         let code = backend.code(&address)?;
 
         let context = Context {
@@ -1148,10 +1154,10 @@ impl<B: Database> Machine<B> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = Arc::new(Buffer::empty());
         self.return_range = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let call_data = Arc::new(self.memory.read_buffer(args_offset, args_length)?);
         let code = backend.code(&address)?;
 
         let context = Context {
@@ -1195,8 +1201,7 @@ impl<B: Database> Machine<B> {
             return Ok(Action::Noop);
         }
 
-        let result = result.unwrap()?;
-        let return_data = Buffer::from_slice(&result);
+        let return_data = Arc::new(Buffer::from_byte_vec(result.unwrap()?));
 
         self.opcode_return_impl(return_data, backend)
     }
@@ -1206,7 +1211,7 @@ impl<B: Database> Machine<B> {
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let return_data = self.memory.read_buffer(offset, length)?;
+        let return_data = Arc::new(self.memory.read_buffer(offset, length)?);
 
         self.opcode_return_impl(return_data, backend)
     }
@@ -1214,31 +1219,21 @@ impl<B: Database> Machine<B> {
     /// Halt execution returning output data
     pub fn opcode_return_impl(
         &mut self,
-        mut return_data: Buffer,
+        return_data: Arc<Buffer>,
         backend: &mut B,
     ) -> Result<Action> {
         if self.reason == Reason::Create {
-            let code = std::mem::take(&mut return_data);
-            backend.set_code(self.context.contract, code)?;
+            backend.set_code(self.context.contract, Arc::clone(&return_data))?;
         }
 
         backend.commit_snapshot();
         sol_log_data(&[b"EXIT", b"RETURN"]);
 
         if self.parent.is_none() {
-            return Ok(Action::Return(Arc::new(return_data.to_vec())));
+            return Ok(Action::Return(Arc::clone(&return_data)));
         }
 
-        #[cfg(feature = "tracing")]
-        let return_data = {
-            let return_data_arc = Arc::new(return_data);
-            let return_data_arc_cloned = Arc::clone(&return_data_arc);
-            trace_end_step!(
-                self,
-                Some(Box::new(move || return_data_arc_cloned.to_vec()))
-            );
-            Arc::try_unwrap(return_data_arc).expect("Only one reference must exist here")
-        };
+        trace_end_step!(self, Some(Arc::clone(&return_data)));
         tracing_event!(
             self,
             super::tracing::Event::EndVM {
@@ -1268,29 +1263,24 @@ impl<B: Database> Machine<B> {
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let return_data = self.memory.read_buffer(offset, length)?;
+        let return_data = Arc::new(self.memory.read_buffer(offset, length)?);
 
         self.opcode_revert_impl(return_data, backend)
     }
 
-    pub fn opcode_revert_impl(&mut self, return_data: Buffer, backend: &mut B) -> Result<Action> {
+    pub fn opcode_revert_impl(
+        &mut self,
+        return_data: Arc<Buffer>,
+        backend: &mut B,
+    ) -> Result<Action> {
         backend.revert_snapshot();
         sol_log_data(&[b"EXIT", b"REVERT", &return_data]);
 
         if self.parent.is_none() {
-            return Ok(Action::Revert(Arc::new(return_data.to_vec())));
+            return Ok(Action::Revert(Arc::clone(&return_data)));
         }
 
-        #[cfg(feature = "tracing")]
-        let return_data = {
-            let return_data_arc = Arc::new(return_data);
-            let return_data_arc_cloned = Arc::clone(&return_data_arc);
-            trace_end_step!(
-                self,
-                Some(Box::new(move || return_data_arc_cloned.to_vec()))
-            );
-            Arc::try_unwrap(return_data_arc).expect("Only one reference must exist here")
-        };
+        trace_end_step!(self, Some(Arc::clone(&return_data)));
         tracing_event!(
             self,
             super::tracing::Event::EndVM {

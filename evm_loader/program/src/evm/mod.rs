@@ -52,7 +52,7 @@ macro_rules! tracing_event {
 }
 
 macro_rules! trace_end_step {
-    ($self:ident, $return_data_getter:expr) => {
+    ($self:ident, $return_data:expr) => {
         #[cfg(feature = "tracing")]
         if let Some(tracer) = &$self.tracer {
             tracer
@@ -60,7 +60,7 @@ macro_rules! trace_end_step {
                 .expect("Poisoned RwLock")
                 .event(crate::evm::tracing::Event::EndStep {
                     gas_used: 0_u64,
-                    return_data_getter: $return_data_getter,
+                    return_data: $return_data,
                 })
         }
     };
@@ -139,9 +139,9 @@ pub struct Machine<B: Database> {
     #[serde(with = "ethnum::serde::bytes::le")]
     gas_limit: U256,
 
-    execution_code: Buffer,
-    call_data: Buffer,
-    return_data: Buffer,
+    execution_code: Arc<Buffer>,
+    call_data: Arc<Buffer>,
+    return_data: Arc<Buffer>,
     return_range: Range<usize>,
 
     stack: Stack,
@@ -171,9 +171,10 @@ impl<B: Database> Machine<B> {
     }
 
     pub fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
-        fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &B) {
+        fn reinit_buffer<B: Database>(buffer: &mut Arc<Buffer>, backend: &B) {
             if let Some((key, range)) = buffer.uninit_data() {
-                *buffer = backend.map_solana_account(&key, |i| Buffer::from_account(i, range));
+                *buffer =
+                    backend.map_solana_account(&key, |i| Arc::new(Buffer::from_account(i, range)));
             }
         }
 
@@ -275,8 +276,8 @@ impl<B: Database> Machine<B> {
             gas_price: trx.gas_price,
             gas_limit: trx.gas_limit,
             execution_code,
-            call_data: trx.call_data,
-            return_data: Buffer::empty(),
+            call_data: Arc::new(trx.call_data),
+            return_data: Arc::new(Buffer::empty()),
             return_range: 0..0,
             stack: Stack::new(
                 #[cfg(feature = "tracing")]
@@ -327,7 +328,7 @@ impl<B: Database> Machine<B> {
             },
             gas_price: trx.gas_price,
             gas_limit: trx.gas_limit,
-            return_data: Buffer::empty(),
+            return_data: Arc::new(Buffer::empty()),
             return_range: 0..0,
             stack: Stack::new(
                 #[cfg(feature = "tracing")]
@@ -340,8 +341,8 @@ impl<B: Database> Machine<B> {
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,
-            execution_code: trx.call_data,
-            call_data: Buffer::empty(),
+            execution_code: Arc::new(trx.call_data),
+            call_data: Arc::new(Buffer::empty()),
             parent: None,
             phantom: PhantomData,
             #[cfg(feature = "tracing")]
@@ -350,9 +351,9 @@ impl<B: Database> Machine<B> {
     }
 
     pub fn execute(&mut self, step_limit: u64, backend: &mut B) -> Result<(ExitStatus, u64)> {
-        assert!(self.execution_code.uninit_data().is_none());
-        assert!(self.call_data.uninit_data().is_none());
-        assert!(self.return_data.uninit_data().is_none());
+        assert!(self.execution_code.is_initialized());
+        assert!(self.call_data.is_initialized());
+        assert!(self.return_data.is_initialized());
 
         let mut step = 0_u64;
 
@@ -397,14 +398,13 @@ impl<B: Database> Machine<B> {
                 Ok(result) => result,
                 Err(e) => {
                     let message = build_revert_message(&e.to_string());
-                    self.opcode_revert_impl(Buffer::from_slice(&message), backend)?
+                    self.opcode_revert_impl(Arc::new(Buffer::from_byte_vec(message)), backend)?
                 }
             };
 
             trace_end_step!(self, opcode_result != Action::Noop; match &opcode_result {
                 Action::Return(value) | Action::Revert(value) => {
-                    let value = Arc::clone(value);
-                    Some(Box::new(move || value.to_vec()))
+                    Some(Arc::clone(value))
                 },
                 _ => None,
             });
@@ -413,16 +413,8 @@ impl<B: Database> Machine<B> {
                 Action::Continue => self.pc += 1,
                 Action::Jump(target) => self.pc = target,
                 Action::Stop => break ExitStatus::Stop,
-                Action::Return(value) => {
-                    break ExitStatus::Return(
-                        Arc::try_unwrap(value).expect("Only one reference must exist here"),
-                    )
-                }
-                Action::Revert(value) => {
-                    break ExitStatus::Revert(
-                        Arc::try_unwrap(value).expect("Only one reference must exist here"),
-                    )
-                }
+                Action::Return(value) => break ExitStatus::Return(value.to_vec()),
+                Action::Revert(value) => break ExitStatus::Revert(value.to_vec()),
                 Action::Suicide => break ExitStatus::Suicide,
                 Action::Noop => {}
             };
@@ -442,8 +434,8 @@ impl<B: Database> Machine<B> {
         &mut self,
         reason: Reason,
         context: Context,
-        execution_code: Buffer,
-        call_data: Buffer,
+        execution_code: Arc<Buffer>,
+        call_data: Arc<Buffer>,
         gas_limit: Option<U256>,
     ) {
         let mut other = Self {
@@ -453,7 +445,7 @@ impl<B: Database> Machine<B> {
             gas_limit: gas_limit.unwrap_or(self.gas_limit),
             execution_code,
             call_data,
-            return_data: Buffer::empty(),
+            return_data: Arc::new(Buffer::empty()),
             return_range: 0..0,
             stack: Stack::new(
                 #[cfg(feature = "tracing")]

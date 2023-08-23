@@ -254,7 +254,7 @@ impl Transaction {
             TransactionEnvelope::AccessList => Transaction::AccessList(
                 rlp::decode::<AccessListTx>(transaction).map_err(Error::from)?,
             ),
-            _ => unimplemented!(),
+            TransactionEnvelope::DynamicFee => unimplemented!(),
         };
 
         Ok(tx)

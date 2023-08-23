@@ -24,7 +24,6 @@ enum TransactionEnvelope {
     Legacy,
     AccessList,
     DynamicFee,
-    Blob,
 }
 
 impl TransactionEnvelope {
@@ -38,7 +37,6 @@ impl TransactionEnvelope {
                 0x00 => (TransactionEnvelope::Legacy, &bytes[1..]),
                 0x01 => (TransactionEnvelope::AccessList, &bytes[1..]),
                 0x02 => (TransactionEnvelope::DynamicFee, &bytes[1..]),
-                0x03 => (TransactionEnvelope::Blob, &bytes[1..]),
                 byte => panic!("Unsupported EIP-2718 Transaction type | First byte: {byte}"),
             }
         }
@@ -238,9 +236,6 @@ impl rlp::Decodable for AccessListTx {
 
 // TODO: Will be added as a part of EIP-1559
 // struct DynamicFeeTx {}
-
-// TODO: Will be added as a part of EIP-1559
-// struct BlobTx {}
 
 #[derive(Debug, Clone)]
 pub enum Transaction {

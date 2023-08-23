@@ -120,12 +120,12 @@ impl VMTracer for ExecutiveVMTracer {
         });
     }
 
-    fn prepare_subtrace(&mut self, code: Vec<u8>) {
+    fn prepare_subtrace(&mut self, code: Arc<Buffer>) {
         Self::with_trace_in_depth(&mut self.data, self.depth, move |trace| {
             let parent_step = trace.operations.len() - 1; // won't overflow since we must already have pushed an operation in trace_prepare_execute.
             trace.subs.push(VMTrace {
                 parent_step,
-                code: code.into(),
+                code: code.to_vec().into(),
                 operations: vec![],
                 subs: vec![],
             });
@@ -154,7 +154,7 @@ pub trait VMTracer: Send {
     fn trace_executed(&mut self, _gas_used: U256) {}
 
     /// Spawn subtracer which will be used to trace deeper levels of execution.
-    fn prepare_subtrace(&mut self, _code: Vec<u8>) {}
+    fn prepare_subtrace(&mut self, _code: Arc<Buffer>) {}
 
     /// Finalize subtracer.
     fn done_subtrace(&mut self) {}

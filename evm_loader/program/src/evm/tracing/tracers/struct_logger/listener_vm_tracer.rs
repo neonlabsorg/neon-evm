@@ -1,11 +1,12 @@
 use crate::evm::tracing::trace::{MemoryDiff, StorageDiff, VMTracer};
-use crate::evm::{Context, ExitStatus};
+use crate::evm::{Buffer, Context, ExitStatus};
 use ethnum::U256;
+use std::sync::Arc;
 
 use super::vm_tracer::VmTracer;
 
 pub trait ListenerVmTracer {
-    fn begin_vm(&mut self, context: Context, code: Vec<u8>);
+    fn begin_vm(&mut self, context: Context, code: Arc<Buffer>);
     fn end_vm(&mut self, status: ExitStatus);
     fn begin_step(&mut self, opcode: u8, pc: usize);
     fn end_step(&mut self, gas_used: u64);
@@ -16,7 +17,7 @@ pub trait ListenerVmTracer {
 }
 
 impl ListenerVmTracer for VmTracer {
-    fn begin_vm(&mut self, _context: Context, code: Vec<u8>) {
+    fn begin_vm(&mut self, _context: Context, code: Arc<Buffer>) {
         self.push_step_diff();
 
         self.tracer.prepare_subtrace(code);

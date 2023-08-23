@@ -32,7 +32,7 @@ pub type TracerTypeOpt = Option<TracerType>;
 pub enum Event {
     BeginVM {
         context: Context,
-        code: Vec<u8>,
+        code: Arc<Buffer>,
     },
     EndVM {
         status: ExitStatus,

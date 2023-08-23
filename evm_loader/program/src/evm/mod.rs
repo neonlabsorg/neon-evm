@@ -362,7 +362,7 @@ impl<B: Database> Machine<B> {
             self,
             tracing::Event::BeginVM {
                 context: self.context,
-                code: self.execution_code.to_vec()
+                code: Arc::clone(&self.execution_code)
             }
         );
 

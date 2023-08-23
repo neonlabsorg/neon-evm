@@ -986,7 +986,7 @@ impl<B: Database> Machine<B> {
             self,
             super::tracing::Event::BeginVM {
                 context,
-                code: init_code.to_vec()
+                code: Arc::clone(&init_code)
             }
         );
 
@@ -1042,7 +1042,7 @@ impl<B: Database> Machine<B> {
             self,
             super::tracing::Event::BeginVM {
                 context,
-                code: code.to_vec()
+                code: Arc::clone(&code)
             }
         );
 
@@ -1091,7 +1091,7 @@ impl<B: Database> Machine<B> {
             self,
             super::tracing::Event::BeginVM {
                 context,
-                code: code.to_vec()
+                code: Arc::clone(&code)
             }
         );
 
@@ -1132,7 +1132,7 @@ impl<B: Database> Machine<B> {
             self,
             super::tracing::Event::BeginVM {
                 context,
-                code: code.to_vec()
+                code: Arc::clone(&code)
             }
         );
 
@@ -1171,7 +1171,7 @@ impl<B: Database> Machine<B> {
             self,
             super::tracing::Event::BeginVM {
                 context,
-                code: code.to_vec()
+                code: Arc::clone(&code)
             }
         );
 

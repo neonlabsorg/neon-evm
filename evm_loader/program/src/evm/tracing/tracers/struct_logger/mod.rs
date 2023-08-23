@@ -1,16 +1,21 @@
-use crate::account_storage::ProgramAccountStorage;
-use crate::evm::{Buffer, Machine};
-use ethnum::U256;
-use serde::Serialize;
-use serde_json::Value;
 use std::collections::BTreeMap;
 use std::iter;
 use std::sync::Arc;
+
+use ethnum::U256;
+use serde::Serialize;
+use serde_json::Value;
+
 use vm_tracer::VmTracer;
 
-use crate::evm::tracing::trace::{FullTraceData, TraceConfig, VMOperation, VMTrace, VMTracer};
+use crate::account_storage::ProgramAccountStorage;
 use crate::evm::tracing::tracers::struct_logger::listener_vm_tracer::ListenerVmTracer;
+use crate::evm::tracing::tracers::struct_logger::vm_tracer::{
+    FullTraceData, VMOperation, VMTrace, VMTracer,
+};
+use crate::evm::tracing::TraceConfig;
 use crate::evm::tracing::{EmulationResult, Event, EventListener};
+use crate::evm::{Buffer, Machine};
 use crate::executor::ExecutorState;
 use crate::types::hexbytes::HexBytes;
 
@@ -41,8 +46,7 @@ pub struct StructLog {
     /// Program counter.
     pub pc: u64,
     /// Operation name
-    #[serde(rename(serialize = "op"))]
-    pub op_name: &'static str,
+    pub op: &'static str,
     /// Amount of used gas
     pub gas: Option<u64>,
     /// Gas cost for this instruction.
@@ -54,13 +58,11 @@ pub struct StructLog {
     pub memory: Option<Vec<HexBytes>>, // U256 sized chunks
     /// Snapshot of the current stack sate
     #[serde(skip_serializing_if = "Option::is_none")]
-    // pub stack: Option<Vec<[u8; 32]>>,
     pub stack: Option<Vec<U256>>,
     /// Result of the step
     pub return_data: Option<Arc<Buffer>>,
     /// Snapshot of the current storage
     #[serde(skip_serializing_if = "Option::is_none")]
-    // pub storage: Option<BTreeMap<U256, [u8; 32]>>,
     pub storage: Option<BTreeMap<U256, U256>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
@@ -109,7 +111,7 @@ impl From<(usize, VMOperation)> for StructLog {
 
         Self {
             pc,
-            op_name,
+            op: op_name,
             gas,
             gas_cost,
             depth,

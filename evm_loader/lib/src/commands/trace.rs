@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
-use evm_loader::evm::tracing::trace::{TraceCallConfig, TraceConfig};
 use evm_loader::evm::tracing::tracers::new_tracer;
+use evm_loader::evm::tracing::{TraceCallConfig, TraceConfig};
 use evm_loader::types::Address;
 
 use crate::{

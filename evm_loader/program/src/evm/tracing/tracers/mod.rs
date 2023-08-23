@@ -1,5 +1,5 @@
-use crate::evm::tracing::trace::TraceConfig;
 use crate::evm::tracing::tracers::struct_logger::StructLogger;
+use crate::evm::tracing::TraceConfig;
 use crate::evm::tracing::TracerType;
 use std::sync::{Arc, RwLock};
 

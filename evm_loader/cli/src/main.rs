@@ -21,7 +21,7 @@ pub use context::Context;
 use std::io::Read;
 
 use ethnum::U256;
-use evm_loader::evm::tracing::trace::{TraceCallConfig, TraceConfig};
+use evm_loader::evm::tracing::{TraceCallConfig, TraceConfig};
 use serde_json::json;
 use solana_clap_utils::input_parsers::{pubkey_of, value_of, values_of};
 use solana_client::client_error::{ClientError, ClientErrorKind};

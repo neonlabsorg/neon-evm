@@ -1,4 +1,4 @@
-use crate::evm::tracing::trace::{MemoryDiff, StorageDiff, VMTracer};
+use crate::evm::tracing::tracers::struct_logger::vm_tracer::{MemoryDiff, StorageDiff, VMTracer};
 use crate::evm::{Buffer, Context, ExitStatus};
 use ethnum::U256;
 use std::sync::Arc;

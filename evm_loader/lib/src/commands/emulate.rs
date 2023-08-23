@@ -5,8 +5,8 @@ use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
-use evm_loader::evm::tracing::trace::{AccountOverrides, BlockOverrides};
 use evm_loader::evm::tracing::TracerTypeOpt;
+use evm_loader::evm::tracing::{AccountOverrides, BlockOverrides};
 use evm_loader::{
     account_storage::AccountStorage,
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},

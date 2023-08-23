@@ -173,8 +173,9 @@ impl<B: Database> Machine<B> {
     pub fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
         fn reinit_buffer<B: Database>(buffer: &mut Arc<Buffer>, backend: &B) {
             if let Some((key, range)) = buffer.uninit_data() {
-                *buffer =
-                    backend.map_solana_account(&key, |i| Arc::new(Buffer::from_account(i, range)));
+                *buffer = backend.map_solana_account(&key, |i| {
+                    Arc::new(unsafe { Buffer::from_account(i, range) })
+                });
             }
         }
 

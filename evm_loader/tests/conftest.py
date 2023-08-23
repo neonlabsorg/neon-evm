@@ -10,8 +10,9 @@ from eth_keys import keys as eth_keys
 from solana.publickey import PublicKey
 from solana.rpc.commitment import Confirmed
 
-from .solana_utils import EvmLoader, OperatorAccount, create_treasury_pool_address, make_new_user, get_solana_balance, \
-    deposit_neon, solana_client
+from .solana_utils import EvmLoader, create_treasury_pool_address, make_new_user, \
+    deposit_neon, solana_client, spl_cli, wait_confirm_transaction, get_solana_balance
+from .utils.constants import NEON_TOKEN_MINT_ID
 from .utils.contract import deploy_contract
 from .utils.storage import create_holder
 from .utils.types import TreasuryPool, Caller, Contract
@@ -37,44 +38,44 @@ def pytest_configure(config):
 
 
 @pytest.fixture(scope="session")
-def evm_loader(request) -> EvmLoader:
-    wallet = OperatorAccount(
-        pathlib.Path(request.config.getoption("--operator-keys").split(',')[0]).expanduser().as_posix())
-    loader = EvmLoader(wallet)
+def evm_loader(operator_keypair) -> EvmLoader:
+    loader = EvmLoader(operator_keypair)
     return loader
 
 
-@pytest.fixture(scope="session")
-def operator_keypair(request, evm_loader) -> Keypair:
-    """
-    Initialized solana keypair with balance. Get private key from cli or ~/.config/solana/id.json
-    """
-    with open(pathlib.Path(request.config.getoption("--operator-keys").split(',')[0]).expanduser(), "r") as key:
+def prepare_operator(key_file):
+    with open(pathlib.Path(key_file).expanduser(), "r") as key:
         secret_key = json.load(key)[:32]
         account = Keypair.from_secret_key(secret_key)
+    tx = solana_client.request_airdrop(account.public_key, 1000000 * 10 ** 9, commitment=Confirmed)
+    wait_confirm_transaction(solana_client, tx.value)
     caller_ether = eth_keys.PrivateKey(account.secret_key[:32]).public_key.to_canonical_address()
+    evm_loader = EvmLoader(account)
+    evm_loader.ether2program(caller_ether)
     caller, caller_nonce = evm_loader.ether2program(caller_ether)
-
     if get_solana_balance(PublicKey(caller)) == 0:
-
+        token = spl_cli.create_token_account(NEON_TOKEN_MINT_ID, account.public_key, fee_payer=key_file)
+        spl_cli.mint(NEON_TOKEN_MINT_ID, token, 5000, fee_payer=key_file)
         evm_loader.create_ether_account(caller_ether)
     return account
 
 
 @pytest.fixture(scope="session")
-def second_operator_keypair(request, evm_loader) -> Keypair:
+def operator_keypair(request) -> Keypair:
     """
     Initialized solana keypair with balance. Get private key from cli or ~/.config/solana/id.json
     """
-    with open(pathlib.Path(request.config.getoption("--operator-keys").split(",")[1]).expanduser(), "r") as key:
-        secret_key = json.load(key)[:32]
-        account = Keypair.from_secret_key(secret_key)
-    caller_ether = eth_keys.PrivateKey(account.secret_key[:32]).public_key.to_canonical_address()
-    caller, caller_nonce = evm_loader.ether2program(caller_ether)
+    key_file = request.config.getoption("--operator-keys").split(',')[0]
+    return prepare_operator(key_file)
 
-    if get_solana_balance(PublicKey(caller)) == 0:
-        evm_loader.create_ether_account(caller_ether)
-    return account
+
+@pytest.fixture(scope="session")
+def second_operator_keypair(request) -> Keypair:
+    """
+    Initialized solana keypair with balance. Get private key from cli or ~/.config/solana/id.json
+    """
+    key_file = request.config.getoption("--operator-keys").split(',')[1]
+    return prepare_operator(key_file)
 
 
 @pytest.fixture(scope="session")

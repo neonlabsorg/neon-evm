@@ -1197,13 +1197,11 @@ impl<B: Database> Machine<B> {
             backend.precompile_extension(&self.context, address, &self.call_data, self.is_static)
         });
 
-        if result.is_none() {
-            return Ok(Action::Noop);
+        if let Some(return_data) = result.transpose()? {
+            return self.opcode_return_impl(Arc::new(Buffer::from_byte_vec(return_data)), backend);
         }
 
-        let return_data = Arc::new(Buffer::from_byte_vec(result.unwrap()?));
-
-        self.opcode_return_impl(return_data, backend)
+        Ok(Action::Noop)
     }
 
     /// Halt execution returning output data

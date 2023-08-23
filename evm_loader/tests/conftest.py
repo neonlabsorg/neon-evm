@@ -53,7 +53,8 @@ def prepare_operator(key_file):
     evm_loader = EvmLoader(account)
     evm_loader.ether2program(caller_ether)
     caller, caller_nonce = evm_loader.ether2program(caller_ether)
-    if get_solana_balance(PublicKey(caller)) == 0:
+    acc_info = solana_client.get_account_info(PublicKey(caller), commitment=Confirmed)
+    if acc_info.value is None:
         token = spl_cli.create_token_account(NEON_TOKEN_MINT_ID, account.public_key, fee_payer=key_file)
         spl_cli.mint(NEON_TOKEN_MINT_ID, token, 5000, fee_payer=key_file)
         evm_loader.create_ether_account(caller_ether)

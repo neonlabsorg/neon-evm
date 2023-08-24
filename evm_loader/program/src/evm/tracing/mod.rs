@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use std::sync::{Arc, RwLock};
 
 use crate::account::EthereumAccount;
-use crate::evm::Buffer;
 use crate::executor::Action;
 use crate::types::hexbytes::HexBytes;
 use crate::types::Address;
@@ -34,7 +33,7 @@ pub type TracerTypeOpt = Option<TracerType>;
 pub enum Event {
     BeginVM {
         context: Context,
-        code: Arc<Buffer>,
+        code: Vec<u8>,
     },
     EndVM {
         status: ExitStatus,
@@ -47,7 +46,7 @@ pub enum Event {
     },
     EndStep {
         gas_used: u64,
-        return_data: Option<Arc<Buffer>>,
+        return_data: Option<Vec<u8>>,
     },
     StackPush {
         value: [u8; 32],

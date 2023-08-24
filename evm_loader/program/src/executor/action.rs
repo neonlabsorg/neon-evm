@@ -1,7 +1,6 @@
 use ethnum::U256;
 use serde::{Deserialize, Serialize};
 use solana_program::{instruction::AccountMeta, pubkey::Pubkey};
-use std::sync::Arc;
 
 use crate::types::Address;
 
@@ -38,7 +37,7 @@ pub enum Action {
     },
     EvmSetCode {
         address: Address,
-        code: Arc<crate::evm::Buffer>,
+        code: crate::evm::Buffer,
     },
     EvmSelfDestruct {
         address: Address,

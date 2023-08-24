@@ -2,7 +2,6 @@ use super::{Buffer, Context};
 use crate::{error::Result, types::Address};
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
-use std::sync::Arc;
 
 pub trait Database {
     fn chain_id(&self) -> U256;
@@ -15,8 +14,8 @@ pub trait Database {
 
     fn code_size(&self, address: &Address) -> Result<usize>;
     fn code_hash(&self, address: &Address) -> Result<[u8; 32]>;
-    fn code(&self, address: &Address) -> Result<Arc<Buffer>>;
-    fn set_code(&mut self, address: Address, code: Arc<Buffer>) -> Result<()>;
+    fn code(&self, address: &Address) -> Result<Buffer>;
+    fn set_code(&mut self, address: Address, code: Buffer) -> Result<()>;
     fn selfdestruct(&mut self, address: Address) -> Result<()>;
 
     fn storage(&self, address: &Address, index: &U256) -> Result<[u8; 32]>;

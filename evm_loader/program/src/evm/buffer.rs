@@ -8,7 +8,7 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 const BUFFER_ALIGN: usize = 1;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 enum Inner {
     Empty,
     Owned {
@@ -20,40 +20,28 @@ enum Inner {
         data: *mut u8,
         range: Range<usize>,
     },
-    ByteVec(Vec<u8>),
     AccountUninit {
         key: Pubkey,
         range: Range<usize>,
     },
 }
 
-/// SAFETY: It's safe to send `Inner` to another thread because its pointer to account is private
-unsafe impl Send for Inner {}
-/// SAFETY: We can mark `Inner` as `Sync` because it's read-only
-unsafe impl Sync for Inner {}
-
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub struct Buffer {
     ptr: *const u8,
     len: usize,
     inner: Inner,
 }
 
-/// SAFETY: It's safe to send `Buffer` to another thread because its pointer is private
-unsafe impl Send for Buffer {}
-/// SAFETY: We can mark `Buffer` as `Sync` because it's read-only
-unsafe impl Sync for Buffer {}
-
 impl Buffer {
-    fn new(mut inner: Inner) -> Self {
-        let (ptr, len) = match &mut inner {
+    fn new(inner: Inner) -> Self {
+        let (ptr, len) = match &inner {
             Inner::Empty => (NonNull::dangling().as_ptr(), 0),
             Inner::Owned { ptr, len } => (ptr.as_ptr(), *len),
             Inner::Account { data, range, .. } => {
                 let ptr = unsafe { data.add(range.start) };
                 (ptr, range.len())
             }
-            Inner::ByteVec(vec) => (vec.as_mut_ptr(), vec.len()),
             Inner::AccountUninit { .. } => (std::ptr::null_mut(), 0),
         };
 
@@ -107,11 +95,6 @@ impl Buffer {
                 len,
             })
         }
-    }
-
-    #[must_use]
-    pub fn from_byte_vec(vec: Vec<u8>) -> Self {
-        Self::new(Inner::ByteVec(vec))
     }
 
     #[must_use]
@@ -179,7 +162,6 @@ impl Clone for Buffer {
                 data: *data,
                 range: range.clone(),
             }),
-            Inner::ByteVec(vec) => Self::from_byte_vec(vec.clone()),
             Inner::AccountUninit { key, range } => Self::new(Inner::AccountUninit {
                 key: *key,
                 range: range.clone(),
@@ -213,10 +195,6 @@ impl serde::Serialize for Buffer {
                 sv.serialize_field("key", key)?;
                 sv.serialize_field("range", range)?;
                 sv.end()
-            }
-            Inner::ByteVec(vec) => {
-                let bytes = serde_bytes::Bytes::new(vec);
-                serializer.serialize_newtype_variant("evm_buffer", 3, "byte_vec", bytes)
             }
             Inner::AccountUninit { .. } => {
                 unreachable!()
@@ -277,21 +255,14 @@ impl<'de> serde::Deserialize<'de> for Buffer {
                     0 => variant.unit_variant().map(|_| Buffer::empty()),
                     1 => variant.newtype_variant().map(Buffer::from_slice),
                     2 => variant.struct_variant(&["key", "range"], self),
-                    3 => variant
-                        .newtype_variant()
-                        .map(|slice: &[u8]| Buffer::from_byte_vec(slice.to_vec())),
                     _ => Err(serde::de::Error::unknown_variant(
                         "_",
-                        &["empty", "owned", "account", "byte_vec"],
+                        &["empty", "owned", "account"],
                     )),
                 }
             }
         }
 
-        deserializer.deserialize_enum(
-            "evm_buffer",
-            &["empty", "owned", "account", "byte_vec"],
-            BufferVisitor,
-        )
+        deserializer.deserialize_enum("evm_buffer", &["empty", "owned", "account"], BufferVisitor)
     }
 }

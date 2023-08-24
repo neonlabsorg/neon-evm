@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use ethnum::U256;
 use serde::Serialize;
@@ -8,7 +7,7 @@ use serde_json::Value;
 use crate::account_storage::ProgramAccountStorage;
 use crate::evm::tracing::TraceConfig;
 use crate::evm::tracing::{EmulationResult, Event, EventListener};
-use crate::evm::{Buffer, Machine};
+use crate::evm::Machine;
 use crate::executor::ExecutorState;
 use crate::types::hexbytes::HexBytes;
 
@@ -50,7 +49,7 @@ pub struct StructLog {
     #[serde(skip_serializing_if = "Option::is_none")]
     stack: Option<Vec<U256>>,
     /// Result of the step
-    return_data: Option<Arc<Buffer>>,
+    return_data: Option<HexBytes>,
     /// Snapshot of the current storage
     #[serde(skip_serializing_if = "Option::is_none")]
     storage: Option<BTreeMap<U256, U256>>,
@@ -191,7 +190,7 @@ impl EventListener for StructLogger {
                     };
                 }
                 if self.config.enable_return_data {
-                    last.return_data = return_data;
+                    last.return_data = return_data.map(Into::into);
                 }
             }
             Event::StorageAccess { index, value } if !self.config.disable_storage => {

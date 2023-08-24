@@ -2,7 +2,6 @@
 #![allow(clippy::type_repetition_in_bounds)]
 #![allow(clippy::unsafe_derive_deserialize)]
 
-use std::sync::Arc;
 use std::{marker::PhantomData, ops::Range};
 
 use ethnum::U256;
@@ -139,9 +138,9 @@ pub struct Machine<B: Database> {
     #[serde(with = "ethnum::serde::bytes::le")]
     gas_limit: U256,
 
-    execution_code: Arc<Buffer>,
-    call_data: Arc<Buffer>,
-    return_data: Arc<Buffer>,
+    execution_code: Buffer,
+    call_data: Buffer,
+    return_data: Buffer,
     return_range: Range<usize>,
 
     stack: Stack,
@@ -171,11 +170,10 @@ impl<B: Database> Machine<B> {
     }
 
     pub fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
-        fn reinit_buffer<B: Database>(buffer: &mut Arc<Buffer>, backend: &B) {
+        fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &B) {
             if let Some((key, range)) = buffer.uninit_data() {
-                *buffer = backend.map_solana_account(&key, |i| {
-                    Arc::new(unsafe { Buffer::from_account(i, range) })
-                });
+                *buffer =
+                    backend.map_solana_account(&key, |i| unsafe { Buffer::from_account(i, range) });
             }
         }
 
@@ -277,8 +275,8 @@ impl<B: Database> Machine<B> {
             gas_price: trx.gas_price,
             gas_limit: trx.gas_limit,
             execution_code,
-            call_data: Arc::new(trx.call_data),
-            return_data: Arc::new(Buffer::empty()),
+            call_data: trx.call_data,
+            return_data: Buffer::empty(),
             return_range: 0..0,
             stack: Stack::new(
                 #[cfg(feature = "tracing")]
@@ -329,7 +327,7 @@ impl<B: Database> Machine<B> {
             },
             gas_price: trx.gas_price,
             gas_limit: trx.gas_limit,
-            return_data: Arc::new(Buffer::empty()),
+            return_data: Buffer::empty(),
             return_range: 0..0,
             stack: Stack::new(
                 #[cfg(feature = "tracing")]
@@ -342,8 +340,8 @@ impl<B: Database> Machine<B> {
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,
-            execution_code: Arc::new(trx.call_data),
-            call_data: Arc::new(Buffer::empty()),
+            execution_code: trx.call_data,
+            call_data: Buffer::empty(),
             parent: None,
             phantom: PhantomData,
             #[cfg(feature = "tracing")]
@@ -362,7 +360,7 @@ impl<B: Database> Machine<B> {
             self,
             tracing::Event::BeginVM {
                 context: self.context,
-                code: Arc::clone(&self.execution_code)
+                code: self.execution_code.to_vec()
             }
         );
 
@@ -399,14 +397,12 @@ impl<B: Database> Machine<B> {
                 Ok(result) => result,
                 Err(e) => {
                     let message = build_revert_message(&e.to_string());
-                    self.opcode_revert_impl(Arc::new(Buffer::from_byte_vec(message)), backend)?
+                    self.opcode_revert_impl(Buffer::from_slice(&message), backend)?
                 }
             };
 
             trace_end_step!(self, opcode_result != Action::Noop; match &opcode_result {
-                Action::Return(value) | Action::Revert(value) => {
-                    Some(Arc::clone(value))
-                },
+                Action::Return(value) | Action::Revert(value) => Some(value.clone()),
                 _ => None,
             });
 
@@ -414,8 +410,8 @@ impl<B: Database> Machine<B> {
                 Action::Continue => self.pc += 1,
                 Action::Jump(target) => self.pc = target,
                 Action::Stop => break ExitStatus::Stop,
-                Action::Return(value) => break ExitStatus::Return(value.to_vec()),
-                Action::Revert(value) => break ExitStatus::Revert(value.to_vec()),
+                Action::Return(value) => break ExitStatus::Return(value),
+                Action::Revert(value) => break ExitStatus::Revert(value),
                 Action::Suicide => break ExitStatus::Suicide,
                 Action::Noop => {}
             };
@@ -435,8 +431,8 @@ impl<B: Database> Machine<B> {
         &mut self,
         reason: Reason,
         context: Context,
-        execution_code: Arc<Buffer>,
-        call_data: Arc<Buffer>,
+        execution_code: Buffer,
+        call_data: Buffer,
         gas_limit: Option<U256>,
     ) {
         let mut other = Self {
@@ -446,7 +442,7 @@ impl<B: Database> Machine<B> {
             gas_limit: gas_limit.unwrap_or(self.gas_limit),
             execution_code,
             call_data,
-            return_data: Arc::new(Buffer::empty()),
+            return_data: Buffer::empty(),
             return_range: 0..0,
             stack: Stack::new(
                 #[cfg(feature = "tracing")]

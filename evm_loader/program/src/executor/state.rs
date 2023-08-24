@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use ethnum::{AsU256, U256};
 use solana_program::instruction::Instruction;
@@ -282,19 +281,19 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(self.backend.code_hash(from_address))
     }
 
-    fn code(&self, from_address: &Address) -> Result<Arc<crate::evm::Buffer>> {
+    fn code(&self, from_address: &Address) -> Result<crate::evm::Buffer> {
         for action in &self.actions {
             if let Action::EvmSetCode { address, code } = action {
                 if from_address == address {
-                    return Ok(Arc::clone(code));
+                    return Ok(code.clone());
                 }
             }
         }
 
-        Ok(Arc::new(self.backend.code(from_address)))
+        Ok(self.backend.code(from_address))
     }
 
-    fn set_code(&mut self, address: Address, code: Arc<crate::evm::Buffer>) -> Result<()> {
+    fn set_code(&mut self, address: Address, code: crate::evm::Buffer) -> Result<()> {
         if code.starts_with(&[0xEF]) {
             // https://eips.ethereum.org/EIPS/eip-3541
             return Err(Error::EVMObjectFormatNotSupported(address));

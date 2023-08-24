@@ -181,24 +181,29 @@ pub(crate) async fn emulate_trx<'a>(
 ) -> Result<EmulationResult, NeonError> {
     let (exit_status, actions, steps_executed) = {
         let mut backend = ExecutorState::new(storage);
-        let trx = Transaction::Legacy(evm_loader::types::LegacyTx {
-            nonce: tx_params
-                .nonce
-                .unwrap_or_else(|| storage.nonce(&tx_params.from)),
-            gas_price: U256::ZERO,
-            gas_limit: tx_params.gas_limit.unwrap_or(U256::MAX),
-            target: tx_params.to,
-            value: tx_params.value.unwrap_or_default(),
-            call_data: evm_loader::evm::Buffer::from_slice(&tx_params.data.unwrap_or_default()),
-            chain_id: Some(chain_id.into()),
-            v: U256::default(),
-            r: U256::default(),
-            s: U256::default(),
-            recovery_id: u8::default(),
+        let trx_payload =
+            evm_loader::types::TransactionPayload::Legacy(evm_loader::types::LegacyTx {
+                nonce: tx_params
+                    .nonce
+                    .unwrap_or_else(|| storage.nonce(&tx_params.from)),
+                gas_price: U256::ZERO,
+                gas_limit: tx_params.gas_limit.unwrap_or(U256::MAX),
+                target: tx_params.to,
+                value: tx_params.value.unwrap_or_default(),
+                call_data: evm_loader::evm::Buffer::from_slice(&tx_params.data.unwrap_or_default()),
+                v: U256::default(),
+                r: U256::default(),
+                s: U256::default(),
+                chain_id: Some(chain_id.into()),
+                recovery_id: u8::default(),
+            });
+
+        let trx = Transaction {
+            transaction: trx_payload,
             rlp_len: usize::default(),
             hash: <[u8; 32]>::default(),
             signed_hash: <[u8; 32]>::default(),
-        });
+        };
 
         let mut evm = Machine::new(&trx, tx_params.from, &mut backend, tracer)?;
 

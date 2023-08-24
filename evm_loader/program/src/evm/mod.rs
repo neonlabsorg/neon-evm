@@ -192,13 +192,13 @@ impl<B: Database> Machine<B> {
         }
 
         if let Some(chain_id) = trx.chain_id() {
-            if backend.chain_id() != *chain_id {
-                return Err(Error::InvalidChainId(*chain_id));
+            if backend.chain_id() != chain_id {
+                return Err(Error::InvalidChainId(chain_id));
             }
         }
 
-        if backend.balance(&origin)? < *trx.value() {
-            return Err(Error::InsufficientBalance(origin, *trx.value()));
+        if backend.balance(&origin)? < trx.value() {
+            return Err(Error::InsufficientBalance(origin, trx.value()));
         }
 
         if backend.code_size(&origin)? != 0 {
@@ -232,13 +232,13 @@ impl<B: Database> Machine<B> {
     ) -> Result<Self> {
         assert!(trx.target().is_some());
 
-        let target = *trx.target().unwrap();
+        let target = trx.target().unwrap();
         sol_log_data(&[b"ENTER", b"CALL", target.as_bytes()]);
 
         backend.increment_nonce(origin)?;
         backend.snapshot();
 
-        backend.transfer(origin, target, *trx.value())?;
+        backend.transfer(origin, target, trx.value())?;
 
         let execution_code = backend.code(&target)?;
 
@@ -247,11 +247,11 @@ impl<B: Database> Machine<B> {
             context: Context {
                 caller: origin,
                 contract: target,
-                value: *trx.value(),
+                value: trx.value(),
                 code_address: Some(target),
             },
-            gas_price: *trx.gas_price(),
-            gas_limit: *trx.gas_limit(),
+            gas_price: trx.gas_price(),
+            gas_limit: trx.gas_limit(),
             execution_code,
             call_data: trx.call_data().clone(),
             return_data: Buffer::empty(),
@@ -293,18 +293,18 @@ impl<B: Database> Machine<B> {
         backend.snapshot();
 
         backend.increment_nonce(target)?;
-        backend.transfer(origin, target, *trx.value())?;
+        backend.transfer(origin, target, trx.value())?;
 
         Ok(Self {
             origin,
             context: Context {
                 caller: origin,
                 contract: target,
-                value: *trx.value(),
+                value: trx.value(),
                 code_address: None,
             },
-            gas_price: *trx.gas_price(),
-            gas_limit: *trx.gas_limit(),
+            gas_price: trx.gas_price(),
+            gas_limit: trx.gas_limit(),
             return_data: Buffer::empty(),
             return_range: 0..0,
             stack: Stack::new(

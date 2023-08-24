@@ -20,23 +20,24 @@ impl rlp::Decodable for StorageKey {
     }
 }
 
-enum TransactionEnvelope {
+#[derive(Debug, Clone)]
+pub enum TransactionEnvelope {
     Legacy,
     AccessList,
     DynamicFee,
 }
 
 impl TransactionEnvelope {
-    pub fn get_type(bytes: &[u8]) -> (TransactionEnvelope, &[u8]) {
+    pub fn get_type(bytes: &[u8]) -> (Option<TransactionEnvelope>, &[u8]) {
         // Legacy transaction format
         if rlp::Rlp::new(bytes).is_list() {
-            (TransactionEnvelope::Legacy, bytes)
+            (None, bytes)
         // It's an EIP-2718 typed TX envelope.
         } else {
             match bytes[0] {
-                0x00 => (TransactionEnvelope::Legacy, &bytes[1..]),
-                0x01 => (TransactionEnvelope::AccessList, &bytes[1..]),
-                0x02 => (TransactionEnvelope::DynamicFee, &bytes[1..]),
+                0x00 => (Some(TransactionEnvelope::Legacy), &bytes[1..]),
+                0x01 => (Some(TransactionEnvelope::AccessList), &bytes[1..]),
+                0x02 => (Some(TransactionEnvelope::DynamicFee), &bytes[1..]),
                 byte => panic!("Unsupported EIP-2718 Transaction type | First byte: {byte}"),
             }
         }
@@ -56,9 +57,6 @@ pub struct LegacyTx {
     pub s: U256,
     pub chain_id: Option<U256>,
     pub recovery_id: u8,
-    pub rlp_len: usize,
-    pub hash: [u8; 32],
-    pub signed_hash: [u8; 32],
 }
 
 impl rlp::Decodable for LegacyTx {
@@ -109,9 +107,6 @@ impl rlp::Decodable for LegacyTx {
             return Err(rlp::DecoderError::RlpExpectedToBeData);
         };
 
-        let hash = solana_program::keccak::hash(rlp.as_raw()).to_bytes();
-        let signed_hash = signed_hash(rlp, chain_id)?;
-
         let tx = LegacyTx {
             nonce,
             gas_price,
@@ -124,9 +119,6 @@ impl rlp::Decodable for LegacyTx {
             s,
             chain_id,
             recovery_id,
-            rlp_len,
-            hash,
-            signed_hash,
         };
 
         Ok(tx)
@@ -146,9 +138,6 @@ pub struct AccessListTx {
     chain_id: U256,
     recovery_id: u8,
     access_list: Vec<(Address, Vec<StorageKey>)>,
-    rlp_len: usize,
-    hash: [u8; 32],
-    signed_hash: [u8; 32],
 }
 
 impl rlp::Decodable for AccessListTx {
@@ -210,9 +199,6 @@ impl rlp::Decodable for AccessListTx {
             return Err(rlp::DecoderError::RlpIncorrectListLen);
         }
 
-        let hash = solana_program::keccak::hashv(&[&[0x01], rlp.as_raw()]).to_bytes();
-        let signed_hash = eip2718_signed_hash(&[0x01], rlp, 8)?;
-
         let tx = AccessListTx {
             nonce,
             gas_price,
@@ -225,9 +211,6 @@ impl rlp::Decodable for AccessListTx {
             chain_id,
             recovery_id: y_parity,
             access_list,
-            rlp_len,
-            hash,
-            signed_hash,
         };
 
         Ok(tx)
@@ -238,9 +221,177 @@ impl rlp::Decodable for AccessListTx {
 // struct DynamicFeeTx {}
 
 #[derive(Debug, Clone)]
-pub enum Transaction {
+pub enum TransactionPayload {
     Legacy(LegacyTx),
     AccessList(AccessListTx),
+}
+
+#[derive(Debug, Clone)]
+pub struct Transaction {
+    pub transaction: TransactionPayload,
+    pub rlp_len: usize,
+    pub hash: [u8; 32],
+    pub signed_hash: [u8; 32],
+}
+
+impl Transaction {
+    pub fn from_payload(
+        transaction_type: &Option<TransactionEnvelope>,
+        chain_id: Option<U256>,
+        transaction_rlp: &rlp::Rlp,
+        transaction: TransactionPayload,
+    ) -> Self {
+        let (hash, signed_hash) = match *transaction_type {
+            // Legacy transaction wrapped in envelop
+            Some(TransactionEnvelope::Legacy) => {
+                let hash =
+                    solana_program::keccak::hashv(&[&[0x00], transaction_rlp.as_raw()]).to_bytes();
+                let signed_hash =
+                    Self::calculate_legacy_signature(transaction_rlp, chain_id, Some(&[0x00]))
+                        .unwrap();
+
+                (hash, signed_hash)
+            }
+            // Access List transaction
+            Some(TransactionEnvelope::AccessList) => {
+                let hash =
+                    solana_program::keccak::hashv(&[&[0x01], transaction_rlp.as_raw()]).to_bytes();
+                let signed_hash = Self::eip2718_signed_hash(&[0x01], transaction_rlp, 8).unwrap();
+
+                (hash, signed_hash)
+            }
+            // Legacy trasaction
+            None => {
+                let hash = solana_program::keccak::hash(transaction_rlp.as_raw()).to_bytes();
+                let signed_hash =
+                    Self::calculate_legacy_signature(transaction_rlp, chain_id, None).unwrap();
+
+                (hash, signed_hash)
+            }
+            _ => unimplemented!(),
+        };
+
+        let rlp_len = {
+            let info = transaction_rlp.payload_info().unwrap();
+            info.header_len + info.value_len
+        };
+
+        Transaction {
+            transaction,
+            rlp_len,
+            hash,
+            signed_hash,
+        }
+    }
+
+    fn eip2718_signed_hash(
+        transaction_type: &[u8],
+        transaction: &rlp::Rlp,
+        middle_offset: usize,
+    ) -> Result<[u8; 32], rlp::DecoderError> {
+        let raw = transaction.as_raw();
+        let payload_info = transaction.payload_info()?;
+        let (_, middle_offset) = transaction.at_with_offset(middle_offset)?;
+
+        let body = &raw[payload_info.header_len..middle_offset];
+
+        let header: Vec<u8> = {
+            let len = body.len();
+            if len <= 55 {
+                let len: u8 = len.try_into().unwrap();
+                vec![0xC0 + len]
+            } else {
+                let len_bytes = {
+                    let leading_empty_bytes = (len.leading_zeros() as usize) / 8;
+                    let bytes = len.to_be_bytes();
+                    bytes[leading_empty_bytes..].to_vec()
+                };
+                let len_bytes_len: u8 = len_bytes.len().try_into().unwrap();
+
+                let mut header = Vec::with_capacity(10);
+                header.extend_from_slice(&[0xF7 + len_bytes_len]);
+                header.extend_from_slice(&len_bytes);
+
+                header
+            }
+        };
+
+        let hash = solana_program::keccak::hashv(&[transaction_type, &header, body]).to_bytes();
+
+        Ok(hash)
+    }
+
+    fn calculate_legacy_signature(
+        transaction: &rlp::Rlp,
+        chain_id: Option<U256>,
+        transaction_type_byte: Option<&[u8]>,
+    ) -> Result<[u8; 32], rlp::DecoderError> {
+        let raw = transaction.as_raw();
+        let payload_info = transaction.payload_info()?;
+        let (_, v_offset) = transaction.at_with_offset(6)?;
+
+        let middle = &raw[payload_info.header_len..v_offset];
+
+        let trailer = chain_id.map_or_else(Vec::new, |chain_id| {
+            let chain_id = {
+                let leading_empty_bytes = (chain_id.leading_zeros() as usize) / 8;
+                let bytes = chain_id.to_be_bytes();
+                bytes[leading_empty_bytes..].to_vec()
+            };
+
+            let mut trailer = Vec::with_capacity(64);
+            match chain_id.len() {
+                0 => {
+                    trailer.extend_from_slice(&[0x80]);
+                }
+                1 if chain_id[0] < 0x80 => {
+                    trailer.extend_from_slice(&chain_id);
+                }
+                len @ 1..=55 => {
+                    let len: u8 = len.try_into().unwrap();
+
+                    trailer.extend_from_slice(&[0x80 + len]);
+                    trailer.extend_from_slice(&chain_id);
+                }
+                _ => {
+                    unreachable!("chain_id.len() <= 32")
+                }
+            }
+
+            trailer.extend_from_slice(&[0x80, 0x80]);
+            trailer
+        });
+
+        let header: Vec<u8> = {
+            let len = middle.len() + trailer.len();
+            if len <= 55 {
+                let len: u8 = len.try_into().unwrap();
+                vec![0xC0 + len]
+            } else {
+                let len_bytes = {
+                    let leading_empty_bytes = (len.leading_zeros() as usize) / 8;
+                    let bytes = len.to_be_bytes();
+                    bytes[leading_empty_bytes..].to_vec()
+                };
+                let len_bytes_len: u8 = len_bytes.len().try_into().unwrap();
+
+                let mut header = Vec::with_capacity(10);
+                header.extend_from_slice(&[0xF7 + len_bytes_len]);
+                header.extend_from_slice(&len_bytes);
+
+                header
+            }
+        };
+
+        let hash = transaction_type_byte.map_or_else(
+            || solana_program::keccak::hashv(&[&header, middle, &trailer]).to_bytes(),
+            |type_byte| {
+                solana_program::keccak::hashv(&[type_byte, &header, middle, &trailer]).to_bytes()
+            },
+        );
+
+        Ok(hash)
+    }
 }
 
 impl Transaction {
@@ -248,13 +399,35 @@ impl Transaction {
         let (transaction_type, transaction) = TransactionEnvelope::get_type(transaction);
 
         let tx = match transaction_type {
-            TransactionEnvelope::Legacy => {
-                Transaction::Legacy(rlp::decode::<LegacyTx>(transaction).map_err(Error::from)?)
+            Some(TransactionEnvelope::Legacy) => {
+                let legacy_tx = rlp::decode::<LegacyTx>(transaction).map_err(Error::from)?;
+                let chain_id = legacy_tx.chain_id;
+                let tx = TransactionPayload::Legacy(legacy_tx);
+                Transaction::from_payload(
+                    &Some(TransactionEnvelope::Legacy),
+                    chain_id,
+                    &rlp::Rlp::new(transaction),
+                    tx,
+                )
             }
-            TransactionEnvelope::AccessList => Transaction::AccessList(
-                rlp::decode::<AccessListTx>(transaction).map_err(Error::from)?,
-            ),
-            TransactionEnvelope::DynamicFee => unimplemented!(),
+            Some(TransactionEnvelope::AccessList) => {
+                let access_list = rlp::decode::<AccessListTx>(transaction).map_err(Error::from)?;
+                let chain_id = access_list.chain_id;
+                let tx = TransactionPayload::AccessList(access_list);
+                Transaction::from_payload(
+                    &Some(TransactionEnvelope::AccessList),
+                    Some(chain_id),
+                    &rlp::Rlp::new(transaction),
+                    tx,
+                )
+            }
+            None => {
+                let legacy_tx = rlp::decode::<LegacyTx>(transaction).map_err(Error::from)?;
+                let chain_id = legacy_tx.chain_id;
+                let tx = TransactionPayload::Legacy(legacy_tx);
+                Transaction::from_payload(&None, chain_id, &rlp::Rlp::new(transaction), tx)
+            }
+            Some(TransactionEnvelope::DynamicFee) => unimplemented!(),
         };
 
         Ok(tx)
@@ -265,7 +438,7 @@ impl Transaction {
         use solana_program::secp256k1_recover::secp256k1_recover;
 
         let signature = [self.r().to_be_bytes(), self.s().to_be_bytes()].concat();
-        let public_key = secp256k1_recover(self.signed_hash(), self.recovery_id(), &signature)?;
+        let public_key = secp256k1_recover(&self.signed_hash(), self.recovery_id(), &signature)?;
 
         let Hash(address) = hash(&public_key.to_bytes());
         let address: [u8; 20] = address[12..32].try_into()?;
@@ -275,218 +448,106 @@ impl Transaction {
 
     #[must_use]
     pub fn nonce(&self) -> u64 {
-        match self {
-            Transaction::Legacy(LegacyTx { nonce, .. })
-            | Transaction::AccessList(AccessListTx { nonce, .. }) => *nonce,
+        match self.transaction {
+            TransactionPayload::Legacy(LegacyTx { nonce, .. })
+            | TransactionPayload::AccessList(AccessListTx { nonce, .. }) => nonce,
         }
     }
 
     #[must_use]
-    pub fn gas_price(&self) -> &U256 {
-        match self {
-            Transaction::Legacy(LegacyTx { gas_price, .. })
-            | Transaction::AccessList(AccessListTx { gas_price, .. }) => gas_price,
+    pub fn gas_price(&self) -> U256 {
+        match self.transaction {
+            TransactionPayload::Legacy(LegacyTx { gas_price, .. })
+            | TransactionPayload::AccessList(AccessListTx { gas_price, .. }) => gas_price,
         }
     }
 
     #[must_use]
-    pub fn gas_limit(&self) -> &U256 {
-        match self {
-            Transaction::Legacy(LegacyTx { gas_limit, .. })
-            | Transaction::AccessList(AccessListTx { gas_limit, .. }) => gas_limit,
+    pub fn gas_limit(&self) -> U256 {
+        match self.transaction {
+            TransactionPayload::Legacy(LegacyTx { gas_limit, .. })
+            | TransactionPayload::AccessList(AccessListTx { gas_limit, .. }) => gas_limit,
         }
     }
 
     #[must_use]
-    pub fn target(&self) -> Option<&Address> {
-        match self {
-            Transaction::Legacy(LegacyTx { target, .. })
-            | Transaction::AccessList(AccessListTx { target, .. }) => target.as_ref(),
+    pub fn target(&self) -> Option<Address> {
+        match self.transaction {
+            TransactionPayload::Legacy(LegacyTx { target, .. })
+            | TransactionPayload::AccessList(AccessListTx { target, .. }) => target,
         }
     }
 
     #[must_use]
-    pub fn value(&self) -> &U256 {
-        match self {
-            Transaction::Legacy(LegacyTx { value, .. })
-            | Transaction::AccessList(AccessListTx { value, .. }) => value,
+    pub fn value(&self) -> U256 {
+        match self.transaction {
+            TransactionPayload::Legacy(LegacyTx { value, .. })
+            | TransactionPayload::AccessList(AccessListTx { value, .. }) => value,
         }
     }
 
     #[must_use]
     pub fn call_data(&self) -> &crate::evm::Buffer {
-        match self {
-            Transaction::Legacy(LegacyTx { call_data, .. })
-            | Transaction::AccessList(AccessListTx { call_data, .. }) => call_data,
+        match &self.transaction {
+            TransactionPayload::Legacy(LegacyTx { call_data, .. })
+            | TransactionPayload::AccessList(AccessListTx { call_data, .. }) => call_data,
         }
     }
 
     #[must_use]
-    pub fn r(&self) -> &U256 {
-        match self {
-            Transaction::Legacy(LegacyTx { r, .. })
-            | Transaction::AccessList(AccessListTx { r, .. }) => r,
+    pub fn r(&self) -> U256 {
+        match self.transaction {
+            TransactionPayload::Legacy(LegacyTx { r, .. })
+            | TransactionPayload::AccessList(AccessListTx { r, .. }) => r,
         }
     }
 
     #[must_use]
-    pub fn s(&self) -> &U256 {
-        match self {
-            Transaction::Legacy(LegacyTx { s, .. })
-            | Transaction::AccessList(AccessListTx { s, .. }) => s,
+    pub fn s(&self) -> U256 {
+        match self.transaction {
+            TransactionPayload::Legacy(LegacyTx { s, .. })
+            | TransactionPayload::AccessList(AccessListTx { s, .. }) => s,
         }
     }
 
     #[must_use]
-    pub fn chain_id(&self) -> Option<&U256> {
-        match self {
-            Transaction::Legacy(LegacyTx { chain_id, .. }) => chain_id.as_ref(),
-            Transaction::AccessList(AccessListTx { chain_id, .. }) => Some(chain_id),
+    pub fn chain_id(&self) -> Option<U256> {
+        match self.transaction {
+            TransactionPayload::Legacy(LegacyTx { chain_id, .. }) => chain_id,
+            TransactionPayload::AccessList(AccessListTx { chain_id, .. }) => Some(chain_id),
         }
     }
 
     #[must_use]
     pub fn recovery_id(&self) -> u8 {
-        match self {
-            Transaction::Legacy(LegacyTx { recovery_id, .. })
-            | Transaction::AccessList(AccessListTx { recovery_id, .. }) => *recovery_id,
+        match self.transaction {
+            TransactionPayload::Legacy(LegacyTx { recovery_id, .. })
+            | TransactionPayload::AccessList(AccessListTx { recovery_id, .. }) => recovery_id,
         }
     }
 
     #[must_use]
     pub fn rlp_len(&self) -> usize {
-        match self {
-            Transaction::Legacy(LegacyTx { rlp_len, .. })
-            | Transaction::AccessList(AccessListTx { rlp_len, .. }) => *rlp_len,
-        }
+        self.rlp_len
     }
 
     #[must_use]
-    pub fn hash(&self) -> &[u8; 32] {
-        match self {
-            Transaction::Legacy(LegacyTx { hash, .. })
-            | Transaction::AccessList(AccessListTx { hash, .. }) => hash,
-        }
+    pub fn hash(&self) -> [u8; 32] {
+        self.hash
     }
 
     #[must_use]
-    pub fn signed_hash(&self) -> &[u8; 32] {
-        match self {
-            Transaction::Legacy(LegacyTx { signed_hash, .. })
-            | Transaction::AccessList(AccessListTx { signed_hash, .. }) => signed_hash,
-        }
+    pub fn signed_hash(&self) -> [u8; 32] {
+        self.signed_hash
     }
 
     #[must_use]
     pub fn access_list(&self) -> Option<&Vec<(Address, Vec<StorageKey>)>> {
-        match self {
-            Transaction::AccessList(AccessListTx { access_list, .. }) => Some(access_list),
-            Transaction::Legacy(_) => None,
+        match &self.transaction {
+            TransactionPayload::AccessList(AccessListTx { access_list, .. }) => Some(access_list),
+            TransactionPayload::Legacy(_) => None,
         }
     }
-}
-
-fn eip2718_signed_hash(
-    transaction_type: &[u8],
-    transaction: &rlp::Rlp,
-    middle_offset: usize,
-) -> Result<[u8; 32], rlp::DecoderError> {
-    let raw = transaction.as_raw();
-    let payload_info = transaction.payload_info()?;
-    let (_, middle_offset) = transaction.at_with_offset(middle_offset)?;
-
-    let body = &raw[payload_info.header_len..middle_offset];
-
-    let header: Vec<u8> = {
-        let len = body.len();
-        if len <= 55 {
-            let len: u8 = len.try_into().unwrap();
-            vec![0xC0 + len]
-        } else {
-            let len_bytes = {
-                let leading_empty_bytes = (len.leading_zeros() as usize) / 8;
-                let bytes = len.to_be_bytes();
-                bytes[leading_empty_bytes..].to_vec()
-            };
-            let len_bytes_len: u8 = len_bytes.len().try_into().unwrap();
-
-            let mut header = Vec::with_capacity(10);
-            header.extend_from_slice(&[0xF7 + len_bytes_len]);
-            header.extend_from_slice(&len_bytes);
-
-            header
-        }
-    };
-
-    let hash = solana_program::keccak::hashv(&[transaction_type, &header, body]).to_bytes();
-
-    Ok(hash)
-}
-
-fn signed_hash(
-    transaction: &rlp::Rlp,
-    chain_id: Option<U256>,
-) -> Result<[u8; 32], rlp::DecoderError> {
-    let raw = transaction.as_raw();
-    let payload_info = transaction.payload_info()?;
-    let (_, v_offset) = transaction.at_with_offset(6)?;
-
-    let middle = &raw[payload_info.header_len..v_offset];
-
-    let trailer = chain_id.map_or_else(Vec::new, |chain_id| {
-        let chain_id = {
-            let leading_empty_bytes = (chain_id.leading_zeros() as usize) / 8;
-            let bytes = chain_id.to_be_bytes();
-            bytes[leading_empty_bytes..].to_vec()
-        };
-
-        let mut trailer = Vec::with_capacity(64);
-        match chain_id.len() {
-            0 => {
-                trailer.extend_from_slice(&[0x80]);
-            }
-            1 if chain_id[0] < 0x80 => {
-                trailer.extend_from_slice(&chain_id);
-            }
-            len @ 1..=55 => {
-                let len: u8 = len.try_into().unwrap();
-
-                trailer.extend_from_slice(&[0x80 + len]);
-                trailer.extend_from_slice(&chain_id);
-            }
-            _ => {
-                unreachable!("chain_id.len() <= 32")
-            }
-        }
-
-        trailer.extend_from_slice(&[0x80, 0x80]);
-        trailer
-    });
-
-    let header: Vec<u8> = {
-        let len = middle.len() + trailer.len();
-        if len <= 55 {
-            let len: u8 = len.try_into().unwrap();
-            vec![0xC0 + len]
-        } else {
-            let len_bytes = {
-                let leading_empty_bytes = (len.leading_zeros() as usize) / 8;
-                let bytes = len.to_be_bytes();
-                bytes[leading_empty_bytes..].to_vec()
-            };
-            let len_bytes_len: u8 = len_bytes.len().try_into().unwrap();
-
-            let mut header = Vec::with_capacity(10);
-            header.extend_from_slice(&[0xF7 + len_bytes_len]);
-            header.extend_from_slice(&len_bytes);
-
-            header
-        }
-    };
-
-    let hash = solana_program::keccak::hashv(&[&header, middle, &trailer]).to_bytes();
-
-    Ok(hash)
 }
 
 #[inline]

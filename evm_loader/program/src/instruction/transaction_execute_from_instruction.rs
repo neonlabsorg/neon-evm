@@ -31,7 +31,7 @@ pub fn process<'a>(
     let trx = Transaction::from_rlp(messsage)?;
     let caller_address = trx.recover_caller_address()?;
 
-    solana_program::log::sol_log_data(&[b"HASH", trx.hash()]);
+    solana_program::log::sol_log_data(&[b"HASH", &trx.hash()]);
 
     let mut account_storage = ProgramAccountStorage::new(
         program_id,

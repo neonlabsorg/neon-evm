@@ -82,7 +82,6 @@ COPY --from=contracts /opt/ /opt/solidity/
 COPY --from=contracts /usr/bin/solc /usr/bin/solc
 COPY evm_loader/wait-for-solana.sh \
     evm_loader/wait-for-neon.sh \
-    evm_loader/create-test-accounts.sh \
     evm_loader/deploy-evm.sh \
     evm_loader/deploy-test.sh \
     evm_loader/evm_loader-keypair.json \

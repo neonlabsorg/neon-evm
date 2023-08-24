@@ -21,16 +21,12 @@ from .utils.neon_api_client import NeonApiClient
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--operator-keys", action="store", default="~/.config/solana/id.json,~/.config/solana/id2.json",
-        help="Path to 2 comma separated operator keypairs"
-    )
-    parser.addoption(
         "--neon-api-uri", action="store", default="http://neon_api:8085/api",
         help=""
     )
 
 
-def pytest_configure(config):
+def pytest_configure():
     if "RUST_LOG" in os.environ:
         pytest.CONTRACTS_PATH = pathlib.Path("/opt/solidity")
     else:
@@ -44,7 +40,7 @@ def evm_loader(operator_keypair) -> EvmLoader:
 
 
 def prepare_operator(key_file):
-    with open(pathlib.Path(key_file).expanduser(), "r") as key:
+    with open(key_file, "r") as key:
         secret_key = json.load(key)[:32]
         account = Keypair.from_secret_key(secret_key)
     tx = solana_client.request_airdrop(account.public_key, 1000000 * 10 ** 9, commitment=Confirmed)
@@ -56,26 +52,37 @@ def prepare_operator(key_file):
     acc_info = solana_client.get_account_info(PublicKey(caller), commitment=Confirmed)
     if acc_info.value is None:
         token = spl_cli.create_token_account(NEON_TOKEN_MINT_ID, account.public_key, fee_payer=key_file)
-        spl_cli.mint(NEON_TOKEN_MINT_ID, token, 5000, fee_payer=key_file)
+        spl_cli.mint(NEON_TOKEN_MINT_ID, token, 5000000, fee_payer=key_file)
         evm_loader.create_ether_account(caller_ether)
     return account
 
 
 @pytest.fixture(scope="session")
-def operator_keypair(request) -> Keypair:
+def operator_keypair(worker_id) -> Keypair:
     """
-    Initialized solana keypair with balance. Get private key from cli or ~/.config/solana/id.json
+    Initialized solana keypair with balance. Get private keys from ci/operator-keypairs
     """
-    key_file = request.config.getoption("--operator-keys").split(',')[0]
+    key_path = pathlib.Path(__file__).parent.parent / "operator-keypairs"
+    if worker_id in ("master", "gw1"):
+        key_file = key_path / "id.json"
+    else:
+        file_id = int(worker_id[-1]) + 2
+        key_file = key_path / f"id{file_id}.json"
     return prepare_operator(key_file)
 
 
 @pytest.fixture(scope="session")
-def second_operator_keypair(request) -> Keypair:
+def second_operator_keypair(worker_id) -> Keypair:
     """
-    Initialized solana keypair with balance. Get private key from cli or ~/.config/solana/id.json
+    Initialized solana keypair with balance. Get private key from cli or ./ci/operator-keypairs
     """
-    key_file = request.config.getoption("--operator-keys").split(',')[1]
+    key_path = pathlib.Path(__file__).parent.parent / "operator-keypairs"
+    if worker_id in ("master", "gw1"):
+        key_file = key_path / "id20.json"
+    else:
+        file_id = 20 + int(worker_id[-1]) + 2
+        key_file = key_path / f"id{file_id}.json"
+
     return prepare_operator(key_file)
 
 

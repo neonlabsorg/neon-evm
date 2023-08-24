@@ -90,6 +90,8 @@ COPY evm_loader/wait-for-solana.sh \
 
 COPY evm_loader/operator-keypairs/ /opt/operator-keypairs
 COPY evm_loader/tests /opt/tests
+COPY evm_loader/operator-keypairs/id.json /root/.config/solana/id.json
+COPY evm_loader/operator-keypairs/id2.json /root/.config/solana/id2.json
 
 ENV CONTRACTS_DIR=/opt/solidity/
 ENV PATH=/opt/solana/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt

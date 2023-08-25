@@ -39,7 +39,7 @@ pub fn execute<'a>(
     accounts: Accounts<'a>,
     account_storage: &mut ProgramAccountStorage<'a>,
     mut gasometer: Gasometer,
-    trx: &Transaction,
+    trx: &mut Transaction,
     caller_address: Address,
 ) -> Result<()> {
     accounts.system_program.transfer(

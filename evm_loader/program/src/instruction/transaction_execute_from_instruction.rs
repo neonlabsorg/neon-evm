@@ -28,7 +28,7 @@ pub fn process<'a>(
         all_accounts: accounts,
     };
 
-    let trx = Transaction::from_rlp(messsage)?;
+    let mut trx = Transaction::from_rlp(messsage)?;
     let caller_address = trx.recover_caller_address()?;
 
     solana_program::log::sol_log_data(&[b"HASH", &trx.hash()]);
@@ -49,7 +49,7 @@ pub fn process<'a>(
         accounts,
         &mut account_storage,
         gasometer,
-        &trx,
+        &mut trx,
         caller_address,
     )
 }

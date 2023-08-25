@@ -172,7 +172,7 @@ impl<B: Database> Machine<B> {
     }
 
     pub fn new(
-        trx: &Transaction,
+        trx: &mut Transaction,
         origin: Address,
         backend: &mut B,
         #[cfg(feature = "tracing")] tracer: TracerType,
@@ -225,7 +225,7 @@ impl<B: Database> Machine<B> {
     }
 
     fn new_call(
-        trx: &Transaction,
+        trx: &mut Transaction,
         origin: Address,
         backend: &mut B,
         #[cfg(feature = "tracing")] tracer: TracerType,
@@ -253,7 +253,7 @@ impl<B: Database> Machine<B> {
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
             execution_code,
-            call_data: trx.call_data().clone(),
+            call_data: trx.extract_call_data(),
             return_data: Buffer::empty(),
             return_range: 0..0,
             stack: Stack::new(
@@ -275,7 +275,7 @@ impl<B: Database> Machine<B> {
     }
 
     fn new_create(
-        trx: &Transaction,
+        trx: &mut Transaction,
         origin: Address,
         backend: &mut B,
         #[cfg(feature = "tracing")] tracer: TracerType,
@@ -318,7 +318,7 @@ impl<B: Database> Machine<B> {
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,
-            execution_code: trx.call_data().clone(),
+            execution_code: trx.extract_call_data(),
             call_data: Buffer::empty(),
             parent: None,
             phantom: PhantomData,

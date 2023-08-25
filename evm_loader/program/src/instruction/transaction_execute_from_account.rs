@@ -30,7 +30,7 @@ pub fn process<'a>(
     };
 
     holder.validate_owner(&accounts.operator)?;
-    let trx = Transaction::from_rlp(&holder.transaction())?;
+    let mut trx = Transaction::from_rlp(&holder.transaction())?;
     holder.validate_transaction(&trx)?;
 
     let caller_address = trx.recover_caller_address()?;
@@ -54,7 +54,7 @@ pub fn process<'a>(
         accounts,
         &mut account_storage,
         gasometer,
-        &trx,
+        &mut trx,
         caller_address,
     )
 }

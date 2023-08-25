@@ -494,6 +494,19 @@ impl Transaction {
         }
     }
 
+    // Mem replace for call_data to avoid cloning it
+    #[must_use]
+    pub fn extract_call_data(&mut self) -> crate::evm::Buffer {
+        match self.transaction {
+            TransactionPayload::Legacy(LegacyTx {
+                ref mut call_data, ..
+            })
+            | TransactionPayload::AccessList(AccessListTx {
+                ref mut call_data, ..
+            }) => std::mem::take(call_data),
+        }
+    }
+
     #[must_use]
     pub fn r(&self) -> U256 {
         match self.transaction {

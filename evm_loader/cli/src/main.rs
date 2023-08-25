@@ -126,7 +126,7 @@ async fn execute<'a>(
             .map(|result| json!(result))
         }
         ("emulate-hash", Some(params)) => {
-            let (tx, _trace_config) = parse_tx_hash(context.rpc_client.as_ref()).await;
+            let tx = context.rpc_client.get_transaction_data().await?;
             let (token, chain, steps, accounts, solana_accounts) =
                 parse_tx_params(config, context, params).await;
             emulate::execute(

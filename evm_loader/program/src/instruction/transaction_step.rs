@@ -1,16 +1,18 @@
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
 
-use crate::account::{EthereumAccount, Operator, program, State, Treasury};
+use crate::account::{program, EthereumAccount, Operator, State, Treasury};
 use crate::account_storage::{AccountsReadiness, ProgramAccountStorage};
-use crate::config::{EVM_STEPS_MIN, EVM_STEPS_LAST_ITERATION_MAX, PAYMENT_TO_TREASURE};
-use crate::evm::{Machine, ExitStatus};
+use crate::config::{EVM_STEPS_LAST_ITERATION_MAX, EVM_STEPS_MIN, PAYMENT_TO_TREASURE};
+use crate::error::{Error, Result};
+use crate::evm::{ExitStatus, Machine};
 use crate::executor::{Action, ExecutorState};
+use crate::gasometer::Gasometer;
 use crate::state_account::Deposit;
 use crate::types::{Address, Transaction};
-use crate::gasometer::Gasometer;
-use crate::error::{Result, Error, format_revert_message};
 
+type EvmBackend<'a, 'r> = ExecutorState<'r, ProgramAccountStorage<'a>>;
+type Evm<'a, 'r> = Machine<EvmBackend<'a, 'r>>;
 
 pub struct Accounts<'a> {
     pub operator: Operator<'a>,
@@ -21,7 +23,6 @@ pub struct Accounts<'a> {
     pub remaining_accounts: &'a [AccountInfo<'a>],
     pub all_accounts: &'a [AccountInfo<'a>],
 }
-
 
 pub fn do_begin<'a>(
     accounts: Accounts<'a>,
@@ -37,13 +38,15 @@ pub fn do_begin<'a>(
     account_storage.block_accounts(true);
 
     let mut backend = ExecutorState::new(account_storage);
-    let evm = Machine::new(trx, caller, &mut backend)?;
+    let evm = Machine::new(
+        trx,
+        caller,
+        &mut backend,
+        #[cfg(feature = "tracing")]
+        None,
+    )?;
 
-    {   // Save EVM State into storage
-        let mut buffer: &mut [u8] = &mut storage.evm_state_mut_data();
-        backend.serialize_into(&mut buffer)?;
-        evm.serialize_into(&mut buffer)?;
-    }
+    serialize_evm_state(&mut storage, &backend, &evm)?;
 
     finalize(0, accounts, storage, account_storage, None, gasometer)
 }
@@ -58,15 +61,12 @@ pub fn do_continue<'a>(
     debug_print!("do_continue");
 
     if (step_count < EVM_STEPS_MIN) && (storage.gas_price > 0) {
-        return Err(Error::Custom(format!("Step limit {step_count} below minimum {EVM_STEPS_MIN}")));
+        return Err(Error::Custom(format!(
+            "Step limit {step_count} below minimum {EVM_STEPS_MIN}"
+        )));
     }
 
-    let (mut backend, mut evm) = {
-        let mut buffer: &[u8] = &mut storage.evm_state_data();
-        let backend: ExecutorState<_> = ExecutorState::deserialize_from(&mut buffer, account_storage)?;
-        let evm: Machine<_> = Machine::deserialize_from(&mut buffer, &backend)?;
-        (backend, evm)
-    };
+    let (mut backend, mut evm) = deserialize_evm_state(&storage, account_storage)?;
 
     let (result, steps_executed) = {
         match backend.exit_status() {
@@ -80,9 +80,7 @@ pub fn do_continue<'a>(
     }
 
     if steps_executed > 0 {
-        let mut buffer: &mut [u8] = &mut storage.evm_state_mut_data();
-        backend.serialize_into(&mut buffer)?;
-        evm.serialize_into(&mut buffer)?;
+        serialize_evm_state(&mut storage, &backend, &evm)?;
     }
 
     let results = match result {
@@ -91,7 +89,14 @@ pub fn do_continue<'a>(
         result => Some((result, backend.into_actions())),
     };
 
-    finalize(steps_executed, accounts, storage, account_storage, results, gasometer)
+    finalize(
+        steps_executed,
+        accounts,
+        storage,
+        account_storage,
+        results,
+        gasometer,
+    )
 }
 
 fn pay_gas_cost<'a>(
@@ -106,11 +111,7 @@ fn pay_gas_cost<'a>(
     let value = used_gas.saturating_mul(storage.gas_price);
     storage.gas_used = storage.gas_used.saturating_add(used_gas);
 
-    account_storage.transfer_gas_payment(
-        storage.caller,
-        operator_ether_account,
-        value,
-    )?;
+    account_storage.transfer_gas_payment(storage.caller, operator_ether_account, value)?;
 
     Ok(())
 }
@@ -126,7 +127,11 @@ fn finalize<'a>(
     debug_print!("finalize");
 
     if steps_executed > 0 {
-        accounts.system_program.transfer(&accounts.operator, &accounts.treasury, PAYMENT_TO_TREASURE)?;
+        accounts.system_program.transfer(
+            &accounts.operator,
+            &accounts.treasury,
+            PAYMENT_TO_TREASURE,
+        )?;
     }
 
     let exit_reason_opt = if let Some((exit_reason, apply_state)) = results {
@@ -135,7 +140,8 @@ fn finalize<'a>(
             &accounts.system_program,
             &accounts.operator,
             apply_state,
-        )? == AccountsReadiness::Ready {
+        )? == AccountsReadiness::Ready
+        {
             Some(exit_reason)
         } else {
             None
@@ -153,10 +159,18 @@ fn finalize<'a>(
     }
 
     let used_gas = gasometer.used_gas();
-    solana_program::log::sol_log_data(&[b"GAS", &used_gas.to_le_bytes(), &total_used_gas.to_le_bytes()]);
+    solana_program::log::sol_log_data(&[
+        b"GAS",
+        &used_gas.to_le_bytes(),
+        &total_used_gas.to_le_bytes(),
+    ]);
 
-    pay_gas_cost(used_gas, accounts.operator_ether_account, &mut storage, account_storage)?;
-
+    pay_gas_cost(
+        used_gas,
+        accounts.operator_ether_account,
+        &mut storage,
+        account_storage,
+    )?;
 
     if let Some(exit_reason) = exit_reason_opt {
         log_return_value(&exit_reason);
@@ -167,7 +181,6 @@ fn finalize<'a>(
 
     Ok(())
 }
-
 
 pub fn log_return_value(status: &ExitStatus) {
     use solana_program::log::sol_log_data;
@@ -182,8 +195,40 @@ pub fn log_return_value(status: &ExitStatus) {
 
     solana_program::msg!("exit_status={:#04X}", code); // Tests compatibility
     if let ExitStatus::Revert(msg) = status {
-        solana_program::msg!("Revert: {}", format_revert_message(msg));
+        crate::error::print_revert_message(msg);
     }
 
     sol_log_data(&[b"RETURN", &[code]]);
+}
+
+fn serialize_evm_state(state: &mut State, backend: &EvmBackend, machine: &Evm) -> Result<()> {
+    let (evm_state_len, evm_machine_len) = {
+        let mut buffer = state.evm_data_mut();
+        let backend_bytes = backend.serialize_into(&mut buffer)?;
+
+        let buffer = &mut buffer[backend_bytes..];
+        let evm_bytes = machine.serialize_into(buffer)?;
+
+        (backend_bytes, evm_bytes)
+    };
+
+    state.evm_state_len = evm_state_len;
+    state.evm_machine_len = evm_machine_len;
+
+    Ok(())
+}
+
+fn deserialize_evm_state<'a, 'r>(
+    state: &State<'a>,
+    account_storage: &'r ProgramAccountStorage<'a>,
+) -> Result<(EvmBackend<'a, 'r>, Evm<'a, 'r>)> {
+    let buffer = state.evm_data();
+
+    let executor_state_data = &buffer[..state.evm_state_len];
+    let backend = ExecutorState::deserialize_from(executor_state_data, account_storage)?;
+
+    let evm_data = &buffer[state.evm_state_len..][..state.evm_machine_len];
+    let evm = Machine::deserialize_from(evm_data, &backend)?;
+
+    Ok((backend, evm))
 }

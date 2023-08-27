@@ -1,18 +1,19 @@
-use crate::account::{Operator, program, EthereumAccount, Treasury, State, Holder, FinalizedState};
+use crate::account::{program, EthereumAccount, FinalizedState, Holder, Operator, State, Treasury};
+use crate::account_storage::ProgramAccountStorage;
+use crate::config::{CHAIN_ID, GAS_LIMIT_MULTIPLIER_NO_CHAINID};
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
-use crate::types::{Transaction};
-use crate::account_storage::ProgramAccountStorage;
-use arrayref::{array_ref};
+use crate::instruction::transaction_step::{do_begin, do_continue, Accounts};
+use crate::types::Transaction;
+use arrayref::array_ref;
 use ethnum::U256;
-use solana_program::{
-    account_info::AccountInfo,
-    pubkey::Pubkey,
-};
-use crate::instruction::transaction_step::{Accounts, do_begin, do_continue};
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-
-pub fn process<'a>(program_id: &'a Pubkey, accounts: &'a [AccountInfo<'a>], instruction: &[u8]) -> Result<()> {
+pub fn process<'a>(
+    program_id: &'a Pubkey,
+    accounts: &'a [AccountInfo<'a>],
+    instruction: &[u8],
+) -> Result<()> {
     solana_program::msg!("Instruction: Begin or Continue Transaction from Account");
 
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
@@ -37,7 +38,14 @@ pub fn process<'a>(program_id: &'a Pubkey, accounts: &'a [AccountInfo<'a>], inst
         accounts.remaining_accounts,
     )?;
 
-    execute(program_id, holder_or_storage_info, accounts, &mut account_storage, step_count, None)
+    execute(
+        program_id,
+        holder_or_storage_info,
+        accounts,
+        &mut account_storage,
+        step_count,
+        Some(CHAIN_ID.into()),
+    )
 }
 
 pub fn execute<'a>(
@@ -46,28 +54,34 @@ pub fn execute<'a>(
     accounts: Accounts<'a>,
     account_storage: &mut ProgramAccountStorage<'a>,
     step_count: u64,
-    gas_multiplier: Option<U256>,
+    expected_chain_id: Option<U256>,
 ) -> Result<()> {
     match crate::account::tag(program_id, holder_or_storage_info)? {
         Holder::TAG => {
             let trx = {
                 let holder = Holder::from_account(program_id, holder_or_storage_info)?;
                 holder.validate_owner(&accounts.operator)?;
-                
+
                 let message = holder.transaction();
                 let trx = Transaction::from_rlp(&message)?;
-                
+
                 holder.validate_transaction(&trx)?;
 
                 trx
             };
 
+            if trx.chain_id != expected_chain_id {
+                return Err(Error::InvalidChainId(trx.chain_id.unwrap_or(U256::ZERO)));
+            }
+
             solana_program::log::sol_log_data(&[b"HASH", &trx.hash]);
 
             let caller = trx.recover_caller_address()?;
-            let mut storage = State::new(program_id, holder_or_storage_info, &accounts, caller, &trx)?;
+            let mut storage =
+                State::new(program_id, holder_or_storage_info, &accounts, caller, &trx)?;
 
-            if let Some(gas_multiplier) = gas_multiplier {
+            if expected_chain_id.is_none() {
+                let gas_multiplier = U256::from(GAS_LIMIT_MULTIPLIER_NO_CHAINID);
                 storage.gas_limit = storage.gas_limit.saturating_mul(gas_multiplier);
             }
 
@@ -95,11 +109,10 @@ pub fn execute<'a>(
 
             do_continue(step_count, accounts, storage, account_storage, gasometer)
         }
-        FinalizedState::TAG => {
-            Err(Error::StorageAccountFinalized)
-        }
-        tag => {
-            Err(Error::AccountInvalidTag(*holder_or_storage_info.key, tag, Holder::TAG))
-        }
+        FinalizedState::TAG => Err(Error::StorageAccountFinalized),
+        _ => Err(Error::AccountInvalidTag(
+            *holder_or_storage_info.key,
+            Holder::TAG,
+        )),
     }
 }

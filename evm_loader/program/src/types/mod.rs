@@ -1,5 +1,6 @@
-mod address;
-mod transaction;
-
-pub use transaction::Transaction;
 pub use address::Address;
+pub use transaction::Transaction;
+
+mod address;
+pub mod hexbytes;
+mod transaction;

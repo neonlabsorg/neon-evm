@@ -1,16 +1,12 @@
 /// <https://ethereum.github.io/yellowpaper/paper.pdf>
-
-use ethnum::{U256, I256};
+use ethnum::{I256, U256};
 use solana_program::log::sol_log_data;
 
-use super::{
-    Machine,
-    database::Database, Reason, Context,
-    tracing_event
-};
+use super::{database::Database, tracing_event, Context, Machine, Reason};
 use crate::{
-    error::{Error, Result, build_revert_message}, 
-    types::Address, evm::Buffer,
+    error::{Error, Result},
+    evm::{trace_end_step, Buffer},
+    types::Address,
 };
 
 #[derive(Eq, PartialEq)]
@@ -24,19 +20,22 @@ pub enum Action {
     Noop,
 }
 
-
 impl<B: Database> Machine<B> {
     /// Unknown instruction
     pub fn opcode_unknown(&mut self, _backend: &mut B) -> Result<Action> {
-        Err(Error::UnknownOpcode(self.context.contract, self.execution_code[self.pc]))
+        Err(Error::UnknownOpcode(
+            self.context.contract,
+            self.execution_code[self.pc],
+        ))
     }
 
     /// (u)int256 addition modulo 2**256
     pub fn opcode_add(&mut self, _backend: &mut B) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
+        let c = a.wrapping_add(b);
 
-        self.stack.push_u256(a + b)?;
+        self.stack.push_u256(c)?;
 
         Ok(Action::Continue)
     }
@@ -45,8 +44,9 @@ impl<B: Database> Machine<B> {
     pub fn opcode_mul(&mut self, _backend: &mut B) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
+        let c = a.wrapping_mul(b);
 
-        self.stack.push_u256(a * b)?;
+        self.stack.push_u256(c)?;
 
         Ok(Action::Continue)
     }
@@ -55,8 +55,9 @@ impl<B: Database> Machine<B> {
     pub fn opcode_sub(&mut self, _backend: &mut B) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
+        let c = a.wrapping_sub(b);
 
-        self.stack.push_u256(a - b)?;
+        self.stack.push_u256(c)?;
 
         Ok(Action::Continue)
     }
@@ -65,11 +66,12 @@ impl<B: Database> Machine<B> {
     pub fn opcode_div(&mut self, _backend: &mut B) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
-        
+
         if b == U256::ZERO {
             self.stack.push_zero()?;
         } else {
-            self.stack.push_u256(a / b)?;
+            let c = a.wrapping_div(b);
+            self.stack.push_u256(c)?;
         }
 
         Ok(Action::Continue)
@@ -80,10 +82,12 @@ impl<B: Database> Machine<B> {
         let a = self.stack.pop_i256()?;
         let b = self.stack.pop_i256()?;
 
-        match (a, b) {
-            (_, I256::ZERO) => self.stack.push_zero()?,
-            (I256::MIN, I256::MINUS_ONE) => self.stack.push_i256(I256::MIN)?,
-            (a, b) => self.stack.push_i256(a / b)?
+        if b == I256::ZERO {
+            self.stack.push_zero()?;
+        } else {
+            // Wrapping occurs when dividing MIN / -1, in which case c = I256::MIN
+            let c = a.wrapping_div(b);
+            self.stack.push_i256(c)?;
         }
 
         Ok(Action::Continue)
@@ -97,7 +101,8 @@ impl<B: Database> Machine<B> {
         if b == U256::ZERO {
             self.stack.push_zero()?;
         } else {
-            self.stack.push_u256(a % b)?;
+            let c = a.wrapping_rem(b);
+            self.stack.push_u256(c)?;
         }
 
         Ok(Action::Continue)
@@ -107,11 +112,12 @@ impl<B: Database> Machine<B> {
     pub fn opcode_smod(&mut self, _backend: &mut B) -> Result<Action> {
         let a = self.stack.pop_i256()?;
         let b = self.stack.pop_i256()?;
-        
+
         if b == I256::ZERO {
             self.stack.push_zero()?;
         } else {
-            self.stack.push_i256(a % b)?;
+            let c = a.wrapping_rem(b);
+            self.stack.push_i256(c)?;
         }
 
         Ok(Action::Continue)
@@ -139,7 +145,7 @@ impl<B: Database> Machine<B> {
             if a >= b {
                 a - b
             } else {
-                m - b + a
+                (m - b).wrapping_add(a)
             }
         };
 
@@ -161,33 +167,32 @@ impl<B: Database> Machine<B> {
             return Ok(Action::Continue);
         }
 
-    
         if b < a {
             core::mem::swap(&mut a, &mut b);
         }
-        
+
         if b >= m {
             b %= m;
         }
-        
+
         let mut result = U256::ZERO;
         while a != U256::ZERO {
             if (a & 1) != U256::ZERO {
                 // (result + b) % m, without overflow
                 // logic is the same as in `addmod`
-                if b >= (m - result) {
-                    result -= m;
+                if b >= m.wrapping_sub(result) {
+                    result = result.wrapping_sub(m);
                 }
-                result += b;
+                result = result.wrapping_add(b);
             }
             a >>= 1;
 
             // (b + b) % m, without overflow
             let mut temp_b = b;
-            if b >= (m - b) {
-                temp_b -= m;
+            if b >= m.wrapping_sub(b) {
+                temp_b = temp_b.wrapping_sub(m);
             }
-            b += temp_b;
+            b = b.wrapping_add(temp_b);
         }
 
         self.stack.push_u256(result)?;
@@ -206,18 +211,18 @@ impl<B: Database> Machine<B> {
         // exponentiation by squaring
         while b > 1 {
             if (b & 1) == 1 {
-                result *= a;
+                result = result.wrapping_mul(a);
             }
 
             b >>= 1;
-            a = a * a;
+            a = a.wrapping_mul(a);
         }
 
         // Deal with the final bit of the exponent separately, since
         // squaring the base afterwards is not necessary and may cause a
         // needless overflow.
         if b == 1 {
-            result *= a;
+            result = result.wrapping_mul(a);
         }
 
         self.stack.push_u256(result)?;
@@ -418,7 +423,7 @@ impl<B: Database> Machine<B> {
 
     /// hash = keccak256(memory[offset:offset+length])
     pub fn opcode_sha3(&mut self, _backend: &mut B) -> Result<Action> {
-        use solana_program::keccak::{Hash, hash};
+        use solana_program::keccak::{hash, Hash};
 
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
@@ -479,7 +484,7 @@ impl<B: Database> Machine<B> {
     pub fn opcode_calldataload(&mut self, _backend: &mut B) -> Result<Action> {
         let index = self.stack.pop_usize()?;
 
-        if let Some(buffer) = self.call_data.get(index..index+32) {
+        if let Some(buffer) = self.call_data.get(index..index + 32) {
             let buffer = arrayref::array_ref![buffer, 0, 32];
             self.stack.push_array(buffer)?;
         } else {
@@ -508,8 +513,9 @@ impl<B: Database> Machine<B> {
         let memory_offset = self.stack.pop_usize()?;
         let data_offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
-        
-        self.memory.write_buffer(memory_offset, length, &self.call_data, data_offset)?;
+
+        self.memory
+            .write_buffer(memory_offset, length, &self.call_data, data_offset)?;
 
         Ok(Action::Continue)
     }
@@ -528,11 +534,8 @@ impl<B: Database> Machine<B> {
         let data_offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        if data_offset.saturating_add(length) > self.execution_code.len() {
-            return Err(Error::CodeCopyOffsetExceedsCodeSize(data_offset, length))
-        }
-        
-        self.memory.write_buffer(memory_offset, length, &self.execution_code, data_offset)?;
+        self.memory
+            .write_buffer(memory_offset, length, &self.execution_code, data_offset)?;
 
         Ok(Action::Continue)
     }
@@ -567,11 +570,8 @@ impl<B: Database> Machine<B> {
 
         let code = backend.code(&address)?;
 
-        if data_offset.saturating_add(length) > code.len() {
-            return Err(Error::CodeCopyOffsetExceedsCodeSize(data_offset, length))
-        }
-
-        self.memory.write_buffer(memory_offset, length, &code, data_offset)?;
+        self.memory
+            .write_buffer(memory_offset, length, &code, data_offset)?;
 
         Ok(Action::Continue)
     }
@@ -588,8 +588,13 @@ impl<B: Database> Machine<B> {
         let memory_offset = self.stack.pop_usize()?;
         let data_offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
-        
-        self.memory.write_buffer(memory_offset, length, &self.return_data, data_offset)?;
+
+        if data_offset.saturating_add(length) > self.return_data.len() {
+            return Err(Error::ReturnDataCopyOverflow(data_offset, length));
+        }
+
+        self.memory
+            .write_buffer(memory_offset, length, &self.return_data, data_offset)?;
 
         Ok(Action::Continue)
     }
@@ -600,18 +605,18 @@ impl<B: Database> Machine<B> {
             let address = self.stack.pop_address()?;
             backend.code_hash(address)?
         };
-        
+
         self.stack.push_array(&code_hash)?;
 
         Ok(Action::Continue)
     }
 
-    
     /// hash of the specific block, only valid for the 256 most recent blocks, excluding the current one
     /// Solana limits to 150 most recent blocks
     pub fn opcode_blockhash(&mut self, backend: &mut B) -> Result<Action> {
         let block_hash = {
             let block_number = self.stack.pop_u256()?;
+
             backend.block_hash(block_number)?
         };
 
@@ -674,7 +679,7 @@ impl<B: Database> Machine<B> {
     /// Istanbul hardfork, EIP-1884: balance of the executing contract in wei
     pub fn opcode_selfbalance(&mut self, backend: &mut B) -> Result<Action> {
         let balance = backend.balance(&self.context.contract)?;
-        
+
         self.stack.push_u256(balance)?;
 
         Ok(Action::Continue)
@@ -730,9 +735,7 @@ impl<B: Database> Machine<B> {
         let index = self.stack.pop_u256()?;
         let value = backend.storage(&self.context.contract, &index)?;
 
-        tracing_event!(super::tracing::Event::StorageAccess { 
-            index, value 
-        });
+        tracing_event!(self, super::tracing::Event::StorageAccess { index, value });
 
         self.stack.push_array(&value)?;
 
@@ -748,12 +751,8 @@ impl<B: Database> Machine<B> {
         let index = self.stack.pop_u256()?;
         let value = *self.stack.pop_array()?;
 
-        tracing_event!(super::tracing::Event::StorageSet {
-            index, value 
-        });
-        tracing_event!(super::tracing::Event::StorageAccess {
-            index, value 
-        });
+        tracing_event!(self, super::tracing::Event::StorageSet { index, value });
+        tracing_event!(self, super::tracing::Event::StorageAccess { index, value });
 
         backend.set_storage(self.context.contract, index, value)?;
 
@@ -781,9 +780,9 @@ impl<B: Database> Machine<B> {
         let condition = self.stack.pop_array()?;
 
         if condition == &[0_u8; 32] {
-            return Ok(Action::Continue)
+            return Ok(Action::Continue);
         }
-        
+
         if self.execution_code.get(value) == Some(&JUMPDEST) {
             Ok(Action::Jump(value))
         } else {
@@ -817,6 +816,13 @@ impl<B: Database> Machine<B> {
         Ok(Action::Continue)
     }
 
+    /// Place zero on stack
+    pub fn opcode_push_0(&mut self, _backend: &mut B) -> Result<Action> {
+        self.stack.push_zero()?;
+
+        Ok(Action::Continue)
+    }
+
     /// Place 1 byte item on stack
     /// ~50% of contract bytecode are PUSH opcodes
     pub fn opcode_push_1(&mut self, _backend: &mut B) -> Result<Action> {
@@ -824,9 +830,7 @@ impl<B: Database> Machine<B> {
             return Err(Error::PushOutOfBounds(self.context.contract));
         }
 
-        let value = unsafe {
-            *self.execution_code.get_unchecked(self.pc + 1)
-        };
+        let value = unsafe { *self.execution_code.get_unchecked(self.pc + 1) };
 
         self.stack.push_byte(value)?;
 
@@ -881,6 +885,7 @@ impl<B: Database> Machine<B> {
     }
 
     /// Append log record with N topics
+    #[rustfmt::skip]
     pub fn opcode_log_0_4<const N: usize>(&mut self, _backend: &mut B) -> Result<Action> {
         if self.is_static {
             return Err(Error::StaticModeViolation(self.context.contract));
@@ -902,12 +907,12 @@ impl<B: Database> Machine<B> {
         let address = self.context.contract.as_bytes();
 
         match N {
-            0 => sol_log_data(&[b"LOG0", address, &[0], data]),
-            1 => sol_log_data(&[b"LOG1", address, &[1], &topics[0], data]),
-            2 => sol_log_data(&[b"LOG2", address, &[2], &topics[0], &topics[1], data]),
-            3 => sol_log_data(&[b"LOG3", address, &[3], &topics[0], &topics[1], &topics[2], data]),
+            0 => sol_log_data(&[b"LOG0", address, &[0], data]),                                                
+            1 => sol_log_data(&[b"LOG1", address, &[1], &topics[0], data]),                                    
+            2 => sol_log_data(&[b"LOG2", address, &[2], &topics[0], &topics[1], data]),                        
+            3 => sol_log_data(&[b"LOG3", address, &[3], &topics[0], &topics[1], &topics[2], data]),            
             4 => sol_log_data(&[b"LOG4", address, &[4], &topics[0], &topics[1], &topics[2], &topics[3], data]),
-            _ => unreachable!()
+            _ => unreachable!(),
         }
 
         Ok(Action::Continue)
@@ -928,8 +933,6 @@ impl<B: Database> Machine<B> {
             Address::from_create(&self.context.contract, nonce)
         };
 
-        sol_log_data(&[b"ENTER", b"CREATE", created_address.as_bytes()]);
-
         self.opcode_create_impl(created_address, value, offset, length, backend)
     }
 
@@ -938,7 +941,7 @@ impl<B: Database> Machine<B> {
         if self.is_static {
             return Err(Error::StaticModeViolation(self.context.contract));
         }
-        
+
         let value = self.stack.pop_u256()?;
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
@@ -949,8 +952,6 @@ impl<B: Database> Machine<B> {
             Address::from_create2(&self.context.contract, &salt, initialization_code)
         };
 
-        sol_log_data(&[b"ENTER", b"CREATE2", created_address.as_bytes()]);
-
         self.opcode_create_impl(created_address, value, offset, length, backend)
     }
 
@@ -960,28 +961,18 @@ impl<B: Database> Machine<B> {
         value: U256,
         offset: usize,
         length: usize,
-        backend: &mut B
+        backend: &mut B,
     ) -> Result<Action> {
         if backend.nonce(&self.context.contract)? == u64::MAX {
             return Err(Error::NonceOverflow(self.context.contract));
         }
-        
-        if (backend.nonce(&address)? != 0) || (backend.code_size(&address)? != 0) {
-            // return Err(Error::DeployToExistingAccount(address, self.context.contract));
-            self.stack.push_zero()?;
-            return Ok(Action::Continue);
-        }
-
-        if backend.balance(&self.context.contract)? < value {
-            // return Err(Error::InsufficientBalanceForTransfer(self.context.contract, value));
-            self.stack.push_zero()?;
-            return Ok(Action::Continue);
-        }
-
-        backend.snapshot()?;
 
         backend.increment_nonce(self.context.contract)?;
-        backend.transfer(self.context.contract, address, value)?;
+
+        self.return_data = Buffer::empty();
+        self.return_range = 0..0;
+
+        let init_code = self.memory.read_buffer(offset, length)?;
 
         let context = Context {
             caller: self.context.contract,
@@ -989,20 +980,31 @@ impl<B: Database> Machine<B> {
             value,
             code_address: None,
         };
-        let init_code = Buffer::new(self.memory.read(offset, length)?);
 
-        tracing_event!(super::tracing::Event::BeginVM { 
-            context, code: init_code.to_vec()
-        });
-
-        self.fork(
-            Reason::Create,
-            context,
-            init_code,
-            Buffer::empty(),
-            None
+        tracing_event!(
+            self,
+            super::tracing::Event::BeginVM {
+                context,
+                code: init_code.to_vec()
+            }
         );
-        
+
+        self.fork(Reason::Create, context, init_code, Buffer::empty(), None);
+        backend.snapshot();
+
+        sol_log_data(&[b"ENTER", b"CREATE", address.as_bytes()]);
+
+        if (backend.nonce(&address)? != 0) || (backend.code_size(&address)? != 0) {
+            return Err(Error::DeployToExistingAccount(address, self.context.caller));
+        }
+
+        if backend.balance(&self.context.caller)? < value {
+            return Err(Error::InsufficientBalance(self.context.caller, value));
+        }
+
+        backend.increment_nonce(address)?;
+        backend.transfer(self.context.caller, address, value)?;
+
         Ok(Action::Noop)
     }
 
@@ -1013,22 +1015,14 @@ impl<B: Database> Machine<B> {
         let value = self.stack.pop_u256()?;
         let args_offset = self.stack.pop_usize()?;
         let args_length = self.stack.pop_usize()?;
-        // let return_offset = self.stack.pop_usize()?;
-        // let return_length = self.stack.pop_usize()?;
+        let return_offset = self.stack.pop_usize()?;
+        let return_length = self.stack.pop_usize()?;
 
-        if self.is_static && (value != U256::ZERO) {
-            return Err(Error::StaticModeViolation(self.context.contract));
-        }
+        self.return_data = Buffer::empty();
+        self.return_range = return_offset..(return_offset + return_length);
 
-        if backend.balance(&self.context.contract)? < value {
-            self.stack.discard()?; // return_offset
-            self.stack.discard()?; // return_length
-            self.stack.push_bool(false)?; // fail
-
-            self.return_data = Buffer::empty();
-
-            return Ok(Action::Continue);
-        }
+        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let code = backend.code(&address)?;
 
         let context = Context {
             caller: self.context.contract,
@@ -1036,35 +1030,31 @@ impl<B: Database> Machine<B> {
             value,
             code_address: Some(address),
         };
-        let call_data = Buffer::new(self.memory.read(args_offset, args_length)?);
 
-        let precompile_result = self.opcode_call_precompile_impl(
-            backend, &context, &address, &call_data, false
-        )?;
-        if precompile_result != Action::Noop {
-            return Ok(precompile_result)
-        }
+        tracing_event!(
+            self,
+            super::tracing::Event::BeginVM {
+                context,
+                code: code.to_vec()
+            }
+        );
 
-        backend.snapshot()?;
-        backend.transfer(self.context.contract, address, value)?;
-
-        let execution_code = backend.code(&address)?;
-
-        tracing_event!(super::tracing::Event::BeginVM { 
-            context, code: execution_code.to_vec()
-        });
+        self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
+        backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"CALL", address.as_bytes()]);
 
-        self.fork(
-            Reason::Call,
-            context,
-            execution_code,
-            call_data,
-            Some(gas_limit)
-        );
+        if self.is_static && (value != U256::ZERO) {
+            return Err(Error::StaticModeViolation(self.context.caller));
+        }
 
-        Ok(Action::Noop)
+        if backend.balance(&self.context.caller)? < value {
+            return Err(Error::InsufficientBalance(self.context.caller, value));
+        }
+
+        backend.transfer(self.context.caller, self.context.contract, value)?;
+
+        self.opcode_call_precompile_impl(backend, &address)
     }
 
     /// Message-call into this account with an alternative account’s code
@@ -1074,18 +1064,14 @@ impl<B: Database> Machine<B> {
         let value = self.stack.pop_u256()?;
         let args_offset = self.stack.pop_usize()?;
         let args_length = self.stack.pop_usize()?;
-        // let return_offset = self.stack.pop_usize()?;
-        // let return_length = self.stack.pop_usize()?;
+        let return_offset = self.stack.pop_usize()?;
+        let return_length = self.stack.pop_usize()?;
 
-        if backend.balance(&self.context.contract)? < value {
-            self.stack.discard()?; // return_offset
-            self.stack.discard()?; // return_length
-            self.stack.push_bool(false)?; // fail
+        self.return_data = Buffer::empty();
+        self.return_range = return_offset..(return_offset + return_length);
 
-            self.return_data = Buffer::empty();
-
-            return Ok(Action::Continue);
-        }
+        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let code = backend.code(&address)?;
 
         let context = Context {
             caller: self.context.contract,
@@ -1093,76 +1079,62 @@ impl<B: Database> Machine<B> {
             value,
             code_address: Some(address),
         };
-        let call_data = Buffer::new(self.memory.read(args_offset, args_length)?);
-        
-        let precompile_result = self.opcode_call_precompile_impl(
-            backend, &context, &address, &call_data, false
-        )?;
-        if precompile_result != Action::Noop {
-            return Ok(precompile_result)
-        }
-        
-        backend.snapshot()?;
-        // no need to transfer funds to yourself
 
-        let execution_code = backend.code(&address)?;
+        tracing_event!(
+            self,
+            super::tracing::Event::BeginVM {
+                context,
+                code: code.to_vec()
+            }
+        );
 
-        tracing_event!(super::tracing::Event::BeginVM { 
-            context, code: execution_code.to_vec()
-        });
+        self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
+        backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"CALLCODE", address.as_bytes()]);
 
-        self.fork(
-            Reason::Call,
-            context,
-            execution_code,
-            call_data,
-            Some(gas_limit)
-        );
-        
-        Ok(Action::Noop)
+        if backend.balance(&self.context.caller)? < value {
+            return Err(Error::InsufficientBalance(self.context.caller, value));
+        }
+
+        self.opcode_call_precompile_impl(backend, &address)
     }
 
-    /// Homestead hardfork, EIP-7: Message-call into this account with an alternative account’s code, 
+    /// Homestead hardfork, EIP-7: Message-call into this account with an alternative account’s code,
     /// but persisting the current values for sender and value
     pub fn opcode_delegatecall(&mut self, backend: &mut B) -> Result<Action> {
         let gas_limit = self.stack.pop_u256()?;
         let address = *self.stack.pop_address()?;
         let args_offset = self.stack.pop_usize()?;
         let args_length = self.stack.pop_usize()?;
-        // let return_offset = self.stack.pop_usize()?;
-        // let return_length = self.stack.pop_usize()?;
+        let return_offset = self.stack.pop_usize()?;
+        let return_length = self.stack.pop_usize()?;
 
-        let context = self.context;
-        let call_data = Buffer::new(self.memory.read(args_offset, args_length)?);
+        self.return_data = Buffer::empty();
+        self.return_range = return_offset..(return_offset + return_length);
 
-        let precompile_result = self.opcode_call_precompile_impl(
-            backend, &context, &address, &call_data, false
-        )?;
-        if precompile_result != Action::Noop {
-            return Ok(precompile_result)
-        }
+        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let code = backend.code(&address)?;
 
-        backend.snapshot()?;
+        let context = Context {
+            code_address: Some(address),
+            ..self.context
+        };
 
-        let execution_code = backend.code(&address)?;
+        tracing_event!(
+            self,
+            super::tracing::Event::BeginVM {
+                context,
+                code: code.to_vec()
+            }
+        );
 
-        tracing_event!(super::tracing::Event::BeginVM { 
-            context, code: execution_code.to_vec()
-        });
+        self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
+        backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"DELEGATECALL", address.as_bytes()]);
 
-        self.fork(
-            Reason::Call,
-            context,
-            execution_code,
-            call_data,
-            Some(gas_limit),
-        );
-
-        Ok(Action::Noop)
+        self.opcode_call_precompile_impl(backend, &address)
     }
 
     /// Byzantium hardfork, EIP-214: Static message-call into an account
@@ -1172,8 +1144,14 @@ impl<B: Database> Machine<B> {
         let address = *self.stack.pop_address()?;
         let args_offset = self.stack.pop_usize()?;
         let args_length = self.stack.pop_usize()?;
-        // let return_offset = self.stack.pop_usize()?;
-        // let return_length = self.stack.pop_usize()?;
+        let return_offset = self.stack.pop_usize()?;
+        let return_length = self.stack.pop_usize()?;
+
+        self.return_data = Buffer::empty();
+        self.return_range = return_offset..(return_offset + return_length);
+
+        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let code = backend.code(&address)?;
 
         let context = Context {
             caller: self.context.contract,
@@ -1181,35 +1159,23 @@ impl<B: Database> Machine<B> {
             value: U256::ZERO,
             code_address: Some(address),
         };
-        let call_data = Buffer::new(self.memory.read(args_offset, args_length)?);
 
-        let precompile_result = self.opcode_call_precompile_impl(
-            backend, &context, &address, &call_data, false
-        )?;
-        if precompile_result != Action::Noop {
-            return Ok(precompile_result)
-        }
+        tracing_event!(
+            self,
+            super::tracing::Event::BeginVM {
+                context,
+                code: code.to_vec()
+            }
+        );
 
-        backend.snapshot()?;
+        self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
+        self.is_static = true;
 
-        let execution_code = backend.code(&address)?;
-
-        tracing_event!(super::tracing::Event::BeginVM { 
-            context, code: execution_code.to_vec()
-        });
+        backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"STATICCALL", address.as_bytes()]);
 
-        self.fork(
-            Reason::Call,
-            context,
-            execution_code,
-            call_data,
-            Some(gas_limit),
-        );
-        self.is_static = true;
-
-        Ok(Action::Noop)
+        self.opcode_call_precompile_impl(backend, &address)
     }
 
     /// Call precompile contract.
@@ -1217,141 +1183,125 @@ impl<B: Database> Machine<B> {
     fn opcode_call_precompile_impl(
         &mut self,
         backend: &mut B,
-        context: &Context,
         address: &Address,
-        data: &[u8],
-        is_static: bool
     ) -> Result<Action> {
-        let is_static = self.is_static || is_static;
-
-        let mut result = Self::precompile(address, data).map(Ok);
-        if result.is_none() {
-            result = backend.precompile_extension(context, address, data, is_static);
-        }
-
-        let result = result.map(|r| match r {
-            Ok(v) => (v, true),
-            Err(e) => (build_revert_message(&e.to_string()), false)
+        let result = Self::precompile(address, &self.call_data).map(Ok);
+        let result = result.or_else(|| {
+            backend.precompile_extension(&self.context, address, &self.call_data, self.is_static)
         });
 
-        if let Some((result, status)) = result {
-            self.return_data = Buffer::new(&result);
-
-            let return_offset = self.stack.pop_usize()?;
-            let return_length = self.stack.pop_usize()?;
-            
-            self.memory.write_buffer(return_offset, return_length, &self.return_data, 0)?;
-            self.stack.push_bool(status)?;
-
-            Ok(Action::Continue)
-        } else {
-            Ok(Action::Noop)
+        if let Some(return_data) = result.transpose()? {
+            return self.opcode_return_impl(Buffer::from_slice(&return_data), backend);
         }
+
+        Ok(Action::Noop)
     }
 
     /// Halt execution returning output data
     pub fn opcode_return(&mut self, backend: &mut B) -> Result<Action> {
-        sol_log_data(&[b"EXIT", b"RETURN"]);
-
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let return_data = Buffer::new(self.memory.read(offset, length)?);
+        let return_data = self.memory.read_buffer(offset, length)?;
 
-        if self.parent.is_none() {
-            match self.reason {
-                Reason::Call => {
-                    return Ok(Action::Return(return_data.to_vec()))
-                },
-                Reason::Create => {
-                    backend.set_code(self.context.contract, return_data)?;
-                    return Ok(Action::Return(Vec::new()))
-                },
-            }
+        self.opcode_return_impl(return_data, backend)
+    }
+
+    /// Halt execution returning output data
+    pub fn opcode_return_impl(
+        &mut self,
+        mut return_data: Buffer,
+        backend: &mut B,
+    ) -> Result<Action> {
+        if self.reason == Reason::Create {
+            let code = std::mem::take(&mut return_data);
+            backend.set_code(self.context.contract, code)?;
         }
 
-        tracing_event!(super::tracing::Event::EndStep {
-            gas_used: 0_u64
-        });
-        tracing_event!(super::tracing::Event::EndVM { 
-            status: super::ExitStatus::Return(return_data.to_vec())
-        });
+        backend.commit_snapshot();
+        sol_log_data(&[b"EXIT", b"RETURN"]);
+
+        if self.parent.is_none() {
+            return Ok(Action::Return(return_data.to_vec()));
+        }
+
+        trace_end_step!(self, Some(return_data.to_vec()));
+        tracing_event!(
+            self,
+            super::tracing::Event::EndVM {
+                status: super::ExitStatus::Return(return_data.to_vec())
+            }
+        );
 
         let returned = self.join();
         match returned.reason {
             Reason::Call => {
-                let return_offset = self.stack.pop_usize()?;
-                let return_length = self.stack.pop_usize()?;
-
-                self.memory.write_buffer(return_offset, return_length, &return_data, 0)?;
+                self.memory.write_range(&self.return_range, &return_data)?;
                 self.stack.push_bool(true)?; // success
 
                 self.return_data = return_data;
-            },
+            }
             Reason::Create => {
                 let address = returned.context.contract;
-
-                backend.set_code(address, return_data)?;
-    
                 self.stack.push_address(&address)?;
-            },
+            }
         }
-
-        backend.commit_snapshot()?;
 
         Ok(Action::Continue)
     }
 
-    /// Byzantium hardfork, EIP-140: Halt execution reverting state changes but returning data 
+    /// Byzantium hardfork, EIP-140: Halt execution reverting state changes but returning data
     pub fn opcode_revert(&mut self, backend: &mut B) -> Result<Action> {
-        sol_log_data(&[b"EXIT", b"REVERT"]);
-
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let return_data = Buffer::new(self.memory.read(offset, length)?);
+        let return_data = self.memory.read_buffer(offset, length)?;
 
-        backend.revert_snapshot()?;
+        self.opcode_revert_impl(return_data, backend)
+    }
+
+    pub fn opcode_revert_impl(&mut self, return_data: Buffer, backend: &mut B) -> Result<Action> {
+        backend.revert_snapshot();
+        sol_log_data(&[b"EXIT", b"REVERT", &return_data]);
 
         if self.parent.is_none() {
             return Ok(Action::Revert(return_data.to_vec()));
         }
 
-        tracing_event!(super::tracing::Event::EndStep {
-            gas_used: 0_u64
-        });
-        tracing_event!(super::tracing::Event::EndVM { 
-            status: super::ExitStatus::Revert(return_data.to_vec())
-        });
+        trace_end_step!(self, Some(return_data.to_vec()));
+        tracing_event!(
+            self,
+            super::tracing::Event::EndVM {
+                status: super::ExitStatus::Revert(return_data.to_vec())
+            }
+        );
 
         let returned = self.join();
         match returned.reason {
             Reason::Call => {
-                let return_offset = self.stack.pop_usize()?;
-                let return_length = self.stack.pop_usize()?;
-
-                self.memory.write_buffer(return_offset, return_length, &return_data, 0)?;
+                self.memory.write_range(&self.return_range, &return_data)?;
                 self.stack.push_bool(false)?; // fail
-
-                self.return_data = return_data;
-            },
+            }
             Reason::Create => {
                 self.stack.push_zero()?;
-            },
+            }
         }
+
+        self.return_data = return_data;
 
         Ok(Action::Continue)
     }
 
     /// Invalid instruction
     pub fn opcode_invalid(&mut self, _backend: &mut B) -> Result<Action> {
-        Err(Error::InvalidOpcode(self.context.contract, self.execution_code[self.pc]))
+        Err(Error::InvalidOpcode(
+            self.context.contract,
+            self.execution_code[self.pc],
+        ))
     }
 
     /// Halt execution, destroys the contract and send all funds to address
     pub fn opcode_selfdestruct(&mut self, backend: &mut B) -> Result<Action> {
-        sol_log_data(&[b"EXIT", b"SELFDESTRUCT"]);
-
         if self.is_static {
             return Err(Error::StaticModeViolation(self.context.contract));
         }
@@ -1360,68 +1310,64 @@ impl<B: Database> Machine<B> {
 
         let value = backend.balance(&self.context.contract)?;
         backend.transfer(self.context.contract, address, value)?;
-
         backend.selfdestruct(self.context.contract)?;
+
+        backend.commit_snapshot();
+        sol_log_data(&[b"EXIT", b"SELFDESTRUCT"]);
 
         if self.parent.is_none() {
             return Ok(Action::Suicide);
         }
 
-        tracing_event!(super::tracing::Event::EndStep {
-            gas_used: 0_u64
-        });
-        tracing_event!(super::tracing::Event::EndVM { 
-            status: super::ExitStatus::Suicide
-        });
+        trace_end_step!(self, None);
+        tracing_event!(
+            self,
+            super::tracing::Event::EndVM {
+                status: super::ExitStatus::Suicide
+            }
+        );
 
         let returned = self.join();
         match returned.reason {
             Reason::Call => {
-                let return_offset = self.stack.pop_usize()?;
-                let return_length = self.stack.pop_usize()?;
-
-                self.memory.write_buffer(return_offset, return_length, &[], 0)?;
+                self.memory.write_range(&self.return_range, &[])?;
                 self.stack.push_bool(true)?; // success
-
-                self.return_data = Buffer::empty();
-            },
+            }
             Reason::Create => {
                 self.stack.push_zero()?;
-            },
+            }
         }
-
-        backend.commit_snapshot()?;
 
         Ok(Action::Continue)
     }
 
     /// Halts execution of the contract
     pub fn opcode_stop(&mut self, backend: &mut B) -> Result<Action> {
+        backend.commit_snapshot();
         sol_log_data(&[b"EXIT", b"STOP"]);
 
         if self.parent.is_none() {
             return Ok(Action::Stop);
         }
 
-        tracing_event!(super::tracing::Event::EndStep {
-            gas_used: 0_u64
-        });
-        tracing_event!(super::tracing::Event::EndVM { 
-            status: super::ExitStatus::Stop
-        });
+        trace_end_step!(self, None);
+        tracing_event!(
+            self,
+            super::tracing::Event::EndVM {
+                status: super::ExitStatus::Stop
+            }
+        );
 
         let returned = self.join();
-        if returned.reason == Reason::Call {
-            let return_offset = self.stack.pop_usize()?;
-            let return_length = self.stack.pop_usize()?;
-
-            self.memory.write_buffer(return_offset, return_length, &[], 0)?;
-            self.stack.push_bool(true)?; // success
-
-            self.return_data = Buffer::empty();
+        match returned.reason {
+            Reason::Call => {
+                self.memory.write_range(&self.return_range, &[])?;
+                self.stack.push_bool(true)?; // success
+            }
+            Reason::Create => {
+                self.stack.push_zero()?;
+            }
         }
-
-        backend.commit_snapshot()?;
 
         Ok(Action::Continue)
     }

@@ -1,31 +1,30 @@
 ARG SOLANA_IMAGE
 # Install BPF SDK
-FROM solanalabs/rust:1.65.0 AS builder
+FROM solanalabs/rust:1.64.0 AS builder
 RUN cargo install rustfilt
 WORKDIR /opt
 ARG SOLANA_BPF_VERSION
-# TODO: make connection insecure to solve with expired certificate
 RUN sh -c "$(curl -sSfL https://release.solana.com/"${SOLANA_BPF_VERSION}"/install)" && \
     /root/.local/share/solana/install/active_release/bin/sdk/bpf/scripts/install.sh
 ENV PATH=/root/.local/share/solana/install/active_release/bin:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 
 # Build evm_loader
-# Note: create stub Cargo.toml to speedup build
 FROM builder AS evm-loader-builder
 COPY ./evm_loader/ /opt/evm_loader/
 WORKDIR /opt/evm_loader
 ARG REVISION
 ENV NEON_REVISION=${REVISION}
-RUN cargo clippy --release && \
+RUN cargo fmt --check && \
+    cargo clippy --release && \
     cargo build --release && \
-    cargo build-sbf --arch bpf --features no-logs,devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
-    cargo build-sbf --arch bpf --features no-logs,testnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet.so && \
-    cargo build-sbf --arch bpf --features no-logs,govertest && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest.so && \
-    cargo build-sbf --arch bpf --features no-logs,govertest,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest-emergency.so && \
-    cargo build-sbf --arch bpf --features no-logs,mainnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet.so && \
-    cargo build-sbf --arch bpf --features no-logs,mainnet,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet-emergency.so && \
-    cargo build-sbf --arch bpf --features no-logs --dump
+    cargo build-sbf --arch bpf --features devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
+    cargo build-sbf --arch bpf --features testnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet.so && \
+    cargo build-sbf --arch bpf --features govertest && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest.so && \
+    cargo build-sbf --arch bpf --features govertest,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest-emergency.so && \
+    cargo build-sbf --arch bpf --features mainnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet.so && \
+    cargo build-sbf --arch bpf --features mainnet,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet-emergency.so && \
+    cargo build-sbf --arch bpf --features ci --dump
 
 # Build Solidity contracts
 FROM ethereum/solc:0.8.0 AS solc
@@ -77,22 +76,23 @@ COPY evm_loader/solana-run-neon.sh \
 COPY --from=evm-loader-builder /opt/evm_loader/target/deploy/evm_loader*.so /opt/
 COPY --from=evm-loader-builder /opt/evm_loader/target/deploy/evm_loader-dump.txt /opt/
 COPY --from=evm-loader-builder /opt/evm_loader/target/release/neon-cli /opt/
+COPY --from=evm-loader-builder /opt/evm_loader/target/release/neon-api /opt/
 COPY --from=solana /usr/bin/spl-token /opt/spl-token
 COPY --from=contracts /opt/ /opt/solidity/
 COPY --from=contracts /usr/bin/solc /usr/bin/solc
 COPY evm_loader/wait-for-solana.sh \
     evm_loader/wait-for-neon.sh \
-    evm_loader/create-test-accounts.sh \
     evm_loader/deploy-evm.sh \
     evm_loader/deploy-test.sh \
+    evm_loader/create-test-accounts.sh \
     evm_loader/evm_loader-keypair.json \
     /opt/
 
-COPY evm_loader/keys/ /opt/keys
+COPY evm_loader/operator-keypairs/ /opt/operator-keypairs
 COPY evm_loader/tests /opt/tests
-COPY evm_loader/operator1-keypair.json /root/.config/solana/id.json
-COPY evm_loader/operator2-keypair.json /root/.config/solana/id2.json
-
+COPY evm_loader/operator-keypairs/id.json /root/.config/solana/id.json
+COPY evm_loader/operator-keypairs/id2.json /root/.config/solana/id2.json
+COPY evm_loader/keys/ /opt/keys
 
 ENV CONTRACTS_DIR=/opt/solidity/
 ENV PATH=/opt/solana/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt

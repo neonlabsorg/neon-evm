@@ -1,23 +1,19 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-use ethnum::U256;
-use serde::Serialize;
-use serde::de::DeserializeSeed;
-use bincode::Options;
+use ethnum::{AsU256, U256};
 use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 
-use crate::account_storage::{AccountStorage, ProgramAccountStorage};
+use crate::account_storage::AccountStorage;
 use crate::error::{Error, Result};
-use crate::evm::{ExitStatus, Context};
 use crate::evm::database::Database;
+use crate::evm::{Context, ExitStatus};
 use crate::types::Address;
 
-use super::{OwnedAccountInfo, OwnedAccountInfoPartial};
 use super::action::Action;
-use super::cache::{Cache};
-
+use super::cache::Cache;
+use super::OwnedAccountInfo;
 
 /// Represents the state of executor abstracted away from a self.backend.
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
@@ -30,11 +26,30 @@ pub struct ExecutorState<'a, B: AccountStorage> {
 }
 
 impl<'a, B: AccountStorage> ExecutorState<'a, B> {
+    pub fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize> {
+        let mut cursor = std::io::Cursor::new(buffer);
+
+        let value = (&self.cache, &self.actions, &self.stack, &self.exit_status);
+        bincode::serialize_into(&mut cursor, &value)?;
+
+        cursor.position().try_into().map_err(Error::from)
+    }
+
+    pub fn deserialize_from(buffer: &[u8], backend: &'a B) -> Result<Self> {
+        let (cache, actions, stack, exit_status) = bincode::deserialize(buffer)?;
+        Ok(Self {
+            backend,
+            cache,
+            actions,
+            stack,
+            exit_status,
+        })
+    }
+
     #[must_use]
     pub fn new(backend: &'a B) -> Self {
         let cache = Cache {
             solana_accounts: BTreeMap::new(),
-            solana_accounts_partial: BTreeMap::new(),
             block_number: backend.block_number(),
             block_timestamp: backend.block_timestamp(),
         };
@@ -49,6 +64,8 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     }
 
     pub fn into_actions(self) -> Vec<Action> {
+        assert!(self.stack.is_empty());
+
         self.actions
     }
 
@@ -73,14 +90,14 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         &mut self,
         instruction: Instruction,
         seeds: Vec<Vec<u8>>,
-        allocate: usize,
+        fee: u64,
     ) {
         let action = Action::ExternalInstruction {
             program_id: instruction.program_id,
             data: instruction.data,
             accounts: instruction.accounts,
             seeds,
-            allocate
+            fee,
         };
 
         self.actions.push(action);
@@ -89,36 +106,62 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     pub fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
         let mut cache = self.cache.borrow_mut();
 
-        let metas = self.actions.iter()
-            .filter_map(|a| if let Action::ExternalInstruction { accounts, .. } = a { Some(accounts) } else { None })
+        let metas = self
+            .actions
+            .iter()
+            .filter_map(|a| {
+                if let Action::ExternalInstruction { accounts, .. } = a {
+                    Some(accounts)
+                } else {
+                    None
+                }
+            })
             .flatten()
             .collect::<Vec<_>>();
 
         if !metas.iter().any(|m| (m.pubkey == address) && m.is_writable) {
-            return Ok(cache.get_account_or_insert(address, self.backend).clone())
+            return Ok(cache.get_account_or_insert(address, self.backend).clone());
         }
 
-        let mut accounts = metas.into_iter()
-            .map(|m| (m.pubkey, cache.get_account_or_insert(m.pubkey, self.backend).clone()))
+        let mut accounts = metas
+            .into_iter()
+            .map(|m| {
+                (
+                    m.pubkey,
+                    cache.get_account_or_insert(m.pubkey, self.backend).clone(),
+                )
+            })
             .collect::<BTreeMap<Pubkey, OwnedAccountInfo>>();
 
         for action in &self.actions {
-            if let Action::ExternalInstruction { program_id, data, accounts: meta, .. } = action {
+            if let Action::ExternalInstruction {
+                program_id,
+                data,
+                accounts: meta,
+                ..
+            } = action
+            {
                 match program_id {
                     program_id if solana_program::system_program::check_id(program_id) => {
                         crate::external_programs::system::emulate(data, meta, &mut accounts)?;
-                    },
+                    }
                     program_id if spl_token::check_id(program_id) => {
                         crate::external_programs::spl_token::emulate(data, meta, &mut accounts)?;
-                    },
+                    }
                     program_id if spl_associated_token_account::check_id(program_id) => {
-                        crate::external_programs::spl_associated_token::emulate(data, meta, &mut accounts)?;
-                    },
+                        crate::external_programs::spl_associated_token::emulate(
+                            data,
+                            meta,
+                            &mut accounts,
+                        )?;
+                    }
                     program_id if mpl_token_metadata::check_id(program_id) => {
                         crate::external_programs::metaplex::emulate(data, meta, &mut accounts)?;
-                    },
+                    }
                     _ => {
-                        return Err(Error::Custom(format!("Unknown external program: {program_id}")));
+                        return Err(Error::Custom(format!(
+                            "Unknown external program: {program_id}"
+                        )));
                     }
                 }
             }
@@ -126,30 +169,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 
         Ok(accounts[&address].clone())
     }
-
-    pub fn external_account_partial_cache(&mut self, address: Pubkey, offset: usize, len: usize) -> Result<()> {
-        if (len == 0) || (len > 8*1024) {
-            return Err(Error::Custom("Account cache: invalid data len".into()));
-        }
-
-        if let Some(account) = self.backend.clone_solana_account_partial(&address, offset, len) {
-            let mut cache = self.cache.borrow_mut();
-            cache.solana_accounts_partial.insert(address, account);
-
-            Ok(())
-        } else {
-            Err(Error::Custom("Account cache: invalid data offset".into()))
-        }
-    }
-
-    pub fn external_account_partial(&self, address: Pubkey) -> Result<OwnedAccountInfoPartial> {
-        let cache = self.cache.borrow();
-        cache.solana_accounts_partial.get(&address)
-            .cloned()
-            .ok_or_else(|| Error::Custom(format!("Account cache: account {address} is not cached")))
-    }
 }
-
 
 impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     fn chain_id(&self) -> U256 {
@@ -163,7 +183,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         for action in &self.actions {
             if let Action::EvmIncrementNonce { address } = action {
                 if from_address == address {
-                    nonce += 1;
+                    nonce = nonce.checked_add(1).ok_or(Error::IntegerOverflow)?;
                 }
             }
         }
@@ -183,18 +203,22 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
         for action in &self.actions {
             match action {
-                Action::NeonTransfer { source, target, value } => {
+                Action::NeonTransfer {
+                    source,
+                    target,
+                    value,
+                } => {
                     if from_address == source {
-                        balance -= value;
+                        balance = balance.checked_sub(*value).ok_or(Error::IntegerOverflow)?;
                     }
 
                     if from_address == target {
-                        balance += value;
+                        balance = balance.checked_add(*value).ok_or(Error::IntegerOverflow)?;
                     }
                 }
                 Action::NeonWithdraw { source, value } => {
                     if from_address == source {
-                        balance -= value;
+                        balance = balance.checked_sub(*value).ok_or(Error::IntegerOverflow)?;
                     }
                 }
                 _ => {}
@@ -206,18 +230,22 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
     fn transfer(&mut self, source: Address, target: Address, value: U256) -> Result<()> {
         if value == U256::ZERO {
-            return Ok(())
+            return Ok(());
         }
 
         if source == target {
-            return Ok(())
+            return Ok(());
         }
 
         if self.balance(&source)? < value {
-            return Err(Error::InsufficientBalanceForTransfer(source, value));
+            return Err(Error::InsufficientBalance(source, value));
         }
 
-        let transfer = Action::NeonTransfer { source, target, value };
+        let transfer = Action::NeonTransfer {
+            source,
+            target,
+            value,
+        };
         self.actions.push(transfer);
 
         Ok(())
@@ -236,7 +264,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             }
         }
 
-       Ok(self.backend.code_size(from_address))
+        Ok(self.backend.code_size(from_address))
     }
 
     fn code_hash(&self, from_address: &Address) -> Result<[u8; 32]> {
@@ -257,7 +285,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         for action in &self.actions {
             if let Action::EvmSetCode { address, code } = action {
                 if from_address == address {
-                    return Ok(code.clone())
+                    return Ok(code.clone());
                 }
             }
         }
@@ -291,7 +319,12 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
     fn storage(&self, from_address: &Address, from_index: &U256) -> Result<[u8; 32]> {
         for action in self.actions.iter().rev() {
-            if let Action::EvmSetStorage { address, index, value } = action {
+            if let Action::EvmSetStorage {
+                address,
+                index,
+                value,
+            } = action
+            {
                 if (from_address == address) && (from_index == index) {
                     return Ok(*value);
                 }
@@ -302,21 +335,39 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
-        let set_storage = Action::EvmSetStorage { address, index, value };
+        let set_storage = Action::EvmSetStorage {
+            address,
+            index,
+            value,
+        };
         self.actions.push(set_storage);
 
         Ok(())
     }
 
     fn block_hash(&self, number: U256) -> Result<[u8; 32]> {
-        let origin_block = self.cache.borrow().block_number;
-        let current_block = self.backend.block_number();
-        let offset = current_block.saturating_sub(origin_block);
+        // geth:
+        //  - checks the overflow
+        //  - converts to u64
+        //  - checks on last 256 blocks
 
-        let number = number.saturating_add(offset);
-        let block_hash = self.backend.block_hash(number);
+        if number >= u64::MAX.as_u256() {
+            return Ok(<[u8; 32]>::default());
+        }
 
-        Ok(block_hash)
+        let number = number.as_u64();
+        let block_slot = self.cache.borrow().block_number.as_u64();
+        let lower_block_slot = if block_slot < 257 {
+            0
+        } else {
+            block_slot - 256
+        };
+
+        if number >= block_slot || lower_block_slot > number {
+            return Ok(<[u8; 32]>::default());
+        }
+
+        Ok(self.backend.block_hash(number))
     }
 
     fn block_number(&self) -> Result<U256> {
@@ -329,23 +380,36 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(cache.block_timestamp)
     }
 
-    fn snapshot(&mut self) -> Result<()> {
-        self.stack.push(self.actions.len());
-
-        Ok(())
+    fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
+    where
+        F: FnOnce(&solana_program::account_info::AccountInfo) -> R,
+    {
+        self.backend.map_solana_account(address, action)
     }
 
-    fn revert_snapshot(&mut self) -> Result<()> {
-        let actions_len = self.stack.pop().unwrap_or(0);
+    fn snapshot(&mut self) {
+        self.stack.push(self.actions.len());
+    }
+
+    fn revert_snapshot(&mut self) {
+        let actions_len = self
+            .stack
+            .pop()
+            .expect("Fatal Error: Inconsistent EVM Call Stack");
+
         self.actions.truncate(actions_len);
 
-        Ok(())
+        if self.stack.is_empty() {
+            // sanity check
+            assert_eq!(self.actions.len(), 1);
+            assert!(matches!(self.actions[0], Action::EvmIncrementNonce { .. }));
+        }
     }
 
-    fn commit_snapshot(&mut self) -> Result<()> {
-        self.stack.pop();
-
-        Ok(())
+    fn commit_snapshot(&mut self) {
+        self.stack
+            .pop()
+            .expect("Fatal Error: Inconsistent EVM Call Stack");
     }
 
     fn precompile_extension(
@@ -356,86 +420,5 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         is_static: bool,
     ) -> Option<Result<Vec<u8>>> {
         self.call_precompile_extension(context, address, data, is_static)
-    }
-}
-
-
-impl<'a> Serialize for ExecutorState<'_, ProgramAccountStorage<'a>> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer
-    {
-        use serde::ser::SerializeSeq;
-
-        let mut seq = serializer.serialize_seq(Some(4))?;
-        seq.serialize_element(&self.cache)?;
-        seq.serialize_element(&self.actions)?;
-        seq.serialize_element(&self.stack)?;
-        seq.serialize_element(&self.exit_status)?;
-
-        seq.end()
-    }
-}
-
-impl<'de, 'a> DeserializeSeed<'de> for &'de ProgramAccountStorage<'a> {
-    type Value = ExecutorState<'de, ProgramAccountStorage<'a>>;
-
-    fn deserialize<D>(self, deserializer: D) -> std::result::Result<Self::Value, D::Error>
-    where
-        D: serde::Deserializer<'de>
-    {
-        struct SeqVisitor;
-
-        impl<'de> serde::de::Visitor<'de> for SeqVisitor {
-            type Value = (RefCell<Cache>, Vec<Action>, Vec<usize>, Option<ExitStatus>);
-
-            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                f.write_str("Iterative Executor State")
-            }
-
-            fn visit_seq<A>(self, mut seq: A) -> std::result::Result<Self::Value, A::Error>
-                where
-                    A: serde::de::SeqAccess<'de>
-            {
-                let cache = seq.next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
-                let actions = seq.next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;
-                let stack = seq.next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(2, &self))?;
-                let exit_status = seq.next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(3, &self))?;
-
-                Ok((cache, actions, stack, exit_status))
-            }
-        }
-
-        let (cache, actions, stack, exit_status)
-            = deserializer.deserialize_seq(SeqVisitor)?;
-
-        Ok(ExecutorState { backend: self, cache, actions, stack, exit_status })
-    }
-}
-
-impl<'de, 'a> ExecutorState<'de, ProgramAccountStorage<'a>> {
-    pub fn serialize_into<W>(&self, writer: &mut W) -> Result<()>
-        where W: std::io::Write
-    {
-        let bincode = bincode::DefaultOptions::new()
-            .with_fixint_encoding()
-            .allow_trailing_bytes();
-
-        bincode.serialize_into(writer, &self)
-            .map_err(Error::from)
-    }
-
-    pub fn deserialize_from(buffer: &mut &[u8], backend: &'de ProgramAccountStorage<'a>) -> Result<Self>
-    {
-        let bincode = bincode::DefaultOptions::new()
-            .with_fixint_encoding()
-            .allow_trailing_bytes();
-
-        bincode.deserialize_from_seed(backend, buffer)
-            .map_err(Error::from)
     }
 }

@@ -2,47 +2,77 @@
 #![allow(clippy::type_repetition_in_bounds)]
 #![allow(clippy::unsafe_derive_deserialize)]
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, ops::Range};
 
 use ethnum::U256;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use solana_program::log::sol_log_data;
 
-use crate::{
-    error::{Error, Result},
-    types::{Address, Transaction}, evm::opcode::Action,
-};
+pub use buffer::Buffer;
 
 #[cfg(feature = "tracing")]
-pub mod tracing;
+use crate::evm::tracing::TracerTypeOpt;
+use crate::{
+    error::{build_revert_message, Error, Result},
+    evm::{opcode::Action, precompile::is_precompile_address},
+    types::{Address, Transaction},
+};
+
+use self::{database::Database, memory::Memory, stack::Stack};
+
+mod buffer;
 pub mod database;
 mod memory;
 mod opcode;
 mod opcode_table;
-mod stack;
 mod precompile;
-mod buffer;
-
-use self::{database::Database, memory::Memory, stack::Stack};
-pub use buffer::Buffer;
-pub use precompile::is_precompile_address;
+mod stack;
+#[cfg(feature = "tracing")]
+pub mod tracing;
+mod utils;
 
 macro_rules! tracing_event {
-    ($x:expr) => {
+    ($self:ident, $x:expr) => {
         #[cfg(feature = "tracing")]
-        crate::evm::tracing::with(|listener| listener.event($x));
+        if let Some(tracer) = &$self.tracer {
+            tracer.write().expect("Poisoned RwLock").event($x);
+        }
     };
-    ($condition:expr; $x:expr) => {
+    ($self:ident, $condition:expr, $x:expr) => {
         #[cfg(feature = "tracing")]
-        if $condition {
-            crate::evm::tracing::with(|listener| listener.event($x));
+        if let Some(tracer) = &$self.tracer {
+            if $condition {
+                tracer.write().expect("Poisoned RwLock").event($x);
+            }
         }
     };
 }
+
+macro_rules! trace_end_step {
+    ($self:ident, $return_data:expr) => {
+        #[cfg(feature = "tracing")]
+        if let Some(tracer) = &$self.tracer {
+            tracer
+                .write()
+                .expect("Poisoned RwLock")
+                .event(crate::evm::tracing::Event::EndStep {
+                    gas_used: 0_u64,
+                    return_data: $return_data,
+                })
+        }
+    };
+    ($self:ident, $condition:expr; $return_data_getter:expr) => {
+        #[cfg(feature = "tracing")]
+        if $condition {
+            trace_end_step!($self, $return_data_getter)
+        }
+    };
+}
+
+pub(crate) use trace_end_step;
 pub(crate) use tracing_event;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ExitStatus {
     Stop,
     Return(#[serde(with = "serde_bytes")] Vec<u8>),
@@ -51,19 +81,45 @@ pub enum ExitStatus {
     StepLimit,
 }
 
-#[derive(Debug, Eq, PartialEq)]
-#[derive(Serialize, Deserialize)]
-pub enum Reason {
-    Call,
-    Create
+impl ExitStatus {
+    #[must_use]
+    pub fn status(&self) -> &'static str {
+        match self {
+            ExitStatus::Return(_) | ExitStatus::Stop | ExitStatus::Suicide => "succeed",
+            ExitStatus::Revert(_) => "revert",
+            ExitStatus::StepLimit => "step limit exceeded",
+        }
+    }
+
+    #[must_use]
+    pub fn is_succeed(&self) -> Option<bool> {
+        match self {
+            ExitStatus::Stop | ExitStatus::Return(_) | ExitStatus::Suicide => Some(true),
+            ExitStatus::Revert(_) => Some(false),
+            ExitStatus::StepLimit => None,
+        }
+    }
+
+    #[must_use]
+    pub fn into_result(self) -> Option<Vec<u8>> {
+        match self {
+            ExitStatus::Return(v) | ExitStatus::Revert(v) => Some(v),
+            ExitStatus::Stop | ExitStatus::Suicide | ExitStatus::StepLimit => None,
+        }
+    }
 }
 
-#[derive(Debug, Copy, Clone)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum Reason {
+    Call,
+    Create,
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Context {
     pub caller: Address,
     pub contract: Address,
-    #[serde(with="ethnum::serde::bytes::le")]
+    #[serde(with = "ethnum::serde::bytes::le")]
     pub value: U256,
 
     pub code_address: Option<Address>,
@@ -74,48 +130,72 @@ pub struct Context {
 pub struct Machine<B: Database> {
     origin: Address,
     context: Context,
-    
-    #[serde(with="ethnum::serde::bytes::le")]
+
+    #[serde(with = "ethnum::serde::bytes::le")]
     gas_price: U256,
-    #[serde(with="ethnum::serde::bytes::le")]
+    #[serde(with = "ethnum::serde::bytes::le")]
     gas_limit: U256,
-    
+
     execution_code: Buffer,
     call_data: Buffer,
     return_data: Buffer,
-    
-    stack: stack::Stack,
-    memory: memory::Memory,
+    return_range: Range<usize>,
+
+    stack: Stack,
+    memory: Memory,
     pc: usize,
-    
+
     is_static: bool,
     reason: Reason,
 
     parent: Option<Box<Self>>,
-    
+
     #[serde(skip)]
     phantom: PhantomData<*const B>,
+
+    #[serde(skip)]
+    #[cfg(feature = "tracing")]
+    tracer: TracerTypeOpt,
 }
 
 impl<B: Database> Machine<B> {
-    pub fn serialize_into<W>(self, writer: &mut W) -> Result<()> 
-        where W: std::io::Write
-    {
-        bincode::serialize_into(writer, &self)
-            .map_err(Error::from)
+    pub fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize> {
+        let mut cursor = std::io::Cursor::new(buffer);
+
+        bincode::serialize_into(&mut cursor, &self)?;
+
+        cursor.position().try_into().map_err(Error::from)
     }
 
-    pub fn deserialize_from(buffer: &mut &[u8], _backend: &B) -> Result<Self> 
-    {
-        bincode::deserialize_from(buffer)
-            .map_err(Error::from)
-    }
+    pub fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
+        fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &B) {
+            if let Some((key, range)) = buffer.uninit_data() {
+                *buffer =
+                    backend.map_solana_account(&key, |i| unsafe { Buffer::from_account(i, range) });
+            }
+        }
 
+        fn reinit_machine<B: Database>(machine: &mut Machine<B>, backend: &B) {
+            reinit_buffer(&mut machine.call_data, backend);
+            reinit_buffer(&mut machine.execution_code, backend);
+            reinit_buffer(&mut machine.return_data, backend);
+
+            if let Some(parent) = &mut machine.parent {
+                reinit_machine(parent, backend);
+            }
+        }
+
+        let mut evm: Self = bincode::deserialize(buffer)?;
+        reinit_machine(&mut evm, backend);
+
+        Ok(evm)
+    }
 
     pub fn new(
         trx: Transaction,
         origin: Address,
         backend: &mut B,
+        #[cfg(feature = "tracing")] tracer: TracerTypeOpt,
     ) -> Result<Self> {
         let origin_nonce = backend.nonce(&origin)?;
 
@@ -124,7 +204,11 @@ impl<B: Database> Machine<B> {
         }
 
         if origin_nonce != trx.nonce {
-            return Err(Error::InvalidTransactionNonce(origin, origin_nonce, trx.nonce));
+            return Err(Error::InvalidTransactionNonce(
+                origin,
+                origin_nonce,
+                trx.nonce,
+            ));
         }
 
         if let Some(chain_id) = trx.chain_id {
@@ -134,13 +218,29 @@ impl<B: Database> Machine<B> {
         }
 
         if backend.balance(&origin)? < trx.value {
-            return Err(Error::InsufficientBalanceForTransfer(origin, trx.value));
+            return Err(Error::InsufficientBalance(origin, trx.value));
+        }
+
+        if backend.code_size(&origin)? != 0 {
+            return Err(Error::SenderHasDeployedCode(origin));
         }
 
         if trx.target.is_some() {
-            Self::new_call(trx, origin, backend)
+            Self::new_call(
+                trx,
+                origin,
+                backend,
+                #[cfg(feature = "tracing")]
+                tracer,
+            )
         } else {
-            Self::new_create(trx, origin, backend)
+            Self::new_create(
+                trx,
+                origin,
+                backend,
+                #[cfg(feature = "tracing")]
+                tracer,
+            )
         }
     }
 
@@ -148,6 +248,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
+        #[cfg(feature = "tracing")] tracer: TracerTypeOpt,
     ) -> Result<Self> {
         assert!(trx.target.is_some());
 
@@ -155,7 +256,7 @@ impl<B: Database> Machine<B> {
         sol_log_data(&[b"ENTER", b"CALL", target.as_bytes()]);
 
         backend.increment_nonce(origin)?;
-        backend.snapshot()?;
+        backend.snapshot();
 
         backend.transfer(origin, target, trx.value)?;
 
@@ -163,7 +264,7 @@ impl<B: Database> Machine<B> {
 
         Ok(Self {
             origin,
-            context: Context { 
+            context: Context {
                 caller: origin,
                 contract: target,
                 value: trx.value,
@@ -174,13 +275,22 @@ impl<B: Database> Machine<B> {
             execution_code,
             call_data: trx.call_data,
             return_data: Buffer::empty(),
-            stack: Stack::new(),
-            memory: Memory::new(),
+            return_range: 0..0,
+            stack: Stack::new(
+                #[cfg(feature = "tracing")]
+                tracer.clone(),
+            ),
+            memory: Memory::new(
+                #[cfg(feature = "tracing")]
+                tracer.clone(),
+            ),
             pc: 0_usize,
             is_static: false,
             reason: Reason::Call,
             parent: None,
-            phantom: PhantomData
+            phantom: PhantomData,
+            #[cfg(feature = "tracing")]
+            tracer,
         })
     }
 
@@ -188,6 +298,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
+        #[cfg(feature = "tracing")] tracer: TracerTypeOpt,
     ) -> Result<Self> {
         assert!(trx.target.is_none());
 
@@ -199,8 +310,9 @@ impl<B: Database> Machine<B> {
         }
 
         backend.increment_nonce(origin)?;
-        backend.snapshot()?;
+        backend.snapshot();
 
+        backend.increment_nonce(target)?;
         backend.transfer(origin, target, trx.value)?;
 
         Ok(Self {
@@ -214,8 +326,15 @@ impl<B: Database> Machine<B> {
             gas_price: trx.gas_price,
             gas_limit: trx.gas_limit,
             return_data: Buffer::empty(),
-            stack: Stack::new(),
-            memory: Memory::with_capacity(trx.call_data.len()),
+            return_range: 0..0,
+            stack: Stack::new(
+                #[cfg(feature = "tracing")]
+                tracer.clone(),
+            ),
+            memory: Memory::new(
+                #[cfg(feature = "tracing")]
+                tracer.clone(),
+            ),
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,
@@ -223,52 +342,84 @@ impl<B: Database> Machine<B> {
             call_data: Buffer::empty(),
             parent: None,
             phantom: PhantomData,
+            #[cfg(feature = "tracing")]
+            tracer,
         })
     }
 
     pub fn execute(&mut self, step_limit: u64, backend: &mut B) -> Result<(ExitStatus, u64)> {
+        assert!(self.execution_code.is_initialized());
+        assert!(self.call_data.is_initialized());
+        assert!(self.return_data.is_initialized());
+
         let mut step = 0_u64;
 
-        tracing_event!(tracing::Event::BeginVM { 
-            context: self.context, code: self.execution_code.to_vec()
-        });
-
-        let status = loop {
-            step += 1;
-            if step > step_limit {
-                break ExitStatus::StepLimit;
+        tracing_event!(
+            self,
+            tracing::Event::BeginVM {
+                context: self.context,
+                code: self.execution_code.to_vec()
             }
-            
-            let opcode = self.execution_code.get_or_default(self.pc);
+        );
 
-            tracing_event!(tracing::Event::BeginStep {
-                opcode, pc: self.pc, stack: self.stack.to_vec(), memory: self.memory.to_vec()
-            });
+        let status = if is_precompile_address(&self.context.contract) {
+            let value = Self::precompile(&self.context.contract, &self.call_data).unwrap();
+            backend.commit_snapshot();
 
-            // SAFETY: OPCODES.len() == 256, opcode <= 255
-            let opcode_fn = unsafe {
-                Self::OPCODES.get_unchecked(opcode as usize)
-            };
-            let opcode_result = opcode_fn(self, backend)?;
+            ExitStatus::Return(value)
+        } else {
+            loop {
+                step += 1;
+                if step > step_limit {
+                    break ExitStatus::StepLimit;
+                }
 
-            tracing_event!(opcode_result != Action::Noop; tracing::Event::EndStep {
-                gas_used: 0_u64
-            });
+                let opcode = self.execution_code.get_or_default(self.pc);
 
-            match opcode_result {
-                Action::Continue => self.pc += 1,
-                Action::Jump(target) => self.pc = target,
-                Action::Stop => break ExitStatus::Stop,
-                Action::Return(value) => break ExitStatus::Return(value),
-                Action::Revert(value) => break ExitStatus::Revert(value),
-                Action::Suicide => break ExitStatus::Suicide,
-                Action::Noop => {},
+                tracing_event!(
+                    self,
+                    tracing::Event::BeginStep {
+                        opcode,
+                        pc: self.pc,
+                        stack: self.stack.to_vec(),
+                        memory: self.memory.to_vec()
+                    }
+                );
+
+                // SAFETY: OPCODES.len() == 256, opcode <= 255
+                let (_, opcode_fn) = unsafe { Self::OPCODES.get_unchecked(opcode as usize) };
+
+                let opcode_result = match opcode_fn(self, backend) {
+                    Ok(result) => result,
+                    Err(e) => {
+                        let message = build_revert_message(&e.to_string());
+                        self.opcode_revert_impl(Buffer::from_slice(&message), backend)?
+                    }
+                };
+
+                trace_end_step!(self, opcode_result != Action::Noop; match &opcode_result {
+                    Action::Return(value) | Action::Revert(value) => Some(value.clone()),
+                    _ => None,
+                });
+
+                match opcode_result {
+                    Action::Continue => self.pc += 1,
+                    Action::Jump(target) => self.pc = target,
+                    Action::Stop => break ExitStatus::Stop,
+                    Action::Return(value) => break ExitStatus::Return(value),
+                    Action::Revert(value) => break ExitStatus::Revert(value),
+                    Action::Suicide => break ExitStatus::Suicide,
+                    Action::Noop => {}
+                };
             }
         };
 
-        tracing_event!(tracing::Event::EndVM {
-            status: status.clone()
-        });
+        tracing_event!(
+            self,
+            tracing::Event::EndVM {
+                status: status.clone()
+            }
+        );
 
         Ok((status, step))
     }
@@ -289,13 +440,22 @@ impl<B: Database> Machine<B> {
             execution_code,
             call_data,
             return_data: Buffer::empty(),
-            stack: Stack::new(),
-            memory: Memory::new(),
+            return_range: 0..0,
+            stack: Stack::new(
+                #[cfg(feature = "tracing")]
+                self.tracer.clone(),
+            ),
+            memory: Memory::new(
+                #[cfg(feature = "tracing")]
+                self.tracer.clone(),
+            ),
             pc: 0_usize,
             is_static: self.is_static,
             reason,
             parent: None,
-            phantom: PhantomData
+            phantom: PhantomData,
+            #[cfg(feature = "tracing")]
+            tracer: self.tracer.clone(),
         };
 
         core::mem::swap(self, &mut other);

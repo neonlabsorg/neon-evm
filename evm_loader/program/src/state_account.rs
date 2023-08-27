@@ -1,18 +1,15 @@
 use crate::{
+    account::{program, EthereumAccount, FinalizedState, Holder, Incinerator, Operator, State},
     config::OPERATOR_PRIORITY_SLOTS,
     error::Error,
-    account::{State, FinalizedState, Operator, Incinerator, program, Holder, EthereumAccount},
-    types::{Transaction, Address},
+    types::{Address, Transaction},
 };
 use ethnum::U256;
 use solana_program::{
-    account_info::AccountInfo,
-    pubkey::Pubkey,
-    program_error::ProgramError,
+    account_info::AccountInfo, clock::Clock, program_error::ProgramError, pubkey::Pubkey,
     sysvar::Sysvar,
-    clock::Clock,
 };
-use std::cell::{RefMut, Ref};
+use std::cell::{Ref, RefMut};
 
 const ACCOUNT_CHUNK_LEN: usize = 1 + 1 + 32;
 
@@ -29,13 +26,12 @@ pub struct BlockedAccountMeta {
 
 pub type BlockedAccounts = Vec<BlockedAccountMeta>;
 
-impl <'a> FinalizedState<'a> {
+impl<'a> FinalizedState<'a> {
     #[must_use]
     pub fn is_outdated(&self, transaction_hash: &[u8; 32]) -> bool {
         self.transaction_hash.ne(transaction_hash)
     }
 }
-
 
 impl<'a> State<'a> {
     pub fn new(
@@ -53,16 +49,18 @@ impl<'a> State<'a> {
             FinalizedState::TAG => {
                 let finalized_storage = FinalizedState::from_account(program_id, info)?;
                 if !finalized_storage.is_outdated(&trx.hash) {
-                    return Err!(Error::StorageAccountFinalized.into(); "Transaction already finalized")
+                    return Err!(Error::StorageAccountFinalized.into(); "Transaction already finalized");
                 }
 
                 finalized_storage.owner
             }
-            _ => return Err!(ProgramError::InvalidAccountData; "Account {} - expected finalized storage or holder", info.key)
+            _ => {
+                return Err!(ProgramError::InvalidAccountData; "Account {} - expected finalized storage or holder", info.key)
+            }
         };
 
         if &owner != accounts.operator.key {
-            return Err!(ProgramError::InvalidAccountData; "Account {} - invalid state account owner", info.key)
+            return Err!(ProgramError::InvalidAccountData; "Account {} - invalid state account owner", info.key);
         }
 
         let data = crate::account::state::Data {
@@ -75,10 +73,12 @@ impl<'a> State<'a> {
             operator: *accounts.operator.key,
             slot: Clock::get()?.slot,
             accounts_len: accounts.remaining_accounts.len(),
+            evm_state_len: 0,
+            evm_machine_len: 0,
         };
 
         info.data.borrow_mut()[0] = 0_u8;
-        let mut storage = State::init(info, data)?;
+        let mut storage = State::init(program_id, info, data)?;
 
         storage.make_deposit(&accounts.system_program, &accounts.operator)?;
         storage.write_blocked_accounts(program_id, accounts.remaining_accounts)?;
@@ -101,10 +101,13 @@ impl<'a> State<'a> {
         }
 
         let mut storage = State::from_account(program_id, info)?;
-        let blocked_accounts = storage.check_blocked_accounts(program_id, remaining_accounts, is_cancelling)?;
+        let blocked_accounts =
+            storage.check_blocked_accounts(program_id, remaining_accounts, is_cancelling)?;
 
         let clock = Clock::get()?;
-        if (*operator.key != storage.operator) && ((clock.slot - storage.slot) <= OPERATOR_PRIORITY_SLOTS) {
+        if (*operator.key != storage.operator)
+            && ((clock.slot - storage.slot) <= OPERATOR_PRIORITY_SLOTS)
+        {
             return Err!(ProgramError::InvalidAccountData; "operator.key != storage.operator");
         }
 
@@ -126,22 +129,33 @@ impl<'a> State<'a> {
 
         let finalized_data = crate::account::state::FinalizedData {
             owner: self.owner,
-            transaction_hash: self.transaction_hash
+            transaction_hash: self.transaction_hash,
         };
 
         let finalized = unsafe { self.replace(finalized_data) }?;
         Ok(finalized)
     }
 
-    fn make_deposit(&self, system_program: &program::System<'a>, source: &Operator<'a>) -> Result<(), ProgramError> {
+    fn make_deposit(
+        &self,
+        system_program: &program::System<'a>,
+        source: &Operator<'a>,
+    ) -> Result<(), ProgramError> {
         system_program.transfer(source, self.info, crate::config::PAYMENT_TO_DEPOSIT)
     }
 
     fn withdraw_deposit(&self, target: &AccountInfo<'a>) -> Result<(), ProgramError> {
-        let source_lamports = self.info.lamports().checked_sub(crate::config::PAYMENT_TO_DEPOSIT)
-            .ok_or_else(|| E!(ProgramError::InvalidArgument; "Deposit source lamports underflow"))?;
+        let source_lamports = self
+            .info
+            .lamports()
+            .checked_sub(crate::config::PAYMENT_TO_DEPOSIT)
+            .ok_or_else(
+                || E!(ProgramError::InvalidArgument; "Deposit source lamports underflow"),
+            )?;
 
-        let target_lamports = target.lamports().checked_add(crate::config::PAYMENT_TO_DEPOSIT)
+        let target_lamports = target
+            .lamports()
+            .checked_add(crate::config::PAYMENT_TO_DEPOSIT)
             .ok_or_else(|| E!(ProgramError::InvalidArgument; "Deposit target lamports overflow"))?;
 
         **self.info.lamports.borrow_mut() = source_lamports;
@@ -162,19 +176,21 @@ impl<'a> State<'a> {
         let chunks = keys_storage.chunks_exact(ACCOUNT_CHUNK_LEN);
         let accounts = chunks
             .map(|c| c.split_at(2))
-            .map(|(meta, key)|
-                BlockedAccountMeta {
-                    key: Pubkey::new(key),
-                    exists: meta[1] != 0,
-                    is_writable: meta[0] != 0,
-                }
-            )
+            .map(|(meta, key)| BlockedAccountMeta {
+                key: Pubkey::try_from(key).expect("key is 32 bytes"),
+                exists: meta[1] != 0,
+                is_writable: meta[0] != 0,
+            })
             .collect();
 
         Ok(accounts)
     }
 
-    fn write_blocked_accounts(&mut self, program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), ProgramError> {
+    fn write_blocked_accounts(
+        &mut self,
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+    ) -> Result<(), ProgramError> {
         assert_eq!(self.accounts_len, accounts.len()); // should be always true
 
         let (begin, end) = self.blocked_accounts_region();
@@ -190,6 +206,33 @@ impl<'a> State<'a> {
             account_storage[0] = u8::from(info.is_writable);
             account_storage[1] = u8::from(Self::account_exists(program_id, info));
             account_storage[2..].copy_from_slice(info.key.as_ref());
+        }
+
+        Ok(())
+    }
+
+    pub fn update_blocked_accounts<I>(&mut self, accounts: I) -> Result<(), Error>
+    where
+        I: ExactSizeIterator<Item = BlockedAccountMeta>,
+    {
+        let evm_data_len = self.evm_state_len + self.evm_machine_len;
+        let (evm_data_offset, _) = self.evm_data_region();
+        let evm_data_range = evm_data_offset..evm_data_offset + evm_data_len;
+
+        self.accounts_len = accounts.len();
+        let (accounts_begin, accounts_end) = self.blocked_accounts_region();
+
+        let mut data = self.info.try_borrow_mut_data()?;
+        // Move EVM data
+        data.copy_within(evm_data_range, accounts_end);
+
+        // Write accounts
+        let accounts_storage = &mut data[accounts_begin..accounts_end];
+        let accounts_storage = accounts_storage.chunks_exact_mut(ACCOUNT_CHUNK_LEN);
+        for (meta, account_storage) in accounts.zip(accounts_storage) {
+            account_storage[0] = u8::from(meta.is_writable);
+            account_storage[1] = u8::from(meta.exists);
+            account_storage[2..].copy_from_slice(meta.key.as_ref());
         }
 
         Ok(())
@@ -211,7 +254,7 @@ impl<'a> State<'a> {
                 return Err!(ProgramError::InvalidAccountData; "Expected account {}, found {}", blocked.key, info.key);
             }
 
-            if blocked.is_writable != info.is_writable {
+            if blocked.is_writable && !info.is_writable {
                 return Err!(ProgramError::InvalidAccountData; "Expected account {} is_writable: {}", info.key, blocked.is_writable);
             }
 
@@ -229,19 +272,29 @@ impl<'a> State<'a> {
     }
 
     #[must_use]
-    pub fn evm_state_data(&self) -> Ref<[u8]> {
-        let (_, accounts_region_end) = self.blocked_accounts_region();
+    pub fn evm_data(&self) -> Ref<[u8]> {
+        let (begin, end) = self.evm_data_region();
 
         let data = self.info.data.borrow();
-        Ref::map(data, |d| &d[accounts_region_end..])
+        Ref::map(data, |d| &d[begin..end])
     }
 
     #[must_use]
-    pub fn evm_state_mut_data(&mut self) -> RefMut<[u8]> {
-        let (_, accounts_region_end) = self.blocked_accounts_region();
+    pub fn evm_data_mut(&mut self) -> RefMut<[u8]> {
+        let (begin, end) = self.evm_data_region();
 
         let data = self.info.data.borrow_mut();
-        RefMut::map(data, |d| &mut d[accounts_region_end..])
+        RefMut::map(data, |d| &mut d[begin..end])
+    }
+
+    #[must_use]
+    fn evm_data_region(&self) -> (usize, usize) {
+        let (_, accounts_region_end) = self.blocked_accounts_region();
+
+        let begin = accounts_region_end;
+        let end = self.info.data_len();
+
+        (begin, end)
     }
 
     #[must_use]
@@ -254,6 +307,8 @@ impl<'a> State<'a> {
 
     #[must_use]
     fn account_exists(program_id: &Pubkey, info: &AccountInfo) -> bool {
-        (info.owner == program_id) && !info.data_is_empty() && (info.data.borrow()[0] == EthereumAccount::TAG)
+        (info.owner == program_id)
+            && !info.data_is_empty()
+            && (info.data.borrow()[0] == EthereumAccount::TAG)
     }
 }

@@ -1,9 +1,8 @@
 mod action;
 mod cache;
-mod state;
 mod precompile_extension;
+mod state;
 
-pub use cache::OwnedAccountInfo;
-pub use cache::OwnedAccountInfoPartial;
 pub use action::Action;
+pub use cache::OwnedAccountInfo;
 pub use state::ExecutorState;

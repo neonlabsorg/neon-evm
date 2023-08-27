@@ -1,17 +1,17 @@
-use std::convert::TryInto;
-use ethnum::U256;
-use solana_program::{
-    pubkey::Pubkey,
-    sysvar::recent_blockhashes
-};
-use crate::account::{EthereumAccount};
+use crate::account::EthereumAccount;
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
-use crate::executor::{OwnedAccountInfo, OwnedAccountInfoPartial};
+use crate::executor::OwnedAccountInfo;
 use crate::types::Address;
+use ethnum::U256;
+use solana_program::account_info::AccountInfo;
+use solana_program::{pubkey::Pubkey, sysvar::slot_hashes};
+use std::convert::TryInto;
+
+use super::find_slot_hash;
 
 impl<'a> AccountStorage for ProgramAccountStorage<'a> {
-    fn neon_token_mint(&self) -> &Pubkey { 
+    fn neon_token_mint(&self) -> &Pubkey {
         &crate::config::token_mint::ID
     }
 
@@ -28,23 +28,25 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     }
 
     fn block_timestamp(&self) -> U256 {
-        self.clock.unix_timestamp.try_into().expect("Timestamp is positive")
+        self.clock
+            .unix_timestamp
+            .try_into()
+            .expect("Timestamp is positive")
     }
 
-    fn block_hash(&self, number: U256) -> [u8; 32] {
-        if let Some(account) = self.solana_accounts.get(&recent_blockhashes::ID) {
-            let slot_hash_data = account.data.borrow();
-            let clock_slot = self.clock.slot;
-            if number >= U256::from(clock_slot) {
-                return <[u8; 32]>::default();
-            }
-            let offset: usize = (8 + (clock_slot - 1 - number.as_u64()) * 40).try_into().unwrap();
-            if offset + 32 > slot_hash_data.len() {
-                return <[u8; 32]>::default();
-            }
-            return slot_hash_data[offset..][..32].try_into().unwrap()
-        }
-        panic!("Trying to get blockhash info without providing sysvar account: {}", recent_blockhashes::ID);
+    fn block_hash(&self, slot: u64) -> [u8; 32] {
+        let slot_hashes_account = self
+            .solana_accounts
+            .get(&slot_hashes::ID)
+            .unwrap_or_else(|| {
+                panic!(
+                    "Trying to get slot hash info without providing sysvar account: {}",
+                    slot_hashes::ID
+                )
+            });
+
+        let slot_hashes_data = slot_hashes_account.data.borrow();
+        find_slot_hash(slot, &slot_hashes_data[..])
     }
 
     fn exists(&self, address: &Address) -> bool {
@@ -69,6 +71,18 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     fn code_hash(&self, address: &Address) -> [u8; 32] {
         use solana_program::keccak::hash;
 
+        // https://eips.ethereum.org/EIPS/eip-1052
+        // https://eips.ethereum.org/EIPS/eip-161
+        if self.code_size(address) == 0 {
+            if self.nonce(address) == 0 && self.balance(address) == 0 {
+                // non-existent account
+                return <[u8; 32]>::default();
+            }
+
+            // account without code
+            return hash(&[]).to_bytes();
+        }
+
         self.ethereum_account(address)
             .and_then(EthereumAccount::contract_data)
             .map(|contract| hash(&contract.code()))
@@ -79,9 +93,15 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     fn code(&self, address: &Address) -> crate::evm::Buffer {
         use crate::evm::Buffer;
 
-        self.ethereum_account(address)
-            .and_then(EthereumAccount::contract_data)
-            .map_or_else(Buffer::empty, |c| Buffer::new(&c.code()))
+        if let Some(account) = self.ethereum_account(address) {
+            if account.code_size() == 0 {
+                return Buffer::empty();
+            }
+
+            unsafe { Buffer::from_account(account.info, account.code_location()) }
+        } else {
+            Buffer::empty()
+        }
     }
 
     fn generation(&self, address: &Address) -> u32 {
@@ -92,7 +112,8 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     fn storage(&self, address: &Address, index: &U256) -> [u8; 32] {
         if *index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT) {
             let index: usize = index.as_usize() * 32;
-            return self.ethereum_account(address)
+            return self
+                .ethereum_account(address)
                 .and_then(EthereumAccount::contract_data)
                 .map(|c| c.storage()[index..index + 32].try_into().unwrap())
                 .unwrap_or_default();
@@ -110,9 +131,12 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         OwnedAccountInfo::from_account_info(self.program_id, info)
     }
 
-    fn clone_solana_account_partial(&self, address: &Pubkey, offset: usize, len: usize) -> Option<OwnedAccountInfoPartial> {
+    fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
+    where
+        F: FnOnce(&AccountInfo) -> R,
+    {
         let info = self.solana_accounts[address];
-        OwnedAccountInfoPartial::from_account_info(info, offset, len)
+        action(info)
     }
 
     fn solana_account_space(&self, address: &Address) -> Option<usize> {
@@ -128,11 +152,10 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     }
 
     fn solana_address(&self, address: &Address) -> (Pubkey, u8) {
-        self.ethereum_accounts.get(address)
-            .map_or_else(
-                || address.find_solana_address(self.program_id),
-                |a| (*a.info.key, a.bump_seed),
-            )
+        self.ethereum_accounts.get(address).map_or_else(
+            || address.find_solana_address(self.program_id),
+            |a| (*a.info.key, a.bump_seed),
+        )
     }
 
     fn chain_id(&self) -> u64 {

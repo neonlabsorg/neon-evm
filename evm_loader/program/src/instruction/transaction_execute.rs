@@ -1,15 +1,14 @@
-use crate::account::{Operator, program, EthereumAccount, Treasury};
+use crate::account::{program, EthereumAccount, Operator, Treasury};
 use crate::account_storage::{AccountsReadiness, ProgramAccountStorage};
+use crate::config::CHAIN_ID;
+use crate::error::{Error, Result};
 use crate::evm::Machine;
 use crate::executor::ExecutorState;
 use crate::gasometer::Gasometer;
 use crate::instruction::transaction_step::log_return_value;
 use crate::types::{Address, Transaction};
-use crate::error::{Error, Result};
-use solana_program::{
-    account_info::AccountInfo,
-};
-
+use ethnum::U256;
+use solana_program::account_info::AccountInfo;
 
 pub struct Accounts<'a> {
     pub operator: Operator<'a>,
@@ -24,9 +23,13 @@ pub struct Accounts<'a> {
 pub fn validate(
     _accounts: &Accounts,
     account_storage: &ProgramAccountStorage,
-    _trx: &Transaction,
+    trx: &Transaction,
     _caller_address: &Address,
 ) -> Result<()> {
+    if trx.chain_id != Some(CHAIN_ID.into()) {
+        return Err(Error::InvalidChainId(trx.chain_id.unwrap_or(U256::ZERO)));
+    }
+
     account_storage.check_for_blocked_accounts()?;
 
     Ok(())
@@ -39,7 +42,11 @@ pub fn execute<'a>(
     trx: Transaction,
     caller_address: Address,
 ) -> Result<()> {
-    accounts.system_program.transfer(&accounts.operator, &accounts.treasury, crate::config::PAYMENT_TO_TREASURE)?;
+    accounts.system_program.transfer(
+        &accounts.operator,
+        &accounts.treasury,
+        crate::config::PAYMENT_TO_TREASURE,
+    )?;
 
     let gas_limit = trx.gas_limit;
     let gas_price = trx.gas_price;
@@ -47,7 +54,13 @@ pub fn execute<'a>(
     let (exit_reason, apply_state) = {
         let mut backend = ExecutorState::new(account_storage);
 
-        let mut evm = Machine::new(trx, caller_address, &mut backend)?;
+        let mut evm = Machine::new(
+            trx,
+            caller_address,
+            &mut backend,
+            #[cfg(feature = "tracing")]
+            None,
+        )?;
         let (result, _) = evm.execute(u64::MAX, &mut backend)?;
 
         let actions = backend.into_actions();
@@ -79,9 +92,13 @@ pub fn execute<'a>(
     solana_program::log::sol_log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
     let gas_cost = used_gas.saturating_mul(gas_price);
-    account_storage.transfer_gas_payment(caller_address, accounts.operator_ether_account, gas_cost)?;
+    account_storage.transfer_gas_payment(
+        caller_address,
+        accounts.operator_ether_account,
+        gas_cost,
+    )?;
 
     log_return_value(&exit_reason);
-    
+
     Ok(())
 }

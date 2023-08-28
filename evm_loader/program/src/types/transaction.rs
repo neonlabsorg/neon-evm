@@ -20,6 +20,38 @@ impl rlp::Decodable for StorageKey {
     }
 }
 
+impl TryFrom<crate::types::hexbytes::HexBytes> for StorageKey {
+    type Error = String;
+
+    fn try_from(hex: crate::types::hexbytes::HexBytes) -> Result<Self, Self::Error> {
+        let bytes = hex.0;
+
+        if bytes.len() != 32 {
+            return Err(String::from("Hex string must be 32 bytes"));
+        }
+
+        let mut array = [0; 32];
+        array.copy_from_slice(&bytes);
+
+        Ok(StorageKey(array))
+    }
+}
+
+// impl From<crate::types::hexbytes::HexBytes> for StorageKey {
+//     fn from(hex: crate::types::hexbytes::HexBytes) -> Self {
+//         let bytes: Vec<u8> = hex.0;
+
+//         if bytes.len() != 32 {
+//             panic!("Hex string must be 32 bytes");
+//         }
+
+//         let mut array = [0; 32];
+//         array.copy_from_slice(&bytes);
+
+//         StorageKey(array)
+//     }
+// }
+
 #[derive(Debug, Clone)]
 pub enum TransactionEnvelope {
     Legacy,
@@ -127,17 +159,17 @@ impl rlp::Decodable for LegacyTx {
 
 #[derive(Debug, Clone)]
 pub struct AccessListTx {
-    nonce: u64,
-    gas_price: U256,
-    gas_limit: U256,
-    target: Option<Address>,
-    value: U256,
-    call_data: crate::evm::Buffer,
-    r: U256,
-    s: U256,
-    chain_id: U256,
-    recovery_id: u8,
-    access_list: Vec<(Address, Vec<StorageKey>)>,
+    pub nonce: u64,
+    pub gas_price: U256,
+    pub gas_limit: U256,
+    pub target: Option<Address>,
+    pub value: U256,
+    pub call_data: crate::evm::Buffer,
+    pub r: U256,
+    pub s: U256,
+    pub chain_id: U256,
+    pub recovery_id: u8,
+    pub access_list: Vec<(Address, Vec<StorageKey>)>,
 }
 
 impl rlp::Decodable for AccessListTx {
@@ -188,6 +220,8 @@ impl rlp::Decodable for AccessListTx {
                 }
 
                 access_list.push((address, storage_keys));
+            } else {
+                return Err(rlp::DecoderError::RlpExpectedToBeList);
             }
         }
 
@@ -229,7 +263,7 @@ pub enum TransactionPayload {
 #[derive(Debug, Clone)]
 pub struct Transaction {
     pub transaction: TransactionPayload,
-    pub rlp_len: usize,
+    pub byte_len: usize,
     pub hash: [u8; 32],
     pub signed_hash: [u8; 32],
 }
@@ -270,14 +304,18 @@ impl Transaction {
             _ => unimplemented!(),
         };
 
-        let rlp_len = {
-            let info = transaction_rlp.payload_info().unwrap();
+        let info = transaction_rlp.payload_info().unwrap();
+        let byte_len = if transaction_type.is_none() {
+            // Legacy transaction
             info.header_len + info.value_len
+        } else {
+            // Transaction in the type envelope
+            info.header_len + info.value_len + 1 // + 1 byte for type
         };
 
         Transaction {
             transaction,
-            rlp_len,
+            byte_len,
             hash,
             signed_hash,
         }
@@ -540,7 +578,7 @@ impl Transaction {
 
     #[must_use]
     pub fn rlp_len(&self) -> usize {
-        self.rlp_len
+        self.byte_len
     }
 
     #[must_use]

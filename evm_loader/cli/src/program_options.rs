@@ -157,7 +157,6 @@ fn trx_params<'a, 'b>(cmd: &'static str, desc: &'static str) -> App<'a, 'b> {
                 .takes_value(true)
                 .required(false)
                 .multiple(true)
-                // .number_of_values(1) // Access list takes at least 1 value
                 .value_name("ADDRESS [STORAGE_KEYS ...]"),
         )
         .arg(

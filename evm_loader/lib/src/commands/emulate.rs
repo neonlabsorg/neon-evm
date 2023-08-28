@@ -202,7 +202,40 @@ pub(crate) async fn emulate_trx<'a>(
 ) -> Result<evm_loader::evm::tracing::EmulationResult, NeonError> {
     let (exit_status, actions, steps_executed) = {
         let mut backend = ExecutorState::new(storage);
-        let mut trx_payload =
+        let trx_payload = if tx_params.access_list.is_some() {
+            let access_list = tx_params
+                .access_list
+                .expect("access_list is present")
+                .into_iter()
+                .map(|item| {
+                    (
+                        item.address,
+                        item.storage_keys
+                            .into_iter()
+                            .map(|k| {
+                                evm_loader::types::StorageKey::try_from(k)
+                                    .expect("key to be correct")
+                            })
+                            .collect(),
+                    )
+                })
+                .collect();
+            evm_loader::types::TransactionPayload::AccessList(evm_loader::types::AccessListTx {
+                nonce: tx_params
+                    .nonce
+                    .unwrap_or_else(|| storage.nonce(&tx_params.from)),
+                gas_price: U256::ZERO,
+                gas_limit: tx_params.gas_limit.unwrap_or(U256::MAX),
+                target: tx_params.to,
+                value: tx_params.value.unwrap_or_default(),
+                call_data: evm_loader::evm::Buffer::from_slice(&tx_params.data.unwrap_or_default()),
+                r: U256::default(),
+                s: U256::default(),
+                chain_id: chain_id.into(),
+                recovery_id: u8::default(),
+                access_list,
+            })
+        } else {
             evm_loader::types::TransactionPayload::Legacy(evm_loader::types::LegacyTx {
                 nonce: tx_params
                     .nonce
@@ -217,11 +250,12 @@ pub(crate) async fn emulate_trx<'a>(
                 s: U256::default(),
                 chain_id: Some(chain_id.into()),
                 recovery_id: u8::default(),
-            });
+            })
+        };
 
         let mut trx = Transaction {
             transaction: trx_payload,
-            rlp_len: usize::default(),
+            byte_len: usize::default(),
             hash: <[u8; 32]>::default(),
             signed_hash: <[u8; 32]>::default(),
         };

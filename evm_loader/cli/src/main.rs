@@ -325,7 +325,6 @@ fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
 
     let gas_limit = u256_of(params, "gas_limit");
 
-    // add to and from if required: Some(vec![from, to.unwrap()])
     let access_list = access_list_of(params, "access_list");
 
     let tx_params = TxParams {

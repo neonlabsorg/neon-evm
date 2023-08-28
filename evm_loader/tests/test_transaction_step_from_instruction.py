@@ -551,3 +551,23 @@ class TestStepFromInstructionWithChangedRLPTrx:
             execute_transaction_steps_from_instruction(operator_keypair, evm_loader, treasury_pool, holder_acc,
                                                        signed_tx_new, [sender_with_tokens.solana_account_address,
                                                                        string_setter_contract.solana_address])
+
+    def test_old_trx_type_with_leading_zeros(self, sender_with_tokens, operator_keypair, evm_loader,
+                                             string_setter_contract, treasury_pool, holder_acc):
+        text = ''.join(random.choice(string.ascii_letters) for _ in range(10))
+
+        signed_tx = make_contract_call_trx(sender_with_tokens, string_setter_contract, "set(string)", [text])
+        new_raw_trx = HexBytes('0x' + (b'\x00' + bytes.fromhex(signed_tx.rawTransaction.hex()[2:])).hex())
+        signed_tx_new = SignedTransaction(
+            rawTransaction=new_raw_trx,
+            hash=signed_tx.hash,
+            r=signed_tx.r,
+            s=signed_tx.s,
+            v=signed_tx.v,
+        )
+
+        resp = execute_transaction_steps_from_instruction(operator_keypair, evm_loader, treasury_pool, holder_acc,
+                                                          signed_tx_new, [string_setter_contract.solana_address,
+                                                                          sender_with_tokens.solana_account_address]
+                                                          )
+        check_transaction_logs_have_text(resp.value, "exit_status=0x12")

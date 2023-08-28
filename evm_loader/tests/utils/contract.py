@@ -10,7 +10,7 @@ from solana.keypair import Keypair
 from .types import Caller, TreasuryPool
 from ..solana_utils import solana_client, \
     get_transaction_count, EvmLoader, write_transaction_to_holder_account, \
-    send_transaction_step_from_account, neon_cli
+    send_transaction_step_from_account
 from .storage import create_holder
 from .ethereum import create_contract_address, make_eth_transaction
 
@@ -50,12 +50,10 @@ def make_deployment_transaction(
     return w3.eth.account.sign_transaction(tx, user.solana_account.secret_key[:32])
 
 
-def make_contract_call_trx(user, contract, function_signature, params=None, value=0, chain_id=111, access_list=None):
+def make_contract_call_trx(user, contract, function_signature, params=None, value=0, chain_id=111, access_list=None,
+                           trx_type=None):
     data = abi.function_signature_to_4byte_selector(function_signature)
-    if access_list:
-        trx_type = 1
-    else:
-        trx_type = 0
+
     if params is not None:
         for param in params:
             if isinstance(param, int):

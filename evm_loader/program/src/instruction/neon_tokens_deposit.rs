@@ -167,13 +167,16 @@ fn execute(
     let deposit = U256::from(accounts.source.delegated_amount) * 10_u128.pow(additional_decimals);
     let mut ethereum_account =
         EthereumAccount::from_account(program_id, accounts.ethereum_account)?;
-    ethereum_account.balance = ethereum_account.balance.checked_add(deposit).ok_or({
-        E!(
-            ProgramError::InvalidArgument;
-            "Account {} - balance overflow",
-            ethereum_address
-        )
-    })?;
+    ethereum_account.balance = ethereum_account
+        .balance
+        .checked_add(deposit)
+        .ok_or_else(|| {
+            E!(
+                ProgramError::InvalidArgument;
+                "Account {} - balance overflow",
+                ethereum_address
+            )
+        })?;
 
     Ok(())
 }

@@ -570,4 +570,4 @@ class TestStepFromInstructionWithChangedRLPTrx:
                                                           signed_tx_new, [string_setter_contract.solana_address,
                                                                           sender_with_tokens.solana_account_address]
                                                           )
-        check_transaction_logs_have_text(resp.value, "exit_status=0x12")
+        check_transaction_logs_have_text(resp.value, "exit_status=0x11")

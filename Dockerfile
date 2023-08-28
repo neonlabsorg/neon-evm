@@ -1,6 +1,7 @@
 ARG SOLANA_IMAGE
 # Install BPF SDK
 FROM solanalabs/rust:1.64.0 AS builder
+
 RUN cargo install rustfilt
 WORKDIR /opt
 ARG SOLANA_BPF_VERSION

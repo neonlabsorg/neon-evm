@@ -247,8 +247,7 @@ impl Transaction {
                 let hash =
                     solana_program::keccak::hashv(&[&[0x00], transaction_rlp.as_raw()]).to_bytes();
                 let signed_hash =
-                    Self::calculate_legacy_signature(transaction_rlp, chain_id, Some(&[0x00]))
-                        .unwrap();
+                    Self::calculate_legacy_signature(transaction_rlp, chain_id, None).unwrap();
 
                 (hash, signed_hash)
             }

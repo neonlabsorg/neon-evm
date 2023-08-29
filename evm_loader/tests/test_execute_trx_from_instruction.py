@@ -321,3 +321,18 @@ class TestExecuteTrxFromInstruction:
                                              calculator_contract.solana_address],
                                             operator_keypair)
         check_transaction_logs_have_text(resp.value, "exit_status=0x12")
+
+    @pytest.mark.parametrize("value", [0, 10])
+    def test_transaction_with_dynamic_gas(self, operator_keypair, treasury_pool, sender_with_tokens,
+                                          evm_loader, holder_acc,
+                                          calculator_contract, calculator_caller_contract, value):
+        signed_tx = make_contract_call_trx(sender_with_tokens, calculator_caller_contract, "callCalculator()", [],
+                                           trx_type=2, max_fee_per_gas=20000,
+                                           max_priority_fee_per_gas=20000, value=value)
+        resp = execute_trx_from_instruction(operator_keypair, evm_loader, treasury_pool.account, treasury_pool.buffer,
+                                            signed_tx,
+                                            [sender_with_tokens.solana_account_address,
+                                             calculator_caller_contract.solana_address,
+                                             calculator_contract.solana_address],
+                                            operator_keypair)
+        check_transaction_logs_have_text(resp.value, "exit_status=0x12")

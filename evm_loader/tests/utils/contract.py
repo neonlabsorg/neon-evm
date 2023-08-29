@@ -21,7 +21,8 @@ def make_deployment_transaction(
         user: Caller,
         contract_path: tp.Union[pathlib.Path, str],
         encoded_args=None,
-        gas: int = 999999999, chain_id=111, access_list=None
+        gas: int = 999999999, chain_id=111, access_list=None, max_fee_per_gas=None,
+                                           max_priority_fee_per_gas=None
 ) -> SignedTransaction:
     if isinstance(contract_path, str):
         contract_path = pathlib.Path(contract_path)
@@ -46,14 +47,17 @@ def make_deployment_transaction(
     if access_list:
         tx['accessList'] = access_list
         tx['type'] = 1
-    print(tx)
+    if max_fee_per_gas:
+        tx["maxFeePerGas"] = max_fee_per_gas
+        tx["maxPriorityFeePerGas"] = max_priority_fee_per_gas
+        tx['type'] = 2
+        tx.pop("gasPrice")
     return w3.eth.account.sign_transaction(tx, user.solana_account.secret_key[:32])
 
 
 def make_contract_call_trx(user, contract, function_signature, params=None, value=0, chain_id=111, access_list=None,
-                           trx_type=None):
+                           trx_type=None, max_fee_per_gas=None, max_priority_fee_per_gas=None):
     data = abi.function_signature_to_4byte_selector(function_signature)
-
     if params is not None:
         for param in params:
             if isinstance(param, int):
@@ -62,7 +66,8 @@ def make_contract_call_trx(user, contract, function_signature, params=None, valu
                 data += eth_abi.encode(['string'], [param])
 
     signed_tx = make_eth_transaction(contract.eth_address, data, user.solana_account, user.solana_account_address,
-                                     value=value, chain_id=chain_id, access_list=access_list, type=trx_type)
+                                     value, chain_id, access_list=access_list, type=trx_type,
+                                     max_fee_per_gas=max_fee_per_gas, max_priority_fee_per_gas=max_priority_fee_per_gas)
     return signed_tx
 
 

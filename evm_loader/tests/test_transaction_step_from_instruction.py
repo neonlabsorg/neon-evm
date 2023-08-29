@@ -354,6 +354,44 @@ class TestTransactionStepFromInstruction:
                                                           steps_count)
         check_transaction_logs_have_text(resp.value, "exit_status=0x12")
 
+    @pytest.mark.parametrize("value", [0, 10])
+    def test_transaction_with_dynamic_gas(self, operator_keypair, treasury_pool, sender_with_tokens,
+                                          evm_loader, holder_acc,
+                                          string_setter_contract, value):
+        signed_tx = make_contract_call_trx(sender_with_tokens, string_setter_contract, "set(string)", ["text"],
+                                           value=value, trx_type=2, max_fee_per_gas=20000,
+                                           max_priority_fee_per_gas=20000)
+        resp = execute_transaction_steps_from_instruction(operator_keypair, evm_loader, treasury_pool, holder_acc,
+                                                          signed_tx, [string_setter_contract.solana_address,
+                                                                      sender_with_tokens.solana_account_address]
+                                                          )
+
+        check_holder_account_tag(holder_acc, FINALIZED_STORAGE_ACCOUNT_INFO_LAYOUT, TAG_FINALIZED_STATE)
+        check_transaction_logs_have_text(resp.value, "exit_status=0x11")
+
+
+    def test_transaction_with_dynamic_gas_and_access_list(self, operator_keypair, treasury_pool, sender_with_tokens,
+                                                          evm_loader, holder_acc,
+                                                          string_setter_contract):
+        access_list = (
+            {
+                "address": string_setter_contract.eth_address.hex(),
+                "storageKeys": (
+                    "0x0000000000000000000000000000000000000000000000000000000000000000",
+                )
+            },
+        )
+        signed_tx = make_contract_call_trx(sender_with_tokens, string_setter_contract, "set(string)", ["text"],
+                                           trx_type=2, max_fee_per_gas=20000,
+                                           max_priority_fee_per_gas=20000, access_list=access_list)
+        resp = execute_transaction_steps_from_instruction(operator_keypair, evm_loader, treasury_pool, holder_acc,
+                                                          signed_tx, [string_setter_contract.solana_address,
+                                                                      sender_with_tokens.solana_account_address]
+                                                          )
+
+        check_holder_account_tag(holder_acc, FINALIZED_STORAGE_ACCOUNT_INFO_LAYOUT, TAG_FINALIZED_STATE)
+        check_transaction_logs_have_text(resp.value, "exit_status=0x11")
+
 
 class TestInstructionStepContractCallContractInteractions:
     def test_contract_call_unchange_storage_function(self, rw_lock_contract, session_user, evm_loader, operator_keypair,

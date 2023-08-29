@@ -361,6 +361,43 @@ class TestTransactionStepFromAccount:
             neon_cli().call_contract_get_function(evm_loader, sender_with_tokens, string_setter_contract,
                                                   "get()"))
 
+    def test_transaction_with_dynamic_gas(self, operator_keypair, treasury_pool, sender_with_tokens,
+                                          evm_loader, holder_acc,
+                                          string_setter_contract):
+        signed_tx = make_contract_call_trx(sender_with_tokens, string_setter_contract, "set(string)", ["text"],
+                                           trx_type=2, max_fee_per_gas=9999,
+                                           max_priority_fee_per_gas=99,
+                                           value=10)
+        write_transaction_to_holder_account(signed_tx, holder_acc, operator_keypair)
+        resp = execute_transaction_steps_from_account(operator_keypair, evm_loader, treasury_pool, holder_acc,
+                                                      [string_setter_contract.solana_address,
+                                                       sender_with_tokens.solana_account_address])
+
+        check_transaction_logs_have_text(resp.value, "exit_status=0x11")
+        assert "text" in to_text(
+            neon_cli().call_contract_get_function(evm_loader, sender_with_tokens, string_setter_contract,
+                                                  "get()"))
+
+    def test_deploy_contract_with_dynamic_gas(self, operator_keypair, holder_acc, treasury_pool, evm_loader,
+                                              sender_with_tokens):
+        contract_filename = "small.binary"
+        contract = create_contract_address(sender_with_tokens, evm_loader)
+
+        signed_tx = make_deployment_transaction(sender_with_tokens, contract_filename,
+                                                max_fee_per_gas=20000,
+                                                max_priority_fee_per_gas=20000)
+        contract_path = pytest.CONTRACTS_PATH / contract_filename
+        with open(contract_path, 'rb') as f:
+            contract_code = f.read()
+
+        steps_count = neon_cli().get_steps_count(evm_loader, sender_with_tokens, "deploy", contract_code.hex())
+        resp = execute_transaction_steps_from_account(operator_keypair, evm_loader, treasury_pool, holder_acc,
+                                                      signed_tx, [contract.solana_address,
+                                                                  sender_with_tokens.solana_account_address],
+                                                      steps_count)
+        check_holder_account_tag(holder_acc, FINALIZED_STORAGE_ACCOUNT_INFO_LAYOUT, TAG_FINALIZED_STATE)
+        check_transaction_logs_have_text(resp.value.transaction.transaction.signatures[0], "exit_status=0x12")
+
 
 class TestAccountStepContractCallContractInteractions:
     def test_contract_call_unchange_storage_function(self, rw_lock_contract, rw_lock_caller, session_user, evm_loader,

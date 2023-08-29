@@ -236,13 +236,112 @@ impl rlp::Decodable for AccessListTx {
     }
 }
 
-// TODO: Will be added as a part of EIP-1559
-// struct DynamicFeeTx {}
+// EIP-1559 transaction structure
+#[derive(Debug, Clone)]
+pub struct DynamicFeeTx {
+    nonce: u64,
+    // Tip to the validator: higher priority - faster processing
+    max_priority_fee_per_gas: U256,
+    // The maximum amount user wants to spend on transaction
+    #[allow(dead_code)]
+    max_fee_per_gas: U256,
+    gas_limit: U256,
+    target: Option<Address>,
+    value: U256,
+    call_data: crate::evm::Buffer,
+    r: U256,
+    s: U256,
+    chain_id: U256,
+    recovery_id: u8,
+    access_list: Vec<(Address, Vec<StorageKey>)>,
+}
+
+impl rlp::Decodable for DynamicFeeTx {
+    fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
+        let rlp_len = {
+            let info = rlp.payload_info()?;
+            info.header_len + info.value_len
+        };
+
+        if rlp.as_raw().len() != rlp_len {
+            return Err(rlp::DecoderError::RlpInconsistentLengthAndData);
+        }
+
+        let chain_id: U256 = u256(&rlp.at(0)?)?;
+        let nonce: u64 = rlp.val_at(1)?;
+        let max_priority_fee_per_gas: U256 = u256(&rlp.at(2)?)?;
+        let max_fee_per_gas: U256 = u256(&rlp.at(3)?)?;
+        let gas_limit: U256 = u256(&rlp.at(4)?)?;
+        let target: Option<Address> = {
+            let target = rlp.at(5)?;
+            if target.is_empty() {
+                if target.is_data() {
+                    None
+                } else {
+                    return Err(rlp::DecoderError::RlpExpectedToBeData);
+                }
+            } else {
+                Some(target.as_val()?)
+            }
+        };
+
+        let value: U256 = u256(&rlp.at(6)?)?;
+        let call_data = crate::evm::Buffer::from_slice(rlp.at(7)?.data()?);
+
+        let rlp_access_list = rlp.at(8)?;
+        let mut access_list = vec![];
+
+        for entry in rlp_access_list.iter() {
+            // Check if entry is a list
+            if entry.is_list() {
+                // Parse address from first element
+                let address: Address = entry.at(0)?.as_val()?;
+
+                // Get storage keys from second element
+                let mut storage_keys: Vec<StorageKey> = vec![];
+
+                for key in entry.at(1)?.iter() {
+                    storage_keys.push(key.as_val()?);
+                }
+
+                access_list.push((address, storage_keys));
+            } else {
+                return Err(rlp::DecoderError::RlpExpectedToBeList);
+            }
+        }
+
+        let y_parity: u8 = rlp.at(9)?.as_val()?;
+        let r: U256 = u256(&rlp.at(10)?)?;
+        let s: U256 = u256(&rlp.at(11)?)?;
+
+        if rlp.at(12).is_ok() {
+            return Err(rlp::DecoderError::RlpIncorrectListLen);
+        }
+
+        let tx = DynamicFeeTx {
+            nonce,
+            max_priority_fee_per_gas,
+            max_fee_per_gas,
+            gas_limit,
+            target,
+            value,
+            call_data,
+            r,
+            s,
+            chain_id,
+            recovery_id: y_parity,
+            access_list,
+        };
+
+        Ok(tx)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum TransactionPayload {
     Legacy(LegacyTx),
     AccessList(AccessListTx),
+    DynamicFee(DynamicFeeTx),
 }
 
 #[derive(Debug, Clone)]
@@ -277,6 +376,14 @@ impl Transaction {
 
                 (hash, signed_hash)
             }
+            // Dynamic Fee transaction
+            Some(TransactionEnvelope::DynamicFee) => {
+                let hash =
+                    solana_program::keccak::hashv(&[&[0x02], transaction_rlp.as_raw()]).to_bytes();
+                let signed_hash = Self::eip2718_signed_hash(&[0x02], transaction_rlp, 9)?;
+
+                (hash, signed_hash)
+            }
             // Legacy trasaction
             None => {
                 let hash = solana_program::keccak::hash(transaction_rlp.as_raw()).to_bytes();
@@ -284,7 +391,6 @@ impl Transaction {
 
                 (hash, signed_hash)
             }
-            _ => unimplemented!(),
         };
 
         let info = transaction_rlp.payload_info()?;
@@ -465,7 +571,8 @@ impl Transaction {
     pub fn nonce(&self) -> u64 {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { nonce, .. })
-            | TransactionPayload::AccessList(AccessListTx { nonce, .. }) => nonce,
+            | TransactionPayload::AccessList(AccessListTx { nonce, .. })
+            | TransactionPayload::DynamicFee(DynamicFeeTx { nonce, .. }) => nonce,
         }
     }
 
@@ -474,6 +581,11 @@ impl Transaction {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { gas_price, .. })
             | TransactionPayload::AccessList(AccessListTx { gas_price, .. }) => gas_price,
+            // TODO: Temporarily solution before new gas computation logic is implemeted for EIP-1559
+            TransactionPayload::DynamicFee(DynamicFeeTx {
+                max_priority_fee_per_gas,
+                ..
+            }) => max_priority_fee_per_gas,
         }
     }
 
@@ -481,7 +593,8 @@ impl Transaction {
     pub fn gas_limit(&self) -> U256 {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { gas_limit, .. })
-            | TransactionPayload::AccessList(AccessListTx { gas_limit, .. }) => gas_limit,
+            | TransactionPayload::AccessList(AccessListTx { gas_limit, .. })
+            | TransactionPayload::DynamicFee(DynamicFeeTx { gas_limit, .. }) => gas_limit,
         }
     }
 
@@ -489,7 +602,8 @@ impl Transaction {
     pub fn target(&self) -> Option<Address> {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { target, .. })
-            | TransactionPayload::AccessList(AccessListTx { target, .. }) => target,
+            | TransactionPayload::AccessList(AccessListTx { target, .. })
+            | TransactionPayload::DynamicFee(DynamicFeeTx { target, .. }) => target,
         }
     }
 
@@ -497,7 +611,8 @@ impl Transaction {
     pub fn value(&self) -> U256 {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { value, .. })
-            | TransactionPayload::AccessList(AccessListTx { value, .. }) => value,
+            | TransactionPayload::AccessList(AccessListTx { value, .. })
+            | TransactionPayload::DynamicFee(DynamicFeeTx { value, .. }) => value,
         }
     }
 
@@ -505,7 +620,8 @@ impl Transaction {
     pub fn call_data(&self) -> &crate::evm::Buffer {
         match &self.transaction {
             TransactionPayload::Legacy(LegacyTx { call_data, .. })
-            | TransactionPayload::AccessList(AccessListTx { call_data, .. }) => call_data,
+            | TransactionPayload::AccessList(AccessListTx { call_data, .. })
+            | TransactionPayload::DynamicFee(DynamicFeeTx { call_data, .. }) => call_data,
         }
     }
 
@@ -518,6 +634,9 @@ impl Transaction {
             })
             | TransactionPayload::AccessList(AccessListTx {
                 ref mut call_data, ..
+            })
+            | TransactionPayload::DynamicFee(DynamicFeeTx {
+                ref mut call_data, ..
             }) => std::mem::take(call_data),
         }
     }
@@ -526,7 +645,8 @@ impl Transaction {
     pub fn r(&self) -> U256 {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { r, .. })
-            | TransactionPayload::AccessList(AccessListTx { r, .. }) => r,
+            | TransactionPayload::AccessList(AccessListTx { r, .. })
+            | TransactionPayload::DynamicFee(DynamicFeeTx { r, .. }) => r,
         }
     }
 
@@ -534,7 +654,8 @@ impl Transaction {
     pub fn s(&self) -> U256 {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { s, .. })
-            | TransactionPayload::AccessList(AccessListTx { s, .. }) => s,
+            | TransactionPayload::AccessList(AccessListTx { s, .. })
+            | TransactionPayload::DynamicFee(DynamicFeeTx { s, .. }) => s,
         }
     }
 
@@ -542,7 +663,8 @@ impl Transaction {
     pub fn chain_id(&self) -> Option<U256> {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { chain_id, .. }) => chain_id,
-            TransactionPayload::AccessList(AccessListTx { chain_id, .. }) => Some(chain_id),
+            TransactionPayload::AccessList(AccessListTx { chain_id, .. })
+            | TransactionPayload::DynamicFee(DynamicFeeTx { chain_id, .. }) => Some(chain_id),
         }
     }
 
@@ -550,7 +672,8 @@ impl Transaction {
     pub fn recovery_id(&self) -> u8 {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { recovery_id, .. })
-            | TransactionPayload::AccessList(AccessListTx { recovery_id, .. }) => recovery_id,
+            | TransactionPayload::AccessList(AccessListTx { recovery_id, .. })
+            | TransactionPayload::DynamicFee(DynamicFeeTx { recovery_id, .. }) => recovery_id,
         }
     }
 
@@ -572,8 +695,9 @@ impl Transaction {
     #[must_use]
     pub fn access_list(&self) -> Option<&Vec<(Address, Vec<StorageKey>)>> {
         match &self.transaction {
-            TransactionPayload::AccessList(AccessListTx { access_list, .. }) => Some(access_list),
             TransactionPayload::Legacy(_) => None,
+            TransactionPayload::AccessList(AccessListTx { access_list, .. })
+            | TransactionPayload::DynamicFee(DynamicFeeTx { access_list, .. }) => Some(access_list),
         }
     }
 }

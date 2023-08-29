@@ -542,13 +542,24 @@ impl Transaction {
                     tx,
                 )?
             }
+            Some(TransactionEnvelope::DynamicFee) => {
+                let dynamic_fee_tx =
+                    rlp::decode::<DynamicFeeTx>(transaction).map_err(Error::from)?;
+                let chain_id = dynamic_fee_tx.chain_id;
+                let tx = TransactionPayload::DynamicFee(dynamic_fee_tx);
+                Transaction::from_payload(
+                    &Some(TransactionEnvelope::DynamicFee),
+                    Some(chain_id),
+                    &rlp::Rlp::new(transaction),
+                    tx,
+                )?
+            }
             None => {
                 let legacy_tx = rlp::decode::<LegacyTx>(transaction).map_err(Error::from)?;
                 let chain_id = legacy_tx.chain_id;
                 let tx = TransactionPayload::Legacy(legacy_tx);
                 Transaction::from_payload(&None, chain_id, &rlp::Rlp::new(transaction), tx)?
             }
-            Some(TransactionEnvelope::DynamicFee) => unimplemented!(),
         };
 
         Ok(tx)

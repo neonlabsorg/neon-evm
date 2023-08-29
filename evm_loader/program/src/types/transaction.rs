@@ -37,21 +37,6 @@ impl TryFrom<crate::types::hexbytes::HexBytes> for StorageKey {
     }
 }
 
-// impl From<crate::types::hexbytes::HexBytes> for StorageKey {
-//     fn from(hex: crate::types::hexbytes::HexBytes) -> Self {
-//         let bytes: Vec<u8> = hex.0;
-
-//         if bytes.len() != 32 {
-//             panic!("Hex string must be 32 bytes");
-//         }
-
-//         let mut array = [0; 32];
-//         array.copy_from_slice(&bytes);
-
-//         StorageKey(array)
-//     }
-// }
-
 #[derive(Debug, Clone)]
 pub enum TransactionEnvelope {
     Legacy,
@@ -274,14 +259,13 @@ impl Transaction {
         chain_id: Option<U256>,
         transaction_rlp: &rlp::Rlp,
         transaction: TransactionPayload,
-    ) -> Self {
+    ) -> Result<Self, rlp::DecoderError> {
         let (hash, signed_hash) = match *transaction_type {
             // Legacy transaction wrapped in envelop
             Some(TransactionEnvelope::Legacy) => {
                 let hash =
                     solana_program::keccak::hashv(&[&[0x00], transaction_rlp.as_raw()]).to_bytes();
-                let signed_hash =
-                    Self::calculate_legacy_signature(transaction_rlp, chain_id, None).unwrap();
+                let signed_hash = Self::calculate_legacy_signature(transaction_rlp, chain_id)?;
 
                 (hash, signed_hash)
             }
@@ -289,22 +273,21 @@ impl Transaction {
             Some(TransactionEnvelope::AccessList) => {
                 let hash =
                     solana_program::keccak::hashv(&[&[0x01], transaction_rlp.as_raw()]).to_bytes();
-                let signed_hash = Self::eip2718_signed_hash(&[0x01], transaction_rlp, 8).unwrap();
+                let signed_hash = Self::eip2718_signed_hash(&[0x01], transaction_rlp, 8)?;
 
                 (hash, signed_hash)
             }
             // Legacy trasaction
             None => {
                 let hash = solana_program::keccak::hash(transaction_rlp.as_raw()).to_bytes();
-                let signed_hash =
-                    Self::calculate_legacy_signature(transaction_rlp, chain_id, None).unwrap();
+                let signed_hash = Self::calculate_legacy_signature(transaction_rlp, chain_id)?;
 
                 (hash, signed_hash)
             }
             _ => unimplemented!(),
         };
 
-        let info = transaction_rlp.payload_info().unwrap();
+        let info = transaction_rlp.payload_info()?;
         let byte_len = if transaction_type.is_none() {
             // Legacy transaction
             info.header_len + info.value_len
@@ -313,12 +296,12 @@ impl Transaction {
             info.header_len + info.value_len + 1 // + 1 byte for type
         };
 
-        Transaction {
+        Ok(Transaction {
             transaction,
             byte_len,
             hash,
             signed_hash,
-        }
+        })
     }
 
     fn eip2718_signed_hash(
@@ -361,7 +344,6 @@ impl Transaction {
     fn calculate_legacy_signature(
         transaction: &rlp::Rlp,
         chain_id: Option<U256>,
-        transaction_type_byte: Option<&[u8]>,
     ) -> Result<[u8; 32], rlp::DecoderError> {
         let raw = transaction.as_raw();
         let payload_info = transaction.payload_info()?;
@@ -420,12 +402,7 @@ impl Transaction {
             }
         };
 
-        let hash = transaction_type_byte.map_or_else(
-            || solana_program::keccak::hashv(&[&header, middle, &trailer]).to_bytes(),
-            |type_byte| {
-                solana_program::keccak::hashv(&[type_byte, &header, middle, &trailer]).to_bytes()
-            },
-        );
+        let hash = solana_program::keccak::hashv(&[&header, middle, &trailer]).to_bytes();
 
         Ok(hash)
     }
@@ -445,24 +422,25 @@ impl Transaction {
                     chain_id,
                     &rlp::Rlp::new(transaction),
                     tx,
-                )
+                )?
             }
             Some(TransactionEnvelope::AccessList) => {
-                let access_list = rlp::decode::<AccessListTx>(transaction).map_err(Error::from)?;
-                let chain_id = access_list.chain_id;
-                let tx = TransactionPayload::AccessList(access_list);
+                let access_list_tx =
+                    rlp::decode::<AccessListTx>(transaction).map_err(Error::from)?;
+                let chain_id = access_list_tx.chain_id;
+                let tx = TransactionPayload::AccessList(access_list_tx);
                 Transaction::from_payload(
                     &Some(TransactionEnvelope::AccessList),
                     Some(chain_id),
                     &rlp::Rlp::new(transaction),
                     tx,
-                )
+                )?
             }
             None => {
                 let legacy_tx = rlp::decode::<LegacyTx>(transaction).map_err(Error::from)?;
                 let chain_id = legacy_tx.chain_id;
                 let tx = TransactionPayload::Legacy(legacy_tx);
-                Transaction::from_payload(&None, chain_id, &rlp::Rlp::new(transaction), tx)
+                Transaction::from_payload(&None, chain_id, &rlp::Rlp::new(transaction), tx)?
             }
             Some(TransactionEnvelope::DynamicFee) => unimplemented!(),
         };

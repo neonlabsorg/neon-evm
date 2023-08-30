@@ -230,17 +230,15 @@ impl ClickHouseDb {
     async fn get_account_rooted_slot(&self, key: &str, slot: u64) -> ChResult<Option<u64>> {
         info!("get_account_rooted_slot {{ key: {key}, slot: {slot} }}");
         let query = r#"
-            SELECT DISTINCT slot
-            FROM events.update_account_distributed
-            WHERE pubkey = ?
-                AND slot <= ?
-                AND slot IN (
-                    SELECT slot
-                    FROM events.update_slot
-                    WHERE status = 'Rooted'
-                )
-            ORDER BY slot DESC
-            LIMIT 1
+            SELECT max(b.slot)
+            FROM events.update_slot AS b
+            WHERE b.slot IN (SELECT a.slot
+                             FROM events.update_account_distributed AS a
+                             WHERE a.pubkey = ?
+                               AND a.slot <= ?
+                             ORDER BY a.slot DESC
+                             LIMIT 1000)
+              AND b.status = 'Rooted'
         "#;
 
         let time_start = Instant::now();

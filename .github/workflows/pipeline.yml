@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build-neon-evm:
-    runs-on: build-runner
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
         with:

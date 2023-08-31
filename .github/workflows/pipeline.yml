@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build-neon-evm:
-    runs-on: build-runner
+    runs-on: neon-evm-1
     steps:
       - uses: actions/checkout@v3
         with:
@@ -36,7 +36,7 @@ jobs:
           python3 ./.github/workflows/deploy.py publish_image \
           --github_sha=${GITHUB_SHA}
   run-neon-evm-tests:
-    runs-on: test-runner
+    runs-on: neon-evm-1
     needs:
       - build-neon-evm
     steps:
@@ -48,7 +48,7 @@ jobs:
           python3 ./.github/workflows/deploy.py run_tests \
           --github_sha=${GITHUB_SHA}
   trigger-proxy-tests:
-    runs-on: trigger-runner
+    runs-on: neon-evm-1
     needs:
       - build-neon-evm
     steps:
@@ -66,7 +66,7 @@ jobs:
           --is_draft=${{github.event.pull_request.draft}} \
           --labels='${{ toJson(github.event.pull_request.labels.*.name) }}'
   finalize-image:
-    runs-on: build-runner
+    runs-on: neon-evm-1
     needs:
       - trigger-proxy-tests
       - run-neon-evm-tests

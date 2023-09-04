@@ -116,7 +116,7 @@ def sender_with_tokens(evm_loader, operator_keypair) -> Caller:
     return user
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def holder_acc(operator_keypair) -> PublicKey:
     return create_holder(operator_keypair)
 

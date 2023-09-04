@@ -162,8 +162,8 @@ def create_holder_account(account, operator, seed):
             AccountMeta(pubkey=operator, is_signer=True, is_writable=False),
         ],
         program_id=PublicKey(EVM_LOADER),
-        data=bytes.fromhex("24") + 
-            len(seed).to_bytes(8, 'little') + seed
+        data=bytes.fromhex("24") +
+             len(seed).to_bytes(8, 'little') + seed
     )
 
 
@@ -585,7 +585,7 @@ def execute_transaction_steps_from_instruction(operator: Keypair, evm_loader, tr
     signer = operator if signer is None else signer
 
     send_transaction_step_from_instruction(operator, evm_loader, treasury, storage_account, instruction,
-                                           additional_accounts, 1, signer)
+                                           additional_accounts, EVM_STEPS, signer)
     if steps_count > 0:
         steps_left = steps_count
         while steps_left > 0:
@@ -593,7 +593,7 @@ def execute_transaction_steps_from_instruction(operator: Keypair, evm_loader, tr
                                                    additional_accounts, EVM_STEPS, signer)
             steps_left = steps_left - EVM_STEPS
     return send_transaction_step_from_instruction(operator, evm_loader, treasury, storage_account, instruction,
-                                                  additional_accounts, 1, signer)
+                                                  additional_accounts, EVM_STEPS, signer)
 
 
 def send_transaction_step_from_account(operator: Keypair, evm_loader, treasury, storage_account,
@@ -615,14 +615,16 @@ def execute_transaction_steps_from_account(operator: Keypair, evm_loader, treasu
                                            signer: Keypair = None) -> GetTransactionResp:
     signer = operator if signer is None else signer
 
-    send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts, EVM_STEPS, signer)
+    send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts, EVM_STEPS,
+                                       signer)
     if steps_count > 0:
         steps_left = steps_count
         while steps_left > 0:
             send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts,
                                                EVM_STEPS, signer)
             steps_left = steps_left - EVM_STEPS
-    return send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts, EVM_STEPS,
+    return send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts,
+                                              EVM_STEPS,
                                               signer)
 
 
@@ -631,7 +633,8 @@ def execute_transaction_steps_from_account_no_chain_id(operator: Keypair, evm_lo
                                                        signer: Keypair = None) -> GetTransactionResp:
     signer = operator if signer is None else signer
 
-    send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts, 1, signer,
+    send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts, EVM_STEPS,
+                                       signer,
                                        tag=34)
     if steps_count > 0:
         steps_left = steps_count
@@ -639,5 +642,6 @@ def execute_transaction_steps_from_account_no_chain_id(operator: Keypair, evm_lo
             send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts,
                                                EVM_STEPS, signer, tag=34)
             steps_left = steps_left - EVM_STEPS
-    return send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts, 1,
+    return send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts,
+                                              EVM_STEPS,
                                               signer, tag=34)

@@ -35,7 +35,10 @@ async fn main() -> NeonApiResult<()> {
         .lossy(false)
         .finish(std::io::stdout());
 
-    tracing_subscriber::fmt().with_writer(non_blocking).init();
+    tracing_subscriber::fmt()
+        .with_thread_ids(true)
+        .with_writer(non_blocking)
+        .init();
 
     let api_config = config::load_api_config_from_enviroment();
 

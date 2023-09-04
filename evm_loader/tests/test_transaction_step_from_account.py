@@ -393,10 +393,12 @@ class TestTransactionStepFromAccount:
         with open(contract_path, 'rb') as f:
             contract_code = f.read()
 
+        write_transaction_to_holder_account(signed_tx, holder_acc, operator_keypair)
+
         steps_count = neon_cli().get_steps_count(evm_loader, sender_with_tokens, "deploy", contract_code.hex())
         resp = execute_transaction_steps_from_account(operator_keypair, evm_loader, treasury_pool, holder_acc,
-                                                      signed_tx, [contract.solana_address,
-                                                                  sender_with_tokens.solana_account_address],
+                                                      [contract.solana_address,
+                                                       sender_with_tokens.solana_account_address],
                                                       steps_count)
         check_holder_account_tag(holder_acc, FINALIZED_STORAGE_ACCOUNT_INFO_LAYOUT, TAG_FINALIZED_STATE)
         check_transaction_logs_have_text(resp.value.transaction.transaction.signatures[0], "exit_status=0x12")

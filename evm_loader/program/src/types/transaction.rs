@@ -240,7 +240,7 @@ impl rlp::Decodable for AccessListTx {
 #[derive(Debug, Clone)]
 pub struct DynamicFeeTx {
     nonce: u64,
-    // Tip to the validator: higher priority - faster processing
+    // Tip to the miner: higher priority - faster processing
     max_priority_fee_per_gas: U256,
     // The maximum amount user wants to spend on transaction
     #[allow(dead_code)]
@@ -360,7 +360,7 @@ impl Transaction {
         transaction: TransactionPayload,
     ) -> Result<Self, rlp::DecoderError> {
         let (hash, signed_hash) = match *transaction_type {
-            // Legacy transaction wrapped in envelop
+            // Legacy transaction in EIP-2718 envelop
             Some(TransactionEnvelope::Legacy) => {
                 let hash =
                     solana_program::keccak::hashv(&[&[0x00], transaction_rlp.as_raw()]).to_bytes();
@@ -378,13 +378,14 @@ impl Transaction {
             }
             // Dynamic Fee transaction
             Some(TransactionEnvelope::DynamicFee) => {
-                let hash =
-                    solana_program::keccak::hashv(&[&[0x02], transaction_rlp.as_raw()]).to_bytes();
-                let signed_hash = Self::eip2718_signed_hash(&[0x02], transaction_rlp, 9)?;
+                panic!("Abort execution of dynamic_fee");
+                // let hash =
+                //     solana_program::keccak::hashv(&[&[0x02], transaction_rlp.as_raw()]).to_bytes();
+                // let signed_hash = Self::eip2718_signed_hash(&[0x02], transaction_rlp, 9)?;
 
-                (hash, signed_hash)
+                // (hash, signed_hash)
             }
-            // Legacy trasaction
+            // Legacy trasaction without EIP-2718 envelop
             None => {
                 let hash = solana_program::keccak::hash(transaction_rlp.as_raw()).to_bytes();
                 let signed_hash = Self::calculate_legacy_signature(transaction_rlp, chain_id)?;
@@ -398,7 +399,7 @@ impl Transaction {
             // Legacy transaction
             info.header_len + info.value_len
         } else {
-            // Transaction in the type envelope
+            // Transaction in the EIP-2718 envelope
             info.header_len + info.value_len + 1 // + 1 byte for type
         };
 

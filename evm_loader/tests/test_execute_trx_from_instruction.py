@@ -305,6 +305,7 @@ class TestExecuteTrxFromInstruction:
                                              calculator_caller_contract, calculator_contract, treasury_pool,
                                              holder_acc):
         signed_tx = make_contract_call_trx(sender_with_tokens, calculator_caller_contract, "callCalculator()", [])
+
         new_raw_trx = HexBytes('0x' + (b'\x00' + bytes.fromhex(signed_tx.rawTransaction.hex()[2:])).hex())
         signed_tx_new = SignedTransaction(
             rawTransaction=new_raw_trx,
@@ -313,7 +314,6 @@ class TestExecuteTrxFromInstruction:
             s=signed_tx.s,
             v=signed_tx.v,
         )
-
         resp = execute_trx_from_instruction(operator_keypair, evm_loader, treasury_pool.account, treasury_pool.buffer,
                                             signed_tx_new,
                                             [sender_with_tokens.solana_account_address,
@@ -325,14 +325,13 @@ class TestExecuteTrxFromInstruction:
     @pytest.mark.parametrize("value", [0, 10])
     def test_transaction_with_dynamic_gas(self, operator_keypair, treasury_pool, sender_with_tokens,
                                           evm_loader, holder_acc,
-                                          calculator_contract, calculator_caller_contract, value):
-        signed_tx = make_contract_call_trx(sender_with_tokens, calculator_caller_contract, "callCalculator()", [],
-                                           trx_type=2, max_fee_per_gas=20000,
-                                           max_priority_fee_per_gas=20000, value=value)
+                                          string_setter_contract, value):
+        signed_tx = make_contract_call_trx(sender_with_tokens, string_setter_contract, "set(string)", ["text"],
+                                           value=value, trx_type=2, max_fee_per_gas=20000,
+                                           max_priority_fee_per_gas=20000)
         resp = execute_trx_from_instruction(operator_keypair, evm_loader, treasury_pool.account, treasury_pool.buffer,
                                             signed_tx,
                                             [sender_with_tokens.solana_account_address,
-                                             calculator_caller_contract.solana_address,
-                                             calculator_contract.solana_address],
+                                             string_setter_contract.solana_address],
                                             operator_keypair)
-        check_transaction_logs_have_text(resp.value, "exit_status=0x12")
+        check_transaction_logs_have_text(resp.value, "exit_status=0x11")

@@ -615,14 +615,14 @@ def execute_transaction_steps_from_account(operator: Keypair, evm_loader, treasu
                                            signer: Keypair = None) -> GetTransactionResp:
     signer = operator if signer is None else signer
 
-    send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts, 1, signer)
+    send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts, EVM_STEPS, signer)
     if steps_count > 0:
         steps_left = steps_count
         while steps_left > 0:
             send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts,
                                                EVM_STEPS, signer)
             steps_left = steps_left - EVM_STEPS
-    return send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts, 1,
+    return send_transaction_step_from_account(operator, evm_loader, treasury, storage_account, additional_accounts, EVM_STEPS,
                                               signer)
 
 

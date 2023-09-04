@@ -79,10 +79,13 @@ class TestTransactionStepFromAccount:
         check_holder_account_tag(holder_acc, FINALIZED_STORAGE_ACCOUNT_INFO_LAYOUT, TAG_FINALIZED_STATE)
         check_transaction_logs_have_text(resp.value.transaction.transaction.signatures[0], "exit_status=0x12")
 
+    @pytest.mark.parametrize("gas_price", [None, 10])
     def test_call_contract_function_without_neon_transfer(self, operator_keypair, holder_acc, treasury_pool,
-                                                          sender_with_tokens, evm_loader, string_setter_contract):
+                                                          sender_with_tokens, evm_loader, string_setter_contract,
+                                                          gas_price):
         text = ''.join(random.choice(string.ascii_letters) for _ in range(10))
-        signed_tx = make_contract_call_trx(sender_with_tokens, string_setter_contract, "set(string)", [text])
+        signed_tx = make_contract_call_trx(sender_with_tokens, string_setter_contract, "set(string)", [text],
+                                           gas_price=gas_price)
         write_transaction_to_holder_account(signed_tx, holder_acc, operator_keypair)
 
         resp = execute_transaction_steps_from_account(operator_keypair, evm_loader, treasury_pool, holder_acc,

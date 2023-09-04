@@ -378,12 +378,11 @@ impl Transaction {
             }
             // Dynamic Fee transaction
             Some(TransactionEnvelope::DynamicFee) => {
-                panic!("Abort execution of dynamic_fee");
-                // let hash =
-                //     solana_program::keccak::hashv(&[&[0x02], transaction_rlp.as_raw()]).to_bytes();
-                // let signed_hash = Self::eip2718_signed_hash(&[0x02], transaction_rlp, 9)?;
+                let hash =
+                    solana_program::keccak::hashv(&[&[0x02], transaction_rlp.as_raw()]).to_bytes();
+                let signed_hash = Self::eip2718_signed_hash(&[0x02], transaction_rlp, 9)?;
 
-                // (hash, signed_hash)
+                (hash, signed_hash)
             }
             // Legacy trasaction without EIP-2718 envelop
             None => {

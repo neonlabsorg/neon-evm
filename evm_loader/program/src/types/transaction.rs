@@ -78,6 +78,8 @@ pub struct LegacyTx {
 
 impl rlp::Decodable for LegacyTx {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
+        solana_program::msg!("LegacyTx decoder");
+
         let rlp_len = {
             let info = rlp.payload_info()?;
             info.header_len + info.value_len
@@ -159,6 +161,8 @@ pub struct AccessListTx {
 
 impl rlp::Decodable for AccessListTx {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
+        solana_program::msg!("AccessListTx decoder");
+
         let rlp_len = {
             let info = rlp.payload_info()?;
             info.header_len + info.value_len
@@ -258,6 +262,8 @@ pub struct DynamicFeeTx {
 
 impl rlp::Decodable for DynamicFeeTx {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
+        solana_program::msg!("DynamicFeeTx decoder");
+
         let rlp_len = {
             let info = rlp.payload_info()?;
             info.header_len + info.value_len

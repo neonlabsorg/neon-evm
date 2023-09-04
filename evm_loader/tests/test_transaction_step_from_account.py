@@ -376,7 +376,7 @@ class TestTransactionStepFromAccount:
                                                       [string_setter_contract.solana_address,
                                                        sender_with_tokens.solana_account_address])
 
-        check_transaction_logs_have_text(resp.value, "exit_status=0x11")
+        check_transaction_logs_have_text(resp.value.transaction.transaction.signatures[0], "exit_status=0x11")
         assert "text" in to_text(
             neon_cli().call_contract_get_function(evm_loader, sender_with_tokens, string_setter_contract,
                                                   "get()"))

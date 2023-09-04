@@ -109,14 +109,14 @@ def second_session_user(evm_loader) -> Caller:
     return make_new_user(evm_loader)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def sender_with_tokens(evm_loader, operator_keypair) -> Caller:
     user = make_new_user(evm_loader)
     deposit_neon(evm_loader, operator_keypair, user.eth_address, 100000)
     return user
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def holder_acc(operator_keypair) -> PublicKey:
     return create_holder(operator_keypair)
 
@@ -146,13 +146,13 @@ def string_setter_contract(evm_loader: EvmLoader, operator_keypair: Keypair, ses
     return deploy_contract(operator_keypair, session_user, "string_setter.binary", evm_loader, treasury_pool)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def calculator_contract(evm_loader: EvmLoader, operator_keypair: Keypair, session_user: Caller,
                         treasury_pool) -> Contract:
     return deploy_contract(operator_keypair, session_user, "Calculator.binary", evm_loader, treasury_pool)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def calculator_caller_contract(evm_loader: EvmLoader, operator_keypair: Keypair, session_user: Caller,
                                treasury_pool, calculator_contract) -> Contract:
     constructor_args = eth_abi.encode(['address'], [calculator_contract.eth_address.hex()])

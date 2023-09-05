@@ -547,13 +547,15 @@ impl ClickHouseDb {
             pubkey ASC,
             slot ASC,
             write_version ASC
-        LIMIT 1;"
+        LIMIT 1
         "#;
+
+        let pubkey_str = format!("{:?}", pubkey.to_bytes());
 
         let data = Self::row_opt(
             self.client
                 .query(query)
-                .bind(pubkey)
+                .bind(pubkey_str)
                 .bind(slot)
                 .fetch_one::<Vec<u8>>()
                 .await,
@@ -561,7 +563,13 @@ impl ClickHouseDb {
 
         match data {
             Some(data) => {
-                return Ok(get_elf_parameter(data.as_slice(), "NEON_REVISION"));
+                let neon_revision =
+                    get_elf_parameter(data.as_slice(), "NEON_REVISION").map_err(|e| {
+                        ChError::Db(clickhouse::error::Error::Custom(format!(
+                            "Failed to get NEON_REVISION, error: {e:?}",
+                        )))
+                    })?;
+                Ok(neon_revision)
             }
             None => {
                 let err = clickhouse::error::Error::Custom(format!(

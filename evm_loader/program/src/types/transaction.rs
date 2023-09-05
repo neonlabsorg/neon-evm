@@ -76,12 +76,8 @@ pub struct LegacyTx {
     pub recovery_id: u8,
 }
 
-// 0x02f8cc6f806382270f8502540be3ff941835f5f2a66f949e1b5cb934966df0ea58ec84470ab8644ed3885e000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000047465787400000000000000000000000000000000000000000000000000000000c080a0e3d59fd90cc29fd747fd49e4309b5ecd8aad2d541655bf922f74bb3353855631a027accfd283e611a26ac2209942bdd679da865f394f1a97153f5d22299bd0061f
-
 impl rlp::Decodable for LegacyTx {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
-        solana_program::msg!("LegacyTx decoder");
-
         let rlp_len = {
             let info = rlp.payload_info()?;
             info.header_len + info.value_len
@@ -163,8 +159,6 @@ pub struct AccessListTx {
 
 impl rlp::Decodable for AccessListTx {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
-        solana_program::msg!("AccessListTx decoder");
-
         let rlp_len = {
             let info = rlp.payload_info()?;
             info.header_len + info.value_len
@@ -242,13 +236,14 @@ impl rlp::Decodable for AccessListTx {
     }
 }
 
-// EIP-1559 transaction structure
+// EIP-1559 Dynamic Fee transaction structure
 #[derive(Debug, Clone)]
 pub struct DynamicFeeTx {
     nonce: u64,
-    // Tip to the miner: higher priority - faster processing
+    // Tip to the miner
     max_priority_fee_per_gas: U256,
     // The maximum amount user wants to spend on transaction
+    // Unused before EIP-1559 gas price calculation is implemented
     #[allow(dead_code)]
     max_fee_per_gas: U256,
     gas_limit: U256,
@@ -264,8 +259,6 @@ pub struct DynamicFeeTx {
 
 impl rlp::Decodable for DynamicFeeTx {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
-        solana_program::msg!("DynamicFeeTx decoder");
-
         let rlp_len = {
             let info = rlp.payload_info()?;
             info.header_len + info.value_len

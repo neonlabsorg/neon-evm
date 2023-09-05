@@ -60,12 +60,7 @@ pub fn do_continue<'a>(
 ) -> Result<()> {
     debug_print!("do_continue");
 
-    solana_program::msg!("step_count {}", step_count);
-    solana_program::msg!("storage.gas_price {}", storage.gas_price);
-
     if (step_count < EVM_STEPS_MIN) && (storage.gas_price > 0) {
-        solana_program::msg!("Entering critical section!!!");
-
         return Err(Error::Custom(format!(
             "Step limit {step_count} below minimum {EVM_STEPS_MIN}"
         )));

@@ -82,6 +82,64 @@ pub fn read_elf_parameters(_config: &Config, program_data: &[u8]) -> GetNeonElfR
     result
 }
 
+pub fn get_elf_parameter(program_data: &[u8], elf_parameter: &str) -> String {
+    let mut data = String::new();
+    let elf = goblin::elf::Elf::parse(program_data).expect("Unable to parse ELF file");
+    let ctx = goblin::container::Ctx::new(
+        if elf.is_64 {
+            goblin::container::Container::Big
+        } else {
+            goblin::container::Container::Little
+        },
+        if elf.little_endian {
+            scroll::Endian::Little
+        } else {
+            scroll::Endian::Big
+        },
+    );
+
+    let (num_syms, offset) = elf
+        .section_headers
+        .into_iter()
+        .find(|section| section.sh_type == goblin::elf::section_header::SHT_DYNSYM)
+        .map(|section| (section.sh_size / section.sh_entsize, section.sh_offset))
+        .unwrap();
+
+    let dynsyms = goblin::elf::Symtab::parse(
+        program_data,
+        offset.try_into().expect("Offset too large"),
+        num_syms.try_into().expect("Count too large"),
+        ctx,
+    )
+    .unwrap();
+
+    for sym in dynsyms.iter() {
+        let name = &elf.dynstrtab[sym.st_name];
+        if name == elf_parameter {
+            let end = program_data.len();
+            let from: usize = usize::try_from(sym.st_value)
+                .unwrap_or_else(|_| panic!("Unable to cast usize from u64:{:?}", sym.st_value));
+            let to: usize = usize::try_from(sym.st_value + sym.st_size).unwrap_or_else(|err| {
+                panic!(
+                    "Unable to cast usize from u64:{:?}. Error: {err}",
+                    sym.st_value + sym.st_size
+                )
+            });
+
+            if to < end && from < end {
+                let buf = &program_data[from..to];
+                let value = std::str::from_utf8(buf).expect("read elf value error");
+                data = String::from(value);
+                break;
+            } else {
+                panic!("{name} is out of bounds");
+            }
+        }
+    }
+
+    data
+}
+
 pub async fn read_elf_parameters_from_account(
     config: &Config,
     context: &Context,

@@ -61,8 +61,7 @@ async fn main() -> NeonApiResult<()> {
                 let request_id = request
                     .extensions()
                     .get::<RequestId>()
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| "unknown".into());
+                    .map_or_else(|| "unknown".into(), ToString::to_string);
                 // And then we put it along with other information into the `request` span
                 info_span!(
                     "request",

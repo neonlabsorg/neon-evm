@@ -21,7 +21,12 @@ use std::{env, net::SocketAddr, str::FromStr};
 
 pub use config::Config;
 pub use context::Context;
+use http::Request;
+use hyper::Body;
 use tokio::signal::{self};
+use tower_http::trace::TraceLayer;
+use tower_request_id::{RequestId, RequestIdLayer};
+use tracing::info_span;
 
 type NeonApiResult<T> = Result<T, NeonApiError>;
 type NeonApiState = Arc<api_server::state::State>;
@@ -48,7 +53,26 @@ async fn main() -> NeonApiResult<()> {
 
     let app = Router::new()
         .nest("/api", api_server::routes::register(state.clone()))
-        .with_state(state.clone());
+        .with_state(state.clone())
+        .layer(
+            // Let's create a tracing span for each request
+            TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
+                // We get the request id from the extensions
+                let request_id = request
+                    .extensions()
+                    .get::<RequestId>()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "unknown".into());
+                // And then we put it along with other information into the `request` span
+                info_span!(
+                    "request",
+                    id = %request_id,
+                )
+            }),
+        )
+        // This layer creates a new id for each request and puts it into the request extensions.
+        // Note that it should be added after the Trace layer.
+        .layer(RequestIdLayer);
 
     let listener_addr = options
         .value_of("host")

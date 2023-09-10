@@ -1,3 +1,5 @@
+use crate::commands::get_neon_elf::get_elf_parameter;
+
 use super::ChDbConfig;
 use clickhouse::{Client, Row};
 use log::{debug, info};
@@ -13,6 +15,7 @@ use std::{
         Ordering::{Equal, Greater, Less},
     },
     convert::TryFrom,
+    fmt,
     sync::Arc,
     time::Instant,
 };
@@ -49,20 +52,63 @@ pub struct SlotParent {
     pub status: u8,
 }
 
+#[derive(Debug, Row, serde::Deserialize, Clone)]
+pub struct SlotParentRooted {
+    pub slot: u64,
+    pub parent: Option<u64>,
+}
+
+impl From<SlotParentRooted> for SlotParent {
+    fn from(slot_parent_rooted: SlotParentRooted) -> Self {
+        SlotParent {
+            slot: slot_parent_rooted.slot,
+            parent: slot_parent_rooted.parent,
+            status: SlotStatus::Rooted as u8,
+        }
+    }
+}
+
 impl SlotParent {
     fn is_rooted(&self) -> bool {
         self.status == SlotStatus::Rooted as u8
     }
 }
 
-#[derive(Debug, Row, serde::Deserialize, Clone)]
+#[derive(Row, serde::Deserialize, Clone)]
 pub struct AccountRow {
-    owner: Vec<u8>,
-    lamports: u64,
-    executable: bool,
-    rent_epoch: u64,
-    data: Vec<u8>,
-    txn_signature: Vec<Option<u8>>,
+    pub owner: Vec<u8>,
+    pub lamports: u64,
+    pub executable: bool,
+    pub rent_epoch: u64,
+    pub data: Vec<u8>,
+    pub txn_signature: Vec<Option<u8>>,
+}
+
+impl fmt::Display for AccountRow {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "AccountRow {{\n    owner: {},\n    lamports: {},\n    executable: {},\n    rent_epoch: {},\n}}",
+            bs58::encode(&self.owner).into_string(),
+            self.lamports,
+            self.executable,
+            self.rent_epoch,
+        )
+    }
+}
+
+impl fmt::Debug for AccountRow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Account")
+            .field(
+                "owner",
+                &format!("{}", bs58::encode(&self.owner).into_string()),
+            )
+            .field("lamports", &self.lamports)
+            .field("executable", &self.executable)
+            .field("rent_epoch", &self.rent_epoch)
+            .finish()
+    }
 }
 
 impl TryInto<Account> for AccountRow {
@@ -170,13 +216,12 @@ impl ClickHouseDb {
             SELECT DISTINCT ON (slot, parent) slot, parent, status
             FROM events.update_slot
             WHERE slot >= (
-                  SELECT slot - ?
-                  FROM events.update_slot
-                  WHERE status = 'Rooted'
-                  ORDER BY slot DESC
-                  LIMIT 1
-              )
-              AND isNotNull(parent)
+                    SELECT slot - ?
+                    FROM events.rooted_slots
+                    ORDER BY slot DESC
+                    LIMIT 1
+                )
+                AND isNotNull(parent)
             ORDER BY slot DESC, status DESC
             "#;
         let time_start = Instant::now();
@@ -229,18 +274,19 @@ impl ClickHouseDb {
 
     async fn get_account_rooted_slot(&self, key: &str, slot: u64) -> ChResult<Option<u64>> {
         info!("get_account_rooted_slot {{ key: {key}, slot: {slot} }}");
+
         let query = r#"
-            SELECT DISTINCT slot
-            FROM events.update_account_distributed
-            WHERE pubkey = ?
-                AND slot <= ?
-                AND slot IN (
-                    SELECT slot
-                    FROM events.update_slot
-                    WHERE status = 'Rooted'
-                )
-            ORDER BY slot DESC
-            LIMIT 1
+        SELECT DISTINCT uad.slot
+        FROM events.update_account_distributed AS uad
+        WHERE uad.pubkey = ?
+          AND uad.slot <= ?
+          AND (
+            SELECT COUNT(slot)
+            FROM events.rooted_slots
+            WHERE slot = ?
+          ) >= 1
+        ORDER BY uad.slot DESC
+        LIMIT 1
         "#;
 
         let time_start = Instant::now();
@@ -248,6 +294,7 @@ impl ClickHouseDb {
             self.client
                 .query(query)
                 .bind(key)
+                .bind(slot)
                 .bind(slot)
                 .fetch_one::<u64>()
                 .await,
@@ -368,14 +415,13 @@ impl ClickHouseDb {
 
     async fn get_sol_sig_rooted_slot(&self, sol_sig: &[u8; 64]) -> ChResult<Option<SlotParent>> {
         let query = r#"
-            SELECT slot, parent, status
-            FROM events.update_slot
+            SELECT slot, parent
+            FROM events.rooted_slots
             WHERE slot IN (
                     SELECT slot
                     FROM events.notify_transaction_distributed
                     WHERE signature = ?
                 )
-                AND status = 'Rooted'
             ORDER BY slot DESC
             LIMIT 1
         "#;
@@ -384,9 +430,12 @@ impl ClickHouseDb {
             self.client
                 .query(query)
                 .bind(sol_sig.as_slice())
-                .fetch_one::<SlotParent>()
+                .fetch_one::<SlotParentRooted>()
                 .await,
         )
+        .map(|slot_parent_rooted_opt| {
+            slot_parent_rooted_opt.map(|slot_parent_rooted| slot_parent_rooted.into())
+        })
         .map_err(|e| {
             println!("get_sol_sig_rooted_slot error: {e}");
             ChError::Db(e)
@@ -513,6 +562,49 @@ impl ClickHouseDb {
             self.get_account_at(pubkey, parent).await
         } else {
             Ok(None)
+        }
+    }
+
+    pub async fn get_neon_revision(&self, slot: Slot, pubkey: &Pubkey) -> ChResult<String> {
+        let query = r#"SELECT data
+        FROM events.update_account_distributed
+        WHERE
+            pubkey = ?
+        ORDER BY
+            abs(? - slot) ASC,
+            pubkey ASC,
+            slot ASC,
+            write_version ASC
+        LIMIT 1
+        "#;
+
+        let pubkey_str = format!("{:?}", pubkey.to_bytes());
+
+        let data = Self::row_opt(
+            self.client
+                .query(query)
+                .bind(pubkey_str)
+                .bind(slot)
+                .fetch_one::<Vec<u8>>()
+                .await,
+        )?;
+
+        match data {
+            Some(data) => {
+                let neon_revision =
+                    get_elf_parameter(data.as_slice(), "NEON_REVISION").map_err(|e| {
+                        ChError::Db(clickhouse::error::Error::Custom(format!(
+                            "Failed to get NEON_REVISION, error: {e:?}",
+                        )))
+                    })?;
+                Ok(neon_revision)
+            }
+            None => {
+                let err = clickhouse::error::Error::Custom(format!(
+                    "get_neon_revision: for slot {slot} and pubkey {pubkey} not found",
+                ));
+                Err(ChError::Db(err))
+            }
         }
     }
 

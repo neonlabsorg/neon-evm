@@ -19,9 +19,9 @@ pub struct Gasometer {
 }
 
 impl Gasometer {
-    pub fn new(paid_gas: Option<U256>, operator: &Operator) -> Result<Self, ProgramError> {
+    pub fn new(paid_gas: U256, operator: &Operator) -> Result<Self, ProgramError> {
         Ok(Self {
-            paid_gas: paid_gas.unwrap_or(U256::ZERO),
+            paid_gas,
             gas: 0_u64,
             operator_balance: operator.lamports(),
         })

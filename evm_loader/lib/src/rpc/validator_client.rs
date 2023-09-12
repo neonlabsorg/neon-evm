@@ -36,8 +36,9 @@ impl Rpc for RpcClient {
             .await
     }
 
-    async fn get_account(&self, key: &Pubkey) -> ClientResult<Account> {
-        self.get_account(key).await
+    async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>> {
+        self.get_account_with_commitment(key, self.commitment())
+            .await
     }
 
     async fn get_account_with_commitment(

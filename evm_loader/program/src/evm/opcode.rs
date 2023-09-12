@@ -1,3 +1,5 @@
+#![allow(clippy::needless_pass_by_ref_mut)]
+
 /// <https://ethereum.github.io/yellowpaper/paper.pdf>
 use ethnum::{I256, U256};
 use maybe_async::maybe_async;
@@ -478,7 +480,7 @@ impl<B: Database> Machine<B> {
     pub async fn opcode_balance(&mut self, backend: &mut B) -> Result<Action> {
         let balance = {
             let address = self.stack.pop_address()?;
-            backend.balance(address).await?
+            backend.balance(address, self.chain_id).await?
         };
 
         self.stack.push_u256(balance)?;
@@ -605,12 +607,12 @@ impl<B: Database> Machine<B> {
     /// copy contract's bytecode
     #[maybe_async]
     pub async fn opcode_extcodecopy(&mut self, backend: &mut B) -> Result<Action> {
-        let address = *self.stack.pop_address()?;
+        let address = self.stack.pop_address()?;
         let memory_offset = self.stack.pop_usize()?;
         let data_offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let code = backend.code(&address).await?;
+        let code = backend.code(address).await?;
 
         self.memory
             .write_buffer(memory_offset, length, &code, data_offset)?;
@@ -648,7 +650,7 @@ impl<B: Database> Machine<B> {
     pub async fn opcode_extcodehash(&mut self, backend: &mut B) -> Result<Action> {
         let code_hash = {
             let address = self.stack.pop_address()?;
-            backend.code_hash(address).await?
+            backend.code_hash(address, self.chain_id).await?
         };
 
         self.stack.push_array(&code_hash)?;
@@ -720,8 +722,8 @@ impl<B: Database> Machine<B> {
 
     /// Istanbul hardfork, EIP-1344: current network's chain id
     #[maybe_async]
-    pub async fn opcode_chainid(&mut self, backend: &mut B) -> Result<Action> {
-        let chain_id = backend.chain_id();
+    pub async fn opcode_chainid(&mut self, _backend: &mut B) -> Result<Action> {
+        let chain_id = self.chain_id.into();
 
         self.stack.push_u256(chain_id)?;
 
@@ -731,7 +733,9 @@ impl<B: Database> Machine<B> {
     /// Istanbul hardfork, EIP-1884: balance of the executing contract in wei
     #[maybe_async]
     pub async fn opcode_selfbalance(&mut self, backend: &mut B) -> Result<Action> {
-        let balance = backend.balance(&self.context.contract).await?;
+        let balance = backend
+            .balance(self.context.contract, self.chain_id)
+            .await?;
 
         self.stack.push_u256(balance)?;
 
@@ -792,7 +796,7 @@ impl<B: Database> Machine<B> {
     #[maybe_async]
     pub async fn opcode_sload(&mut self, backend: &mut B) -> Result<Action> {
         let index = self.stack.pop_u256()?;
-        let value = backend.storage(&self.context.contract, &index).await?;
+        let value = backend.storage(self.context.contract, index).await?;
 
         tracing_event!(self, super::tracing::Event::StorageAccess { index, value });
 
@@ -1003,8 +1007,12 @@ impl<B: Database> Machine<B> {
         let length = self.stack.pop_usize()?;
 
         let created_address = {
-            let nonce = backend.nonce(&self.context.contract).await?;
-            Address::from_create(&self.context.contract, nonce)
+            let source = self.context.contract;
+
+            let chain_id = backend.contract_chain_id(source).await?;
+            let nonce = backend.nonce(source, chain_id).await?;
+
+            Address::from_create(&source, nonce)
         };
 
         self.opcode_create_impl(created_address, value, offset, length, backend)
@@ -1041,11 +1049,14 @@ impl<B: Database> Machine<B> {
         length: usize,
         backend: &mut B,
     ) -> Result<Action> {
-        if backend.nonce(&self.context.contract).await? == u64::MAX {
+        let chain_id = backend.contract_chain_id(self.context.contract).await?;
+
+        let contract_nonce = backend.nonce(self.context.contract, chain_id).await?;
+        if contract_nonce == u64::MAX {
             return Err(Error::NonceOverflow(self.context.contract));
         }
 
-        backend.increment_nonce(self.context.contract)?;
+        backend.increment_nonce(self.context.contract, chain_id)?;
 
         self.return_data = Buffer::empty();
         self.return_range = 0..0;
@@ -1067,22 +1078,27 @@ impl<B: Database> Machine<B> {
             }
         );
 
-        self.fork(Reason::Create, context, init_code, Buffer::empty(), None);
+        self.fork(
+            Reason::Create,
+            chain_id,
+            context,
+            init_code,
+            Buffer::empty(),
+            None,
+        );
         backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"CREATE", address.as_bytes()]);
 
-        if (backend.nonce(&address).await? != 0) || (backend.code_size(&address).await? != 0) {
+        if (backend.nonce(address, chain_id).await? != 0)
+            || (backend.code_size(address).await? != 0)
+        {
             return Err(Error::DeployToExistingAccount(address, self.context.caller));
         }
 
-        if backend.balance(&self.context.caller).await? < value {
-            return Err(Error::InsufficientBalance(self.context.caller, value));
-        }
-
-        backend.increment_nonce(address)?;
+        backend.increment_nonce(address, chain_id)?;
         backend
-            .transfer(self.context.caller, address, value)
+            .transfer(self.context.caller, address, chain_id, value)
             .await?;
 
         Ok(Action::Noop)
@@ -1092,7 +1108,7 @@ impl<B: Database> Machine<B> {
     #[maybe_async]
     pub async fn opcode_call(&mut self, backend: &mut B) -> Result<Action> {
         let gas_limit = self.stack.pop_u256()?;
-        let address = *self.stack.pop_address()?;
+        let address = self.stack.pop_address()?;
         let value = self.stack.pop_u256()?;
         let args_offset = self.stack.pop_usize()?;
         let args_length = self.stack.pop_usize()?;
@@ -1103,8 +1119,9 @@ impl<B: Database> Machine<B> {
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
-        let code = backend.code(&address).await?;
+        let code = backend.code(address).await?;
 
+        let chain_id = backend.contract_chain_id(self.context.contract).await?;
         let context = Context {
             caller: self.context.contract,
             contract: address,
@@ -1120,7 +1137,14 @@ impl<B: Database> Machine<B> {
             }
         );
 
-        self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
+        self.fork(
+            Reason::Call,
+            chain_id,
+            context,
+            code,
+            call_data,
+            Some(gas_limit),
+        );
         backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"CALL", address.as_bytes()]);
@@ -1129,12 +1153,8 @@ impl<B: Database> Machine<B> {
             return Err(Error::StaticModeViolation(self.context.caller));
         }
 
-        if backend.balance(&self.context.caller).await? < value {
-            return Err(Error::InsufficientBalance(self.context.caller, value));
-        }
-
         backend
-            .transfer(self.context.caller, self.context.contract, value)
+            .transfer(self.context.caller, self.context.contract, chain_id, value)
             .await?;
 
         self.opcode_call_precompile_impl(backend, &address).await
@@ -1144,7 +1164,7 @@ impl<B: Database> Machine<B> {
     #[maybe_async]
     pub async fn opcode_callcode(&mut self, backend: &mut B) -> Result<Action> {
         let gas_limit = self.stack.pop_u256()?;
-        let address = *self.stack.pop_address()?;
+        let address = self.stack.pop_address()?;
         let value = self.stack.pop_u256()?;
         let args_offset = self.stack.pop_usize()?;
         let args_length = self.stack.pop_usize()?;
@@ -1155,8 +1175,9 @@ impl<B: Database> Machine<B> {
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
-        let code = backend.code(&address).await?;
+        let code = backend.code(address).await?;
 
+        let chain_id = backend.contract_chain_id(self.context.contract).await?;
         let context = Context {
             caller: self.context.contract,
             contract: self.context.contract,
@@ -1172,13 +1193,24 @@ impl<B: Database> Machine<B> {
             }
         );
 
-        self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
+        self.fork(
+            Reason::Call,
+            chain_id,
+            context,
+            code,
+            call_data,
+            Some(gas_limit),
+        );
         backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"CALLCODE", address.as_bytes()]);
 
-        if backend.balance(&self.context.caller).await? < value {
-            return Err(Error::InsufficientBalance(self.context.caller, value));
+        if backend.balance(self.context.caller, chain_id).await? < value {
+            return Err(Error::InsufficientBalance(
+                self.context.caller,
+                chain_id,
+                value,
+            ));
         }
 
         self.opcode_call_precompile_impl(backend, &address).await
@@ -1189,7 +1221,7 @@ impl<B: Database> Machine<B> {
     #[maybe_async]
     pub async fn opcode_delegatecall(&mut self, backend: &mut B) -> Result<Action> {
         let gas_limit = self.stack.pop_u256()?;
-        let address = *self.stack.pop_address()?;
+        let address = self.stack.pop_address()?;
         let args_offset = self.stack.pop_usize()?;
         let args_length = self.stack.pop_usize()?;
         let return_offset = self.stack.pop_usize()?;
@@ -1199,7 +1231,7 @@ impl<B: Database> Machine<B> {
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
-        let code = backend.code(&address).await?;
+        let code = backend.code(address).await?;
 
         let context = Context {
             code_address: Some(address),
@@ -1214,7 +1246,14 @@ impl<B: Database> Machine<B> {
             }
         );
 
-        self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
+        self.fork(
+            Reason::Call,
+            self.chain_id,
+            context,
+            code,
+            call_data,
+            Some(gas_limit),
+        );
         backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"DELEGATECALL", address.as_bytes()]);
@@ -1227,7 +1266,7 @@ impl<B: Database> Machine<B> {
     #[maybe_async]
     pub async fn opcode_staticcall(&mut self, backend: &mut B) -> Result<Action> {
         let gas_limit = self.stack.pop_u256()?;
-        let address = *self.stack.pop_address()?;
+        let address = self.stack.pop_address()?;
         let args_offset = self.stack.pop_usize()?;
         let args_length = self.stack.pop_usize()?;
         let return_offset = self.stack.pop_usize()?;
@@ -1237,8 +1276,9 @@ impl<B: Database> Machine<B> {
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
-        let code = backend.code(&address).await?;
+        let code = backend.code(address).await?;
 
+        let chain_id = backend.contract_chain_id(self.context.contract).await?;
         let context = Context {
             caller: self.context.contract,
             contract: address,
@@ -1254,7 +1294,14 @@ impl<B: Database> Machine<B> {
             }
         );
 
-        self.fork(Reason::Call, context, code, call_data, Some(gas_limit));
+        self.fork(
+            Reason::Call,
+            chain_id,
+            context,
+            code,
+            call_data,
+            Some(gas_limit),
+        );
         self.is_static = true;
 
         backend.snapshot();
@@ -1282,9 +1329,7 @@ impl<B: Database> Machine<B> {
         };
 
         if let Some(return_data) = result.transpose()? {
-            return self
-                .opcode_return_impl(Buffer::from_slice(&return_data), backend)
-                .await;
+            return self.opcode_return_impl(return_data, backend).await;
         }
 
         Ok(Action::Noop)
@@ -1296,7 +1341,7 @@ impl<B: Database> Machine<B> {
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let return_data = self.memory.read_buffer(offset, length)?;
+        let return_data = self.memory.read(offset, length)?.to_vec();
 
         self.opcode_return_impl(return_data, backend).await
     }
@@ -1305,26 +1350,26 @@ impl<B: Database> Machine<B> {
     #[maybe_async]
     pub async fn opcode_return_impl(
         &mut self,
-        mut return_data: Buffer,
+        mut return_data: Vec<u8>,
         backend: &mut B,
     ) -> Result<Action> {
         if self.reason == Reason::Create {
             let code = std::mem::take(&mut return_data);
-            backend.set_code(self.context.contract, code)?;
+            backend.set_code(self.context.contract, self.chain_id, code)?;
         }
 
         backend.commit_snapshot();
         sol_log_data(&[b"EXIT", b"RETURN"]);
 
         if self.parent.is_none() {
-            return Ok(Action::Return(return_data.to_vec()));
+            return Ok(Action::Return(return_data));
         }
 
-        trace_end_step!(self, Some(return_data.to_vec()));
+        trace_end_step!(self, Some(return_data.clone()));
         tracing_event!(
             self,
             super::tracing::Event::EndVM {
-                status: super::ExitStatus::Return(return_data.to_vec())
+                status: super::ExitStatus::Return(return_data.clone())
             }
         );
 
@@ -1334,7 +1379,7 @@ impl<B: Database> Machine<B> {
                 self.memory.write_range(&self.return_range, &return_data)?;
                 self.stack.push_bool(true)?; // success
 
-                self.return_data = return_data;
+                self.return_data = Buffer::from_vec(return_data);
             }
             Reason::Create => {
                 let address = returned.context.contract;
@@ -1351,7 +1396,7 @@ impl<B: Database> Machine<B> {
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let return_data = self.memory.read_buffer(offset, length)?;
+        let return_data = self.memory.read(offset, length)?.to_vec();
 
         self.opcode_revert_impl(return_data, backend).await
     }
@@ -1359,21 +1404,21 @@ impl<B: Database> Machine<B> {
     #[maybe_async]
     pub async fn opcode_revert_impl(
         &mut self,
-        return_data: Buffer,
+        return_data: Vec<u8>,
         backend: &mut B,
     ) -> Result<Action> {
         backend.revert_snapshot();
         sol_log_data(&[b"EXIT", b"REVERT", &return_data]);
 
         if self.parent.is_none() {
-            return Ok(Action::Revert(return_data.to_vec()));
+            return Ok(Action::Revert(return_data));
         }
 
-        trace_end_step!(self, Some(return_data.to_vec()));
+        trace_end_step!(self, Some(return_data.clone()));
         tracing_event!(
             self,
             super::tracing::Event::EndVM {
-                status: super::ExitStatus::Revert(return_data.to_vec())
+                status: super::ExitStatus::Revert(return_data.clone())
             }
         );
 
@@ -1388,7 +1433,7 @@ impl<B: Database> Machine<B> {
             }
         }
 
-        self.return_data = return_data;
+        self.return_data = Buffer::from_vec(return_data);
 
         Ok(Action::Continue)
     }
@@ -1409,11 +1454,12 @@ impl<B: Database> Machine<B> {
             return Err(Error::StaticModeViolation(self.context.contract));
         }
 
-        let address = *self.stack.pop_address()?;
+        let address = self.stack.pop_address()?;
 
-        let value = backend.balance(&self.context.contract).await?;
+        let chain_id = backend.contract_chain_id(self.context.contract).await?;
+        let value = backend.balance(self.context.contract, chain_id).await?;
         backend
-            .transfer(self.context.contract, address, value)
+            .transfer(self.context.contract, address, chain_id, value)
             .await?;
         backend.selfdestruct(self.context.contract)?;
 

@@ -58,12 +58,9 @@ impl Rpc for CallDbClient {
         ))
     }
 
-    async fn get_account(&self, key: &Pubkey) -> ClientResult<Account> {
-        self.tracer_db
-            .get_account_at(key, self.slot)
+    async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>> {
+        self.get_account_with_commitment(key, self.commitment())
             .await
-            .map_err(|e| e!("load account error", key, e))?
-            .ok_or_else(|| e!("account not found", key))
     }
 
     async fn get_account_with_commitment(
@@ -104,7 +101,12 @@ impl Rpc for CallDbClient {
     }
 
     async fn get_account_data(&self, key: &Pubkey) -> ClientResult<Vec<u8>> {
-        Ok(self.get_account(key).await?.data)
+        let response = self.get_account(key).await?;
+        if let Some(account) = response.value {
+            Ok(account.data)
+        } else {
+            Ok(Vec::new())
+        }
     }
 
     async fn get_block(&self, _slot: Slot) -> ClientResult<EncodedConfirmedBlock> {

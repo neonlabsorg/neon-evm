@@ -1,3 +1,4 @@
+use evm_loader::account::StateAccount;
 use log::info;
 
 use serde::{Deserialize, Serialize};
@@ -9,9 +10,9 @@ use solana_sdk::{
     signer::Signer,
 };
 
-use evm_loader::account::State;
-
-use crate::{account_storage::account_info, commands::send_transaction, rpc::Rpc, NeonResult};
+use crate::{
+    account_storage::account_info, commands::send_transaction, rpc::Rpc, NeonError, NeonResult,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CancelTrxReturn {
@@ -24,9 +25,11 @@ pub async fn execute(
     evm_loader: Pubkey,
     storage_account: &Pubkey,
 ) -> NeonResult<CancelTrxReturn> {
-    let mut acc = rpc_client.get_account(storage_account).await?;
+    let Some(mut acc) = rpc_client.get_account(storage_account).await?.value else {
+        return Err(NeonError::AccountNotFound(*storage_account))
+    };
     let storage_info = account_info(storage_account, &mut acc);
-    let storage = State::from_account(&evm_loader, &storage_info)?;
+    let storage = StateAccount::from_account(&evm_loader, storage_info)?;
 
     let operator = &signer.pubkey();
 
@@ -36,8 +39,7 @@ pub async fn execute(
         AccountMeta::new(incinerator::id(), false), // Incinerator
     ];
 
-    let blocked_accounts = storage.read_blocked_accounts()?;
-    for blocked_account_meta in blocked_accounts {
+    for blocked_account_meta in storage.blocked_accounts().iter() {
         if blocked_account_meta.is_writable {
             accounts_meta.push(AccountMeta::new(blocked_account_meta.key, false));
         } else {
@@ -48,11 +50,8 @@ pub async fn execute(
         info!("\t{:?}", meta);
     }
 
-    let cancel_with_nonce_instruction = Instruction::new_with_bincode(
-        evm_loader,
-        &(0x23_u8, storage.transaction_hash),
-        accounts_meta,
-    );
+    let cancel_with_nonce_instruction =
+        Instruction::new_with_bincode(evm_loader, &(0x23_u8, storage.trx_hash()), accounts_meta);
 
     let instructions = vec![cancel_with_nonce_instruction];
 

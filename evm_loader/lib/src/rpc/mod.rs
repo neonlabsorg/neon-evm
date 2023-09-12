@@ -37,7 +37,7 @@ pub trait Rpc {
         recent_blockhash: &Hash,
         commitment_config: CommitmentConfig,
     ) -> ClientResult<()>;
-    async fn get_account(&self, key: &Pubkey) -> ClientResult<Account>;
+    async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>>;
     async fn get_account_with_commitment(
         &self,
         key: &Pubkey,

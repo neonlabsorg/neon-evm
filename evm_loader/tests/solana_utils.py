@@ -1,7 +1,6 @@
 import json
 import math
 import os
-import pathlib
 import subprocess
 import time
 import typing
@@ -81,11 +80,10 @@ class SplToken:
         res = self.call("balance --address {}".format(acc))
         return Decimal(res.rstrip())
 
-    def mint(self, mint_id, recipient, amount, owner=None):
-        if owner is None:
-            self.call("mint {} {} {}".format(mint_id, amount, recipient))
-        else:
-            self.call("mint {} {} {} --owner {}".format(mint_id, amount, recipient, owner))
+    def mint(self, mint_id, recipient, amount, fee_payer=None):
+        self.call(
+            "mint {} {} --owner evm_loader-keypair.json --fee-payer {} -- {}".format(mint_id, amount, fee_payer,
+                                                                                     recipient))
         print("minting {} tokens for {}".format(amount, recipient))
 
     def create_token(self, owner=None):
@@ -98,11 +96,11 @@ class SplToken:
         else:
             return res.split()[2]
 
-    def create_token_account(self, token, owner=None):
+    def create_token_account(self, token, owner=None, fee_payer=None):
         if owner is None:
             res = self.call("create-account {}".format(token))
         else:
-            res = self.call("create-account {} --owner {}".format(token, owner))
+            res = self.call("create-account {} --owner {} --fee-payer {}".format(token, owner, fee_payer))
         if not res.startswith("Creating account "):
             raise Exception("create account error %s" % res)
         else:
@@ -157,14 +155,15 @@ def create_account_with_seed(funding, base, seed, lamports, space, program=Publi
     ))
 
 
-def create_holder_account(account, operator):
+def create_holder_account(account, operator, seed):
     return TransactionInstruction(
         keys=[
             AccountMeta(pubkey=account, is_signer=False, is_writable=True),
             AccountMeta(pubkey=operator, is_signer=True, is_writable=False),
         ],
         program_id=PublicKey(EVM_LOADER),
-        data=bytes.fromhex("24")
+        data=bytes.fromhex("24") + 
+            len(seed).to_bytes(8, 'little') + seed
     )
 
 
@@ -211,10 +210,11 @@ class neon_cli:
         print('cmd:', cmd)
         print("data:", data)
 
+        data_json = ""
         if data:
-            proc_result = subprocess.run(cmd, input=data, text=True, stdout=subprocess.PIPE, universal_newlines=True)
-        else:
-            proc_result = subprocess.run(cmd, input="", text=True, stdout=subprocess.PIPE, universal_newlines=True)
+            data_json = f'{{"data": "0x{data}"}}'
+
+        proc_result = subprocess.run(cmd, input=data_json, text=True, stdout=subprocess.PIPE, universal_newlines=True)
 
         result = json.loads(proc_result.stdout)
         if result["result"] == "error":
@@ -287,28 +287,8 @@ class WalletAccount(RandomAccount):
         print('Wallet public key:', self.acc.public_key())
 
 
-class OperatorAccount:
-    def __init__(self, path=None):
-        if path is None:
-            self.path = pathlib.Path.home() / ".config" / "solana" / "id.json"
-        else:
-            self.path = path
-        self.retrieve_keys()
-
-    def retrieve_keys(self):
-        with open(self.path) as f:
-            d = json.load(f)
-            self.acc = Keypair.from_secret_key(d[0:32])
-
-    def get_path(self):
-        return self.path
-
-    def get_acc(self) -> Keypair:
-        return self.acc
-
-
 class EvmLoader:
-    def __init__(self, acc: OperatorAccount, program_id=EVM_LOADER):
+    def __init__(self, acc, program_id=EVM_LOADER):
         if program_id is None:
             print(f"EVM Loader program address is empty, deploy it")
             result = json.loads(solana_cli(acc).call('deploy {}'.format(EVM_LOADER_SO)))
@@ -333,7 +313,8 @@ class EvmLoader:
 
     def create_ether_account(self, ether):
         (trx, sol) = self.create_ether_account_trx(ether)
-        signer = self.acc.get_acc()
+        signer = self.acc
+        self.check_account(signer.public_key)
         send_transaction(solana_client, trx, signer)
         return sol
 
@@ -355,7 +336,7 @@ class EvmLoader:
 
     def ether2seed(self, ether: Union[str, bytes]):
         seed = b58encode(ACCOUNT_SEED_VERSION + self.ether2bytes(ether)).decode('utf8')
-        acc = account_with_seed(self.acc.get_acc().public_key, seed, self.loader_id)
+        acc = account_with_seed(self.acc.public_key, seed, self.loader_id)
         print('ether2program: {} {} => {}'.format(self.ether2hex(ether), 255, acc))
         return acc, 255
 
@@ -384,7 +365,7 @@ class EvmLoader:
     def create_ether_account_trx(self, ether: Union[str, bytes]) -> Tuple[Transaction, str]:
         (sol, nonce) = self.ether2program(ether)
         print('createEtherAccount: {} {} => {}'.format(ether, nonce, sol))
-        base = self.acc.get_acc().public_key
+        base = self.acc.public_key
         data = bytes.fromhex('28') + CREATE_ACCOUNT_LAYOUT.build(dict(ether=self.ether2bytes(ether)))
         trx = Transaction()
         trx.add(TransactionInstruction(

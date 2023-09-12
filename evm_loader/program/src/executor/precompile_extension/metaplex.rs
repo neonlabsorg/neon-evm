@@ -1,10 +1,13 @@
 #![allow(clippy::unnecessary_wraps)]
 
-use std::convert::TryInto;
+use std::convert::{Into, TryInto};
 
 use ethnum::U256;
-use mpl_token_metadata::state::{Creator, Metadata, TokenMetadataAccount, TokenStandard};
-use solana_program::pubkey::Pubkey;
+use mpl_token_metadata::state::{
+    Creator, Metadata, TokenMetadataAccount, TokenStandard, CREATE_FEE, MAX_MASTER_EDITION_LEN,
+    MAX_METADATA_LEN,
+};
+use solana_program::{pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
 
 use crate::{
     account::ACCOUNT_SEED_VERSION,
@@ -49,10 +52,10 @@ pub fn metaplex<B: AccountStorage>(
                 return Err(Error::StaticModeViolation(*address));
             }
 
-            let mint = read_pubkey(input);
-            let name = read_string(input, 32);
-            let symbol = read_string(input, 64);
-            let uri = read_string(input, 96);
+            let mint = read_pubkey(input)?;
+            let name = read_string(input, 32, 256)?;
+            let symbol = read_string(input, 64, 256)?;
+            let uri = read_string(input, 96, 1024)?;
 
             create_metadata(context, state, mint, name, symbol, uri)
         }
@@ -62,34 +65,34 @@ pub fn metaplex<B: AccountStorage>(
                 return Err(Error::StaticModeViolation(*address));
             }
 
-            let mint = read_pubkey(input);
-            let max_supply = read_u64(&input[32..]);
+            let mint = read_pubkey(input)?;
+            let max_supply = read_u64(&input[32..])?;
 
             create_master_edition(context, state, mint, Some(max_supply))
         }
         [0xf7, 0xb6, 0x37, 0xbb] => {
             // "isInitialized(bytes32)"
-            let mint = read_pubkey(input);
+            let mint = read_pubkey(input)?;
             is_initialized(context, state, mint)
         }
         [0x23, 0x5b, 0x2b, 0x94] => {
             // "isNFT(bytes32)"
-            let mint = read_pubkey(input);
+            let mint = read_pubkey(input)?;
             is_nft(context, state, mint)
         }
         [0x9e, 0xd1, 0x9d, 0xdb] => {
             // "uri(bytes32)"
-            let mint = read_pubkey(input);
+            let mint = read_pubkey(input)?;
             uri(context, state, mint)
         }
         [0x69, 0x1f, 0x34, 0x31] => {
             // "name(bytes32)"
-            let mint = read_pubkey(input);
+            let mint = read_pubkey(input)?;
             token_name(context, state, mint)
         }
         [0x6b, 0xaa, 0x03, 0x30] => {
             // "symbol(bytes32)"
-            let mint = read_pubkey(input);
+            let mint = read_pubkey(input)?;
             symbol(context, state, mint)
         }
         _ => Err(Error::UnknownPrecompileMethodSelector(*address, selector)),
@@ -97,25 +100,46 @@ pub fn metaplex<B: AccountStorage>(
 }
 
 #[inline]
-fn read_u64(input: &[u8]) -> u64 {
-    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32]).as_u64()
+fn read_u64(input: &[u8]) -> Result<u64> {
+    if input.len() < 32 {
+        return Err(Error::OutOfBounds);
+    }
+    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32])
+        .try_into()
+        .map_err(Into::into)
 }
 
 #[inline]
-fn read_pubkey(input: &[u8]) -> Pubkey {
-    Pubkey::new_from_array(*arrayref::array_ref![input, 0, 32])
+fn read_pubkey(input: &[u8]) -> Result<Pubkey> {
+    if input.len() < 32 {
+        return Err(Error::OutOfBounds);
+    }
+    Ok(Pubkey::new_from_array(*arrayref::array_ref![input, 0, 32]))
 }
 
 #[inline]
-fn read_string(input: &[u8], offset_position: usize) -> String {
-    let offset = U256::from_be_bytes(*arrayref::array_ref![input, offset_position, 32]).as_usize();
-    let length = U256::from_be_bytes(*arrayref::array_ref![input, offset, 32]).as_usize();
+fn read_string(input: &[u8], offset_position: usize, max_length: usize) -> Result<String> {
+    if input.len() < offset_position + 32 {
+        return Err(Error::OutOfBounds);
+    }
+    let offset: usize =
+        U256::from_be_bytes(*arrayref::array_ref![input, offset_position, 32]).try_into()?;
+    if input.len() < offset.saturating_add(32) {
+        return Err(Error::OutOfBounds);
+    }
+    let length = U256::from_be_bytes(*arrayref::array_ref![input, offset, 32]).try_into()?;
+    if length > max_length {
+        return Err(Error::OutOfBounds);
+    }
 
-    let begin = offset + 32;
-    let end = begin + length;
+    let begin = offset.saturating_add(32);
+    let end = begin.saturating_add(length);
 
+    if input.len() < end {
+        return Err(Error::OutOfBounds);
+    }
     let data = input[begin..end].to_vec();
-    unsafe { String::from_utf8_unchecked(data) }
+    String::from_utf8(data).map_err(|_| Error::Custom("Invalid utf8 string".to_string()))
 }
 
 fn create_metadata<B: AccountStorage>(
@@ -166,11 +190,11 @@ fn create_metadata<B: AccountStorage>(
         None,  // Uses
         None,  // Collection Details
     );
-    state.queue_external_instruction(
-        instruction,
-        seeds,
-        mpl_token_metadata::state::MAX_METADATA_LEN,
-    );
+
+    let rent = Rent::get()?;
+    let fee = rent.minimum_balance(MAX_METADATA_LEN) + CREATE_FEE;
+
+    state.queue_external_instruction(instruction, seeds, fee);
 
     Ok(metadata_pubkey.to_bytes().to_vec())
 }
@@ -203,11 +227,11 @@ fn create_master_edition<B: AccountStorage>(
         *state.backend.operator(),
         max_supply,
     );
-    state.queue_external_instruction(
-        instruction,
-        seeds,
-        mpl_token_metadata::state::MAX_MASTER_EDITION_LEN,
-    );
+
+    let rent = Rent::get()?;
+    let fee = rent.minimum_balance(MAX_MASTER_EDITION_LEN) + CREATE_FEE;
+
+    state.queue_external_instruction(instruction, seeds, fee);
 
     Ok(edition_pubkey.to_bytes().to_vec())
 }

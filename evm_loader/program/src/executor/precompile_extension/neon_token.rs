@@ -2,13 +2,12 @@ use std::convert::TryInto;
 
 use arrayref::array_ref;
 use ethnum::U256;
-use solana_program::{program_pack::Pack, pubkey::Pubkey};
+use solana_program::{program_pack::Pack, pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
 use spl_associated_token_account::get_associated_token_address;
 
 use crate::{
     account_storage::AccountStorage,
     error::{Error, Result},
-    evm::database::Database,
     executor::ExecutorState,
     types::Address,
 };
@@ -42,8 +41,7 @@ pub fn neon_token<B: AccountStorage>(
             return Err(Error::StaticModeViolation(*address));
         }
 
-        let source = context.caller; // caller contract
-
+        let source = context.contract;
         // owner of the associated token account
         let destination = array_ref![rest, 0, 32];
         let destination = Pubkey::new_from_array(*destination);
@@ -70,11 +68,9 @@ fn withdraw<B: AccountStorage>(
         return Err(Error::Custom("Neon Withdraw: value == 0".to_string()));
     }
 
-    if state.balance(&source)? < value {
-        return Err(Error::InsufficientBalanceForTransfer(source, value));
-    }
+    let additional_decimals: u32 = (18 - crate::config::token_mint::decimals()).into();
+    let min_amount: u128 = u128::pow(10, additional_decimals);
 
-    let min_amount = u128::pow(10, u32::from(crate::config::token_mint::decimals()));
     let spl_amount = value / min_amount;
     let remainder = value % min_amount;
 
@@ -85,9 +81,9 @@ fn withdraw<B: AccountStorage>(
     }
 
     if remainder != 0 {
-        return Err(Error::Custom(
-            "Neon Withdraw: value must be divisible by 10^9".to_string(),
-        ));
+        return Err(Error::Custom(std::format!(
+            "Neon Withdraw: value must be divisible by 10^{additional_decimals}"
+        )));
     }
 
     let target_token = get_associated_token_address(&target, state.backend.neon_token_mint());
@@ -101,7 +97,10 @@ fn withdraw<B: AccountStorage>(
             state.backend.neon_token_mint(),
             &spl_token::ID,
         );
-        state.queue_external_instruction(create_associated, vec![], spl_token::state::Account::LEN);
+
+        let rent = Rent::get()?;
+        let fee = rent.minimum_balance(spl_token::state::Account::LEN);
+        state.queue_external_instruction(create_associated, vec![], fee);
     }
 
     let (authority, bump_seed) =

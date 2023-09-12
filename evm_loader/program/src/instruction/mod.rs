@@ -69,6 +69,12 @@ pub enum EvmInstruction {
     ///   5. `[]` wSOL mint
     ///   6. `[WRITE,SIGNER]` Payer
     CreateMainTreasury,
+
+    /// Block additional accounts
+    AccountBlockAdd,
+
+    /// Modify account's nonce. Only for test environment.
+    TestAccountUpdateNonce,
 }
 
 impl EvmInstruction {
@@ -91,12 +97,15 @@ impl EvmInstruction {
             0x28 => Self::CreateAccountV03,                    // 40
             0x29 => Self::CreateMainTreasury,                  // 41
             0x2A => Self::TransactionExecuteFromAccount,       // 42
+            0x2B => Self::AccountBlockAdd,                     // 43
+            0x2C => Self::TestAccountUpdateNonce,              // 44
 
             _ => return Err(ProgramError::InvalidInstructionData),
         })
     }
 }
 
+pub mod account_block_add;
 pub mod account_create;
 pub mod account_holder_create;
 pub mod account_holder_delete;
@@ -112,3 +121,5 @@ pub mod transaction_step;
 pub mod transaction_step_from_account;
 pub mod transaction_step_from_account_no_chainid;
 pub mod transaction_step_from_instruction;
+
+pub mod test_account_update_nonce;

@@ -5,16 +5,26 @@ import pytest
 import solana
 from solana.publickey import PublicKey
 from solana.rpc.commitment import Confirmed
+from solana.rpc.types import TxOpts
 from solana.transaction import Transaction
 
 from . import solana_utils
 from .solana_utils import solana_client, write_transaction_to_holder_account, \
     send_transaction_step_from_account, get_solana_balance, execute_transaction_steps_from_account
-from .utils.constants import EVM_LOADER, TAG_STATE, TAG_FINALIZED_STATE
+from .utils.assert_messages import InstructionAsserts
+from .utils.constants import EVM_LOADER, TAG_STATE
 from .utils.contract import make_deployment_transaction, make_contract_call_trx
 from .utils.ethereum import make_eth_transaction
-from .utils.layouts import STORAGE_ACCOUNT_INFO_LAYOUT
+from .utils.instructions import make_WriteHolder
+from .utils.layouts import STORAGE_ACCOUNT_INFO_LAYOUT, HOLDER_ACCOUNT_INFO_LAYOUT
 from .utils.storage import create_holder, delete_holder
+
+
+def transaction_from_holder(key: PublicKey):
+    data = solana_client.get_account_info(key, commitment=Confirmed).value.data
+    header = HOLDER_ACCOUNT_INFO_LAYOUT.parse(data)
+
+    return data[HOLDER_ACCOUNT_INFO_LAYOUT.sizeof():][:header.len]
 
 
 def test_create_holder_account(operator_keypair):
@@ -34,10 +44,10 @@ def test_create_the_same_holder_account_by_another_user(operator_keypair, sessio
     trx.add(
         solana_utils.create_account_with_seed(session_user.solana_account.public_key,
                                               session_user.solana_account.public_key, seed, 10 ** 9, 128 * 1024),
-        solana_utils.create_holder_account(storage, session_user.solana_account.public_key)
+        solana_utils.create_holder_account(storage, session_user.solana_account.public_key, bytes(seed, 'utf8'))
     )
 
-    with pytest.raises(solana.rpc.core.RPCException, match='already initialized'):
+    with pytest.raises(solana.rpc.core.RPCException, match="Holder doesn't match seeds"):
         solana_utils.send_transaction(solana_client, trx, session_user.solana_account)
 
 
@@ -46,8 +56,7 @@ def test_write_tx_to_holder(operator_keypair, session_user, second_session_user,
     signed_tx = make_eth_transaction(second_session_user.eth_address, None, session_user.solana_account,
                                      session_user.solana_account_address, 10)
     write_transaction_to_holder_account(signed_tx, holder_acc, operator_keypair)
-    info = solana_client.get_account_info(holder_acc, commitment=Confirmed)
-    assert signed_tx.rawTransaction == info.value.data[65:65 + len(signed_tx.rawTransaction)], \
+    assert signed_tx.rawTransaction == transaction_from_holder(holder_acc), \
         "Account data is not correct"
 
 
@@ -57,8 +66,7 @@ def test_write_tx_to_holder_in_parts(operator_keypair, session_user):
 
     signed_tx = make_deployment_transaction(session_user, contract_filename)
     write_transaction_to_holder_account(signed_tx, holder_acc, operator_keypair)
-    info = solana_client.get_account_info(holder_acc, commitment=Confirmed)
-    assert signed_tx.rawTransaction == info.value.data[65:65 + len(signed_tx.rawTransaction)], \
+    assert signed_tx.rawTransaction == transaction_from_holder(holder_acc), \
         "Account data is not correct"
 
 
@@ -126,6 +134,18 @@ def test_write_to_finalized_holder(rw_lock_contract, session_user, evm_loader, o
     signed_tx2 = make_contract_call_trx(session_user, rw_lock_contract, "unchange_storage(uint8,uint8)", [1, 1])
 
     write_transaction_to_holder_account(signed_tx2, new_holder_acc, operator_keypair)
-    info = solana_client.get_account_info(new_holder_acc, commitment=Confirmed)
-    assert signed_tx2.rawTransaction == info.value.data[65:65 + len(signed_tx2.rawTransaction)], \
+    assert signed_tx2.rawTransaction == transaction_from_holder(new_holder_acc), \
         "Account data is not correct"
+
+
+@pytest.mark.parametrize("overflow_offset", [int(0xFFFFFFFFFFFFFFFF - 64), int(0xFFFFFFFFFFFFFFFF - 65)])
+def test_holder_write_overflow(operator_keypair, treasury_pool, evm_loader,
+                               sender_with_tokens, session_user, holder_acc, overflow_offset):
+    trx = Transaction()
+    trx.add(make_WriteHolder(operator_keypair.public_key, holder_acc, b"\x00" * 32, overflow_offset, b"\x00" * 1))
+    with pytest.raises(solana.rpc.core.RPCException, match=InstructionAsserts.HOLDER_OVERFLOW):
+        solana_client.send_transaction(
+            trx,
+            operator_keypair,
+            opts=TxOpts(skip_confirmation=True, preflight_commitment=Confirmed),
+        )

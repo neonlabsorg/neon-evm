@@ -4,7 +4,7 @@ use solana_program::{instruction::AccountMeta, pubkey::Pubkey};
 
 use crate::types::Address;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Action {
     ExternalInstruction {
         program_id: Pubkey,
@@ -12,7 +12,7 @@ pub enum Action {
         #[serde(with = "serde_bytes")]
         data: Vec<u8>,
         seeds: Vec<Vec<u8>>,
-        allocate: usize,
+        fee: u64,
     },
     NeonTransfer {
         source: Address,
@@ -73,8 +73,54 @@ mod serde_bytes_32 {
                     .try_into()
                     .map_err(|_| serde::de::Error::invalid_length(value.len(), &self))
             }
+
+            fn visit_seq<S>(self, mut seq: S) -> Result<Self::Value, S::Error>
+            where
+                S: serde::de::SeqAccess<'de>,
+            {
+                let mut bytes = Vec::with_capacity(32);
+                while let Some(b) = seq.next_element()? {
+                    bytes.push(b);
+                }
+                bytes
+                    .try_into()
+                    .map_err(|_| serde::de::Error::custom("Invalid [u8; 32] value"))
+            }
         }
 
         deserializer.deserialize_bytes(BytesVisitor)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn roundtrip_bincode() {
+        let action = Action::EvmSetStorage {
+            address: Address::default(),
+            index: U256::from_le_bytes([
+                255, 46, 185, 41, 144, 201, 3, 36, 227, 18, 148, 147, 106, 131, 110, 6, 229, 235,
+                44, 154, 71, 124, 159, 144, 47, 119, 77, 5, 154, 49, 23, 54,
+            ]),
+            value: Default::default(),
+        };
+        let serialized = bincode::serialize(&action).unwrap();
+        let _deserialized: Action = bincode::deserialize(&serialized).unwrap();
+    }
+
+    #[test]
+    fn roundtrip_json() {
+        let action = Action::EvmSetStorage {
+            address: Address::default(),
+            index: U256::from_le_bytes([
+                255, 46, 185, 41, 144, 201, 3, 36, 227, 18, 148, 147, 106, 131, 110, 6, 229, 235,
+                44, 154, 71, 124, 159, 144, 47, 119, 77, 5, 154, 49, 23, 54,
+            ]),
+            value: Default::default(),
+        };
+        let serialized = serde_json::to_string(&action).unwrap();
+        let _deserialized: Action = serde_json::from_str(&serialized).unwrap();
     }
 }

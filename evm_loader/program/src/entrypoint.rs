@@ -95,5 +95,13 @@ fn process_instruction<'a>(
         EvmInstruction::CreateMainTreasury => {
             instruction::create_main_treasury::process(program_id, accounts, instruction)
         }
+        EvmInstruction::AccountBlockAdd => {
+            instruction::account_block_add::process(program_id, accounts, instruction)
+                .map_err(ProgramError::from)
+        }
+        EvmInstruction::TestAccountUpdateNonce => {
+            instruction::test_account_update_nonce::process(program_id, accounts, instruction)
+                .map_err(ProgramError::from)
+        }
     }
 }

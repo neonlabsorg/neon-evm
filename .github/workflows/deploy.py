@@ -156,12 +156,13 @@ def stop_containers(project_name):
 @click.option('--is_draft')
 @click.option('--labels')
 def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sha, token, is_draft, labels):
-    is_develop_branch = github_ref in ['refs/heads/develop', 'refs/heads/master']
+    is_develop_branch = github_ref == 'refs/heads/develop'
+    is_master_branch = github_ref == 'refs/heads/master'
     is_tag_creating = 'refs/tags/' in github_ref
     is_version_branch = re.match(VERSION_BRANCH_TEMPLATE, github_ref.replace("refs/heads/", "")) is not None
     is_FTS_labeled_not_draft = 'FullTestSuit' in labels and is_draft != "true"
 
-    if is_develop_branch or is_tag_creating or is_version_branch or is_FTS_labeled_not_draft:
+    if is_develop_branch or is_master_branch or is_tag_creating or is_version_branch or is_FTS_labeled_not_draft:
         full_test_suite = "true"
     else:
         full_test_suite = "false"
@@ -177,6 +178,8 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
         proxy_branch = re.sub(r'\.\d+$', '.x', neon_evm_tag)
     elif is_version_branch:
         proxy_branch = github_ref.replace("refs/heads/", "")
+    elif is_master_branch:
+        proxy_branch = 'master'
     else:
         proxy_branch = 'develop'
     click.echo(f"Proxy branch: {proxy_branch}")

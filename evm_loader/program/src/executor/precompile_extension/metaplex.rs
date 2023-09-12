@@ -1,4 +1,5 @@
 #![allow(clippy::unnecessary_wraps)]
+#![allow(clippy::needless_pass_by_ref_mut)]
 
 use std::convert::{Into, TryInto};
 
@@ -153,7 +154,7 @@ fn create_metadata<B: AccountStorage>(
     uri: String,
 ) -> Result<Vec<u8>> {
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.backend.solana_address(&signer);
+    let (signer_pubkey, bump_seed) = state.backend.contract_pubkey(signer);
 
     let seeds = vec![
         vec![ACCOUNT_SEED_VERSION],
@@ -168,7 +169,7 @@ fn create_metadata<B: AccountStorage>(
         metadata_pubkey,
         mint,
         signer_pubkey,
-        *state.backend.operator(),
+        state.backend.operator(),
         signer_pubkey,
         name,
         symbol,
@@ -208,7 +209,7 @@ fn create_master_edition<B: AccountStorage>(
     max_supply: Option<u64>,
 ) -> Result<Vec<u8>> {
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.backend.solana_address(&signer);
+    let (signer_pubkey, bump_seed) = state.backend.contract_pubkey(signer);
 
     let seeds = vec![
         vec![ACCOUNT_SEED_VERSION],
@@ -226,7 +227,7 @@ fn create_master_edition<B: AccountStorage>(
         signer_pubkey,
         signer_pubkey,
         metadata_pubkey,
-        *state.backend.operator(),
+        state.backend.operator(),
         max_supply,
     );
 

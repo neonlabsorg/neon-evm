@@ -107,9 +107,24 @@ impl TryInto<Account> for AccountRow {
     }
 }
 
+pub enum EthSyncStatus {
+    Syncing(EthSyncing),
+    Synced,
+}
+
+impl EthSyncStatus {
+    pub fn new(syncing_status: Option<EthSyncing>) -> Self {
+        if let Some(syncing_status) = syncing_status {
+            Self::Syncing(syncing_status)
+        } else {
+            Self::Synced
+        }
+    }
+}
+
 #[derive(Row, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EthSyncStatus {
+pub struct EthSyncing {
     starting_block: u64,
     current_block: u64,
     highest_block: u64,

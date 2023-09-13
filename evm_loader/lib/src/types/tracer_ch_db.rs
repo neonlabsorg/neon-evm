@@ -4,7 +4,7 @@ use crate::{
 };
 
 use super::{
-    tracer_ch_common::{ChResult, EthSyncStatus, SlotParentRooted},
+    tracer_ch_common::{ChResult, EthSyncStatus, EthSyncing, SlotParentRooted},
     ChDbConfig,
 };
 
@@ -522,29 +522,69 @@ impl ClickHouseDb {
         }
     }
 
-    pub async fn get_sync_status(&self) -> ChResult<EthSyncStatus> {
+    pub async fn get_slot_by_blockhash(&self, blockhash: &str) -> ChResult<Option<u64>> {
         let query = r#"SELECT slot
-        FROM (
-          (SELECT MIN(slot) as slot FROM events.notify_block_distributed)
-          UNION ALL
-          (SELECT MAX(slot) as slot FROM events.notify_block_distributed)
-          UNION ALL
-          (SELECT MAX(slot) as slot FROM events.notify_block_distributed)
-        )
-        ORDER BY slot ASC
+        FROM events.notify_block_distributed
+        WHERE hash = ?
+        LIMIT 1
         "#;
 
-        let data = Self::row_opt(self.client.query(query).fetch_one::<EthSyncStatus>().await)?;
+        let slot = Self::row_opt(
+            self.client
+                .query(query)
+                .bind(blockhash)
+                .fetch_one::<u64>()
+                .await,
+        )?;
 
-        match data {
-            Some(data) => Ok(data),
-            None => {
-                let err = clickhouse::error::Error::Custom(format!(
-                    "get_sync_status: no data available",
-                ));
-                Err(ChError::Db(err))
+        Ok(slot)
+    }
+
+    pub async fn get_sync_status(&self) -> ChResult<EthSyncStatus> {
+        let query_is_startup = r#"SELECT is_startup
+        FROM events.update_account_distributed
+        WHERE slot = (
+          SELECT MAX(slot)
+          FROM events.update_account_distributed
+        )
+        LIMIT 1;
+        "#;
+
+        let is_startup = Self::row_opt(
+            self.client
+                .query(query_is_startup)
+                .fetch_one::<bool>()
+                .await,
+        )?;
+
+        if let Some(is_startup) = is_startup {
+            if is_startup {
+                let query = r#"SELECT slot
+            FROM (
+              (SELECT MIN(slot) as slot FROM events.notify_block_distributed)
+              UNION ALL
+              (SELECT MAX(slot) as slot FROM events.notify_block_distributed)
+              UNION ALL
+              (SELECT MAX(slot) as slot FROM events.notify_block_distributed)
+            )
+            ORDER BY slot ASC
+            "#;
+
+                let data = Self::row_opt(self.client.query(query).fetch_one::<EthSyncing>().await)?;
+
+                match data {
+                    Some(data) => return Ok(EthSyncStatus::new(Some(data))),
+                    None => {
+                        let err = clickhouse::error::Error::Custom(format!(
+                            "get_sync_status: no data available",
+                        ));
+                        return Err(ChError::Db(err));
+                    }
+                }
             }
         }
+
+        Ok(EthSyncStatus::new(None))
     }
 
     fn row_opt<T>(result: clickhouse::error::Result<T>) -> clickhouse::error::Result<Option<T>> {

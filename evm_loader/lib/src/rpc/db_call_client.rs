@@ -22,13 +22,13 @@ use solana_transaction_status::{
 use std::any::Any;
 
 pub struct CallDbClient {
-    pub slot: u64,
     tracer_db: TracerDb,
+    pub slot: u64,
 }
 
 impl CallDbClient {
     pub fn new(tracer_db: TracerDb, slot: u64) -> Self {
-        Self { slot, tracer_db }
+        Self { tracer_db, slot }
     }
 }
 

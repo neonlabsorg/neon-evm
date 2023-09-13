@@ -83,7 +83,7 @@ async fn main() -> NeonApiResult<()> {
         );
 
     let addr = SocketAddr::from_str(listener_addr.as_str())?;
-    tracing::debug!("listening on {}", addr);
+    tracing::info!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .with_graceful_shutdown(shutdown_signal())

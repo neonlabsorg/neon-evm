@@ -1,10 +1,6 @@
 use crate::{
-    api_context,
-    api_server::handlers::process_error,
-    commands::trace::trace_block,
-    context, errors,
-    types::{request_models::TraceNextBlockRequestModel, IndexerDb},
-    NeonApiState,
+    api_context, api_server::handlers::process_error, commands::trace::trace_block, context,
+    errors, types::request_models::TraceNextBlockRequestModel, NeonApiState,
 };
 use axum::http::StatusCode;
 use axum::Json;
@@ -28,17 +24,9 @@ pub async fn trace_next_block(
     )
     .await;
 
-    let indexer_db = IndexerDb::new(
-        state
-            .config
-            .db_config
-            .as_ref()
-            .expect("db-config is required"),
-    )
-    .await;
-
     // TODO: Query next block (which parent = slot) instead of getting slot + 1:
-    let transactions = match indexer_db
+    let transactions = match state
+        .indexer_db
         .get_block_transactions(trace_next_block_request.slot + 1)
         .await
     {

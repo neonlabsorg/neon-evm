@@ -30,13 +30,7 @@ pub async fn build_hash_rpc_client(
     hash: &str,
 ) -> Result<Arc<dyn rpc::Rpc>, NeonError> {
     let hash = <[u8; 32]>::from_hex(context::truncate_0x(hash))?;
-
-    let db_config = state
-        .config
-        .db_config
-        .as_ref()
-        .expect("db-config not found");
     Ok(Arc::new(
-        TrxDbClient::new(db_config, state.tracer_db.clone(), hash).await,
+        TrxDbClient::new(state.tracer_db.clone(), state.indexer_db.clone(), hash).await,
     ))
 }

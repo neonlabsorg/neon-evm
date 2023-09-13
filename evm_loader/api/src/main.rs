@@ -53,8 +53,8 @@ async fn main() -> NeonApiResult<()> {
     let state: NeonApiState = Arc::new(api_server::state::State::new(config).await);
 
     let app = Router::new()
-        .nest("/api", api_server::routes::register(state.clone()))
-        .with_state(state.clone())
+        .nest("/api", api_server::routes::register())
+        .with_state(state)
         .layer(
             // Let's create a tracing span for each request
             TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {

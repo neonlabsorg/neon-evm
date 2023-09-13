@@ -1,4 +1,5 @@
 use crate::{
+    api_context,
     api_server::handlers::process_error,
     commands::trace::trace_block,
     context, errors,
@@ -16,11 +17,7 @@ pub async fn trace_next_block(
     axum::extract::State(state): axum::extract::State<NeonApiState>,
     Json(trace_next_block_request): Json<TraceNextBlockRequestModel>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let rpc_client =
-        match context::build_call_db_client(&state.config, trace_next_block_request.slot) {
-            Ok(rpc_client) => rpc_client,
-            Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
-        };
+    let rpc_client = api_context::build_call_db_client(&state, trace_next_block_request.slot);
 
     let context = context::create(rpc_client, Arc::clone(&state.config));
 

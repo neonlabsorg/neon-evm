@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![deny(warnings)]
 #![deny(clippy::all, clippy::pedantic)]
+mod api_context;
 mod api_options;
 mod api_server;
 

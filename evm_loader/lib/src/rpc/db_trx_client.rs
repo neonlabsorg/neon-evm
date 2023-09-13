@@ -29,8 +29,7 @@ pub struct TrxDbClient {
 }
 
 impl TrxDbClient {
-    pub async fn new(config: &ChDbConfig, hash: [u8; 32]) -> Self {
-        let tracer_db = TracerDb::new(config);
+    pub async fn new(config: &ChDbConfig, tracer_db: TracerDb, hash: [u8; 32]) -> Self {
         let indexer_db = IndexerDb::new(config).await;
         let sol_sig = indexer_db
             .get_sol_sig(&hash)

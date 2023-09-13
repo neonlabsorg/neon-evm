@@ -1,5 +1,5 @@
 use super::{e, Rpc};
-use crate::types::{ChDbConfig, TracerDb, TxParams};
+use crate::types::{TracerDb, TxParams};
 use async_trait::async_trait;
 use solana_client::{
     client_error::Result as ClientResult,
@@ -27,12 +27,8 @@ pub struct CallDbClient {
 }
 
 impl CallDbClient {
-    pub fn new(config: &ChDbConfig, slot: u64) -> Self {
-        let db = TracerDb::new(config);
-        Self {
-            slot,
-            tracer_db: db,
-        }
+    pub fn new(tracer_db: TracerDb, slot: u64) -> Self {
+        Self { slot, tracer_db }
     }
 }
 

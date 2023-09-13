@@ -2,9 +2,9 @@ use axum::{http::StatusCode, Json};
 use std::convert::Into;
 
 use crate::commands::trace::trace_transaction;
-use crate::{context, types::request_models::TraceRequestModel, NeonApiState};
+use crate::{api_context, context, types::request_models::TraceRequestModel, NeonApiState};
 
-use super::{parse_emulation_params, process_error, process_result};
+use super::{parse_emulation_params, process_result};
 
 #[tracing::instrument(skip(state))]
 pub async fn trace(
@@ -13,11 +13,7 @@ pub async fn trace(
 ) -> (StatusCode, Json<serde_json::Value>) {
     let tx = trace_request.emulate_request.tx_params.into();
 
-    let rpc_client =
-        match context::build_rpc_client(&state.config, trace_request.emulate_request.slot) {
-            Ok(rpc_client) => rpc_client,
-            Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
-        };
+    let rpc_client = api_context::build_rpc_client(&state, trace_request.emulate_request.slot);
 
     let context = context::create(rpc_client, state.config.clone());
 

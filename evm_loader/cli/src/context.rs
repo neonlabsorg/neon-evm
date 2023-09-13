@@ -7,6 +7,7 @@ pub use neon_lib::context::*;
 use neon_lib::rpc;
 use neon_lib::rpc::CallDbClient;
 use neon_lib::rpc::TrxDbClient;
+use neon_lib::types::TracerDb;
 use neon_lib::Config;
 use neon_lib::NeonError;
 use solana_client::nonblocking::rpc_client::RpcClient;
@@ -24,18 +25,13 @@ pub async fn create_from_config_and_options<'a>(
             let hash = params.value_of("hash").expect("hash not found");
             let hash = <[u8; 32]>::from_hex(truncate_0x(hash)).expect("hash cast error");
 
-            Arc::new(
-                TrxDbClient::new(
-                    config.db_config.as_ref().expect("db-config not found"),
-                    hash,
-                )
-                .await,
-            )
+            let db_config = config.db_config.as_ref().expect("db-config not found");
+            Arc::new(TrxDbClient::new(db_config, TracerDb::new(db_config), hash).await)
         }
         _ => {
             if let Some(slot) = slot {
                 Arc::new(CallDbClient::new(
-                    config.db_config.as_ref().expect("db-config not found"),
+                    TracerDb::new(config.db_config.as_ref().expect("db-config not found")),
                     *slot,
                 ))
             } else {

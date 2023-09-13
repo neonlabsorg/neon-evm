@@ -2,21 +2,15 @@ use crate::NeonApiState;
 use hex::FromHex;
 use neon_lib::rpc::{CallDbClient, TrxDbClient};
 use neon_lib::{context, rpc, NeonError};
-use solana_client::nonblocking::rpc_client::RpcClient;
 use std::sync::Arc;
 
 /// # Errors
 pub fn build_rpc_client(state: &NeonApiState, slot: Option<u64>) -> Arc<dyn rpc::Rpc> {
-    let config = &state.config;
-
     if let Some(slot) = slot {
         return build_call_db_client(state, slot);
     }
 
-    Arc::new(RpcClient::new_with_commitment(
-        config.json_rpc_url.clone(),
-        config.commitment,
-    ))
+    state.rpc_client.clone()
 }
 
 /// # Errors

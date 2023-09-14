@@ -129,7 +129,6 @@ impl TryInto<Account> for AccountRow {
     }
 }
 
-#[allow(dead_code)]
 impl ClickHouseDb {
     pub fn new(config: &ChDbConfig) -> Self {
         let url_id = rand::thread_rng().gen_range(0..config.clickhouse_url.len());

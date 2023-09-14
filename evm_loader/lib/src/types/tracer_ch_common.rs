@@ -125,7 +125,7 @@ impl EthSyncStatus {
 #[derive(Row, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EthSyncing {
-    starting_block: u64,
-    current_block: u64,
-    highest_block: u64,
+    pub starting_block: u64,
+    pub current_block: u64,
+    pub highest_block: u64,
 }

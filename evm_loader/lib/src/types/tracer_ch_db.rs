@@ -522,7 +522,7 @@ impl ClickHouseDb {
         }
     }
 
-    pub async fn get_slot_by_blockhash(&self, blockhash: &str) -> ChResult<Option<u64>> {
+    pub async fn get_slot_by_blockhash(&self, blockhash: &str) -> ChResult<u64> {
         let query = r#"SELECT slot
         FROM events.notify_block_distributed
         WHERE hash = ?
@@ -537,7 +537,12 @@ impl ClickHouseDb {
                 .await,
         )?;
 
-        Ok(slot)
+        match slot {
+            Some(slot) => Ok(slot),
+            None => Err(ChError::Db(clickhouse::error::Error::Custom(
+                "get_slot_by_blockhash: no data available".to_string(),
+            ))),
+        }
     }
 
     pub async fn get_sync_status(&self) -> ChResult<EthSyncStatus> {
@@ -557,9 +562,8 @@ impl ClickHouseDb {
                 .await,
         )?;
 
-        if let Some(is_startup) = is_startup {
-            if is_startup {
-                let query = r#"SELECT slot
+        if let Some(true) = is_startup {
+            let query = r#"SELECT slot
             FROM (
               (SELECT MIN(slot) as slot FROM events.notify_block_distributed)
               UNION ALL
@@ -570,18 +574,14 @@ impl ClickHouseDb {
             ORDER BY slot ASC
             "#;
 
-                let data = Self::row_opt(self.client.query(query).fetch_one::<EthSyncing>().await)?;
+            let data = Self::row_opt(self.client.query(query).fetch_one::<EthSyncing>().await)?;
 
-                match data {
-                    Some(data) => return Ok(EthSyncStatus::new(Some(data))),
-                    None => {
-                        let err = clickhouse::error::Error::Custom(format!(
-                            "get_sync_status: no data available",
-                        ));
-                        return Err(ChError::Db(err));
-                    }
-                }
-            }
+            return match data {
+                Some(data) => Ok(EthSyncStatus::new(Some(data))),
+                None => Err(ChError::Db(clickhouse::error::Error::Custom(
+                    "get_sync_status: no data available".to_string(),
+                ))),
+            };
         }
 
         Ok(EthSyncStatus::new(None))

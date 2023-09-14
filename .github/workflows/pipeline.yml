@@ -8,6 +8,7 @@ on:
       - master
       - develop
       - '[vt][0-9].[0-9]+.[0-9x]+*'
+      - test-global-rpc-clients
     tags:
       - "*"
 env:

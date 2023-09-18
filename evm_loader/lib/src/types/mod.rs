@@ -21,11 +21,6 @@ pub struct ChDbConfig {
     pub clickhouse_url: Vec<String>,
     pub clickhouse_user: Option<String>,
     pub clickhouse_password: Option<String>,
-    pub indexer_host: String,
-    pub indexer_port: String,
-    pub indexer_database: String,
-    pub indexer_user: String,
-    pub indexer_password: String,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]

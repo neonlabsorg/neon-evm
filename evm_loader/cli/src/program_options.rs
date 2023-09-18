@@ -196,7 +196,7 @@ pub fn parse<'a>() -> ArgMatches<'a> {
                 .long("db_config")
                 .takes_value(true)
                 .global(true)
-                .help("Configuration file to use Postgress DB")
+                .help("Configuration file to use Tracer DB")
         )
         .arg(
             Arg::with_name("slot")

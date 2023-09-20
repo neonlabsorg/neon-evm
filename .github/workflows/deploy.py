@@ -158,7 +158,10 @@ def stop_containers(project_name):
 @click.option('--token')
 @click.option('--is_draft')
 @click.option('--labels')
-def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sha, token, is_draft, labels):
+@click.option('--pr_url')
+@click.option('--pr_number')
+def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sha, token, is_draft, labels,
+                         pr_url, pr_number):
     is_develop_branch = github_ref in ['refs/heads/develop', 'refs/heads/master']
     is_tag_creating = 'refs/tags/' in github_ref
     is_version_branch = re.match(VERSION_BRANCH_TEMPLATE, github_ref.replace("refs/heads/", "")) is not None
@@ -184,9 +187,11 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
         proxy_branch = 'develop'
     click.echo(f"Proxy branch: {proxy_branch}")
 
+    pr_url_for_report = f"{pr_url}/{pr_number}/comments" if pr_number else ""
+
     runs_before = github.get_proxy_runs_list(proxy_branch)
     runs_count_before = github.get_proxy_runs_count(proxy_branch)
-    github.run_proxy_dispatches(proxy_branch, github_ref, github_sha, full_test_suite)
+    github.run_proxy_dispatches(proxy_branch, github_ref, github_sha, full_test_suite, pr_url_for_report)
     wait_condition(lambda: github.get_proxy_runs_count(proxy_branch) > runs_count_before)
 
     runs_after = github.get_proxy_runs_list(proxy_branch)

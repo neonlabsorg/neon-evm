@@ -30,8 +30,8 @@ ERR_MSG_TPL = {
 DOCKER_USER = os.environ.get("DHUBU")
 DOCKER_PASSWORD = os.environ.get("DHUBP")
 IMAGE_NAME = 'neonlabsorg/evm_loader'
-SOLANA_NODE_VERSION = 'v1.14.20'
-SOLANA_BPF_VERSION = 'v1.14.20'
+SOLANA_NODE_VERSION = 'v1.16.13'
+SOLANA_BPF_VERSION = 'v1.16.13'
 
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 docker_client = docker.APIClient()
@@ -126,6 +126,9 @@ def run_tests(github_sha):
         print("Part of tests are skipped")
 
     exec_status = docker_client.exec_inspect(exec_id['Id'])["ExitCode"]
+
+    run_subprocess(f"docker-compose -p {project_name} -f ./evm_loader/docker-compose-ci.yml logs dk-neon-api")
+
     stop_containers(project_name)
 
     if tests_are_failed or exec_status == 1:

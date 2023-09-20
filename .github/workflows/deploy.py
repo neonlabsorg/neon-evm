@@ -187,11 +187,11 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
         proxy_branch = 'develop'
     click.echo(f"Proxy branch: {proxy_branch}")
 
-    pr_url_for_report = f"{pr_url}/{pr_number}/comments" if pr_number else ""
+    initial_pr = f"{pr_url}/{pr_number}/comments" if pr_number else ""
 
     runs_before = github.get_proxy_runs_list(proxy_branch)
     runs_count_before = github.get_proxy_runs_count(proxy_branch)
-    github.run_proxy_dispatches(proxy_branch, github_ref, github_sha, full_test_suite, pr_url_for_report)
+    github.run_proxy_dispatches(proxy_branch, github_ref, github_sha, full_test_suite, initial_pr)
     wait_condition(lambda: github.get_proxy_runs_count(proxy_branch) > runs_count_before)
 
     runs_after = github.get_proxy_runs_list(proxy_branch)

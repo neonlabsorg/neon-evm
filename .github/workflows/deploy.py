@@ -165,8 +165,8 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
     is_develop_branch = github_ref in ['refs/heads/develop', 'refs/heads/master']
     is_tag_creating = 'refs/tags/' in github_ref
     is_version_branch = re.match(VERSION_BRANCH_TEMPLATE, github_ref.replace("refs/heads/", "")) is not None
-    is_FTS_labeled_not_draft = 'FullTestSuit' in labels and is_draft != "true"
-    is_extended_FTS_labeled_not_draft = 'ExtendedFullTestSuit' in labels and is_draft != "true"
+    is_FTS_labeled_not_draft = 'fullTestSuit' in labels and is_draft != "true"
+    is_extended_FTS_labeled_not_draft = 'extendedFullTestSuit' in labels and is_draft != "true"
 
     if is_develop_branch or is_master_branch or is_tag_creating or is_version_branch or is_FTS_labeled_not_draft:
         full_test_suite = "true"

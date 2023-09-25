@@ -5,7 +5,7 @@ use build_info::{BuildInfo, OptimizationLevel};
 use serde::Serialize;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SlimBuildInfo {
     timestamp: DateTime<Utc>,
     profile: String,
@@ -15,18 +15,18 @@ pub struct SlimBuildInfo {
     version_control: GitInfo,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct CrateInfo {
     name: String,
     version: Version,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct CompilerInfo {
     version: Version,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct GitInfo {
     commit_id: String,
     dirty: bool,

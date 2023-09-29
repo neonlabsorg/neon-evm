@@ -49,17 +49,6 @@ pub enum Event {
         gas_used: u64,
         return_data: Option<Vec<u8>>,
     },
-    StackPush {
-        value: [u8; 32],
-    },
-    MemorySet {
-        offset: usize,
-        data: Vec<u8>,
-    },
-    StorageSet {
-        index: U256,
-        value: [u8; 32],
-    },
     StorageAccess {
         index: U256,
         value: [u8; 32],

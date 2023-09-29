@@ -190,10 +190,11 @@ impl EventListener for StructLogger {
                     last.return_data = return_data.map(Into::into);
                 }
             }
-            Event::StorageAccess { index, value } if !self.config.disable_storage => {
-                self.storage_access = Some((index, U256::from_be_bytes(value)));
+            Event::StorageAccess { index, value } => {
+                if !self.config.disable_storage {
+                    self.storage_access = Some((index, U256::from_be_bytes(value)));
+                }
             }
-            _ => (),
         };
     }
 

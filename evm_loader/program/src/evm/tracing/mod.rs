@@ -124,7 +124,7 @@ pub struct TraceConfig {
     pub enable_return_data: bool,
     pub tracer: Option<String>,
     pub timeout: Option<String>,
-    pub tracer_config: Value,
+    pub tracer_config: Option<Value>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

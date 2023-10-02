@@ -1,7 +1,7 @@
 use crate::rpc::check_account_for_fee;
 use crate::{
-    commands::get_neon_elf::read_elf_parameters_from_account, errors::NeonError, Config, Context,
-    NeonResult,
+    commands::get_neon_elf::read_elf_parameters_from_account, errors::NeonError, NeonResult,
+    RequestContext,
 };
 use evm_loader::account::{MainTreasury, Treasury};
 use log::{info, warn};
@@ -21,16 +21,17 @@ pub struct CollectTreasuryReturn {
     pub balance: u64,
 }
 
-pub async fn execute(config: &Config, context: &Context<'_>) -> NeonResult<CollectTreasuryReturn> {
-    let neon_params = read_elf_parameters_from_account(config, context).await?;
-    let signer = context.signer()?;
+pub async fn execute(context: &RequestContext<'_>) -> NeonResult<CollectTreasuryReturn> {
+    let neon_params = read_elf_parameters_from_account(context).await?;
+    let signer = &*context.signer()?;
 
+    let evm_loader = context.evm_loader();
     let pool_count: u32 = neon_params
         .get("NEON_POOL_COUNT")
         .and_then(|value| value.parse().ok())
-        .ok_or(NeonError::IncorrectProgram(config.evm_loader))?;
+        .ok_or(NeonError::IncorrectProgram(*evm_loader))?;
 
-    let main_balance_address = MainTreasury::address(&config.evm_loader).0;
+    let main_balance_address = MainTreasury::address(evm_loader).0;
 
     info!("Main pool balance: {}", main_balance_address);
 
@@ -41,11 +42,11 @@ pub async fn execute(config: &Config, context: &Context<'_>) -> NeonResult<Colle
         .expect("cast to solana_client::rpc_client::RpcClient error");
 
     for i in 0..pool_count {
-        let (aux_balance_address, _) = Treasury::address(&config.evm_loader, i);
+        let (aux_balance_address, _) = Treasury::address(evm_loader, i);
 
         if let Some(aux_balance_account) = context
             .rpc_client
-            .get_account_with_commitment(&aux_balance_address, config.commitment)
+            .get_account_with_commitment(&aux_balance_address, context.config.commitment)
             .await?
             .value
         {
@@ -61,7 +62,7 @@ pub async fn execute(config: &Config, context: &Context<'_>) -> NeonResult<Colle
                 );
                 let mut message = Message::new(
                     &[Instruction::new_with_bincode(
-                        config.evm_loader,
+                        *evm_loader,
                         &(30_u8, i),
                         vec![
                             AccountMeta::new(main_balance_address, false),
@@ -77,7 +78,7 @@ pub async fn execute(config: &Config, context: &Context<'_>) -> NeonResult<Colle
                 check_account_for_fee(client, &signer.pubkey(), &message).await?;
 
                 let mut trx = Transaction::new_unsigned(message);
-                trx.try_sign(&[&*signer], blockhash)?;
+                trx.try_sign(&[signer], blockhash)?;
                 context
                     .rpc_client
                     .send_and_confirm_transaction_with_spinner(&trx)
@@ -99,7 +100,7 @@ pub async fn execute(config: &Config, context: &Context<'_>) -> NeonResult<Colle
     check_account_for_fee(client, &signer.pubkey(), &message).await?;
 
     let mut trx = Transaction::new_unsigned(message);
-    trx.try_sign(&[&*signer], blockhash)?;
+    trx.try_sign(&[signer], blockhash)?;
     context
         .rpc_client
         .send_and_confirm_transaction_with_spinner(&trx)

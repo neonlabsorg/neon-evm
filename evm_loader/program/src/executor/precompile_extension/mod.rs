@@ -27,7 +27,6 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     ]);
 
     #[must_use]
-    #[allow(clippy::unused_self)]
     pub fn is_precompile_extension(&self, address: &Address) -> bool {
         *address == Self::SYSTEM_ACCOUNT_QUERY
             || *address == Self::SYSTEM_ACCOUNT_NEON_TOKEN

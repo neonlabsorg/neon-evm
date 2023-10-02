@@ -1,6 +1,5 @@
 #![deny(warnings)]
 #![deny(clippy::all, clippy::pedantic)]
-mod api_context;
 mod api_options;
 mod api_server;
 #[allow(clippy::module_name_repetitions)]
@@ -28,7 +27,7 @@ use crate::api_server::handlers::get_storage_at::get_storage_at;
 use crate::api_server::handlers::trace::trace;
 use crate::build_info::get_build_info;
 pub use config::Config;
-pub use context::Context;
+pub use context::RequestContext;
 use tracing::info;
 
 type NeonApiResult<T> = Result<T, NeonApiError>;

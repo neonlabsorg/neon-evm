@@ -130,12 +130,3 @@ pub struct TraceCallConfig {
     pub block_overrides: Option<BlockOverrides>,
     pub state_overrides: Option<AccountOverrides>,
 }
-
-impl From<TraceConfig> for TraceCallConfig {
-    fn from(trace_config: TraceConfig) -> Self {
-        Self {
-            trace_config,
-            ..Self::default()
-        }
-    }
-}

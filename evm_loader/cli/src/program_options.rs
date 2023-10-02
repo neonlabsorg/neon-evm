@@ -184,7 +184,6 @@ pub fn parse<'a>() -> ArgMatches<'a> {
                 .global(true)
                 .help("Configuration file to use");
 
-            #[allow(clippy::option_if_let_else)]
             if let Some(ref config_file) = *solana_cli_config::CONFIG_FILE {
                 arg.default_value(config_file)
             } else {

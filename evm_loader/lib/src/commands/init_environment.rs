@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{context::Context, NeonResult};
+use crate::{context::RequestContext, NeonResult};
 
 use {
     crate::{
@@ -13,7 +13,6 @@ use {
             transaction_executor::TransactionExecutor,
         },
         errors::NeonError,
-        Config,
     },
     evm_loader::{
         account::{MainTreasury, Treasury},
@@ -102,14 +101,13 @@ fn read_keys_dir(keys_dir: &str) -> Result<HashMap<Pubkey, Keypair>, NeonError> 
 
 #[allow(clippy::too_many_lines)]
 pub async fn execute(
-    config: &Config,
-    context: &Context<'_>,
+    context: &RequestContext<'_>,
     send_trx: bool,
     force: bool,
     keys_dir: Option<&str>,
     file: Option<&str>,
 ) -> NeonResult<InitEnvironmentReturn> {
-    let signer = context.signer()?;
+    let signer = &*context.signer()?;
     info!(
         "Signer: {}, send_trx: {}, force: {}",
         signer.pubkey(),
@@ -117,26 +115,24 @@ pub async fn execute(
         force
     );
     let second_signer: &dyn Signer = &*context.signer()?;
+    let config = &context.config;
     let fee_payer: &dyn Signer = match config.fee_payer.as_ref() {
         Some(fee_payer) => fee_payer,
         None => second_signer,
     };
     let executor = Rc::new(TransactionExecutor::new(
-        context.rpc_client,
+        &*context.rpc_client,
         fee_payer,
         send_trx,
     ));
     let keys = keys_dir.map_or(Ok(HashMap::new()), read_keys_dir)?;
 
-    let program_data_address = Pubkey::find_program_address(
-        &[&config.evm_loader.to_bytes()],
-        &bpf_loader_upgradeable::id(),
-    )
-    .0;
-    let (program_upgrade_authority, program_data) =
-        read_program_data_from_account(config, context, &config.evm_loader).await?;
+    let evm_loader = context.evm_loader();
+    let program_data_address =
+        Pubkey::find_program_address(&[&evm_loader.to_bytes()], &bpf_loader_upgradeable::id()).0;
+    let (program_upgrade_authority, program_data) = read_program_data_from_account(context).await?;
     let data = file.map_or(Ok(program_data), read_program_data)?;
-    let program_parameters = Parameters::new(read_elf_parameters(config, &data));
+    let program_parameters = Parameters::new(read_elf_parameters(&data));
 
     let neon_revision = program_parameters.get::<String>("NEON_REVISION")?;
     if neon_revision != env!("NEON_REVISION") {
@@ -208,7 +204,7 @@ pub async fn execute(
     executor.checkpoint(config.commitment).await?;
 
     //====================== Create 'Deposit' NEON-token balance ======================================================
-    let (deposit_authority, _) = Pubkey::find_program_address(&[b"Deposit"], &config.evm_loader);
+    let (deposit_authority, _) = Pubkey::find_program_address(&[b"Deposit"], evm_loader);
     let deposit_address = get_associated_token_address(&deposit_authority, &neon_token_mint);
     executor
         .check_and_create_object(
@@ -251,7 +247,7 @@ pub async fn execute(
         );
         return Err(EnvironmentError::TreasuryPoolSeedMismatch.into());
     }
-    let main_balance_address = MainTreasury::address(&config.evm_loader).0;
+    let main_balance_address = MainTreasury::address(evm_loader).0;
     executor
         .check_and_create_object(
             "Main treasury pool",
@@ -264,7 +260,7 @@ pub async fn execute(
                 let transaction = executor
                     .create_transaction(
                         &[Instruction::new_with_bincode(
-                            config.evm_loader,
+                            *evm_loader,
                             &(0x29_u8), // evm_loader::instruction::EvmInstruction::CreateMainTreasury
                             vec![
                                 AccountMeta::new(main_balance_address, false),
@@ -276,7 +272,7 @@ pub async fn execute(
                                 AccountMeta::new(executor.fee_payer.pubkey(), true),
                             ],
                         )],
-                        &[&*signer],
+                        &[signer],
                     )
                     .await?;
                 Ok(Some(transaction))
@@ -291,7 +287,7 @@ pub async fn execute(
             .rpc_client
             .get_minimum_balance_for_rent_exemption(0)
             .await?;
-        let aux_balance_address = Treasury::address(&config.evm_loader, i).0;
+        let aux_balance_address = Treasury::address(evm_loader, i).0;
         let executor_clone = executor.clone();
         executor
             .check_and_create_object(

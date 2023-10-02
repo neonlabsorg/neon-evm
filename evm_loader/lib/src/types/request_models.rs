@@ -1,4 +1,4 @@
-use crate::types::{PubkeyBase58, TxParams};
+use crate::types::PubkeyBase58;
 use ethnum::U256;
 use evm_loader::evm::tracing::TraceCallConfig;
 use evm_loader::types::Address;
@@ -24,6 +24,7 @@ pub struct GetStorageAtRequest {
 
 #[derive(Deserialize, Serialize, Default)]
 pub struct TxParamsRequestModel {
+    pub nonce: Option<u64>,
     pub sender: Address,
     pub contract: Option<Address>,
     pub data: Option<Vec<u8>>,
@@ -48,21 +49,6 @@ impl fmt::Debug for TxParamsRequestModel {
             .field("gas_limit", &self.gas_limit)
             .field("access_list", &self.access_list)
             .finish_non_exhaustive()
-    }
-}
-
-impl From<TxParamsRequestModel> for TxParams {
-    fn from(model: TxParamsRequestModel) -> Self {
-        Self {
-            nonce: None,
-            from: model.sender,
-            to: model.contract,
-            data: model.data,
-            value: model.value,
-            gas_limit: model.gas_limit,
-            gas_price: model.gas_price,
-            access_list: model.access_list,
-        }
     }
 }
 

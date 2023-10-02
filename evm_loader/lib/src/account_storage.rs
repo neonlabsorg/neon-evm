@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
-use crate::{rpc::Rpc, NeonError};
+use crate::commands::emulate::setup_syscall_stubs;
+use crate::{NeonError, RequestContext};
 use ethnum::U256;
 use evm_loader::account::ether_contract;
 use evm_loader::account_storage::{find_slot_hash, AccountOperation, AccountsOperations};
@@ -25,13 +26,13 @@ use solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE;
 use solana_sdk::{
     account::Account,
     account_info::AccountInfo,
-    commitment_config::CommitmentConfig,
     pubkey,
     pubkey::Pubkey,
     rent::Rent,
     sysvar::{slot_hashes, Sysvar},
 };
 
+use crate::types::EmulationParams;
 use crate::types::PubkeyBase58;
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
@@ -80,16 +81,11 @@ impl NeonAccount {
         }
     }
 
-    pub async fn rpc_load(
-        rpc_client: &dyn Rpc,
-        evm_loader: &Pubkey,
-        address: Address,
-        writable: bool,
-    ) -> Self {
-        let (key, _) = make_solana_program_address(&address, evm_loader);
+    pub async fn rpc_load(context: &RequestContext<'_>, address: Address, writable: bool) -> Self {
+        let (key, _) = make_solana_program_address(&address, context.evm_loader());
         info!("get_account_from_solana {address} => {key}");
 
-        let account = match rpc_client.get_account(&key).await {
+        let account = match context.rpc_client.get_account(&key).await {
             Ok(account) => Some(account),
             Err(err) => {
                 error!("rpc_client.get_account {key} error: {err:?}");
@@ -112,99 +108,73 @@ pub struct SolanaAccount {
 pub struct EmulatorAccountStorage<'a> {
     pub accounts: RefCell<HashMap<Address, NeonAccount>>,
     pub solana_accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
-    rpc_client: &'a dyn Rpc,
-    evm_loader: Pubkey,
+    context: &'a RequestContext<'a>,
     block_number: u64,
     block_timestamp: i64,
-    neon_token_mint: Pubkey,
-    chain_id: u64,
-    commitment: CommitmentConfig,
-    state_overrides: Option<AccountOverrides>,
+    emulation_params: &'a EmulationParams,
+    state_overrides: Option<&'a AccountOverrides>,
 }
 
 impl<'a> EmulatorAccountStorage<'a> {
     pub async fn new(
-        rpc_client: &'a dyn Rpc,
-        evm_loader: Pubkey,
-        token_mint: Pubkey,
-        chain_id: u64,
-        commitment: CommitmentConfig,
-        block_overrides: &Option<BlockOverrides>,
-        state_overrides: Option<AccountOverrides>,
+        context: &'a RequestContext<'a>,
+        emulation_params: &'a EmulationParams,
+        block_overrides: Option<&'a BlockOverrides>,
+        state_overrides: Option<&'a AccountOverrides>,
     ) -> Result<EmulatorAccountStorage<'a>, NeonError> {
         trace!("backend::new");
 
-        let block_number = match block_overrides
-            .as_ref()
-            .and_then(|overrides| overrides.number)
-        {
-            None => rpc_client.get_slot().await?,
+        let block_number = match block_overrides.and_then(|overrides| overrides.number) {
+            None => context.rpc_client.get_slot().await?,
             Some(number) => number,
         };
 
-        let block_timestamp = match block_overrides
-            .as_ref()
-            .and_then(|overrides| overrides.time)
-        {
-            None => rpc_client.get_block_time(block_number).await?,
+        let block_timestamp = match block_overrides.and_then(|overrides| overrides.time) {
+            None => context.rpc_client.get_block_time(block_number).await?,
             Some(time) => time,
         };
 
         Ok(Self {
             accounts: RefCell::new(HashMap::new()),
             solana_accounts: RefCell::new(HashMap::new()),
-            rpc_client,
-            evm_loader,
+            context,
             block_number,
             block_timestamp,
-            neon_token_mint: token_mint,
-            chain_id,
-            commitment,
+            emulation_params,
             state_overrides,
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn with_accounts(
-        rpc_client: &'a dyn Rpc,
-        evm_loader: Pubkey,
-        token_mint: Pubkey,
-        chain_id: u64,
-        commitment: CommitmentConfig,
-        accounts: &[Address],
-        solana_accounts: &[Pubkey],
-        block_overrides: &Option<BlockOverrides>,
-        state_overrides: Option<AccountOverrides>,
+        context: &'a RequestContext<'a>,
+        emulation_params: &'a EmulationParams,
+        block_overrides: Option<&'a BlockOverrides>,
+        state_overrides: Option<&'a AccountOverrides>,
     ) -> Result<EmulatorAccountStorage<'a>, NeonError> {
-        let storage = Self::new(
-            rpc_client,
-            evm_loader,
-            token_mint,
-            chain_id,
-            commitment,
-            block_overrides,
-            state_overrides,
-        )
-        .await?;
-        storage
-            .initialize_cached_accounts(accounts, solana_accounts)
-            .await;
+        setup_syscall_stubs(&*context.rpc_client).await?;
+
+        let storage =
+            Self::new(context, emulation_params, block_overrides, state_overrides).await?;
+        storage.initialize_cached_accounts().await;
 
         Ok(storage)
     }
 
-    pub async fn initialize_cached_accounts(
-        &self,
-        addresses: &[Address],
-        solana_accounts: &[Pubkey],
-    ) {
+    async fn initialize_cached_accounts(&self) {
+        let addresses = &self.emulation_params.cached_accounts;
+        let solana_accounts = &self.emulation_params.solana_accounts;
         let pubkeys: Vec<_> = addresses
             .iter()
-            .map(|address| make_solana_program_address(address, &self.evm_loader).0)
+            .map(|address| make_solana_program_address(address, self.context.evm_loader()).0)
             .chain(solana_accounts.iter().copied())
             .collect();
 
-        if let Ok(accounts) = self.rpc_client.get_multiple_accounts(&pubkeys).await {
+        if let Ok(accounts) = self
+            .context
+            .rpc_client
+            .get_multiple_accounts(&pubkeys)
+            .await
+        {
             let entries = addresses
                 .iter()
                 .zip(accounts.iter().take(addresses.len()))
@@ -239,8 +209,9 @@ impl<'a> EmulatorAccountStorage<'a> {
         }
 
         let result = self
+            .context
             .rpc_client
-            .get_account_with_commitment(pubkey, self.commitment)
+            .get_account_with_commitment(pubkey, self.context.config.commitment)
             .await?;
 
         self.solana_accounts
@@ -257,14 +228,14 @@ impl<'a> EmulatorAccountStorage<'a> {
     }
 
     pub async fn get_account_from_solana(
-        rpc_client: &'a dyn Rpc,
-        evm_loader: &'a Pubkey,
+        context: &RequestContext<'_>,
         address: &Address,
     ) -> (Pubkey, Option<Account>) {
-        let (solana_address, _solana_nonce) = make_solana_program_address(address, evm_loader);
+        let (solana_address, _solana_nonce) =
+            make_solana_program_address(address, context.evm_loader());
         info!("get_account_from_solana {} => {}", address, solana_address);
 
-        if let Ok(acc) = rpc_client.get_account(&solana_address).await {
+        if let Ok(acc) = context.rpc_client.get_account(&solana_address).await {
             trace!("Account found");
             trace!("Account data len {}", acc.data.len());
             trace!("Account owner {}", acc.owner);
@@ -284,8 +255,7 @@ impl<'a> EmulatorAccountStorage<'a> {
             return true;
         }
 
-        let account =
-            NeonAccount::rpc_load(self.rpc_client, &self.evm_loader, *address, writable).await;
+        let account = NeonAccount::rpc_load(self.context, *address, writable).await;
         self.accounts.borrow_mut().insert(*address, account);
 
         false
@@ -325,7 +295,6 @@ impl<'a> EmulatorAccountStorage<'a> {
         let rent = Rent::get().expect("Rent get error");
 
         for action in actions {
-            #[allow(clippy::match_same_arms)]
             match action {
                 Action::NeonTransfer {
                     source,
@@ -445,9 +414,9 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         if let Some(account_data) = &mut solana_account.data {
             let info = account_info(solana_account.account.as_ref(), account_data);
-            EthereumAccount::from_account(&self.evm_loader, &info)
+            EthereumAccount::from_account(self.context.evm_loader(), &info)
                 .map(|mut ether_account| {
-                    if let Some(account_overrides) = &self.state_overrides {
+                    if let Some(account_overrides) = self.state_overrides {
                         if let Some(account_override) = account_overrides.get(address) {
                             account_override.apply(&mut ether_account);
                         }
@@ -471,7 +440,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         if let Some(account_data) = &mut solana_account.data {
             let info = account_info(solana_account.account.as_ref(), account_data);
-            let account = EthereumAccount::from_account(&self.evm_loader, &info);
+            let account = EthereumAccount::from_account(self.context.evm_loader(), &info);
             match &account {
                 Ok(a) => a.contract_data().map_or(default, f),
                 Err(_) => default,
@@ -499,7 +468,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     fn neon_token_mint(&self) -> &Pubkey {
         info!("neon_token_mint");
-        &self.neon_token_mint
+        &self.emulation_params.token_mint
     }
 
     fn operator(&self) -> &Pubkey {
@@ -509,7 +478,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
 
     fn program_id(&self) -> &Pubkey {
         debug!("program_id");
-        &self.evm_loader
+        self.context.evm_loader()
     }
 
     fn block_number(&self) -> U256 {
@@ -602,7 +571,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     }
 
     async fn storage(&self, address: &Address, index: &U256) -> [u8; 32] {
-        if let Some(account_overrides) = &self.state_overrides {
+        if let Some(account_overrides) = self.state_overrides {
             if let Some(account_override) = account_overrides.get(address) {
                 match (&account_override.state, &account_override.state_diff) {
                     (None, None) => (),
@@ -650,8 +619,9 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
                     <[u8; 32]>::default()
                 } else {
                     let account_info = account_info(storage_address.pubkey(), &mut account);
-                    let storage = EthereumStorage::from_account(&self.evm_loader, &account_info)
-                        .expect("EthereumAccount ctor error");
+                    let storage =
+                        EthereumStorage::from_account(self.context.evm_loader(), &account_info)
+                            .expect("EthereumAccount ctor error");
                     if (storage.address != *address)
                         || (storage.index != index)
                         || (storage.generation != self.generation(address).await)
@@ -681,7 +651,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     fn chain_id(&self) -> u64 {
         info!("chain_id");
 
-        self.chain_id
+        self.emulation_params.chain_id
     }
 
     async fn clone_solana_account(&self, address: &Pubkey) -> OwnedAccountInfo {

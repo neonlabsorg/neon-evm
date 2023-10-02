@@ -1,7 +1,5 @@
 use crate::api_server::handlers::process_error;
-use crate::{
-    api_context, context::Context, types::request_models::GetStorageAtRequest, NeonApiState,
-};
+use crate::{types::request_models::GetStorageAtRequest, NeonApiState};
 use actix_request_identifier::RequestId;
 use actix_web::{get, http::StatusCode, web::Query, Responder};
 use std::convert::Into;
@@ -17,21 +15,14 @@ pub async fn get_storage_at(
     request_id: RequestId,
     Query(req_params): Query<GetStorageAtRequest>,
 ) -> impl Responder {
-    let rpc_client = match api_context::build_rpc_client(&state, req_params.slot, None).await {
-        Ok(rpc_client) => rpc_client,
+    let context = match state.request_context(req_params.slot, None).await {
+        Ok(context) => context,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 
-    let context = Context::new(&*rpc_client, &state.config);
-
     process_result(
-        &GetStorageAtCommand::execute(
-            context.rpc_client,
-            &state.config.evm_loader,
-            req_params.contract_id,
-            &req_params.index,
-        )
-        .await
-        .map_err(Into::into),
+        &GetStorageAtCommand::execute(&context, req_params.contract_id, &req_params.index)
+            .await
+            .map_err(Into::into),
     )
 }

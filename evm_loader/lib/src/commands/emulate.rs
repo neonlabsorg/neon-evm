@@ -3,26 +3,25 @@ use std::fmt::{Display, Formatter};
 use ethnum::U256;
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
-use evm_loader::evm::tracing::TracerTypeOpt;
-use evm_loader::evm::tracing::{AccountOverrides, BlockOverrides};
+use evm_loader::evm::tracing::{TraceCallConfig, TracerTypeOpt};
 use evm_loader::{
     account_storage::AccountStorage,
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
     executor::{Action, ExecutorState},
     gasometer::LAMPORTS_PER_SIGNATURE,
-    types::{Address, Transaction},
+    types::Transaction,
 };
 
-use crate::types::TxParams;
+use crate::types::request_models::TxParamsRequestModel;
+use crate::types::EmulationParams;
 use crate::{
     account_storage::{EmulatorAccountStorage, NeonAccount, SolanaAccount},
     errors::NeonError,
     rpc::Rpc,
     syscall_stubs::Stubs,
-    NeonResult,
+    NeonResult, RequestContext,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,35 +108,22 @@ where
     d.deserialize_string(StringVisitor)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn execute(
-    rpc_client: &dyn Rpc,
-    evm_loader: Pubkey,
-    tx_params: TxParams,
-    token_mint: Pubkey,
-    chain_id: u64,
-    step_limit: u64,
-    commitment: CommitmentConfig,
-    accounts: &[Address],
-    solana_accounts: &[Pubkey],
-    block_overrides: &Option<BlockOverrides>,
-    state_overrides: Option<AccountOverrides>,
+    context: &RequestContext<'_>,
+    tx_params: TxParamsRequestModel,
+    emulation_params: &EmulationParams,
+    trace_call_config: Option<&TraceCallConfig>,
 ) -> NeonResult<EmulationResultWithAccounts> {
-    let (emulation_result, storage) = emulate_transaction(
-        rpc_client,
-        evm_loader,
-        tx_params,
-        token_mint,
-        chain_id,
-        step_limit,
-        commitment,
-        accounts,
-        solana_accounts,
-        block_overrides,
-        state_overrides,
-        None,
+    let storage = EmulatorAccountStorage::with_accounts(
+        context,
+        emulation_params,
+        trace_call_config.and_then(|trace_call_config| trace_call_config.block_overrides.as_ref()),
+        trace_call_config.and_then(|trace_call_config| trace_call_config.state_overrides.as_ref()),
     )
     .await?;
+
+    let emulation_result = emulate_trx(tx_params, emulation_params, &storage, None).await?;
+
     let accounts = storage.accounts.borrow().values().cloned().collect();
     let solana_accounts = storage.solana_accounts.borrow().values().cloned().collect();
 
@@ -149,52 +135,10 @@ pub async fn execute(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn emulate_transaction<'a>(
-    rpc_client: &'a dyn Rpc,
-    evm_loader: Pubkey,
-    tx_params: TxParams,
-    token_mint: Pubkey,
-    chain_id: u64,
-    step_limit: u64,
-    commitment: CommitmentConfig,
-    accounts: &[Address],
-    solana_accounts: &[Pubkey],
-    block_overrides: &Option<BlockOverrides>,
-    state_overrides: Option<AccountOverrides>,
-    tracer: TracerTypeOpt,
-) -> Result<
-    (
-        evm_loader::evm::tracing::EmulationResult,
-        EmulatorAccountStorage<'a>,
-    ),
-    NeonError,
-> {
-    setup_syscall_stubs(rpc_client).await?;
-
-    let storage = EmulatorAccountStorage::with_accounts(
-        rpc_client,
-        evm_loader,
-        token_mint,
-        chain_id,
-        commitment,
-        accounts,
-        solana_accounts,
-        block_overrides,
-        state_overrides,
-    )
-    .await?;
-
-    emulate_trx(tx_params, &storage, chain_id, step_limit, tracer)
-        .await
-        .map(move |result| (result, storage))
-}
-
 pub(crate) async fn emulate_trx<'a>(
-    tx_params: TxParams,
+    tx_params: TxParamsRequestModel,
+    emulation_params: &'a EmulationParams,
     storage: &'a EmulatorAccountStorage<'a>,
-    chain_id: u64,
-    step_limit: u64,
     tracer: TracerTypeOpt,
 ) -> Result<evm_loader::evm::tracing::EmulationResult, NeonError> {
     let (exit_status, actions, steps_executed) = {
@@ -220,16 +164,16 @@ pub(crate) async fn emulate_trx<'a>(
             evm_loader::types::TransactionPayload::AccessList(evm_loader::types::AccessListTx {
                 nonce: match tx_params.nonce {
                     Some(nonce) => nonce,
-                    None => storage.nonce(&tx_params.from).await,
+                    None => storage.nonce(&tx_params.sender).await,
                 },
                 gas_price: tx_params.gas_price.unwrap_or_default(),
                 gas_limit: tx_params.gas_limit.unwrap_or(U256::MAX),
-                target: tx_params.to,
+                target: tx_params.contract,
                 value: tx_params.value.unwrap_or_default(),
                 call_data: evm_loader::evm::Buffer::from_slice(&tx_params.data.unwrap_or_default()),
                 r: U256::default(),
                 s: U256::default(),
-                chain_id: chain_id.into(),
+                chain_id: emulation_params.chain_id.into(),
                 recovery_id: u8::default(),
                 access_list,
             })
@@ -237,17 +181,19 @@ pub(crate) async fn emulate_trx<'a>(
             evm_loader::types::TransactionPayload::Legacy(evm_loader::types::LegacyTx {
                 nonce: match tx_params.nonce {
                     Some(nonce) => nonce,
-                    None => storage.nonce(&tx_params.from).await,
+                    None => storage.nonce(&tx_params.sender).await,
                 },
                 gas_price: tx_params.gas_price.unwrap_or_default(),
                 gas_limit: tx_params.gas_limit.unwrap_or(U256::MAX),
-                target: tx_params.to,
+                target: tx_params.contract,
                 value: tx_params.value.unwrap_or_default(),
-                call_data: evm_loader::evm::Buffer::from_slice(&tx_params.data.unwrap_or_default()),
+                call_data: evm_loader::evm::Buffer::from_slice(
+                    tx_params.data.as_deref().unwrap_or_default(),
+                ),
                 v: U256::default(),
                 r: U256::default(),
                 s: U256::default(),
-                chain_id: Some(chain_id.into()),
+                chain_id: Some(emulation_params.chain_id.into()),
                 recovery_id: u8::default(),
             })
         };
@@ -259,9 +205,11 @@ pub(crate) async fn emulate_trx<'a>(
             signed_hash: <[u8; 32]>::default(),
         };
 
-        let mut evm = Machine::new(&mut trx, tx_params.from, &mut backend, tracer).await?;
+        let mut evm = Machine::new(&mut trx, tx_params.sender, &mut backend, tracer).await?;
 
-        let (result, steps_executed) = evm.execute(step_limit, &mut backend).await?;
+        let (result, steps_executed) = evm
+            .execute(emulation_params.max_steps_to_execute, &mut backend)
+            .await?;
         if result == ExitStatus::StepLimit {
             return Err(NeonError::TooManySteps);
         }

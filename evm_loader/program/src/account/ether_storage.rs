@@ -1,5 +1,3 @@
-#![allow(clippy::use_self)] // Can't use generic parameter from outer function
-
 use super::{program, EthereumAccount, EthereumStorage, Operator, Packable};
 use crate::types::Address;
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};

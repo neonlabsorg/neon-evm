@@ -1,17 +1,14 @@
+use crate::errors::NeonError;
+use crate::NeonApiResult;
 use actix_web::http::StatusCode;
 use actix_web::web::Json;
-use evm_loader::types::Address;
 use serde::Serialize;
 use serde_json::{json, Value};
-use solana_sdk::pubkey::Pubkey;
 
-use crate::commands::get_neon_elf::CachedElfParams;
-use crate::errors::NeonError;
-use crate::{Config, Context, NeonApiResult};
-
-use crate::types::request_models::EmulationParamsRequestModel;
+use neon_lib::types::request_models::EmulationParamsRequestModel;
+use neon_lib::types::EmulationParams;
+use neon_lib::{types, RequestContext};
 use std::net::AddrParseError;
-use std::str::FromStr;
 use tracing::error;
 
 pub mod build_info;
@@ -47,50 +44,24 @@ impl From<AddrParseError> for NeonApiError {
     }
 }
 
-pub(crate) async fn parse_emulation_params(
-    config: &Config,
-    context: &Context<'_>,
-    params: &EmulationParamsRequestModel,
-) -> (Pubkey, u64, u64, Vec<Address>, Vec<Pubkey>) {
-    // Read ELF params only if token_mint or chain_id is not set.
-    let mut token: Option<Pubkey> = params.token_mint.map(Into::into);
-    let mut chain = params.chain_id;
-    if token.is_none() || chain.is_none() {
-        let cached_elf_params = CachedElfParams::new(config, context).await;
-        token = token.or_else(|| {
-            Some(
-                Pubkey::from_str(
-                    cached_elf_params
-                        .get("NEON_TOKEN_MINT")
-                        .expect("NEON_TOKEN_MINT load error"),
-                )
-                .expect("NEON_TOKEN_MINT Pubkey ctor error "),
-            )
-        });
-        chain = chain.or_else(|| {
-            Some(
-                u64::from_str(
-                    cached_elf_params
-                        .get("NEON_CHAIN_ID")
-                        .expect("NEON_CHAIN_ID load error"),
-                )
-                .expect("NEON_CHAIN_ID u64 ctor error"),
-            )
-        });
+pub async fn parse_emulation_params(
+    context: &RequestContext<'_>,
+    params: EmulationParamsRequestModel,
+) -> EmulationParams {
+    let (token_mint, chain_id) =
+        types::read_elf_params_if_none(context, params.token_mint.map(Into::into), params.chain_id)
+            .await;
+
+    EmulationParams {
+        token_mint,
+        chain_id,
+        max_steps_to_execute: params.max_steps_to_execute,
+        cached_accounts: params.cached_accounts.unwrap_or_default(),
+        solana_accounts: params
+            .solana_accounts
+            .map(|vec| vec.into_iter().map(Into::into).collect())
+            .unwrap_or_default(),
     }
-    let token = token.expect("token_mint get error");
-    let chain = chain.expect("chain_id get error");
-    let max_steps = params.max_steps_to_execute;
-
-    let accounts = params.cached_accounts.clone().unwrap_or_default();
-
-    let solana_accounts = params
-        .solana_accounts
-        .clone()
-        .map(|vec| vec.into_iter().map(Into::into).collect())
-        .unwrap_or_default();
-
-    (token, chain, max_steps, accounts, solana_accounts)
 }
 
 fn process_result<T: Serialize>(

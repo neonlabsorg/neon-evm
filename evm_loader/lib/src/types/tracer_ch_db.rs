@@ -450,7 +450,6 @@ impl ClickHouseDb {
         })
     }
 
-    #[allow(clippy::unused_self)]
     pub async fn get_account_by_sol_sig(
         &self,
         pubkey: &Pubkey,

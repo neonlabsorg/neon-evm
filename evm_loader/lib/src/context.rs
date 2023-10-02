@@ -2,32 +2,30 @@ use crate::{
     rpc::{self},
     Config, NeonError,
 };
+use evm_loader::solana_program::pubkey::Pubkey;
 use solana_clap_utils::keypair::signer_from_path;
 use solana_sdk::signature::Signer;
+use std::sync::Arc;
 
-pub fn truncate_0x(in_str: &str) -> &str {
-    if &in_str[..2] == "0x" {
-        &in_str[2..]
-    } else {
-        in_str
+pub struct RequestContext<'a> {
+    pub rpc_client: Arc<dyn rpc::Rpc>,
+    pub config: &'a Config,
+}
+
+impl<'a> RequestContext<'a> {
+    pub fn new(
+        rpc_client: Arc<dyn rpc::Rpc>,
+        config: &'a Config,
+    ) -> Result<RequestContext<'a>, NeonError> {
+        Ok(Self { rpc_client, config })
     }
-}
 
-pub struct Context<'a> {
-    pub rpc_client: &'a dyn rpc::Rpc,
-    signer_config: &'a Config,
-}
+    pub fn evm_loader(&self) -> &Pubkey {
+        &self.config.evm_loader
+    }
 
-impl<'a> Context<'a> {
     pub fn signer(&self) -> Result<Box<dyn Signer>, NeonError> {
-        build_signer(self.signer_config)
-    }
-
-    pub fn new(rpc_client: &'a dyn rpc::Rpc, signer_config: &'a Config) -> Context<'a> {
-        Self {
-            rpc_client,
-            signer_config,
-        }
+        build_signer(self.config)
     }
 }
 
@@ -41,7 +39,7 @@ pub fn build_signer(config: &Config) -> Result<Box<dyn Signer>, NeonError> {
         "keypair",
         &mut wallet_manager,
     )
-    .map_err(|_| NeonError::KeypairNotSpecified)?;
+    .map_err(NeonError::KeypairNotSpecified)?;
 
     Ok(signer)
 }

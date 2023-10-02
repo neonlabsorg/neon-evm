@@ -4,15 +4,14 @@ mod tracer_ch_db;
 
 pub use evm_loader::types::Address;
 use solana_sdk::pubkey::Pubkey;
-use std::str::FromStr;
 pub use tracer_ch_db::ClickHouseDb as TracerDb;
 
+use crate::commands::get_neon_elf::CachedElfParams;
+use crate::RequestContext;
 use evm_loader::evm::tracing::TraceCallConfig;
 use evm_loader::types::hexbytes::HexBytes;
-use {
-    ethnum::U256,
-    serde::{Deserialize, Deserializer, Serialize, Serializer},
-};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::str::FromStr;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone, Default)]
 pub struct ChDbConfig {
@@ -27,22 +26,54 @@ pub struct AccessListItem {
     pub storage_keys: Vec<HexBytes>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct TxParams {
-    pub nonce: Option<u64>,
-    pub from: Address,
-    pub to: Option<Address>,
-    pub data: Option<Vec<u8>>,
-    pub value: Option<U256>,
-    pub gas_limit: Option<U256>,
-    pub gas_price: Option<U256>,
-    pub access_list: Option<Vec<AccessListItem>>,
+pub struct EmulationParams {
+    pub token_mint: Pubkey,
+    pub chain_id: u64,
+    pub max_steps_to_execute: u64,
+    pub cached_accounts: Vec<Address>,
+    pub solana_accounts: Vec<Pubkey>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionParams {
     pub data: Option<HexBytes>,
     pub trace_config: Option<TraceCallConfig>,
+}
+
+pub async fn read_elf_params_if_none(
+    context: &RequestContext<'_>,
+    mut token_mint: Option<Pubkey>,
+    mut chain_id: Option<u64>,
+) -> (Pubkey, u64) {
+    // Read ELF params only if token_mint or chain_id is not set.
+    if token_mint.is_none() || chain_id.is_none() {
+        let cached_elf_params = CachedElfParams::new(context).await;
+        token_mint = token_mint.or_else(|| {
+            Some(
+                Pubkey::from_str(
+                    cached_elf_params
+                        .get("NEON_TOKEN_MINT")
+                        .expect("NEON_TOKEN_MINT load error"),
+                )
+                .expect("NEON_TOKEN_MINT Pubkey ctor error "),
+            )
+        });
+        chain_id = chain_id.or_else(|| {
+            Some(
+                u64::from_str(
+                    cached_elf_params
+                        .get("NEON_CHAIN_ID")
+                        .expect("NEON_CHAIN_ID load error"),
+                )
+                .expect("NEON_CHAIN_ID u64 ctor error"),
+            )
+        });
+    }
+
+    (
+        token_mint.expect("token_mint get error"),
+        chain_id.expect("chain_id get error"),
+    )
 }
 
 #[derive(Debug, Default, Clone, Copy)]

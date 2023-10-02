@@ -1,40 +1,35 @@
 use serde_json::Value;
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use std::rc::Rc;
 
+use crate::account_storage::EmulatorAccountStorage;
+use crate::commands::emulate::emulate_trx;
+use crate::types::request_models::TxParamsRequestModel;
+use crate::types::EmulationParams;
+use crate::{errors::NeonError, RequestContext};
 use evm_loader::evm::tracing::tracers::new_tracer;
 use evm_loader::evm::tracing::TraceCallConfig;
-use evm_loader::types::Address;
-
-use crate::{commands::emulate::emulate_transaction, errors::NeonError, rpc::Rpc, types::TxParams};
 
 #[allow(clippy::too_many_arguments)]
 pub async fn trace_transaction(
-    rpc_client: &dyn Rpc,
-    evm_loader: Pubkey,
-    tx: TxParams,
-    token: Pubkey,
-    chain_id: u64,
-    steps: u64,
-    commitment: CommitmentConfig,
-    accounts: &[Address],
-    solana_accounts: &[Pubkey],
-    trace_call_config: TraceCallConfig,
+    context: &RequestContext<'_>,
+    tx_params: TxParamsRequestModel,
+    emulation_params: &EmulationParams,
+    trace_call_config: &TraceCallConfig,
 ) -> Result<Value, NeonError> {
     let tracer = new_tracer(&trace_call_config.trace_config)?;
 
-    let (emulation_result, _storage) = emulate_transaction(
-        rpc_client,
-        evm_loader,
-        tx,
-        token,
-        chain_id,
-        steps,
-        commitment,
-        accounts,
-        solana_accounts,
-        &trace_call_config.block_overrides,
-        trace_call_config.state_overrides,
+    let storage = EmulatorAccountStorage::with_accounts(
+        context,
+        emulation_params,
+        trace_call_config.block_overrides.as_ref(),
+        trace_call_config.state_overrides.as_ref(),
+    )
+    .await?;
+
+    let emulation_result = emulate_trx(
+        tx_params,
+        emulation_params,
+        &storage,
         Some(Rc::clone(&tracer)),
     )
     .await?;

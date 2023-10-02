@@ -1,5 +1,4 @@
 //! Error types
-#![allow(clippy::use_self)]
 
 use std::{array::TryFromSliceError, num::TryFromIntError};
 

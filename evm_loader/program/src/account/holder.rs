@@ -1,5 +1,3 @@
-#![allow(clippy::use_self)] // Can't use generic parameter from outer function
-
 use std::cell::Ref;
 
 use arrayref::{array_mut_ref, array_ref};

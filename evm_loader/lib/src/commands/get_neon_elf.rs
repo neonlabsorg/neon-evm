@@ -7,7 +7,7 @@ use solana_sdk::{
 };
 use std::{collections::HashMap, convert::TryFrom, fs::File, io::Read};
 
-use crate::{context::Context, errors::NeonError, Config, NeonResult};
+use crate::{context::RequestContext, errors::NeonError, NeonResult};
 
 pub type GetNeonElfReturn = HashMap<String, String>;
 
@@ -16,9 +16,9 @@ pub struct CachedElfParams {
 }
 
 impl CachedElfParams {
-    pub async fn new(config: &Config, context: &Context<'_>) -> Self {
+    pub async fn new(context: &RequestContext<'_>) -> Self {
         Self {
-            elf_params: read_elf_parameters_from_account(config, context)
+            elf_params: read_elf_parameters_from_account(context)
                 .await
                 .expect("read elf_params error"),
         }
@@ -28,7 +28,7 @@ impl CachedElfParams {
     }
 }
 
-pub fn read_elf_parameters(_config: &Config, program_data: &[u8]) -> GetNeonElfReturn {
+pub fn read_elf_parameters(program_data: &[u8]) -> GetNeonElfReturn {
     let mut result = HashMap::new();
     let elf = goblin::elf::Elf::parse(program_data).expect("Unable to parse ELF file");
     let ctx = goblin::container::Ctx::new(
@@ -142,22 +142,20 @@ pub fn get_elf_parameter(data: &[u8], elf_parameter: &str) -> Result<String> {
 }
 
 pub async fn read_elf_parameters_from_account(
-    config: &Config,
-    context: &Context<'_>,
+    context: &RequestContext<'_>,
 ) -> Result<GetNeonElfReturn, NeonError> {
-    let (_, program_data) =
-        read_program_data_from_account(config, context, &config.evm_loader).await?;
-    Ok(read_elf_parameters(config, &program_data))
+    let (_, program_data) = read_program_data_from_account(context).await?;
+    Ok(read_elf_parameters(&program_data))
 }
 
 pub async fn read_program_data_from_account(
-    config: &Config,
-    context: &Context<'_>,
-    evm_loader: &Pubkey,
+    context: &RequestContext<'_>,
 ) -> Result<(Option<Pubkey>, Vec<u8>), NeonError> {
+    let evm_loader = context.evm_loader();
+    let commitment = context.config.commitment;
     let account = context
         .rpc_client
-        .get_account_with_commitment(evm_loader, config.commitment)
+        .get_account_with_commitment(evm_loader, commitment)
         .await?
         .value
         .ok_or(NeonError::AccountNotFound(*evm_loader))?;
@@ -171,12 +169,12 @@ pub async fn read_program_data_from_account(
         {
             let programdata_account = context
                 .rpc_client
-                .get_account_with_commitment(&programdata_address, config.commitment)
+                .get_account_with_commitment(&programdata_address, commitment)
                 .await?
                 .value
                 .ok_or(NeonError::AssociatedPdaNotFound(
                     programdata_address,
-                    config.evm_loader,
+                    *evm_loader,
                 ))?;
 
             if let Ok(UpgradeableLoaderState::ProgramData {
@@ -190,7 +188,7 @@ pub async fn read_program_data_from_account(
             } else {
                 Err(NeonError::InvalidAssociatedPda(
                     programdata_address,
-                    config.evm_loader,
+                    *evm_loader,
                 ))
             }
         } else if let Ok(UpgradeableLoaderState::Buffer {
@@ -201,10 +199,10 @@ pub async fn read_program_data_from_account(
             let program_data = &account.data[offset..];
             Ok((authority_address, program_data.to_vec()))
         } else {
-            Err(NeonError::AccountIsNotUpgradeable(config.evm_loader))
+            Err(NeonError::AccountIsNotUpgradeable(*evm_loader))
         }
     } else {
-        Err(NeonError::AccountIsNotBpf(config.evm_loader))
+        Err(NeonError::AccountIsNotBpf(*evm_loader))
     }
 }
 
@@ -216,29 +214,24 @@ pub fn read_program_data(program_location: &str) -> Result<Vec<u8>, NeonError> {
     Ok(program_data)
 }
 
-fn read_program_params_from_file(
-    config: &Config,
-    program_location: &str,
-) -> NeonResult<GetNeonElfReturn> {
+fn read_program_params_from_file(program_location: &str) -> NeonResult<GetNeonElfReturn> {
     let program_data = read_program_data(program_location)?;
-    Ok(read_elf_parameters(config, &program_data))
+    Ok(read_elf_parameters(&program_data))
 }
 
 async fn read_program_params_from_account(
-    config: &Config,
-    context: &Context<'_>,
+    context: &RequestContext<'_>,
 ) -> NeonResult<GetNeonElfReturn> {
-    read_elf_parameters_from_account(config, context).await
+    read_elf_parameters_from_account(context).await
 }
 
 pub async fn execute(
-    config: &Config,
-    context: &Context<'_>,
+    context: &RequestContext<'_>,
     program_location: Option<&str>,
 ) -> NeonResult<GetNeonElfReturn> {
     if let Some(program_location) = program_location {
-        read_program_params_from_file(config, program_location)
+        read_program_params_from_file(program_location)
     } else {
-        read_program_params_from_account(config, context).await
+        read_program_params_from_account(context).await
     }
 }

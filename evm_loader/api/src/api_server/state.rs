@@ -1,12 +1,14 @@
 use crate::Config;
+use neon_lib::rpc::CallDbClient;
 use neon_lib::types::TracerDb;
+use neon_lib::{rpc, NeonError, RequestContext};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use std::sync::Arc;
 
 pub struct State {
-    pub tracer_db: TracerDb,
-    pub rpc_client: Arc<RpcClient>,
-    pub config: Config,
+    tracer_db: TracerDb,
+    rpc_client: Arc<RpcClient>,
+    config: Config,
 }
 
 impl State {
@@ -20,5 +22,30 @@ impl State {
             )),
             config,
         }
+    }
+
+    async fn build_rpc_client(
+        &self,
+        slot: Option<u64>,
+        tx_index_in_block: Option<u64>,
+    ) -> Result<Arc<dyn rpc::Rpc>, NeonError> {
+        if let Some(slot) = slot {
+            return Ok(Arc::new(
+                CallDbClient::new(self.tracer_db.clone(), slot, tx_index_in_block).await?,
+            ));
+        }
+
+        Ok(self.rpc_client.clone())
+    }
+
+    pub async fn request_context(
+        &self,
+        slot: Option<u64>,
+        tx_index_in_block: Option<u64>,
+    ) -> Result<RequestContext, NeonError> {
+        RequestContext::new(
+            self.build_rpc_client(slot, tx_index_in_block).await?,
+            &self.config,
+        )
     }
 }

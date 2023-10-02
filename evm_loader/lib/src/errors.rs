@@ -1,6 +1,6 @@
 //! Error types
-#![allow(clippy::use_self)]
 
+use std::error::Error;
 use std::net::AddrParseError;
 
 use log::error;
@@ -46,8 +46,8 @@ pub enum NeonError {
     #[error("EVM loader must be specified.")]
     EvmLoaderNotSpecified,
     /// Need specify fee payer
-    #[error("Keypair must be specified.")]
-    KeypairNotSpecified,
+    #[error("Keypair must be specified: {0:?}")]
+    KeypairNotSpecified(Box<dyn Error>),
     /// Incorrect program
     #[error("Incorrect program {0:?}")]
     IncorrectProgram(Pubkey),
@@ -117,7 +117,7 @@ impl NeonError {
             NeonError::AddrParseError(_) => 118,
             NeonError::SolanaClientError(_) => 120,
             NeonError::EvmLoaderNotSpecified => 201,
-            NeonError::KeypairNotSpecified => 202,
+            NeonError::KeypairNotSpecified(_) => 202,
             NeonError::IncorrectProgram(_) => 203,
             NeonError::AccountNotFound(_) => 205,
             NeonError::AccountIsNotBpf(_) => 226,

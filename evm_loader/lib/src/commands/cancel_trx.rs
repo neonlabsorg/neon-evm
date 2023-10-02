@@ -6,12 +6,13 @@ use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signature::Signature,
-    signer::Signer,
 };
 
 use evm_loader::account::State;
 
-use crate::{account_storage::account_info, commands::send_transaction, rpc::Rpc, NeonResult};
+use crate::{
+    account_storage::account_info, commands::send_transaction, NeonResult, RequestContext,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CancelTrxReturn {
@@ -19,16 +20,15 @@ pub struct CancelTrxReturn {
 }
 
 pub async fn execute(
-    rpc_client: &dyn Rpc,
-    signer: &dyn Signer,
-    evm_loader: Pubkey,
+    context: &RequestContext<'_>,
     storage_account: &Pubkey,
 ) -> NeonResult<CancelTrxReturn> {
-    let mut acc = rpc_client.get_account(storage_account).await?;
+    let mut acc = context.rpc_client.get_account(storage_account).await?;
     let storage_info = account_info(storage_account, &mut acc);
-    let storage = State::from_account(&evm_loader, &storage_info)?;
+    let evm_loader = context.evm_loader();
+    let storage = State::from_account(evm_loader, &storage_info)?;
 
-    let operator = &signer.pubkey();
+    let operator = &context.signer()?.pubkey();
 
     let mut accounts_meta: Vec<AccountMeta> = vec![
         AccountMeta::new(*storage_account, false),  // State account
@@ -49,14 +49,14 @@ pub async fn execute(
     }
 
     let cancel_with_nonce_instruction = Instruction::new_with_bincode(
-        evm_loader,
+        *evm_loader,
         &(0x23_u8, storage.transaction_hash),
         accounts_meta,
     );
 
     let instructions = vec![cancel_with_nonce_instruction];
 
-    let signature = send_transaction(rpc_client, signer, &instructions).await?;
+    let signature = send_transaction(context, &instructions).await?;
 
     Ok(CancelTrxReturn {
         transaction: signature,

@@ -45,7 +45,6 @@ impl Packable for Data {
     /// Deserialize `Storage` struct from input data
     #[must_use]
     fn unpack(src: &[u8]) -> Self {
-        #[allow(clippy::use_self)]
         let data = array_ref![src, 0, Data::SIZE];
         let (
             owner,
@@ -78,7 +77,6 @@ impl Packable for Data {
 
     /// Serialize `Storage` struct into given destination
     fn pack(&self, dst: &mut [u8]) {
-        #[allow(clippy::use_self)]
         let data = array_mut_ref![dst, 0, Data::SIZE];
         let (
             owner,
@@ -117,7 +115,6 @@ impl Packable for FinalizedData {
     /// Deserialize `FinalizedState` struct from input data
     #[must_use]
     fn unpack(src: &[u8]) -> Self {
-        #[allow(clippy::use_self)]
         let data = array_ref![src, 0, FinalizedData::SIZE];
         let (owner, hash) = array_refs![data, 32, 32];
 
@@ -129,7 +126,6 @@ impl Packable for FinalizedData {
 
     /// Serialize `FinalizedState` struct into given destination
     fn pack(&self, dst: &mut [u8]) {
-        #[allow(clippy::use_self)]
         let data = array_mut_ref![dst, 0, FinalizedData::SIZE];
         let (owner, hash) = mut_array_refs![data, 32, 32];
 

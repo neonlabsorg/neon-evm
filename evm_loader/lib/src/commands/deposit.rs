@@ -2,10 +2,9 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 
 use crate::rpc::check_account_for_fee;
-use crate::NeonResult;
+use crate::{NeonResult, RequestContext};
 use evm_loader::types::Address;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::signer::Signer;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     message::Message,
@@ -23,24 +22,30 @@ pub struct DepositReturn {
 
 /// Executes subcommand `deposit`.
 pub async fn execute(
-    rpc_client: &RpcClient,
-    evm_loader: Pubkey,
-    signer: &dyn Signer,
+    context: &RequestContext<'_>,
     amount: u64,
     ether_address: &Address,
 ) -> NeonResult<DepositReturn> {
-    let (ether_pubkey, _) = ether_address.find_solana_address(&evm_loader);
+    let rpc_client = context
+        .rpc_client
+        .as_any()
+        .downcast_ref::<RpcClient>()
+        .expect("cast to solana_client::nonblocking::rpc_client::RpcClient error");
+
+    let evm_loader = context.evm_loader();
+    let (ether_pubkey, _) = ether_address.find_solana_address(evm_loader);
 
     let token_mint_id = evm_loader::config::token_mint::id();
 
+    let signer = &*context.signer()?;
     let signer_token_pubkey = get_associated_token_address(&signer.pubkey(), &token_mint_id);
-    let evm_token_authority = Pubkey::find_program_address(&[b"Deposit"], &evm_loader).0;
+    let evm_token_authority = Pubkey::find_program_address(&[b"Deposit"], evm_loader).0;
     let evm_pool_pubkey = get_associated_token_address(&evm_token_authority, &token_mint_id);
 
     let instructions = vec![
         spl_approve_instruction(signer.pubkey(), signer_token_pubkey, ether_pubkey, amount)?,
         deposit_instruction(
-            evm_loader,
+            *evm_loader,
             signer.pubkey(),
             signer_token_pubkey,
             evm_pool_pubkey,

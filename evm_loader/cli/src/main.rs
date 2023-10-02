@@ -10,12 +10,11 @@ mod program_options;
 use neon_lib::{
     commands::{
         cancel_trx, collect_treasury, create_ether_account, deposit, emulate,
-        get_ether_account_data, get_neon_elf, get_neon_elf::CachedElfParams, get_storage_at,
-        init_environment, trace,
+        get_ether_account_data, get_neon_elf, get_storage_at, init_environment, trace,
     },
-    errors, rpc,
+    errors,
     types::{self, AccessListItem},
-    Context,
+    RequestContext,
 };
 
 use clap::ArgMatches;
@@ -29,19 +28,17 @@ use serde_json::json;
 use solana_clap_utils::input_parsers::{pubkey_of, value_of, values_of};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
-use std::str::FromStr;
+use std::sync::Arc;
 use tokio::time::Instant;
 
 pub use neon_lib::context::*;
-use neon_lib::rpc::CallDbClient;
+use neon_lib::rpc::{CallDbClient, Rpc};
 
 use crate::build_info::get_build_info;
-use crate::{
-    errors::NeonError,
-    types::{TransactionParams, TxParams},
-};
+use crate::{errors::NeonError, types::TransactionParams};
 use evm_loader::types::Address;
-use neon_lib::types::TracerDb;
+use neon_lib::types::request_models::TxParamsRequestModel;
+use neon_lib::types::{read_elf_params_if_none, EmulationParams, TracerDb};
 
 type NeonCliResult = Result<serde_json::Value, NeonError>;
 
@@ -54,8 +51,16 @@ async fn run<'a>(options: &'a ArgMatches<'a>) -> NeonCliResult {
 
     let (cmd, params) = options.subcommand();
 
-    let rpc_client: Box<dyn rpc::Rpc> = if let Some(slot) = slot {
-        Box::new(
+    let rpc_client = build_rpc_client(slot, &config).await?;
+
+    let context = RequestContext::new(rpc_client, &config)?;
+
+    execute(cmd, params, &context).await
+}
+
+async fn build_rpc_client(slot: Option<u64>, config: &Config) -> Result<Arc<dyn Rpc>, NeonError> {
+    Ok(if let Some(slot) = slot {
+        Arc::new(
             CallDbClient::new(
                 TracerDb::new(config.db_config.as_ref().expect("db-config not found")),
                 slot,
@@ -64,15 +69,11 @@ async fn run<'a>(options: &'a ArgMatches<'a>) -> NeonCliResult {
             .await?,
         )
     } else {
-        Box::new(RpcClient::new_with_commitment(
+        Arc::new(RpcClient::new_with_commitment(
             config.json_rpc_url.clone(),
             config.commitment,
         ))
-    };
-
-    let context = Context::new(&*rpc_client, &config);
-
-    execute(cmd, params, &config, &context).await
+    })
 }
 
 fn print_result(result: &NeonCliResult) {
@@ -125,108 +126,64 @@ async fn main() {
 async fn execute<'a>(
     cmd: &str,
     params: Option<&'a ArgMatches<'a>>,
-    config: &'a Config,
-    context: &'a Context<'_>,
+    context: &'a RequestContext<'_>,
 ) -> NeonCliResult {
     match (cmd, params) {
         ("emulate", Some(params)) => {
-            let (tx, trace_call_config) = parse_tx(params);
-            let (token, chain, steps, accounts, solana_accounts) =
-                parse_tx_params(config, context, params).await;
+            let (tx_params, trace_call_config) = parse_tx_params(params);
             emulate::execute(
-                context.rpc_client,
-                config.evm_loader,
-                tx,
-                token,
-                chain,
-                steps,
-                config.commitment,
-                &accounts,
-                &solana_accounts,
-                &trace_call_config.block_overrides,
-                trace_call_config.state_overrides,
+                context,
+                tx_params,
+                &parse_emulation_params(context, params).await,
+                Some(&trace_call_config),
             )
             .await
             .map(|result| json!(result))
         }
         ("trace", Some(params)) => {
-            let (tx, trace_call_config) = parse_tx(params);
-            let (token, chain, steps, accounts, solana_accounts) =
-                parse_tx_params(config, context, params).await;
+            let (tx_params, trace_call_config) = parse_tx_params(params);
             trace::trace_transaction(
-                context.rpc_client,
-                config.evm_loader,
-                tx,
-                token,
-                chain,
-                steps,
-                config.commitment,
-                &accounts,
-                &solana_accounts,
-                trace_call_config,
+                context,
+                tx_params,
+                &parse_emulation_params(context, params).await,
+                &trace_call_config,
             )
             .await
             .map(|trace| json!(trace))
         }
         ("create-ether-account", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
-            let rpc_client = context
-                .rpc_client
-                .as_any()
-                .downcast_ref::<RpcClient>()
-                .expect("cast to solana_client::nonblocking::rpc_client::RpcClient error");
-            create_ether_account::execute(
-                rpc_client,
-                config.evm_loader,
-                context.signer()?.as_ref(),
-                &ether,
-            )
-            .await
-            .map(|result| json!(result))
+            create_ether_account::execute(context, &ether)
+                .await
+                .map(|result| json!(result))
         }
         ("deposit", Some(params)) => {
-            let rpc_client = context
-                .rpc_client
-                .as_any()
-                .downcast_ref::<RpcClient>()
-                .expect("cast to solana_client::nonblocking::rpc_client::RpcClient error");
             let amount = value_of(params, "amount").expect("amount parse error");
             let ether = address_of(params, "ether").expect("ether parse error");
-            deposit::execute(
-                rpc_client,
-                config.evm_loader,
-                context.signer()?.as_ref(),
-                amount,
-                &ether,
-            )
-            .await
-            .map(|result| json!(result))
+            deposit::execute(context, amount, &ether)
+                .await
+                .map(|result| json!(result))
         }
         ("get-ether-account-data", Some(params)) => {
             let ether = address_of(params, "ether").expect("ether parse error");
-            get_ether_account_data::execute(context.rpc_client, &config.evm_loader, &ether)
+            get_ether_account_data::execute(context, &ether)
                 .await
                 .map(|result| json!(result))
         }
         ("cancel-trx", Some(params)) => {
             let storage_account =
                 pubkey_of(params, "storage_account").expect("storage_account parse error");
-            cancel_trx::execute(
-                context.rpc_client,
-                context.signer()?.as_ref(),
-                config.evm_loader,
-                &storage_account,
-            )
-            .await
-            .map(|result| json!(result))
-        }
-        ("neon-elf-params", Some(params)) => {
-            let program_location = params.value_of("program_location");
-            get_neon_elf::execute(config, context, program_location)
+            cancel_trx::execute(context, &storage_account)
                 .await
                 .map(|result| json!(result))
         }
-        ("collect-treasury", Some(_)) => collect_treasury::execute(config, context)
+        ("neon-elf-params", Some(params)) => {
+            let program_location = params.value_of("program_location");
+            get_neon_elf::execute(context, program_location)
+                .await
+                .map(|result| json!(result))
+        }
+        ("collect-treasury", Some(_)) => collect_treasury::execute(context)
             .await
             .map(|result| json!(result)),
         ("init-environment", Some(params)) => {
@@ -234,14 +191,14 @@ async fn execute<'a>(
             let send_trx = params.is_present("send-trx");
             let force = params.is_present("force");
             let keys_dir = params.value_of("keys-dir");
-            init_environment::execute(config, context, send_trx, force, keys_dir, file)
+            init_environment::execute(context, send_trx, force, keys_dir, file)
                 .await
                 .map(|result| json!(result))
         }
         ("get-storage-at", Some(params)) => {
             let contract_id = address_of(params, "contract_id").expect("contract_it parse error");
             let index = u256_of(params, "index").expect("index parse error");
-            get_storage_at::execute(context.rpc_client, &config.evm_loader, contract_id, &index)
+            get_storage_at::execute(context, contract_id, &index)
                 .await
                 .map(|hash| json!(hex::encode(hash.0)))
         }
@@ -249,9 +206,7 @@ async fn execute<'a>(
     }
 }
 
-fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
-    let from = address_of(params, "sender").expect("sender parse error");
-    let to = address_or_deploy_of(params, "contract");
+fn parse_tx_params(params: &ArgMatches) -> (TxParamsRequestModel, TraceCallConfig) {
     let transaction_params: Option<TransactionParams> = read_from_stdin().unwrap_or_else(|err| {
         panic!("Unable to parse `TransactionParams` from STDIN, error: {err:?}")
     });
@@ -264,68 +219,39 @@ fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
         })
         .unwrap_or_default();
 
-    let value = u256_of(params, "value");
-
-    let gas_limit = u256_of(params, "gas_limit");
-
-    let gas_price = u256_of(params, "gas_price");
-
-    let access_list = access_list_of(params, "access_list");
-
-    let tx_params = TxParams {
+    let tx_params = TxParamsRequestModel {
         nonce: None,
-        from,
-        to,
+        sender: address_of(params, "sender").expect("sender parse error"),
+        contract: address_or_deploy_of(params, "contract"),
         data,
-        value,
-        gas_limit,
-        gas_price,
-        access_list,
+        value: u256_of(params, "value"),
+        gas_limit: u256_of(params, "gas_limit"),
+        gas_price: u256_of(params, "gas_price"),
+        access_list: access_list_of(params, "access_list"),
     };
 
     (tx_params, trace_config)
 }
 
-pub async fn parse_tx_params<'a>(
-    config: &Config,
-    context: &Context<'_>,
+async fn parse_emulation_params<'a>(
+    context: &RequestContext<'_>,
     params: &'a ArgMatches<'a>,
-) -> (Pubkey, u64, u64, Vec<Address>, Vec<Pubkey>) {
-    // Read ELF params only if token_mint or chain_id is not set.
-    let mut token = pubkey_of(params, "token_mint");
-    let mut chain = value_of(params, "chain_id");
-    if token.is_none() || chain.is_none() {
-        let cached_elf_params = CachedElfParams::new(config, context).await;
-        token = token.or_else(|| {
-            Some(
-                Pubkey::from_str(
-                    cached_elf_params
-                        .get("NEON_TOKEN_MINT")
-                        .expect("NEON_TOKEN_MINT load error"),
-                )
-                .expect("NEON_TOKEN_MINT Pubkey ctor error "),
-            )
-        });
-        chain = chain.or_else(|| {
-            Some(
-                u64::from_str(
-                    cached_elf_params
-                        .get("NEON_CHAIN_ID")
-                        .expect("NEON_CHAIN_ID load error"),
-                )
-                .expect("NEON_CHAIN_ID u64 ctor error"),
-            )
-        });
+) -> EmulationParams {
+    let (token_mint, chain_id) = read_elf_params_if_none(
+        context,
+        pubkey_of(params, "token_mint"),
+        value_of(params, "chain_id"),
+    )
+    .await;
+
+    EmulationParams {
+        token_mint,
+        chain_id,
+        max_steps_to_execute: value_of::<u64>(params, "max_steps_to_execute")
+            .expect("max_steps_to_execute parse error"),
+        cached_accounts: values_of::<Address>(params, "cached_accounts").unwrap_or_default(),
+        solana_accounts: values_of::<Pubkey>(params, "solana_accounts").unwrap_or_default(),
     }
-    let token = token.expect("token_mint get error");
-    let chain = chain.expect("chain_id get error");
-    let max_steps =
-        value_of::<u64>(params, "max_steps_to_execute").expect("max_steps_to_execute parse error");
-
-    let accounts = values_of::<Address>(params, "cached_accounts").unwrap_or_default();
-    let solana_accounts = values_of::<Pubkey>(params, "solana_accounts").unwrap_or_default();
-
-    (token, chain, max_steps, accounts, solana_accounts)
 }
 
 fn address_or_deploy_of(matches: &ArgMatches<'_>, name: &str) -> Option<Address> {

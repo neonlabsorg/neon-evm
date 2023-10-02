@@ -3,7 +3,6 @@ use std::fmt::{Display, Formatter};
 
 use ethnum::U256;
 use serde::{Deserialize, Serialize};
-use solana_sdk::pubkey::Pubkey;
 
 use evm_loader::account::EthereumAccount;
 use evm_loader::{
@@ -14,8 +13,7 @@ use evm_loader::{
 
 use crate::{
     account_storage::{account_info, EmulatorAccountStorage},
-    rpc::Rpc,
-    NeonResult,
+    NeonResult, RequestContext,
 };
 
 #[derive(Default, Serialize, Deserialize)]
@@ -28,17 +26,16 @@ impl Display for GetStorageAtReturn {
 }
 
 pub async fn execute(
-    rpc_client: &dyn Rpc,
-    evm_loader: &Pubkey,
+    context: &RequestContext<'_>,
     ether_address: Address,
     index: &U256,
 ) -> NeonResult<GetStorageAtReturn> {
     let value = if let (solana_address, Some(mut account)) =
-        EmulatorAccountStorage::get_account_from_solana(rpc_client, evm_loader, &ether_address)
-            .await
+        EmulatorAccountStorage::get_account_from_solana(context, &ether_address).await
     {
         let info = account_info(&solana_address, &mut account);
 
+        let evm_loader = context.evm_loader();
         let account_data = EthereumAccount::from_account(evm_loader, &info)?;
         if let Some(contract) = account_data.contract_data() {
             if *index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT) {
@@ -51,7 +48,7 @@ pub async fn execute(
                 let address =
                     EthereumStorageAddress::new(evm_loader, account_data.info.key, &index);
 
-                if let Ok(mut account) = rpc_client.get_account(address.pubkey()).await {
+                if let Ok(mut account) = context.rpc_client.get_account(address.pubkey()).await {
                     if solana_sdk::system_program::check_id(&account.owner) {
                         Default::default()
                     } else {

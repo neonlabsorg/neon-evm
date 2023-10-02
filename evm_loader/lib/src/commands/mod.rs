@@ -1,13 +1,10 @@
-use crate::rpc::Rpc;
-use solana_client::{
-    client_error::Result as SolanaClientResult, rpc_config::RpcSendTransactionConfig,
-};
+use crate::{NeonResult, RequestContext};
+use solana_client::rpc_config::RpcSendTransactionConfig;
 use solana_sdk::{
     commitment_config::{CommitmentConfig, CommitmentLevel},
     instruction::Instruction,
     message::Message,
     signature::Signature,
-    signer::Signer,
     transaction::Transaction,
 };
 
@@ -24,19 +21,21 @@ pub mod trace;
 mod transaction_executor;
 
 pub async fn send_transaction(
-    rpc_client: &dyn Rpc,
-    signer: &dyn Signer,
+    context: &RequestContext<'_>,
     instructions: &[Instruction],
-) -> SolanaClientResult<Signature> {
+) -> NeonResult<Signature> {
+    let signer = &*context.signer()?;
     let message = Message::new(instructions, Some(&signer.pubkey()));
     let mut transaction = Transaction::new_unsigned(message);
     let signers = [signer];
-    let (blockhash, _last_valid_slot) = rpc_client
+    let (blockhash, _last_valid_slot) = context
+        .rpc_client
         .get_latest_blockhash_with_commitment(CommitmentConfig::confirmed())
         .await?;
     transaction.try_sign(&signers, blockhash)?;
 
-    rpc_client
+    let signature = context
+        .rpc_client
         .send_and_confirm_transaction_with_spinner_and_config(
             &transaction,
             CommitmentConfig::confirmed(),
@@ -45,5 +44,7 @@ pub async fn send_transaction(
                 ..RpcSendTransactionConfig::default()
             },
         )
-        .await
+        .await?;
+
+    Ok(signature)
 }

@@ -10,7 +10,7 @@ pub mod syscall_stubs;
 pub mod types;
 
 pub use config::Config;
-pub use context::Context;
+pub use context::RequestContext;
 pub use errors::NeonError;
 
 pub type NeonResult<T> = Result<T, NeonError>;

@@ -3,6 +3,7 @@ ARG SOLANA_IMAGE
 FROM solanalabs/rust:1.69.0 AS builder
 RUN cargo install rustfilt
 WORKDIR /opt
+
 ARG SOLANA_BPF_VERSION
 RUN sh -c "$(curl -sSfL https://release.solana.com/"${SOLANA_BPF_VERSION}"/install)" && \
     /root/.local/share/solana/install/active_release/bin/sdk/sbf/scripts/install.sh

@@ -221,8 +221,15 @@ impl ClickHouseDb {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub async fn get_account_at(&self, pubkey: &Pubkey, slot: u64) -> ChResult<Option<Account>> {
-        info!("get_account_at {{ pubkey: {pubkey}, slot: {slot} }}");
+    pub async fn get_account_at(
+        &self,
+        pubkey: &Pubkey,
+        slot: u64,
+        write_version: Option<u64>,
+    ) -> ChResult<Option<Account>> {
+        info!(
+            "get_account_at {{ pubkey: {pubkey}, slot: {slot}, write version: {write_version:?} }}"
+        );
         let (first, mut branch) = self.get_branch_slots(Some(slot)).await.map_err(|e| {
             println!("get_branch_slots error: {:?}", e);
             e
@@ -244,24 +251,35 @@ impl ClickHouseDb {
         let mut row = if branch.is_empty() {
             None
         } else {
-            let query = r#"
-                SELECT owner, lamports, executable, rent_epoch, data, txn_signature
-                FROM events.update_account_distributed
-                WHERE pubkey = ?
-                  AND slot IN ?
-                ORDER BY pubkey, slot DESC, write_version DESC
-                LIMIT 1
-            "#;
+            let query = if write_version.is_some() {
+                r#"
+                    SELECT owner, lamports, executable, rent_epoch, data, txn_signature
+                    FROM events.update_account_distributed
+                    WHERE pubkey = ?
+                      AND write_version = ?
+                      AND slot IN ?
+                    ORDER BY pubkey, slot DESC, write_version DESC
+                    LIMIT 1
+                "#
+            } else {
+                r#"
+                    SELECT owner, lamports, executable, rent_epoch, data, txn_signature
+                    FROM events.update_account_distributed
+                    WHERE pubkey = ?
+                      AND slot IN ?
+                    ORDER BY pubkey, slot DESC, write_version DESC
+                    LIMIT 1
+                "#
+            };
 
             let time_start = Instant::now();
-            let row = Self::row_opt(
-                self.client
-                    .query(query)
-                    .bind(pubkey_str.clone())
-                    .bind(branch.as_slice())
-                    .fetch_one::<AccountRow>()
-                    .await,
-            )
+            let row = Self::row_opt({
+                let mut row = self.client.query(query).bind(pubkey_str.clone());
+                if let Some(write_version) = write_version {
+                    row = row.bind(write_version);
+                }
+                row.bind(branch.as_slice()).fetch_one::<AccountRow>().await
+            })
             .map_err(|e| {
                 println!("get_account_at error: {e}");
                 ChError::Db(e)
@@ -470,7 +488,7 @@ impl ClickHouseDb {
 
         // If not found, get closest account state in one of previous slots
         if let Some(parent) = slot.parent {
-            self.get_account_at(pubkey, parent).await
+            self.get_account_at(pubkey, parent, None).await
         } else {
             Ok(None)
         }

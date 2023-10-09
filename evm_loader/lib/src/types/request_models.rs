@@ -102,6 +102,7 @@ pub struct EmulateRequestModel {
     #[serde(flatten)]
     pub emulation_params: EmulationParamsRequestModel,
     pub slot: Option<u64>,
+    pub write_version: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Default)]

@@ -55,6 +55,7 @@ pub enum Event {
     },
 }
 
+/// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L993>
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockOverrides {
@@ -72,6 +73,7 @@ pub struct BlockOverrides {
     pub base_fee: Option<U256>, // NOT SUPPORTED BY Neon EVM
 }
 
+/// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L942>
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountOverride {
@@ -97,8 +99,10 @@ impl AccountOverride {
     }
 }
 
+/// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L951>
 pub type AccountOverrides = HashMap<Address, AccountOverride>;
 
+/// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/api.go#L151>
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(clippy::module_name_repetitions, clippy::struct_excessive_bools)]
@@ -116,6 +120,7 @@ pub struct TraceConfig {
     pub tracer_config: Option<Value>,
 }
 
+/// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/api.go#L163>
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(clippy::module_name_repetitions)]

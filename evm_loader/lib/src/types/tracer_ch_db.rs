@@ -9,7 +9,7 @@ use super::{
 };
 
 use clickhouse::Client;
-use log::{debug, info};
+use log::{debug, error, info};
 use rand::Rng;
 use solana_sdk::{
     account::Account,
@@ -227,11 +227,31 @@ impl ClickHouseDb {
         slot: u64,
         write_version: Option<u64>,
     ) -> ChResult<Option<Account>> {
-        info!(
-            "get_account_at {{ pubkey: {pubkey}, slot: {slot}, write version: {write_version:?} }}"
-        );
+        if let Some(write_version) = write_version {
+            if let Some(row) = self
+                .get_account_at_index_in_block(pubkey, slot, write_version)
+                .await?
+            {
+                return row
+                    .try_into()
+                    .map(Some)
+                    .map_err(|err| ChError::Db(clickhouse::error::Error::Custom(err)));
+            }
+
+            return self.get_account_at_slot(pubkey, slot).await?;
+        }
+
+        self.get_account_at_slot(pubkey, slot).await?
+    }
+
+    async fn get_account_at_slot(
+        &self,
+        pubkey: &Pubkey,
+        slot: u64,
+    ) -> Result<Result<Option<Account>, ChError>, ChError> {
+        info!("get_account_at_slot {{ pubkey: {pubkey}, slot: {slot} }}");
         let (first, mut branch) = self.get_branch_slots(Some(slot)).await.map_err(|e| {
-            println!("get_branch_slots error: {:?}", e);
+            error!("get_branch_slots error: {:?}", e);
             e
         })?;
 
@@ -241,7 +261,7 @@ impl ClickHouseDb {
             .get_account_rooted_slot(&pubkey_str, first)
             .await
             .map_err(|e| {
-                println!("get_account_rooted_slot error: {:?}", e);
+                error!("get_account_rooted_slot error: {:?}", e);
                 e
             })?
         {
@@ -251,42 +271,31 @@ impl ClickHouseDb {
         let mut row = if branch.is_empty() {
             None
         } else {
-            let query = if write_version.is_some() {
-                r#"
-                    SELECT owner, lamports, executable, rent_epoch, data, txn_signature
-                    FROM events.update_account_distributed
-                    WHERE pubkey = ?
-                      AND write_version = ?
-                      AND slot IN ?
-                    ORDER BY pubkey, slot DESC, write_version DESC
-                    LIMIT 1
-                "#
-            } else {
-                r#"
-                    SELECT owner, lamports, executable, rent_epoch, data, txn_signature
-                    FROM events.update_account_distributed
-                    WHERE pubkey = ?
-                      AND slot IN ?
-                    ORDER BY pubkey, slot DESC, write_version DESC
-                    LIMIT 1
-                "#
-            };
+            let query = r#"
+                SELECT owner, lamports, executable, rent_epoch, data, txn_signature
+                FROM events.update_account_distributed
+                WHERE pubkey = ?
+                  AND slot IN ?
+                ORDER BY pubkey, slot DESC, write_version DESC
+                LIMIT 1
+            "#;
 
             let time_start = Instant::now();
-            let row = Self::row_opt({
-                let mut row = self.client.query(query).bind(pubkey_str.clone());
-                if let Some(write_version) = write_version {
-                    row = row.bind(write_version);
-                }
-                row.bind(branch.as_slice()).fetch_one::<AccountRow>().await
-            })
+            let row = Self::row_opt(
+                self.client
+                    .query(query)
+                    .bind(pubkey_str.clone())
+                    .bind(branch.as_slice())
+                    .fetch_one::<AccountRow>()
+                    .await,
+            )
             .map_err(|e| {
-                println!("get_account_at error: {e}");
+                error!("get_account_at_slot error: {e}");
                 ChError::Db(e)
             })?;
             let execution_time = Instant::now().duration_since(time_start);
             info!(
-                "get_account_at {{ pubkey: {pubkey}, slot: {slot} }} sql(1) returned {row:?}, time: {} sec",
+                "get_account_at_slot {{ pubkey: {pubkey}, slot: {slot} }} sql(1) returned {row:?}, time: {} sec",
                 execution_time.as_secs_f64()
             );
 
@@ -311,9 +320,56 @@ impl ClickHouseDb {
             Ok(None)
         };
 
-        info!("get_account_at {{ pubkey: {pubkey}, slot: {slot} }} -> {result:?}");
+        info!("get_account_at_slot {{ pubkey: {pubkey}, slot: {slot} }} -> {result:?}");
 
-        result
+        Ok(result)
+    }
+
+    async fn get_account_at_index_in_block(
+        &self,
+        pubkey: &Pubkey,
+        slot: u64,
+        tx_index_in_block: u64,
+    ) -> ChResult<Option<AccountRow>> {
+        info!(
+            "get_account_at_index_in_block {{ pubkey: {pubkey}, slot: {slot}, tx_index_in_block: {tx_index_in_block} }}"
+        );
+
+        let pubkey_str = format!("{:?}", pubkey.to_bytes());
+
+        let query = r#"
+            SELECT owner, lamports, executable, rent_epoch, data, txn_signature
+            FROM events.update_account_distributed
+            WHERE pubkey = ?
+              AND slot = ?
+              AND write_version <= ?
+            ORDER BY write_version DESC
+            LIMIT 1
+        "#;
+
+        let time_start = Instant::now();
+
+        let account = Self::row_opt(
+            self.client
+                .query(query)
+                .bind(pubkey_str.clone())
+                .bind(slot)
+                .bind(tx_index_in_block)
+                .fetch_one::<AccountRow>()
+                .await,
+        )
+        .map_err(|e| {
+            error!("get_account_at_index_in_block error: {e}");
+            ChError::Db(e)
+        })?;
+
+        let execution_time = Instant::now().duration_since(time_start);
+        info!(
+            "get_account_at_index_in_block {{ pubkey: {pubkey}, slot: {slot}, tx_index_in_block: {tx_index_in_block} }} sql(1) returned {account:?}, time: {} sec",
+            execution_time.as_secs_f64()
+        );
+
+        Ok(account)
     }
 
     async fn get_older_account_row_at(

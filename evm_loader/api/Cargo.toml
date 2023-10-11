@@ -7,7 +7,9 @@ edition = "2021"
 
 [dependencies]
 clap = "2.33.3"
-evm-loader = { path = "../program", default-features = false, features = ["log"] }
+evm-loader = { path = "../program", default-features = false, features = [
+  "log",
+] }
 solana-sdk = "=1.16.23"
 solana-client = "=1.16.23"
 serde = "1.0.186"

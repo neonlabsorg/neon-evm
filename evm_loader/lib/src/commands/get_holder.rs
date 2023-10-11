@@ -6,7 +6,7 @@ use evm_loader::account::{
     },
     Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use solana_sdk::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt::Display;
 
@@ -14,7 +14,7 @@ use crate::{account_storage::account_info, rpc::Rpc, NeonResult};
 
 use serde_with::{hex::Hex, serde_as, skip_serializing_none, DisplayFromStr};
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub enum Status {
     #[default]
     Empty,
@@ -25,7 +25,7 @@ pub enum Status {
 }
 
 #[serde_as]
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AccountMeta {
     pub is_writable: bool,
     #[serde_as(as = "DisplayFromStr")]
@@ -34,7 +34,7 @@ pub struct AccountMeta {
 
 #[serde_as]
 #[skip_serializing_none]
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct GetHolderResponse {
     pub status: Status,
     pub len: Option<usize>,

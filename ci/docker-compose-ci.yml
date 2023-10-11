@@ -45,11 +45,41 @@ services:
     networks:
       - net
 
+  neon-core-rpc:
+    restart: unless-stopped
+    hostname: neon_core_rpc
+    entrypoint: /opt/neon-rpc /opt/libs/current
+    environment:
+      RUST_BACKTRACE: full
+      RUST_LOG: neon=debug
+      NEON_API_LISTENER_ADDR: 0.0.0.0:3100
+      SOLANA_URL: http://solana:8899
+      EVM_LOADER: 53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io
+      NEON_TOKEN_MINT: HPsV9Deocecw3GeZv1FkAPNCBRfuVyfw9MMwjwRe1xaU
+      NEON_CHAIN_ID: 111
+      COMMITMENT: confirmed
+      NEON_DB_CLICKHOUSE_URLS: "http://45.250.253.36:8123;http://45.250.253.38:8123"
+      NEON_DB_INDEXER_HOST: 45.250.253.32
+      NEON_DB_INDEXER_PORT: 5432
+      NEON_DB_INDEXER_DATABASE: indexer
+      NEON_DB_INDEXER_USER: postgres
+      NEON_DB_INDEXER_PASSWORD: "vUlpDyAP0gA98R5Bu"
+      KEYPAIR: /opt/operator-keypairs/id.json
+      FEEPAIR: /opt/operator-keypairs/id.json
+    image: ${EVM_LOADER_IMAGE}
+    ports:
+      - "3100"
+    expose:
+      - "3100"
+    networks:
+      - net
+
   tests:
     image: ${NEON_TESTS_IMAGE}
     environment:
       - SOLANA_URL=http://solana:8899
       - NEON_CORE_API_URL=http://neon_api:8085/api
+      - NEON_CORE_API_RPC_URL=http://neon_core_rpc:3100
     hostname: tests
     command: sleep infinity
     networks:

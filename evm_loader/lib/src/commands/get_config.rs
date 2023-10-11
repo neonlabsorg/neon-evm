@@ -26,7 +26,7 @@ use solana_client::client_error::Result as ClientResult;
 use solana_client::rpc_config::{RpcLargestAccountsConfig, RpcSimulateTransactionConfig};
 use tokio::sync::{Mutex, MutexGuard, OnceCell};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Status {
     Ok,
     Emergency,
@@ -43,7 +43,7 @@ pub struct ChainInfo {
 }
 
 #[serde_as]
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GetConfigResponse {
     pub version: String,
     pub revision: String,

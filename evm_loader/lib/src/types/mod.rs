@@ -174,6 +174,30 @@ pub struct GetStorageAtRequest {
     pub slot: Option<u64>,
 }
 
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct CancelTrxRequest {
+    pub storage_account: Pubkey,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct RequestWithSlot {
+    pub slot: Option<u64>,
+    pub tx_index_in_block: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct GetNeonElfRequest {
+    pub program_location: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct InitEnvironmentRequest {
+    pub send_trx: bool,
+    pub force: bool,
+    pub keys_dir: Option<String>,
+    pub file: Option<String>,
+}
+
 #[serde_as]
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct GetHolderRequest {

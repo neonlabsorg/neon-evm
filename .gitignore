@@ -2,6 +2,7 @@
 target
 .env
 .vscode
+.trunk
 bin
 config.json
 node_modules

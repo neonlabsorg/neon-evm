@@ -9,6 +9,7 @@ use actix_web::web;
 use actix_web::App;
 use actix_web::HttpServer;
 use api_server::handlers::NeonApiError;
+use neon_lib::abi::state::State;
 pub use neon_lib::commands;
 pub use neon_lib::config;
 pub use neon_lib::errors;
@@ -33,7 +34,7 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 type NeonApiResult<T> = Result<T, NeonApiError>;
-type NeonApiState = Data<api_server::state::State>;
+type NeonApiState = Data<State>;
 
 #[actix_web::main]
 async fn main() -> NeonApiResult<()> {
@@ -51,8 +52,8 @@ async fn main() -> NeonApiResult<()> {
 
     info!("{}", get_build_info());
 
-    let api_config = config::load_api_config_from_enviroment();
-    let state: NeonApiState = Data::new(api_server::state::State::new(api_config));
+    let api_config = config::load_api_config_from_environment();
+    let state: NeonApiState = Data::new(State::new(api_config));
 
     let listener_addr = options
         .value_of("host")

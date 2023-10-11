@@ -16,10 +16,45 @@ pub struct GetEtherRequest {
 }
 
 #[derive(Deserialize, Serialize, Debug, Default)]
+pub struct RequestWithSlot {
+    pub slot: Option<u64>,
+    pub tx_index_in_block: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct CreateEtherAccountRequest {
+    pub ether: Address,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct DepositRequest {
+    pub ether: Address,
+    pub amount: u64,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct GetNeonElfRequest {
+    pub program_location: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
 pub struct GetStorageAtRequest {
     pub contract_id: Address,
     pub index: U256,
     pub slot: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct CancelTrxRequest {
+    pub storage_account: Pubkey,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct InitEnvironmentRequest {
+    pub send_trx: bool,
+    pub force: bool,
+    pub keys_dir: Option<String>,
+    pub file: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Default)]

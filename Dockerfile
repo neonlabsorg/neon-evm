@@ -18,13 +18,13 @@ ENV NEON_REVISION=${REVISION}
 RUN cargo fmt --check && \
     cargo clippy --release && \
     cargo build --release && \
-    cargo build-bpf --features devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
-    cargo build-bpf --features testnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet.so && \
-    cargo build-bpf --features govertest && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest.so && \
-    cargo build-bpf --features govertest,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest-emergency.so && \
-    cargo build-bpf --features mainnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet.so && \
-    cargo build-bpf --features mainnet,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet-emergency.so && \
-    cargo build-bpf --features ci --dump
+    cargo build-bpf --manifest-path program/Cargo.toml --features devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
+    cargo build-bpf --manifest-path program/Cargo.toml --features testnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet.so && \
+    cargo build-bpf --manifest-path program/Cargo.toml --features govertest && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest.so && \
+    cargo build-bpf --manifest-path program/Cargo.toml --features govertest,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest-emergency.so && \
+    cargo build-bpf --manifest-path program/Cargo.toml --features mainnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet.so && \
+    cargo build-bpf --manifest-path program/Cargo.toml --features mainnet,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet-emergency.so && \
+    cargo build-bpf --manifest-path program/Cargo.toml --features ci --dump
 
 # Build Solidity contracts
 FROM ethereum/solc:0.8.0 AS solc
@@ -48,7 +48,8 @@ FROM ${SOLANA_IMAGE} AS solana
 FROM ubuntu:20.04 AS base
 WORKDIR /opt
 RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get -y install vim less openssl ca-certificates curl python3 python3-pip parallel && \
+    apt-get upgrade -y && \
+    DEBIAN_FRONTEND=noninteractive apt-get -y install vim less openssl libssl-dev ca-certificates curl python3 python3-pip parallel && \
     rm -rf /var/lib/apt/lists/*
 
 COPY tests/requirements.txt /tmp/
@@ -77,6 +78,8 @@ COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader
 COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader-dump.txt /opt/
 COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/release/neon-cli /opt/
 COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/release/neon-api /opt/
+COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/release/neon-rpc /opt/
+COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/release/libneon_lib.so /opt/libs/current/
 COPY --from=solana /usr/bin/spl-token /opt/spl-token
 COPY --from=contracts /opt/ /opt/solidity/
 COPY --from=contracts /usr/bin/solc /usr/bin/solc

@@ -1,9 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
-    'api',
-    'cli',
-    'lib',
-    'program',
-    'program-macro'
+  'api',
+  'cli',
+  'lib',
+  'lib-interface',
+  'rpc',
+  'rpc-client',
+  'program',
+  'program-macro',
 ]

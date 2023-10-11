@@ -4,6 +4,7 @@
 use std::net::AddrParseError;
 
 use log::error;
+use neon_lib_interface::NeonEVMLibLoadError;
 use solana_cli::cli::CliError as SolanaCliError;
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_client::tpu_client::TpuSenderError as SolanaTpuSenderError;
@@ -42,6 +43,8 @@ pub enum NeonError {
     /// EVM Loader Error
     #[error("EVM Error. {0}")]
     EvmError(#[from] evm_loader::error::Error),
+    #[error("Can't load db config")]
+    LoadingDBConfigError,
     /// Need specify evm_loader
     #[error("EVM loader must be specified.")]
     EvmLoaderNotSpecified,
@@ -97,6 +100,12 @@ pub enum NeonError {
     ClickHouse(ChError),
     #[error("Slot {0} is less than earliest_rooted_slot={1}")]
     EarlySlot(u64, u64),
+    #[error("library interface error")]
+    NeonEVMLibLoadError(#[from] NeonEVMLibLoadError),
+    #[error("Incorrect lib method")]
+    IncorrectLibMethod,
+    #[error("strum parce error {0:?}")]
+    StrumParseError(#[from] strum::ParseError),
 }
 
 impl NeonError {
@@ -132,6 +141,10 @@ impl NeonError {
             NeonError::TxParametersParsingError(_) => 250,
             NeonError::ClickHouse(_) => 252,
             NeonError::EarlySlot(_, _) => 253,
+            NeonError::NeonEVMLibLoadError(_) => 254,
+            NeonError::LoadingDBConfigError => 255,
+            NeonError::IncorrectLibMethod => 256,
+            NeonError::StrumParseError(_) => 257,
         }
     }
 }

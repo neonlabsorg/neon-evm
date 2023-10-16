@@ -25,7 +25,7 @@ use crate::{
     syscall_stubs::Stubs,
     NeonResult,
 };
-use web3::types::StateDiff;
+use web3::types::{AccountDiff, Diff, StateDiff, H160};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulationResult {
@@ -284,12 +284,26 @@ pub(crate) async fn emulate_trx<'a>(
     let accounts_gas = storage.apply_accounts_operations(accounts_operations).await;
     info!("Gas - steps: {steps_gas}, actions: {actions_gas}, accounts: {accounts_gas}");
 
+    let mut map = BTreeMap::new();
+
+    for (address, _neon_account) in storage.initial_accounts.borrow().iter() {
+        map.insert(
+            H160::from(address.0),
+            AccountDiff {
+                balance: Diff::Same,
+                nonce: Diff::Same,
+                code: Diff::Same,
+                storage: Default::default(),
+            },
+        );
+    }
+
     Ok(evm_loader::evm::tracing::EmulationResult {
         exit_status,
         steps_executed,
         used_gas: steps_gas + begin_end_gas + actions_gas + accounts_gas,
         actions,
-        state_diff: StateDiff(BTreeMap::new()),
+        state_diff: StateDiff(map),
     })
 }
 

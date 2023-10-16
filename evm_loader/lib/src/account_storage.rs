@@ -97,6 +97,15 @@ impl NeonAccount {
         };
         Self::new(address, key, account, writable)
     }
+
+    // fn ethereum_account(&mut self, program_id: &Pubkey) -> evm_loader::error::Result<Option<EthereumAccount>> {
+    //     if let Some(account_data) = &mut self.data {
+    //         let info = account_info(self.account.as_ref(), account_data);
+    //         EthereumAccount::from_account(program_id, &info)
+    //     } else {
+    //         None
+    //     }
+    // }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +118,7 @@ pub struct SolanaAccount {
 
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'a> {
+    pub initial_accounts: RefCell<HashMap<Address, NeonAccount>>,
     pub accounts: RefCell<HashMap<Address, NeonAccount>>,
     pub solana_accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
     rpc_client: &'a dyn Rpc,
@@ -150,6 +160,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         };
 
         Ok(Self {
+            initial_accounts: RefCell::new(HashMap::new()),
             accounts: RefCell::new(HashMap::new()),
             solana_accounts: RefCell::new(HashMap::new()),
             rpc_client,
@@ -209,10 +220,11 @@ impl<'a> EmulatorAccountStorage<'a> {
                 .zip(accounts.iter().take(addresses.len()))
                 .zip(pubkeys.iter().take(addresses.len()));
             for ((&address, account), &pubkey) in entries {
-                self.accounts.borrow_mut().insert(
-                    address,
-                    NeonAccount::new(address, pubkey, account.clone(), false),
-                );
+                let account = NeonAccount::new(address, pubkey, account.clone(), false);
+                self.initial_accounts
+                    .borrow_mut()
+                    .insert(address, account.clone());
+                self.accounts.borrow_mut().insert(address, account);
             }
 
             let entries = accounts.iter().skip(addresses.len()).zip(solana_accounts);
@@ -285,6 +297,9 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         let account =
             NeonAccount::rpc_load(self.rpc_client, &self.evm_loader, *address, writable).await;
+        self.initial_accounts
+            .borrow_mut()
+            .insert(*address, account.clone());
         self.accounts.borrow_mut().insert(*address, account);
 
         false

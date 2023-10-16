@@ -98,14 +98,17 @@ impl NeonAccount {
         Self::new(address, key, account, writable)
     }
 
-    // fn ethereum_account(&mut self, program_id: &Pubkey) -> evm_loader::error::Result<Option<EthereumAccount>> {
-    //     if let Some(account_data) = &mut self.data {
-    //         let info = account_info(self.account.as_ref(), account_data);
-    //         EthereumAccount::from_account(program_id, &info)
-    //     } else {
-    //         None
-    //     }
-    // }
+    fn ethereum_account_closure<F, R>(&mut self, program_id: &Pubkey, default: R, f: F) -> R
+    where
+        F: FnOnce(EthereumAccount) -> R,
+    {
+        if let Some(account_data) = &mut self.data {
+            let info = account_info(self.account.as_ref(), account_data);
+            EthereumAccount::from_account(program_id, &info).map_or(default, f)
+        } else {
+            default
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -455,44 +458,31 @@ impl<'a> EmulatorAccountStorage<'a> {
         self.add_ethereum_account(address, false).await;
 
         let mut accounts = self.accounts.borrow_mut();
-        let solana_account = accounts.get_mut(address).expect("get account error");
+        let neon_account = accounts.get_mut(address).expect("get account error");
 
-        if let Some(account_data) = &mut solana_account.data {
-            let info = account_info(solana_account.account.as_ref(), account_data);
-            EthereumAccount::from_account(&self.evm_loader, &info)
-                .map(|mut ether_account| {
-                    if let Some(account_overrides) = &self.state_overrides {
-                        if let Some(account_override) = account_overrides.get(address) {
-                            account_override.apply(&mut ether_account);
-                        }
-                    }
-                    ether_account
-                })
-                .map_or(default, |a| f(&a))
-        } else {
-            default
-        }
+        neon_account.ethereum_account_closure(&self.evm_loader, default, |mut ether_account| {
+            if let Some(account_overrides) = &self.state_overrides {
+                if let Some(account_override) = account_overrides.get(address) {
+                    account_override.apply(&mut ether_account);
+                }
+            }
+            f(&ether_account)
+        })
     }
 
     async fn ethereum_contract_map_or<F, R>(&self, address: &Address, default: R, f: F) -> R
     where
         F: FnOnce(ether_contract::ContractData) -> R,
+        R: Clone,
     {
         self.add_ethereum_account(address, false).await;
 
         let mut accounts = self.accounts.borrow_mut();
-        let solana_account = accounts.get_mut(address).expect("get account error");
+        let neon_account = accounts.get_mut(address).expect("get account error");
 
-        if let Some(account_data) = &mut solana_account.data {
-            let info = account_info(solana_account.account.as_ref(), account_data);
-            let account = EthereumAccount::from_account(&self.evm_loader, &info);
-            match &account {
-                Ok(a) => a.contract_data().map_or(default, f),
-                Err(_) => default,
-            }
-        } else {
-            default
-        }
+        neon_account.ethereum_account_closure(&self.evm_loader, default.clone(), |a| {
+            a.contract_data().map_or(default, f)
+        })
     }
 }
 

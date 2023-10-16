@@ -125,6 +125,7 @@ pub enum Reason {
 pub struct Context {
     pub caller: Address,
     pub contract: Address,
+    pub contract_chain_id: u64,
     #[serde(with = "ethnum::serde::bytes::le")]
     pub value: U256,
 
@@ -290,6 +291,7 @@ impl<B: Database> Machine<B> {
             context: Context {
                 caller: origin,
                 contract: target,
+                contract_chain_id: backend.contract_chain_id(target).await.unwrap_or(chain_id),
                 value: trx.value(),
                 code_address: Some(target),
             },
@@ -349,6 +351,7 @@ impl<B: Database> Machine<B> {
             context: Context {
                 caller: origin,
                 contract: target,
+                contract_chain_id: chain_id,
                 value: trx.value(),
                 code_address: None,
             },

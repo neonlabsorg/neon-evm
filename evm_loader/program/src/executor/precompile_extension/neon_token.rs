@@ -14,7 +14,6 @@ use crate::{
     account::token,
     account_storage::AccountStorage,
     error::{Error, Result},
-    evm::database::Database,
     executor::ExecutorState,
     types::Address,
 };
@@ -50,11 +49,13 @@ pub async fn neon_token<B: AccountStorage>(
         }
 
         let source = context.contract;
+        let chain_id = context.contract_chain_id;
+        let value = context.value;
         // owner of the associated token account
         let destination = array_ref![rest, 0, 32];
         let destination = Pubkey::new_from_array(*destination);
 
-        withdraw(state, source, destination, context.value).await?;
+        withdraw(state, source, chain_id, destination, value).await?;
 
         let mut output = vec![0_u8; 32];
         output[31] = 1; // return true
@@ -70,6 +71,7 @@ pub async fn neon_token<B: AccountStorage>(
 async fn withdraw<B: AccountStorage>(
     state: &mut ExecutorState<'_, B>,
     source: Address,
+    chain_id: u64,
     target: Pubkey,
     value: U256,
 ) -> Result<()> {
@@ -77,7 +79,6 @@ async fn withdraw<B: AccountStorage>(
         return Err(Error::Custom("Neon Withdraw: value == 0".to_string()));
     }
 
-    let chain_id = state.contract_chain_id(source).await?;
     let mint_address = state.backend.chain_id_to_token(chain_id);
 
     let mut mint_account = state.external_account(mint_address).await?;

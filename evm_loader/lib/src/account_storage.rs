@@ -221,6 +221,7 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
                     if index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u64) {
                         self.use_contract_account(address, true).await?;
                     } else {
+                        let index = index & !U256::new(0xFF);
                         let (_, account) = self.use_storage_cell(address, index, true).await?;
 
                         let cell_size = StorageCell::required_account_size(1);

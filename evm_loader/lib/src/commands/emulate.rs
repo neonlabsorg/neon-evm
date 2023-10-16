@@ -97,13 +97,14 @@ async fn emulate_trx(
     debug!("{steps_executed} steps executed");
 
     let steps_iterations = (steps_executed + (EVM_STEPS_MIN - 1)) / EVM_STEPS_MIN;
-    let steps_gas = steps_iterations * (LAMPORTS_PER_SIGNATURE + PAYMENT_TO_TREASURE);
-    let begin_end_iterations = 2;
-    let begin_end_gas = begin_end_iterations * LAMPORTS_PER_SIGNATURE;
+    let treasury_gas = steps_iterations * PAYMENT_TO_TREASURE;
     let cancel_gas = LAMPORTS_PER_SIGNATURE;
 
-    let used_gas = storage.gas + steps_gas + begin_end_gas + cancel_gas;
+    let begin_end_iterations = 2;
     let iterations: u64 = steps_iterations + begin_end_iterations + realloc_iterations(&actions);
+    let iterations_gas = iterations * LAMPORTS_PER_SIGNATURE;
+
+    let used_gas = storage.gas + iterations_gas + treasury_gas + cancel_gas;
 
     let solana_accounts = storage.accounts.borrow().values().cloned().collect();
 
@@ -126,7 +127,7 @@ fn realloc_iterations(actions: &[Action]) -> u64 {
     for action in actions {
         if let Action::EvmSetCode { code, .. } = action {
             let size = ContractAccount::required_account_size(code);
-            let c = (size + (MAX_PERMITTED_DATA_INCREASE - 1)) / MAX_PERMITTED_DATA_INCREASE;
+            let c = size / MAX_PERMITTED_DATA_INCREASE;
             result = std::cmp::max(result, c);
         }
     }

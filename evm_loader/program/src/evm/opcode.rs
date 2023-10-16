@@ -1008,8 +1008,8 @@ impl<B: Database> Machine<B> {
 
         let created_address = {
             let source = self.context.contract;
+            let chain_id = self.context.contract_chain_id;
 
-            let chain_id = backend.contract_chain_id(source).await?;
             let nonce = backend.nonce(source, chain_id).await?;
 
             Address::from_create(&source, nonce)
@@ -1049,7 +1049,7 @@ impl<B: Database> Machine<B> {
         length: usize,
         backend: &mut B,
     ) -> Result<Action> {
-        let chain_id = backend.contract_chain_id(self.context.contract).await?;
+        let chain_id = self.context.contract_chain_id;
 
         let contract_nonce = backend.nonce(self.context.contract, chain_id).await?;
         if contract_nonce == u64::MAX {
@@ -1066,6 +1066,7 @@ impl<B: Database> Machine<B> {
         let context = Context {
             caller: self.context.contract,
             contract: address,
+            contract_chain_id: chain_id,
             value,
             code_address: None,
         };
@@ -1121,10 +1122,11 @@ impl<B: Database> Machine<B> {
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
         let code = backend.code(address).await?;
 
-        let chain_id = backend.contract_chain_id(self.context.contract).await?;
+        let chain_id = self.context.contract_chain_id;
         let context = Context {
             caller: self.context.contract,
             contract: address,
+            contract_chain_id: backend.contract_chain_id(address).await.unwrap_or(chain_id),
             value,
             code_address: Some(address),
         };
@@ -1177,12 +1179,11 @@ impl<B: Database> Machine<B> {
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
         let code = backend.code(address).await?;
 
-        let chain_id = backend.contract_chain_id(self.context.contract).await?;
+        let chain_id = self.context.contract_chain_id;
         let context = Context {
-            caller: self.context.contract,
-            contract: self.context.contract,
             value,
             code_address: Some(address),
+            ..self.context
         };
 
         tracing_event!(
@@ -1278,10 +1279,11 @@ impl<B: Database> Machine<B> {
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
         let code = backend.code(address).await?;
 
-        let chain_id = backend.contract_chain_id(self.context.contract).await?;
+        let chain_id = self.context.contract_chain_id;
         let context = Context {
             caller: self.context.contract,
             contract: address,
+            contract_chain_id: backend.contract_chain_id(address).await.unwrap_or(chain_id),
             value: U256::ZERO,
             code_address: Some(address),
         };
@@ -1456,7 +1458,7 @@ impl<B: Database> Machine<B> {
 
         let address = self.stack.pop_address()?;
 
-        let chain_id = backend.contract_chain_id(self.context.contract).await?;
+        let chain_id = self.context.contract_chain_id;
         let value = backend.balance(self.context.contract, chain_id).await?;
         backend
             .transfer(self.context.contract, address, chain_id, value)

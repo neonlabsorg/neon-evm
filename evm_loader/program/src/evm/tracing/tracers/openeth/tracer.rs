@@ -11,6 +11,7 @@ pub struct OpenEthereumTracer {
 }
 
 impl OpenEthereumTracer {
+    #[must_use]
     pub fn new(call_analytics: CallAnalytics) -> OpenEthereumTracer {
         OpenEthereumTracer {
             output: None,
@@ -21,14 +22,12 @@ impl OpenEthereumTracer {
 
 impl EventListener for OpenEthereumTracer {
     fn event(&mut self, event: Event) {
-        match event {
-            Event::EndStep {
-                gas_used: _gas_used,
-                return_data,
-            } => {
-                self.output = return_data.map(Into::into);
-            }
-            _ => {}
+        if let Event::EndStep {
+            gas_used: _gas_used,
+            return_data,
+        } = event
+        {
+            self.output = return_data.map(Into::into);
         }
     }
 

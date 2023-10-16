@@ -60,8 +60,9 @@ impl Serialize for Trace {
         match self.result {
             Res::Call(ref call) => struc.serialize_field("result", call)?,
             Res::Create(ref create) => struc.serialize_field("result", create)?,
-            Res::FailedCall(ref error) => struc.serialize_field("error", &error.to_string())?,
-            Res::FailedCreate(ref error) => struc.serialize_field("error", &error.to_string())?,
+            Res::FailedCall(ref error) | Res::FailedCreate(ref error) => {
+                struc.serialize_field("error", &error.to_string())?;
+            }
             Res::None => struc.serialize_field("result", &None as &Option<u8>)?,
         }
 
@@ -241,7 +242,7 @@ where
 }
 
 #[derive(Debug, Clone, Serialize)]
-/// Aux type for Diff::Changed.
+/// Aux type for `Diff::Changed`.
 pub struct ChangedType<T>
 where
     T: Serialize,
@@ -286,7 +287,7 @@ pub struct CreateResult {
     address: H160,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TraceError {
     /// `OutOfGas` is returned when transaction execution runs out of gas.
     OutOfGas,
@@ -324,7 +325,11 @@ pub enum TraceError {
 
 impl fmt::Display for TraceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::TraceError::*;
+        use self::TraceError::{
+            BadInstruction, BadJumpDestination, BuiltIn, Internal, InvalidCode, InvalidSubEntry,
+            MutableCallInStaticContext, OutOfBounds, OutOfGas, OutOfStack, OutOfSubStack, Reverted,
+            StackUnderflow, SubStackUnderflow, Wasm,
+        };
         let message = match *self {
             OutOfGas => "Out of gas",
             BadJumpDestination => "Bad jump destination",
@@ -348,7 +353,8 @@ impl fmt::Display for TraceError {
 
 pub type TraceOptions = Vec<String>;
 
-pub fn to_call_analytics(flags: TraceOptions) -> CallAnalytics {
+#[must_use]
+pub fn to_call_analytics(flags: &TraceOptions) -> CallAnalytics {
     CallAnalytics {
         transaction_tracing: flags.contains(&("trace".to_owned())),
         vm_tracing: flags.contains(&("vmTrace".to_owned())),
@@ -400,7 +406,7 @@ mod tests {
                             cost: 0,
                             ex: Some(VMExecutedOperation {
                                 used: 10,
-                                push: vec![42.into()].into(),
+                                push: vec![42.into()],
                                 mem: Some(MemoryDiff {
                                     off: 42,
                                     data: vec![1, 2, 3].into(),

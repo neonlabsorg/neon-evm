@@ -98,7 +98,7 @@ impl NeonAccount {
         Self::new(address, key, account, writable)
     }
 
-    fn ethereum_account_closure<F, R>(&mut self, program_id: &Pubkey, default: R, f: F) -> R
+    pub fn ethereum_account_closure<F, R>(&mut self, program_id: &Pubkey, default: R, f: F) -> R
     where
         F: FnOnce(EthereumAccount) -> R,
     {
@@ -125,7 +125,7 @@ pub struct EmulatorAccountStorage<'a> {
     pub accounts: RefCell<HashMap<Address, NeonAccount>>,
     pub solana_accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
     rpc_client: &'a dyn Rpc,
-    evm_loader: Pubkey,
+    pub evm_loader: Pubkey,
     block_number: u64,
     block_timestamp: i64,
     neon_token_mint: Pubkey,

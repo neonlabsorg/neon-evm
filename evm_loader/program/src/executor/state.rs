@@ -64,10 +64,10 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         }
     }
 
-    pub fn into_actions(self) -> Vec<Action> {
+    pub fn into_actions(&self) -> Vec<Action> {
         assert!(self.stack.is_empty());
 
-        self.actions
+        self.actions.clone()
     }
 
     pub fn exit_status(&self) -> Option<&ExitStatus> {

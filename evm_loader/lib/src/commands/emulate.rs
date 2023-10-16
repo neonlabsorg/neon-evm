@@ -25,7 +25,8 @@ use crate::{
     syscall_stubs::Stubs,
     NeonResult,
 };
-use web3::types::{AccountDiff, Diff, StateDiff, H160};
+use evm_loader::evm::database::Database;
+use web3::types::{AccountDiff, ChangedType, Diff, StateDiff, H160};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulationResult {
@@ -199,8 +200,8 @@ pub(crate) async fn emulate_trx<'a>(
     step_limit: u64,
     tracer: TracerTypeOpt,
 ) -> Result<evm_loader::evm::tracing::EmulationResult, NeonError> {
+    let mut backend = ExecutorState::new(storage);
     let (exit_status, actions, steps_executed) = {
-        let mut backend = ExecutorState::new(storage);
         let trx_payload = if tx_params.access_list.is_some() {
             let access_list = tx_params
                 .access_list
@@ -286,13 +287,36 @@ pub(crate) async fn emulate_trx<'a>(
 
     let mut map = BTreeMap::new();
 
-    for (address, _neon_account) in storage.initial_accounts.borrow().iter() {
+    for (address, neon_account) in storage.initial_accounts.borrow_mut().iter_mut() {
         map.insert(
             H160::from(address.0),
             AccountDiff {
-                balance: Diff::Same,
-                nonce: Diff::Same,
-                code: Diff::Same,
+                balance: Diff::Changed(ChangedType {
+                    from: web3::types::U256::from(
+                        neon_account
+                            .ethereum_account_closure(&storage.evm_loader, U256::default(), |a| {
+                                a.balance
+                            })
+                            .to_be_bytes(),
+                    ),
+                    to: web3::types::U256::from(backend.balance(address).await?.to_be_bytes()),
+                }),
+                nonce: Diff::Changed(ChangedType {
+                    from: web3::types::U256::from(neon_account.ethereum_account_closure(
+                        &storage.evm_loader,
+                        0,
+                        |a| a.trx_count,
+                    )),
+                    to: web3::types::U256::from(backend.nonce(address).await?),
+                }),
+                code: Diff::Changed(ChangedType {
+                    from: neon_account.ethereum_account_closure(
+                        &storage.evm_loader,
+                        web3::types::Bytes::default(),
+                        |a| web3::types::Bytes(a.contract_data().unwrap().code().to_vec()),
+                    ),
+                    to: web3::types::Bytes(backend.code(address).await?.to_vec()),
+                }),
                 storage: Default::default(),
             },
         );

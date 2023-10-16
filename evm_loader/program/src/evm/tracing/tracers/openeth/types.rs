@@ -13,11 +13,11 @@ pub struct TraceResults {
     /// The output of the call/create
     pub output: HexBytes,
     /// The transaction trace.
+    pub state_diff: Option<StateDiff>,
+    /// The transaction trace.
     pub trace: Vec<Trace>,
     /// The transaction trace.
     pub vm_trace: Option<VMTrace>,
-    /// The transaction trace.
-    pub state_diff: Option<StateDiff>,
 }
 
 /// Trace

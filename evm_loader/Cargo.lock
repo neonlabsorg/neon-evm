@@ -3014,6 +3014,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "web3",
 ]
 
 [[package]]

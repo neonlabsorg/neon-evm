@@ -4,7 +4,7 @@ use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
 use std::collections::BTreeMap;
 use std::fmt;
-use web3::types::{H160, H256, U256};
+use web3::types::{StateDiff, H160, H256, U256};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -223,19 +223,6 @@ pub struct StorageDiff {
     pub key: U256,
     /// What the value has been changed to.
     pub val: U256,
-}
-
-#[derive(Debug, Clone)]
-/// Serde-friendly `StateDiff` shadow.
-pub struct StateDiff(BTreeMap<H160, AccountDiff>);
-
-impl Serialize for StateDiff {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        Serialize::serialize(&self.0, serializer)
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]

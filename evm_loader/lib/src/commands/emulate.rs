@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 
 use ethnum::U256;
@@ -24,6 +25,7 @@ use crate::{
     syscall_stubs::Stubs,
     NeonResult,
 };
+use web3::types::StateDiff;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulationResult {
@@ -287,6 +289,7 @@ pub(crate) async fn emulate_trx<'a>(
         steps_executed,
         used_gas: steps_gas + begin_end_gas + actions_gas + accounts_gas,
         actions,
+        state_diff: StateDiff(BTreeMap::new()),
     })
 }
 

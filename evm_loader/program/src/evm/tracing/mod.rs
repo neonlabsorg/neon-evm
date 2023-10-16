@@ -9,6 +9,7 @@ use crate::types::hexbytes::HexBytes;
 use crate::types::Address;
 use ethnum::U256;
 use serde_json::Value;
+use web3::types::StateDiff;
 
 use super::{Context, ExitStatus};
 
@@ -20,6 +21,7 @@ pub struct EmulationResult {
     pub steps_executed: u64,
     pub used_gas: u64,
     pub actions: Vec<Action>,
+    pub state_diff: StateDiff,
 }
 
 pub trait EventListener: Send + Sync + Debug {

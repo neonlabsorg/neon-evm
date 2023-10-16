@@ -2,9 +2,8 @@ use crate::types::hexbytes::HexBytes;
 /// Types copied from <https://github.com/openethereum/openethereum/blob/main/crates/rpc/src/v1/types/trace.rs>
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
-use std::collections::BTreeMap;
 use std::fmt;
-use web3::types::{StateDiff, H160, H256, U256};
+use web3::types::{StateDiff, H160, U256};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -226,15 +225,6 @@ pub struct StorageDiff {
 }
 
 #[derive(Debug, Clone, Serialize)]
-/// Serde-friendly `AccountDiff` shadow.
-pub struct AccountDiff {
-    pub balance: Diff<U256>,
-    pub nonce: Diff<U256>,
-    pub code: Diff<HexBytes>,
-    pub storage: BTreeMap<H256, Diff<H256>>,
-}
-
-#[derive(Debug, Clone, Serialize)]
 /// Serde-friendly `Diff` shadow.
 pub enum Diff<T>
 where
@@ -382,23 +372,6 @@ pub struct CallAnalytics {
 mod tests {
     use super::*;
     use serde_json;
-    use std::collections::BTreeMap;
-    use web3::types::Address;
-
-    #[test]
-    fn should_serialize_trace_results() {
-        let r = TraceResults {
-            output: vec![0x60].into(),
-            trace: vec![],
-            vm_trace: None,
-            state_diff: None,
-        };
-        let serialized = serde_json::to_string(&r).unwrap();
-        assert_eq!(
-            serialized,
-            r#"{"output":"0x60","trace":[],"vmTrace":null,"stateDiff":null}"#
-        );
-    }
 
     #[test]
     fn test_vmtrace_serialize() {
@@ -447,42 +420,6 @@ mod tests {
         assert_eq!(
             serialized,
             r#"{"code":"0x00010203","ops":[{"pc":0,"cost":10,"ex":null,"sub":null},{"pc":1,"cost":11,"ex":{"used":10,"push":["0x45"],"mem":null,"store":null},"sub":{"code":"0x00","ops":[{"pc":0,"cost":0,"ex":{"used":10,"push":["0x2a"],"mem":{"off":42,"data":"0x010203"},"store":{"key":"0x45","val":"0x2a"}},"sub":null}]}}]}"#
-        );
-    }
-
-    macro_rules! map {
-        () => { BTreeMap::new() };
-        ( $( $x:expr => $y:expr ),* ) => {{
-            let mut x = BTreeMap::new();
-            $(
-                x.insert($x, $y);
-            )*
-            x
-        }}
-    }
-
-    #[test]
-    fn test_statediff_serialize() {
-        let t = StateDiff(map![
-            Address::from_low_u64_be(42) => AccountDiff {
-                balance: Diff::Same,
-                nonce: Diff::Born(1.into()),
-                code: Diff::Same,
-                storage: map![
-                    H256::from_low_u64_be(42) => Diff::Same
-                ]
-            },
-            Address::from_low_u64_be(69) => AccountDiff {
-                balance: Diff::Same,
-                nonce: Diff::Changed(ChangedType { from: 1.into(), to: 0.into() }),
-                code: Diff::Died(vec![96].into()),
-                storage: map![],
-            }
-        ]);
-        let serialized = serde_json::to_string(&t).unwrap();
-        assert_eq!(
-            serialized,
-            r#"{"0x000000000000000000000000000000000000002a":{"balance":"=","nonce":{"+":"0x1"},"code":"=","storage":{"0x000000000000000000000000000000000000000000000000000000000000002a":"="}},"0x0000000000000000000000000000000000000045":{"balance":"=","nonce":{"*":{"from":"0x1","to":"0x0"}},"code":{"-":"0x60"},"storage":{}}}"#
         );
     }
 }

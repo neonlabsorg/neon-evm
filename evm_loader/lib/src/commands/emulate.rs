@@ -309,14 +309,19 @@ pub(crate) async fn emulate_trx<'a>(
                     )),
                     to: web3::types::U256::from(backend.nonce(address).await?),
                 }),
-                code: Diff::Changed(ChangedType {
-                    from: neon_account.ethereum_account_closure(
-                        &storage.evm_loader,
-                        web3::types::Bytes::default(),
-                        |a| web3::types::Bytes(a.contract_data().unwrap().code().to_vec()),
-                    ),
-                    to: web3::types::Bytes(backend.code(address).await?.to_vec()),
-                }),
+                code: match neon_account.ethereum_account_closure(&storage.evm_loader, false, |a| {
+                    a.contract_data().is_some()
+                }) {
+                    false => Diff::Same,
+                    true => Diff::Changed(ChangedType {
+                        from: neon_account.ethereum_account_closure(
+                            &storage.evm_loader,
+                            web3::types::Bytes::default(),
+                            |a| web3::types::Bytes(a.contract_data().unwrap().code().to_vec()),
+                        ),
+                        to: web3::types::Bytes(backend.code(address).await?.to_vec()),
+                    }),
+                },
                 storage: Default::default(),
             },
         );

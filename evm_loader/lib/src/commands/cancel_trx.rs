@@ -38,8 +38,8 @@ pub async fn execute(
     let (origin_pubkey, _) = origin.find_balance_address(&evm_loader, chain_id);
 
     let mut accounts_meta: Vec<AccountMeta> = vec![
-        AccountMeta::new(*storage_account, false),  // State account
-        AccountMeta::new(*operator, true),          // Operator
+        AccountMeta::new(*storage_account, false), // State account
+        AccountMeta::new(*operator, true),         // Operator
         AccountMeta::new(origin_pubkey, true),
     ];
 

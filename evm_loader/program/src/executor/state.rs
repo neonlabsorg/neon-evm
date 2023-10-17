@@ -243,9 +243,9 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             return Ok(());
         }
 
-        if (self.code_size(target).await? > 0)
-            && (self.contract_chain_id(target).await? != chain_id)
-        {
+        let target_chain_id = self.contract_chain_id(target).await.unwrap_or(chain_id);
+
+        if (self.code_size(target).await? > 0) && (target_chain_id != chain_id) {
             return Err(Error::InvalidTransferToken(source, chain_id));
         }
 

@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 
 use ethnum::U256;
+use itertools::Itertools;
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
@@ -288,42 +289,53 @@ pub(crate) async fn emulate_trx<'a>(
 
     let mut map = BTreeMap::new();
 
-    for (address, neon_account) in storage.initial_accounts.borrow_mut().iter_mut() {
+    let addresses = storage
+        .initial_accounts
+        .borrow()
+        .keys()
+        .merge(storage.accounts.borrow().keys())
+        .cloned()
+        .collect::<Vec<_>>();
+    for address in addresses {
+        let mut ref_mut = storage.initial_accounts.borrow_mut();
+        let initial_account = ref_mut.get_mut(&address).unwrap();
         map.insert(
             H160::from(address.0),
             AccountDiff {
-                balance: Diff::Changed(ChangedType {
-                    from: web3::types::U256::from(
-                        neon_account
+                balance: diff_new(
+                    web3::types::U256::from(
+                        initial_account
                             .ethereum_account_closure(&storage.evm_loader, U256::default(), |a| {
                                 a.balance
                             })
                             .to_be_bytes(),
                     ),
-                    to: web3::types::U256::from(backend.balance(address).await?.to_be_bytes()),
-                }),
-                nonce: Diff::Changed(ChangedType {
-                    from: web3::types::U256::from(neon_account.ethereum_account_closure(
+                    web3::types::U256::from(backend.balance(&address).await?.to_be_bytes()),
+                ),
+                nonce: diff_new(
+                    web3::types::U256::from(initial_account.ethereum_account_closure(
                         &storage.evm_loader,
                         0,
                         |a| a.trx_count,
                     )),
-                    to: web3::types::U256::from(backend.nonce(address).await?),
-                }),
-                code: match neon_account.ethereum_account_closure(&storage.evm_loader, false, |a| {
-                    a.contract_data().is_some()
-                }) {
+                    web3::types::U256::from(backend.nonce(&address).await?),
+                ),
+                code: match initial_account.ethereum_account_closure(
+                    &storage.evm_loader,
+                    false,
+                    |a| a.contract_data().is_some(),
+                ) {
                     false => Diff::Same,
-                    true => Diff::Changed(ChangedType {
-                        from: neon_account.ethereum_account_closure(
+                    true => diff_new(
+                        initial_account.ethereum_account_closure(
                             &storage.evm_loader,
                             web3::types::Bytes::default(),
                             |a| web3::types::Bytes(a.contract_data().unwrap().code().to_vec()),
                         ),
-                        to: web3::types::Bytes(backend.code(address).await?.to_vec()),
-                    }),
+                        web3::types::Bytes(backend.code(&address).await?.to_vec()),
+                    ),
                 },
-                storage: match backend.initial_storage.borrow().get(address) {
+                storage: match backend.initial_storage.borrow().get(&address) {
                     None => BTreeMap::new(),
                     Some(storage) => {
                         let mut map = BTreeMap::new();
@@ -332,7 +344,7 @@ pub(crate) async fn emulate_trx<'a>(
                                 H256::from(key.to_be_bytes()),
                                 Diff::Changed(ChangedType {
                                     from: H256::from(value),
-                                    to: H256::from(backend.get_storage(address, key).await?),
+                                    to: H256::from(backend.get_storage(&address, key).await?),
                                 }),
                             );
                         }
@@ -350,6 +362,14 @@ pub(crate) async fn emulate_trx<'a>(
         actions,
         state_diff: StateDiff(map),
     })
+}
+
+fn diff_new<T: Eq>(from: T, to: T) -> Diff<T> {
+    if from == to {
+        return Diff::Same;
+    }
+
+    Diff::Changed(ChangedType { from, to })
 }
 
 pub(crate) async fn setup_syscall_stubs(rpc_client: &dyn Rpc) -> Result<(), NeonError> {

@@ -78,7 +78,6 @@ pub fn process_inner<'a>(
             let mut gasometer = Gasometer::new(U256::ZERO, accounts_db.operator())?;
             gasometer.record_solana_transaction_cost();
             gasometer.record_address_lookup_table(accounts);
-            gasometer.record_iterative_overhead();
             gasometer.record_write_to_holder(&trx);
 
             do_begin(accounts_db, storage, gasometer, trx, origin)

@@ -1,7 +1,7 @@
 use std::cell::{Ref, RefMut};
 use std::mem::size_of;
 
-use crate::config::{GAS_LIMIT_MULTIPLIER_NO_CHAINID, OPERATOR_PRIORITY_SLOTS, PAYMENT_TO_DEPOSIT};
+use crate::config::{GAS_LIMIT_MULTIPLIER_NO_CHAINID, OPERATOR_PRIORITY_SLOTS};
 use crate::error::{Error, Result};
 use crate::types::{Address, Transaction};
 use ethnum::U256;
@@ -11,7 +11,7 @@ use solana_program::sysvar::Sysvar;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use super::{
-    AccountsDB, Incinerator, Operator, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_HOLDER, TAG_STATE,
+    AccountsDB, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_HOLDER, TAG_STATE,
     TAG_STATE_FINALIZED,
 };
 
@@ -109,10 +109,6 @@ impl<'a> StateAccount<'a> {
             }
         }
 
-        // Make deposit
-        let system = accounts.system();
-        system.transfer(accounts.operator(), &state.account, PAYMENT_TO_DEPOSIT)?;
-
         Ok(state)
     }
 
@@ -153,17 +149,8 @@ impl<'a> StateAccount<'a> {
         Ok(state)
     }
 
-    fn finalize_impl(
-        self,
-        program_id: &Pubkey,
-        accounts: &AccountsDB,
-        target: &AccountInfo<'a>,
-    ) -> Result<()> {
+    pub fn finalize(self, program_id: &Pubkey, accounts: &AccountsDB) -> Result<()> {
         debug_print!("Finalize Storage {}", self.account.key);
-
-        // Return deposit
-        **self.account.lamports.borrow_mut() -= PAYMENT_TO_DEPOSIT;
-        **target.lamports.borrow_mut() += PAYMENT_TO_DEPOSIT;
 
         // Unblock accounts
         for (block, account) in self.blocked_accounts().iter().zip(accounts) {
@@ -183,24 +170,6 @@ impl<'a> StateAccount<'a> {
         std::mem::drop(self);
 
         super::set_tag(account.owner, &account, TAG_STATE_FINALIZED)
-    }
-
-    pub fn finalize(
-        self,
-        program_id: &Pubkey,
-        accounts: &AccountsDB,
-        operator: &Operator<'a>,
-    ) -> Result<()> {
-        self.finalize_impl(program_id, accounts, operator)
-    }
-
-    pub fn cancel(
-        self,
-        program_id: &Pubkey,
-        accounts: &AccountsDB,
-        incinerator: &Incinerator<'a>,
-    ) -> Result<()> {
-        self.finalize_impl(program_id, accounts, incinerator)
     }
 
     #[inline]
@@ -328,12 +297,33 @@ impl<'a> StateAccount<'a> {
         self.header().gas_limit
     }
 
+    pub fn gas_limit_in_tokens(&self) -> Result<U256> {
+        let header = self.header();
+        header
+            .gas_limit
+            .checked_mul(header.gas_price)
+            .ok_or(Error::IntegerOverflow)
+    }
+
     pub fn gas_used(&self) -> U256 {
         self.header().gas_used
     }
 
-    pub fn burn_gas(&mut self, amount: U256) -> Result<()> {
+    pub fn gas_available(&self) -> U256 {
+        let header = self.header();
+        header.gas_limit.saturating_sub(header.gas_used)
+    }
+
+    pub fn consume_gas(&mut self, amount: U256, receiver: &mut BalanceAccount) -> Result<()> {
+        if amount == U256::ZERO {
+            return Ok(());
+        }
+
         let mut header = self.header_mut();
+
+        if receiver.chain_id() != header.chain_id {
+            return Err(Error::GasReceiverInvalidChainId);
+        }
 
         let total_gas_used = header.gas_used.saturating_add(amount);
         let gas_limit = header.gas_limit;
@@ -344,7 +334,18 @@ impl<'a> StateAccount<'a> {
 
         header.gas_used = total_gas_used;
 
-        Ok(())
+        let tokens = amount
+            .checked_mul(header.gas_price)
+            .ok_or(Error::IntegerOverflow)?;
+        receiver.mint(tokens)
+    }
+
+    pub fn refund_unused_gas(&mut self, origin: &mut BalanceAccount) -> Result<()> {
+        assert!(origin.chain_id() == self.trx_chain_id());
+        assert!(origin.address == Some(self.trx_origin()));
+
+        let unused_gas = self.gas_available();
+        self.consume_gas(unused_gas, origin)
     }
 
     pub fn use_gas_limit_multiplier(&mut self) {

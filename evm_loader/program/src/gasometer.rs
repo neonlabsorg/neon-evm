@@ -9,8 +9,8 @@ use solana_program::program_error::ProgramError;
 pub const LAMPORTS_PER_SIGNATURE: u64 = 5000;
 
 const WRITE_TO_HOLDER_TRX_COST: u64 = LAMPORTS_PER_SIGNATURE;
-const CANCEL_TRX_COST: u64 = LAMPORTS_PER_SIGNATURE;
-const LAST_ITERATION_COST: u64 = LAMPORTS_PER_SIGNATURE;
+pub const CANCEL_TRX_COST: u64 = LAMPORTS_PER_SIGNATURE;
+pub const LAST_ITERATION_COST: u64 = LAMPORTS_PER_SIGNATURE;
 
 pub struct Gasometer {
     paid_gas: U256,
@@ -45,15 +45,6 @@ impl Gasometer {
 
     pub fn record_solana_transaction_cost(&mut self) {
         self.gas = self.gas.saturating_add(LAMPORTS_PER_SIGNATURE);
-    }
-
-    pub fn record_iterative_overhead(&mut self) {
-        // High chance of last iteration to fail with solana error
-        // Consume gas for it in the first iteration
-        self.gas = self
-            .gas
-            .saturating_add(LAST_ITERATION_COST)
-            .saturating_add(CANCEL_TRX_COST);
     }
 
     pub fn record_write_to_holder(&mut self, trx: &Transaction) {

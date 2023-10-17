@@ -23,6 +23,10 @@ impl<'a> ProgramAccountStorage<'a> {
         self.accounts.operator()
     }
 
+    pub fn operator_balance(&mut self) -> &mut BalanceAccount<'a> {
+        self.accounts.operator_balance()
+    }
+
     pub fn treasury(&self) -> &Treasury<'a> {
         self.accounts.treasury()
     }

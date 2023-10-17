@@ -13,7 +13,7 @@ use crate::evm::{Context, ExitStatus};
 use crate::types::Address;
 
 use super::action::Action;
-use super::cache::Cache;
+use super::cache::{cache_get_or_insert_account, Cache};
 use super::OwnedAccountInfo;
 
 /// Represents the state of executor abstracted away from a self.backend.
@@ -124,29 +124,15 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
             .collect::<Vec<_>>();
 
         if !metas.iter().any(|m| (m.pubkey == address) && m.is_writable) {
-            insert_account_if_not_present(&self.cache, address, self.backend).await;
-            return Ok(self
-                .cache
-                .borrow()
-                .solana_accounts
-                .get(&address)
-                .unwrap()
-                .clone());
+            let account = cache_get_or_insert_account(&self.cache, address, self.backend).await;
+            return Ok(account);
         }
 
         let mut accounts = BTreeMap::<Pubkey, OwnedAccountInfo>::new();
 
         for m in metas {
-            insert_account_if_not_present(&self.cache, m.pubkey, self.backend).await;
-            accounts.insert(
-                m.pubkey,
-                self.cache
-                    .borrow()
-                    .solana_accounts
-                    .get(&m.pubkey)
-                    .unwrap()
-                    .clone(),
-            );
+            let account = cache_get_or_insert_account(&self.cache, m.pubkey, self.backend).await;
+            accounts.insert(account.key, account);
         }
 
         for action in &self.actions {
@@ -184,21 +170,6 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         }
 
         Ok(accounts[&address].clone())
-    }
-}
-
-#[maybe_async]
-async fn insert_account_if_not_present<B: AccountStorage>(
-    cache: &RefCell<Cache>,
-    key: Pubkey,
-    backend: &B,
-) {
-    if !cache.borrow().solana_accounts.contains_key(&key) {
-        let owned_account_info = backend.clone_solana_account(&key).await;
-        cache
-            .borrow_mut()
-            .solana_accounts
-            .insert(key, owned_account_info);
     }
 }
 

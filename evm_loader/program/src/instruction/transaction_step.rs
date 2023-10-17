@@ -1,5 +1,3 @@
-use ethnum::U256;
-
 use crate::account::{AccountsDB, AllocateResult, StateAccount};
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::config::{EVM_STEPS_LAST_ITERATION_MAX, EVM_STEPS_MIN};
@@ -21,13 +19,19 @@ pub fn do_begin<'a>(
 ) -> Result<()> {
     debug_print!("do_begin");
 
-    let account_storage = ProgramAccountStorage::new(accounts)?;
-    let mut backend = ExecutorState::new(&account_storage);
+    let accounts = ProgramAccountStorage::new(accounts)?;
+
+    // Burn `gas_limit` tokens from the origin account
+    // Later we will mint them to the operator
+    let mut origin_balance = accounts.create_balance_account(origin, storage.trx_chain_id())?;
+    origin_balance.burn(storage.gas_limit_in_tokens()?)?;
+
+    let mut backend = ExecutorState::new(&accounts);
     let evm = Machine::new(trx, origin, &mut backend)?;
 
     serialize_evm_state(&mut storage, &backend, &evm)?;
 
-    finalize(0, storage, account_storage, None, gasometer)
+    finalize(0, storage, accounts, None, gasometer)
 }
 
 pub fn do_continue<'a>(
@@ -71,20 +75,6 @@ pub fn do_continue<'a>(
     finalize(steps_executed, storage, account_storage, results, gasometer)
 }
 
-fn pay_gas_cost(
-    used_gas: U256,
-    storage: &mut StateAccount,
-    accounts: &mut ProgramAccountStorage,
-) -> Result<()> {
-    debug_print!("pay_gas_cost {}", used_gas);
-
-    storage.burn_gas(used_gas)?;
-
-    // Can overflow in malicious transaction
-    let value = used_gas.saturating_mul(storage.trx_gas_price());
-    accounts.transfer_gas_payment(storage.trx_origin(), storage.trx_chain_id(), value)
-}
-
 fn finalize<'a>(
     steps_executed: u64,
     mut storage: StateAccount<'a>,
@@ -119,12 +109,15 @@ fn finalize<'a>(
         &total_used_gas.to_le_bytes(),
     ]);
 
-    pay_gas_cost(used_gas, &mut storage, &mut accounts)?;
+    storage.consume_gas(used_gas, accounts.operator_balance())?;
 
     if let Some(status) = status {
         log_return_value(&status);
 
-        storage.finalize(accounts.program_id(), accounts.db(), accounts.operator())?;
+        let mut origin = accounts.balance_account(storage.trx_origin(), storage.trx_chain_id())?;
+        storage.refund_unused_gas(&mut origin)?;
+
+        storage.finalize(accounts.program_id(), accounts.db())?;
     }
 
     Ok(())

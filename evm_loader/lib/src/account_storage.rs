@@ -118,6 +118,10 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
         pubkey: Pubkey,
         is_writable: bool,
     ) -> client_error::Result<Option<Account>> {
+        if pubkey == FAKE_OPERATOR {
+            return Ok(None);
+        }
+
         if let Some(account) = self.accounts.borrow_mut().get_mut(&pubkey) {
             account.is_writable |= is_writable;
             return Ok(account.data.clone());

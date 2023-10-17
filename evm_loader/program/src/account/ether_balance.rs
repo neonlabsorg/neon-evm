@@ -21,7 +21,7 @@ pub struct Header {
 }
 
 pub struct BalanceAccount<'a> {
-    address: Option<Address>,
+    pub address: Option<Address>,
     account: AccountInfo<'a>,
 }
 

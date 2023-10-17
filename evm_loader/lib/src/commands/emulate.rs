@@ -323,7 +323,7 @@ pub(crate) async fn emulate_trx<'a>(
                         to: web3::types::Bytes(backend.code(address).await?.to_vec()),
                     }),
                 },
-                storage: match storage.initial_storage.borrow().get(address) {
+                storage: match backend.initial_storage.borrow().get(address) {
                     None => BTreeMap::new(),
                     Some(storage) => {
                         let mut map = BTreeMap::new();

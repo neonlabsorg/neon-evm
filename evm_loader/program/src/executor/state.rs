@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use ethnum::{AsU256, U256};
 use maybe_async::maybe_async;
@@ -19,6 +19,7 @@ use super::OwnedAccountInfo;
 /// Represents the state of executor abstracted away from a self.backend.
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
 pub struct ExecutorState<'a, B: AccountStorage> {
+    pub initial_storage: RefCell<HashMap<Address, HashMap<U256, [u8; 32]>>>,
     pub backend: &'a B,
     cache: RefCell<Cache>,
     actions: Vec<Action>,
@@ -39,6 +40,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     pub fn deserialize_from(buffer: &[u8], backend: &'a B) -> Result<Self> {
         let (cache, actions, stack, exit_status) = bincode::deserialize(buffer)?;
         Ok(Self {
+            initial_storage: RefCell::new(HashMap::new()),
             backend,
             cache,
             actions,
@@ -56,6 +58,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         };
 
         Self {
+            initial_storage: RefCell::new(HashMap::new()),
             backend,
             cache: RefCell::new(cache),
             actions: Vec::with_capacity(64),
@@ -180,6 +183,23 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         }
 
         Ok(accounts[&address].clone())
+    }
+
+    async fn get_storage(&self, from_address: &Address, from_index: &U256) -> Result<[u8; 32]> {
+        for action in self.actions.iter().rev() {
+            if let Action::EvmSetStorage {
+                address,
+                index,
+                value,
+            } = action
+            {
+                if (from_address == address) && (from_index == index) {
+                    return Ok(*value);
+                }
+            }
+        }
+
+        Ok(self.backend.storage(from_address, from_index).await)
     }
 }
 
@@ -346,20 +366,16 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn storage(&self, from_address: &Address, from_index: &U256) -> Result<[u8; 32]> {
-        for action in self.actions.iter().rev() {
-            if let Action::EvmSetStorage {
-                address,
-                index,
-                value,
-            } = action
-            {
-                if (from_address == address) && (from_index == index) {
-                    return Ok(*value);
-                }
-            }
+        let value = self.get_storage(from_address, from_index).await?;
+
+        let mut initial_storage = self.initial_storage.borrow_mut();
+        let storage = initial_storage.entry(*from_address).or_default();
+
+        if !storage.contains_key(from_index) {
+            storage.insert(*from_index, value);
         }
 
-        Ok(self.backend.storage(from_address, from_index).await)
+        Ok(value)
     }
 
     fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {

@@ -26,7 +26,7 @@ use crate::{
     NeonResult,
 };
 use evm_loader::evm::database::Database;
-use web3::types::{AccountDiff, ChangedType, Diff, StateDiff, H160};
+use web3::types::{AccountDiff, ChangedType, Diff, StateDiff, H160, H256};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulationResult {
@@ -193,6 +193,7 @@ pub(crate) async fn emulate_transaction<'a>(
         .map(move |result| (result, storage))
 }
 
+#[allow(clippy::await_holding_refcell_ref)]
 pub(crate) async fn emulate_trx<'a>(
     tx_params: TxParams,
     storage: &'a EmulatorAccountStorage<'a>,
@@ -322,7 +323,22 @@ pub(crate) async fn emulate_trx<'a>(
                         to: web3::types::Bytes(backend.code(address).await?.to_vec()),
                     }),
                 },
-                storage: Default::default(),
+                storage: match storage.initial_storage.borrow().get(address) {
+                    None => BTreeMap::new(),
+                    Some(storage) => {
+                        let mut map = BTreeMap::new();
+                        for (key, value) in storage {
+                            map.insert(
+                                H256::from(key.to_be_bytes()),
+                                Diff::Changed(ChangedType {
+                                    from: H256::from(value),
+                                    to: H256::from(backend.storage(address, key).await?),
+                                }),
+                            );
+                        }
+                        map
+                    }
+                },
             },
         );
     }

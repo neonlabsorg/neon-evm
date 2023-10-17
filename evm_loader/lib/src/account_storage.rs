@@ -122,6 +122,7 @@ pub struct SolanaAccount {
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'a> {
     pub initial_accounts: RefCell<HashMap<Address, NeonAccount>>,
+    pub initial_storage: RefCell<HashMap<Address, HashMap<U256, [u8; 32]>>>,
     pub accounts: RefCell<HashMap<Address, NeonAccount>>,
     pub solana_accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
     rpc_client: &'a dyn Rpc,
@@ -164,6 +165,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         Ok(Self {
             initial_accounts: RefCell::new(HashMap::new()),
+            initial_storage: RefCell::new(HashMap::new()),
             accounts: RefCell::new(HashMap::new()),
             solana_accounts: RefCell::new(HashMap::new()),
             rpc_client,
@@ -674,6 +676,12 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         };
 
         info!("storage {address} -> {index} = {}", hex::encode(value));
+
+        self.initial_storage
+            .borrow_mut()
+            .entry(*address)
+            .or_default()
+            .insert(*index, value);
 
         value
     }

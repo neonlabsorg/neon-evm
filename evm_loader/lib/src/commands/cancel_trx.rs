@@ -33,10 +33,14 @@ pub async fn execute(
 
     let operator = &signer.pubkey();
 
+    let origin = storage.trx_origin();
+    let chain_id: u64 = storage.trx_chain_id();
+    let (origin_pubkey, _) = origin.find_balance_address(&evm_loader, chain_id);
+
     let mut accounts_meta: Vec<AccountMeta> = vec![
         AccountMeta::new(*storage_account, false),  // State account
         AccountMeta::new(*operator, true),          // Operator
-        AccountMeta::new(incinerator::id(), false), // Incinerator
+        AccountMeta::new(origin_pubkey, true),
     ];
 
     for blocked_account_meta in storage.blocked_accounts().iter() {

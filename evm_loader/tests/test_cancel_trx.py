@@ -32,7 +32,7 @@ class TestCancelTrx:
         user_nonce = evm_loader.get_neon_nonce(user_account.eth_address)
         trx = Transaction()
         trx.add(
-            make_Cancel(storage_account, operator_keypair, signed_tx.hash,
+            make_Cancel(evm_loader, storage_account, operator_keypair, signed_tx.hash,
                         [rw_lock_contract.solana_address,
                         rw_lock_contract.balance_account_address,
                         user_account.balance_account_address])

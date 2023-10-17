@@ -485,6 +485,7 @@ def deposit_neon(evm_loader: EvmLoader, operator_keypair: Keypair, ether_address
 
 
 def cancel_transaction(
+        evm_loader: EvmLoader,
         tx_hash: HexBytes,
         holder_acc: PublicKey,
         operator_keypair: Keypair,
@@ -494,6 +495,7 @@ def cancel_transaction(
     trx = Transaction()
     trx.add(
         make_Cancel(
+            evm_loader,
             holder_acc,
             operator_keypair,
             tx_hash,

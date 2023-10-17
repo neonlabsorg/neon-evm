@@ -100,6 +100,7 @@ class ParallelTransactionsTest(TestCase):
 
         # Cancel deployment transaction:
         cancel_transaction(
+            self.evm_loader,
             deployment_tx.hash,
             holder_acc,
             self.operator_keypair,

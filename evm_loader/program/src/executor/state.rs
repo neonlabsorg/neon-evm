@@ -185,7 +185,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         Ok(accounts[&address].clone())
     }
 
-    async fn get_storage(&self, from_address: &Address, from_index: &U256) -> Result<[u8; 32]> {
+    pub async fn get_storage(&self, from_address: &Address, from_index: &U256) -> Result<[u8; 32]> {
         for action in self.actions.iter().rev() {
             if let Action::EvmSetStorage {
                 address,

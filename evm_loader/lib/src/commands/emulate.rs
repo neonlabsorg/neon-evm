@@ -332,7 +332,7 @@ pub(crate) async fn emulate_trx<'a>(
                                 H256::from(key.to_be_bytes()),
                                 Diff::Changed(ChangedType {
                                     from: H256::from(value),
-                                    to: H256::from(backend.storage(address, key).await?),
+                                    to: H256::from(backend.get_storage(address, key).await?),
                                 }),
                             );
                         }

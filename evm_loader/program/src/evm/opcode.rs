@@ -1304,12 +1304,11 @@ impl<B: Database> Machine<B> {
     #[maybe_async]
     pub async fn opcode_return_impl(
         &mut self,
-        mut return_data: Buffer,
+        return_data: Buffer,
         backend: &mut B,
     ) -> Result<Action> {
         if self.reason == Reason::Create {
-            let code = std::mem::take(&mut return_data);
-            backend.set_code(self.context.contract, code)?;
+            backend.set_code(self.context.contract, return_data.clone())?;
         }
 
         backend.commit_snapshot();

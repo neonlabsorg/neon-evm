@@ -168,9 +168,6 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
     is_FTS_labeled_not_draft = 'fullTestSuit' in labels and is_draft != "true"
     is_extended_FTS_labeled_not_draft = 'extendedFullTestSuit' in labels and is_draft != "true"
 
-    if is_develop_branch or is_master_branch or is_tag_creating or is_version_branch or is_FTS_labeled_not_draft:
-        full_test_suite = "true"
-
     if is_extended_FTS_labeled_not_draft:
         test_set = "extendedFullTestSuite"
     elif is_develop_branch or is_tag_creating or is_version_branch or is_FTS_labeled_not_draft:
@@ -189,8 +186,6 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
         proxy_branch = re.sub(r'\.\d+$', '.x', neon_evm_tag)
     elif is_version_branch:
         proxy_branch = github_ref.replace("refs/heads/", "")
-    elif is_master_branch:
-        proxy_branch = 'master'
     else:
         proxy_branch = 'develop'
     click.echo(f"Proxy branch: {proxy_branch}")

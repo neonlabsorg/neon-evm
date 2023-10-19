@@ -43,21 +43,27 @@ pub struct StructLog {
     /// Current depth
     depth: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     error: Option<String>,
     /// Snapshot of the current stack sate
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     stack: Option<Vec<U256>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     return_data: Option<HexBytes>,
     /// Snapshot of the current memory sate
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     memory: Option<Vec<String>>, // chunks of 32 bytes
     /// Result of the step
     /// Snapshot of the current storage
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     storage: Option<BTreeMap<String, String>>,
     /// Refund counter
     #[serde(skip_serializing_if = "is_zero")]
+    #[serde(default)]
     refund: u64,
 }
 

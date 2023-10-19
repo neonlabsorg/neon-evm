@@ -292,6 +292,8 @@ impl<'a> EmulatorAccountStorage<'a> {
     }
 
     async fn add_ethereum_account(&self, address: &Address, writable: bool) -> bool {
+        info!("Add ethereum account {address} {writable}");
+
         if let Some(ref mut account) = self.accounts.borrow_mut().get_mut(address) {
             account.writable |= writable;
 
@@ -300,6 +302,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         let account =
             NeonAccount::rpc_load(self.rpc_client, &self.evm_loader, *address, writable).await;
+        info!("Adding initial account {address} {account:?}");
         self.initial_accounts
             .borrow_mut()
             .insert(*address, account.clone());

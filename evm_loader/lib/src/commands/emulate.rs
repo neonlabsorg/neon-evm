@@ -325,7 +325,14 @@ pub(crate) async fn emulate_trx<'a>(
                     false,
                     |a| a.contract_data().is_some(),
                 ) {
-                    false => Diff::Same,
+                    false => {
+                        let code = web3::types::Bytes(backend.code(&address).await?.to_vec());
+                        if code.0.is_empty() {
+                            Diff::Same
+                        } else {
+                            Diff::Born(code)
+                        }
+                    }
                     true => diff_new(
                         initial_account.ethereum_account_closure(
                             &storage.evm_loader,

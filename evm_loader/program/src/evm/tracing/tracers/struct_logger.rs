@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use ethnum::U256;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::evm::opcode_table::OPNAMES;
@@ -13,7 +13,7 @@ use crate::types::hexbytes::HexBytes;
 /// while replaying a transaction in debug mode as well as transaction
 /// execution status, the amount of gas used and the return value
 /// see <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/logger/logger.go#L404>
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct StructLoggerResult {
     /// Total used gas but include the refunded gas
@@ -29,13 +29,13 @@ pub struct StructLoggerResult {
 /// `StructLog` stores a structured log emitted by the EVM while replaying a
 /// transaction in debug mode
 /// see <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/logger/logger.go#L413>
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct StructLog {
     /// Program counter.
     pc: u64,
     /// Operation name
-    op: &'static str,
+    op: String,
     /// Amount of used gas
     gas: u64,
     /// Gas cost for this instruction.
@@ -77,7 +77,7 @@ impl StructLog {
         memory: Option<Vec<String>>,
         stack: Option<Vec<U256>>,
     ) -> Self {
-        let op = OPNAMES[opcode as usize];
+        let op = OPNAMES[opcode as usize].to_string();
         Self {
             pc,
             op,

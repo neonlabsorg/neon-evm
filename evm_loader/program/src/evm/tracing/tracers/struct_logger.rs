@@ -237,7 +237,7 @@ mod tests {
                 .to_string(),
             struct_logs: vec![StructLog {
                 pc: 8,
-                op: "PUSH2",
+                op: "PUSH2".to_string(),
                 gas: 0,
                 gas_cost: 0,
                 depth: 1,
@@ -265,7 +265,7 @@ mod tests {
                 .to_string(),
             struct_logs: vec![StructLog {
                 pc: 0,
-                op: "PUSH1",
+                op: "PUSH1".to_string(),
                 gas: 0,
                 gas_cost: 0,
                 depth: 1,
@@ -289,7 +289,7 @@ mod tests {
                 .to_string(),
             struct_logs: vec![StructLog {
                 pc: 0,
-                op: "PUSH1",
+                op: "PUSH1".to_string(),
                 gas: 0,
                 gas_cost: 0,
                 depth: 1,

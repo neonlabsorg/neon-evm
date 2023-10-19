@@ -302,7 +302,7 @@ pub(crate) async fn emulate_trx<'a>(
         map.insert(
             H160::from(address.0),
             AccountDiff {
-                balance: diff_new(
+                balance: diff_new_u256(
                     web3::types::U256::from(
                         initial_account
                             .ethereum_account_closure(&storage.evm_loader, U256::default(), |a| {
@@ -312,7 +312,7 @@ pub(crate) async fn emulate_trx<'a>(
                     ),
                     web3::types::U256::from(backend.balance(&address).await?.to_be_bytes()),
                 ),
-                nonce: diff_new(
+                nonce: diff_new_u256(
                     web3::types::U256::from(initial_account.ethereum_account_closure(
                         &storage.evm_loader,
                         0,
@@ -369,6 +369,14 @@ pub(crate) async fn emulate_trx<'a>(
         actions,
         state_diff: StateDiff(map),
     })
+}
+
+fn diff_new_u256(from: web3::types::U256, to: web3::types::U256) -> Diff<web3::types::U256> {
+    if from == web3::types::U256::zero() {
+        return Diff::Born(to);
+    }
+
+    diff_new(from, to)
 }
 
 fn diff_new<T: Eq>(from: T, to: T) -> Diff<T> {

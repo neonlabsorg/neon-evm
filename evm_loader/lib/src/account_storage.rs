@@ -296,7 +296,7 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
         Ok(())
     }
 
-    async fn ethereum_balance_map_or<F, R>(
+    pub async fn ethereum_balance_map_or<F, R>(
         &self,
         address: Address,
         chain_id: u64,
@@ -322,7 +322,7 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
         }
     }
 
-    async fn ethereum_contract_map_or<F, R>(&self, address: Address, default: R, f: F) -> R
+    pub async fn ethereum_contract_map_or<F, R>(&self, address: Address, default: R, f: F) -> R
     where
         F: FnOnce(ContractAccount) -> R,
     {

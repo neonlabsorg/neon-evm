@@ -135,7 +135,7 @@ pub struct BalanceAddress {
 }
 
 impl BalanceAddress {
-    pub fn solana_address(&self, program_id: &Pubkey) -> Pubkey {
+    pub fn find_pubkey(&self, program_id: &Pubkey) -> Pubkey {
         self.address
             .find_balance_address(program_id, self.chain_id)
             .0

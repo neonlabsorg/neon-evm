@@ -1,8 +1,8 @@
-use evm_loader::{account_storage::AccountStorage, types::Address};
+use evm_loader::{account::ContractAccount, types::Address};
 use serde::Serialize;
-use solana_sdk::pubkey::Pubkey;
+use solana_sdk::{account::Account, pubkey::Pubkey};
 
-use crate::{account_storage::EmulatorAccountStorage, rpc::Rpc, NeonResult};
+use crate::{account_storage::account_info, rpc::Rpc, NeonResult};
 
 use serde_with::{hex::Hex, serde_as, DisplayFromStr};
 
@@ -16,32 +16,54 @@ pub struct GetContractResponse {
     pub code: Vec<u8>,
 }
 
+impl GetContractResponse {
+    pub fn empty(solana_address: Pubkey) -> Self {
+        Self {
+            solana_address,
+            chain_id: None,
+            code: vec![],
+        }
+    }
+}
+
+fn read_account(
+    program_id: &Pubkey,
+    solana_address: Pubkey,
+    account: Option<Account>,
+) -> NeonResult<GetContractResponse> {
+    let Some(mut account) = account else {
+        return Ok(GetContractResponse::empty(solana_address));
+    };
+
+    let account_info = account_info(&solana_address, &mut account);
+    let contract = ContractAccount::from_account(program_id, account_info)?;
+
+    let chain_id = contract.chain_id();
+    let code = contract.code().to_vec();
+
+    Ok(GetContractResponse {
+        solana_address,
+        chain_id: Some(chain_id),
+        code,
+    })
+}
+
 pub async fn execute(
     rpc_client: &dyn Rpc,
     program_id: &Pubkey,
     accounts: &[Address],
 ) -> NeonResult<Vec<GetContractResponse>> {
-    let solana_accounts: Vec<_> = accounts
+    let pubkeys: Vec<_> = accounts
         .iter()
         .map(|a| a.find_solana_address(program_id).0)
         .collect();
 
-    let backend = EmulatorAccountStorage::with_accounts(
-        rpc_client,
-        *program_id,
-        &solana_accounts,
-        None,
-        None,
-    )
-    .await?;
+    let accounts = rpc_client.get_multiple_accounts(&pubkeys).await?;
 
-    let mut result = Vec::new();
-    for (address, pubkey) in accounts.iter().zip(solana_accounts) {
-        result.push(GetContractResponse {
-            solana_address: pubkey,
-            chain_id: backend.contract_chain_id(*address).await.ok(),
-            code: backend.code(*address).await.to_vec(),
-        });
+    let mut result = Vec::with_capacity(accounts.len());
+    for (key, account) in pubkeys.into_iter().zip(accounts) {
+        let response = read_account(program_id, key, account)?;
+        result.push(response);
     }
 
     Ok(result)

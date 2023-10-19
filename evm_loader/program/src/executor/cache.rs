@@ -67,6 +67,7 @@ pub struct Cache {
 }
 
 #[maybe_async]
+#[allow(clippy::await_holding_refcell_ref)] // We don't use this RefCell<Cache> in other execution context
 pub async fn cache_get_or_insert_account<B: AccountStorage>(
     cache: &RefCell<Cache>,
     key: Pubkey,

@@ -32,7 +32,6 @@ pub struct EmulateResponse {
     pub used_gas: u64,
     pub iterations: u64,
     pub solana_accounts: Vec<SolanaAccount>,
-    pub actions: Vec<Action>,
 }
 
 pub async fn execute(
@@ -114,7 +113,6 @@ async fn emulate_trx(
         exit_status,
         steps_executed,
         used_gas,
-        actions,
         solana_accounts,
         result,
         iterations,

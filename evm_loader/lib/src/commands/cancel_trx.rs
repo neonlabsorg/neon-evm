@@ -3,7 +3,6 @@ use log::info;
 
 use serde::{Deserialize, Serialize};
 use solana_sdk::{
-    incinerator,
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signature::Signature,

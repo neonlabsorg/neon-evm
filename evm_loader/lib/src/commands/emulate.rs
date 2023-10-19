@@ -299,19 +299,21 @@ pub(crate) async fn emulate_trx<'a>(
     for address in addresses {
         let mut ref_mut = storage.initial_accounts.borrow_mut();
         let initial_account = ref_mut.get_mut(&address).unwrap();
+        let balance_before = web3::types::U256::from(
+            initial_account
+                .ethereum_account_closure(&storage.evm_loader, U256::default(), |a| a.balance)
+                .to_be_bytes(),
+        );
+        let balance_after = web3::types::U256::from(backend.balance(&address).await?.to_be_bytes());
+        info!(
+            "balance_diff {address}: {} {}",
+            hex::encode(to_bytes(balance_before)),
+            hex::encode(to_bytes(balance_after))
+        );
         map.insert(
             H160::from(address.0),
             AccountDiff {
-                balance: diff_new_u256(
-                    web3::types::U256::from(
-                        initial_account
-                            .ethereum_account_closure(&storage.evm_loader, U256::default(), |a| {
-                                a.balance
-                            })
-                            .to_be_bytes(),
-                    ),
-                    web3::types::U256::from(backend.balance(&address).await?.to_be_bytes()),
-                ),
+                balance: diff_new_u256(balance_before, balance_after),
                 nonce: diff_new_u256(
                     web3::types::U256::from(initial_account.ethereum_account_closure(
                         &storage.evm_loader,
@@ -371,6 +373,12 @@ pub(crate) async fn emulate_trx<'a>(
     })
 }
 
+fn to_bytes(u256: web3::types::U256) -> [u8; 32] {
+    let mut bytes = [0; 32];
+    u256.to_big_endian(&mut bytes);
+    bytes
+}
+
 fn diff_new_u256(from: web3::types::U256, to: web3::types::U256) -> Diff<web3::types::U256> {
     if from == web3::types::U256::zero() {
         return Diff::Born(to);
@@ -392,4 +400,16 @@ pub(crate) async fn setup_syscall_stubs(rpc_client: &dyn Rpc) -> Result<(), Neon
     solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    #[test]
+    fn test() {
+        let signature = solana_sdk::signature::Signature::from_str("5R5o7y2CSJ7FtjN5Qj8swNaUmMcdMDJu4KXbd6aBhLgixSoWo63iHbijaJecrgdS793ZoFK4fzPphfkQ4V9JYiJ7").unwrap();
+        println!("{:?}", signature.as_ref());
+        // assert!(false)
+    }
 }

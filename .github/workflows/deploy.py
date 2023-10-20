@@ -30,8 +30,8 @@ ERR_MSG_TPL = {
 DOCKER_USER = os.environ.get("DHUBU")
 DOCKER_PASSWORD = os.environ.get("DHUBP")
 IMAGE_NAME = 'neonlabsorg/evm_loader'
-SOLANA_NODE_VERSION = 'v1.16.13'
-SOLANA_BPF_VERSION = 'v1.16.13'
+SOLANA_NODE_VERSION = 'v1.16.17'
+SOLANA_BPF_VERSION = 'v1.16.17'
 
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 docker_client = docker.APIClient()
@@ -105,7 +105,7 @@ def run_tests(github_sha):
     project_name = f"neon-evm-{github_sha}"
     stop_containers(project_name)
 
-    run_subprocess(f"docker-compose -p {project_name} -f ./evm_loader/docker-compose-ci.yml up -d")
+    run_subprocess(f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml up -d")
     container_name = get_solana_container_name(project_name)
     click.echo("Start tests")
     exec_id = docker_client.exec_create(
@@ -127,7 +127,7 @@ def run_tests(github_sha):
 
     exec_status = docker_client.exec_inspect(exec_id['Id'])["ExitCode"]
 
-    run_subprocess(f"docker-compose -p {project_name} -f ./evm_loader/docker-compose-ci.yml logs dk-neon-api")
+    run_subprocess(f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml logs dk-neon-api")
 
     stop_containers(project_name)
 
@@ -137,7 +137,7 @@ def run_tests(github_sha):
 
 def get_solana_container_name(project_name):
     data = subprocess.run(
-        f"docker-compose -p {project_name} -f ./evm_loader/docker-compose-ci.yml ps",
+        f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml ps",
         shell=True, capture_output=True, text=True).stdout
     click.echo(data)
     pattern = rf'{project_name}_solana_[1-9]+'
@@ -147,7 +147,7 @@ def get_solana_container_name(project_name):
 
 
 def stop_containers(project_name):
-    run_subprocess(f"docker-compose -p {project_name} -f ./evm_loader/docker-compose-ci.yml down")
+    run_subprocess(f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml down")
 
 
 @cli.command(name="trigger_proxy_action")
@@ -158,16 +158,22 @@ def stop_containers(project_name):
 @click.option('--token')
 @click.option('--is_draft')
 @click.option('--labels')
-def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sha, token, is_draft, labels):
+@click.option('--pr_url')
+@click.option('--pr_number')
+def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sha, token, is_draft, labels,
+                         pr_url, pr_number):
     is_develop_branch = github_ref in ['refs/heads/develop', 'refs/heads/master']
     is_tag_creating = 'refs/tags/' in github_ref
     is_version_branch = re.match(VERSION_BRANCH_TEMPLATE, github_ref.replace("refs/heads/", "")) is not None
-    is_FTS_labeled_not_draft = 'FullTestSuit' in labels and is_draft != "true"
+    is_FTS_labeled_not_draft = 'fullTestSuit' in labels and is_draft != "true"
+    is_extended_FTS_labeled_not_draft = 'extendedFullTestSuit' in labels and is_draft != "true"
 
-    if is_develop_branch or is_tag_creating or is_version_branch or is_FTS_labeled_not_draft:
-        full_test_suite = "true"
+    if is_extended_FTS_labeled_not_draft:
+        test_set = "extendedFullTestSuite"
+    elif is_develop_branch or is_tag_creating or is_version_branch or is_FTS_labeled_not_draft:
+        test_set = "fullTestSuite"
     else:
-        full_test_suite = "false"
+        test_set = "basic"
 
     github = GithubClient(token)
 
@@ -184,9 +190,11 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
         proxy_branch = 'develop'
     click.echo(f"Proxy branch: {proxy_branch}")
 
+    initial_pr = f"{pr_url}/{pr_number}/comments" if pr_number else ""
+
     runs_before = github.get_proxy_runs_list(proxy_branch)
     runs_count_before = github.get_proxy_runs_count(proxy_branch)
-    github.run_proxy_dispatches(proxy_branch, github_ref, github_sha, full_test_suite)
+    github.run_proxy_dispatches(proxy_branch, github_ref, github_sha, test_set, initial_pr)
     wait_condition(lambda: github.get_proxy_runs_count(proxy_branch) > runs_count_before)
 
     runs_after = github.get_proxy_runs_list(proxy_branch)

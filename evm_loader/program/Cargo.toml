@@ -34,12 +34,10 @@ test-bpf = []
 custom-heap = []
 default = ["custom-heap"]
 
-tracing = ["serde_json"]
-
 [dependencies]
 linked_list_allocator = { version = "0.10", default-features = false }
 evm-loader-macro = { path = "../program-macro" }
-solana-program = { version = "=1.16.13", default-features = false }
+solana-program = { version = "=1.16.17", default-features = false }
 spl-token = { version = "~3.5", default-features = false, features = ["no-entrypoint"] }
 spl-associated-token-account = { version = "~1.1", default-features = false, features = ["no-entrypoint"] }
 mpl-token-metadata = { version = "1.13.2", default-features = false, features = ["no-entrypoint"] }
@@ -53,11 +51,17 @@ borsh = "0.9"
 bincode = "1"
 serde_bytes = "0.11.12"
 serde = { version = "1.0.186", default-features = false, features = ["derive", "rc"] }
-serde_json = { version = "1.0.105", optional = true }
+serde_json = { version = "1.0.107", features = ["preserve_order"], optional = true }
 ethnum = { version = "1.4", default-features = false, features = ["serde"] }
 const_format = { version = "0.2.21" }
 cfg-if = { version = "1.0" }
 log = { version = "0.4", default-features = false, optional = true }
+maybe-async = "0.2.7"
+async-trait = { version = "0.1.73", optional = true }
+
+[target.'cfg(target_os = "solana")'.dependencies.maybe-async]
+version = "0.2.7"
+features = ["is_sync"]
 
 [lib]
 crate-type = ["cdylib", "lib"]

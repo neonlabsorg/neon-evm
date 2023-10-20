@@ -96,3 +96,6 @@ COPY evm_loader/keys/ /opt/keys
 
 ENV CONTRACTS_DIR=/opt/solidity/
 ENV PATH=/opt/solana/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt
+# some
+
+

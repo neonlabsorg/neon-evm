@@ -30,6 +30,7 @@ pub struct TxParamsRequestModel {
     pub value: Option<U256>,
     pub gas_limit: Option<U256>,
     pub gas_used: Option<U256>,
+    pub gas_price: Option<U256>,
     pub access_list: Option<Vec<AccessListItem>>,
 }
 

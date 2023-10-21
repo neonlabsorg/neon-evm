@@ -367,7 +367,10 @@ pub(crate) async fn emulate_trx<'a>(
     Ok(evm_loader::evm::tracing::EmulationResult {
         exit_status,
         steps_executed,
-        used_gas: steps_gas + begin_end_gas + actions_gas + accounts_gas,
+        used_gas: tx_params
+            .gas_used
+            .map(U256::as_u64)
+            .unwrap_or(steps_gas + begin_end_gas + actions_gas + accounts_gas),
         actions,
         state_diff: StateDiff(map),
     })

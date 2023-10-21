@@ -277,6 +277,7 @@ fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
         data,
         value,
         gas_limit,
+        gas_used: None,
         access_list,
     };
 

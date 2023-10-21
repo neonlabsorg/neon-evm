@@ -310,8 +310,8 @@ pub(crate) async fn emulate_trx<'a>(
 
         if address == tx_params.from {
             balance_after = balance_before
-                - ethnum_to_web3(tx_params.gas_used.unwrap())
-                    * ethnum_to_web3(tx_params.gas_price.unwrap());
+                - ethnum_to_web3(tx_params.gas_used.unwrap_or_default())
+                    * ethnum_to_web3(tx_params.gas_price.unwrap_or_default());
         }
 
         info!(

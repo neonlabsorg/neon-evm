@@ -7,7 +7,7 @@ use std::fmt::Debug;
 #[derive(Debug)]
 pub struct OpenEthereumTracer {
     output: Option<HexBytes>,
-    _call_analytics: CallAnalytics,
+    call_analytics: CallAnalytics,
 }
 
 impl OpenEthereumTracer {
@@ -15,7 +15,7 @@ impl OpenEthereumTracer {
     pub fn new(call_analytics: CallAnalytics) -> OpenEthereumTracer {
         OpenEthereumTracer {
             output: None,
-            _call_analytics: call_analytics,
+            call_analytics,
         }
     }
 }
@@ -36,7 +36,11 @@ impl EventListener for OpenEthereumTracer {
             output: self.output.unwrap_or_default(),
             trace: vec![],
             vm_trace: None,
-            state_diff: Some(emulation_result.state_diff),
+            state_diff: if self.call_analytics.state_diffing {
+                Some(emulation_result.state_diff)
+            } else {
+                None
+            },
         })
         .unwrap()
     }

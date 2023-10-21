@@ -62,6 +62,7 @@ impl From<TxParamsRequestModel> for TxParams {
             value: model.value,
             gas_limit: model.gas_limit,
             gas_used: model.gas_used,
+            gas_price: model.gas_price,
             access_list: model.access_list,
         }
     }

@@ -278,6 +278,7 @@ fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
         value,
         gas_limit,
         gas_used: None,
+        gas_price: None, // TODO Make statediff tracer optional
         access_list,
     };
 

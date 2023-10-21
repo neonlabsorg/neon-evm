@@ -299,12 +299,21 @@ pub(crate) async fn emulate_trx<'a>(
     for address in addresses {
         let mut ref_mut = storage.initial_accounts.borrow_mut();
         let initial_account = ref_mut.get_mut(&address).unwrap();
-        let balance_before = web3::types::U256::from(
-            initial_account
-                .ethereum_account_closure(&storage.evm_loader, U256::default(), |a| a.balance)
-                .to_be_bytes(),
-        );
-        let balance_after = web3::types::U256::from(backend.balance(&address).await?.to_be_bytes());
+
+        let balance_before = ethnum_to_web3(initial_account.ethereum_account_closure(
+            &storage.evm_loader,
+            U256::default(),
+            |a| a.balance,
+        ));
+
+        let mut balance_after = ethnum_to_web3(backend.balance(&address).await?);
+
+        if address == tx_params.from {
+            balance_after = balance_before
+                - ethnum_to_web3(tx_params.gas_used.unwrap())
+                    * ethnum_to_web3(tx_params.gas_price.unwrap());
+        }
+
         info!(
             "balance_diff {address}: {} {}",
             hex::encode(to_bytes(balance_before)),
@@ -374,6 +383,10 @@ pub(crate) async fn emulate_trx<'a>(
         actions,
         state_diff: StateDiff(map),
     })
+}
+
+fn ethnum_to_web3(v: U256) -> web3::types::U256 {
+    web3::types::U256::from(v.to_be_bytes())
 }
 
 fn to_bytes(u256: web3::types::U256) -> [u8; 32] {

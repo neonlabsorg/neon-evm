@@ -119,7 +119,6 @@ pub struct SolanaAccount {
 
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'a> {
-    pub initial_accounts: RefCell<HashMap<Address, NeonAccount>>,
     pub accounts: RefCell<HashMap<Address, NeonAccount>>,
     pub solana_accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
     rpc_client: &'a dyn Rpc,
@@ -161,7 +160,6 @@ impl<'a> EmulatorAccountStorage<'a> {
         };
 
         Ok(Self {
-            initial_accounts: RefCell::new(HashMap::new()),
             accounts: RefCell::new(HashMap::new()),
             solana_accounts: RefCell::new(HashMap::new()),
             rpc_client,
@@ -219,11 +217,10 @@ impl<'a> EmulatorAccountStorage<'a> {
                 .zip(accounts.iter().take(addresses.len()))
                 .zip(pubkeys.iter().take(addresses.len()));
             for ((&address, account), &pubkey) in entries {
-                let account = NeonAccount::new(address, pubkey, account.clone(), false);
-                self.initial_accounts
-                    .borrow_mut()
-                    .insert(address, account.clone());
-                self.accounts.borrow_mut().insert(address, account);
+                self.accounts.borrow_mut().insert(
+                    address,
+                    NeonAccount::new(address, pubkey, account.clone(), false),
+                );
             }
 
             let entries = accounts.iter().skip(addresses.len()).zip(solana_accounts);
@@ -299,9 +296,6 @@ impl<'a> EmulatorAccountStorage<'a> {
         let account =
             NeonAccount::rpc_load(self.rpc_client, &self.evm_loader, *address, writable).await;
         info!("Adding initial account {address} {account:?}");
-        self.initial_accounts
-            .borrow_mut()
-            .insert(*address, account.clone());
         self.accounts.borrow_mut().insert(*address, account);
 
         false

@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 
 use ethnum::U256;
-use itertools::Itertools;
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
@@ -285,21 +284,21 @@ async fn build_state_diff(
     let mut map = BTreeMap::new();
 
     let addresses = storage
-        .initial_accounts
+        .accounts
         .borrow()
         .keys()
-        .merge(storage.accounts.borrow().keys())
         .cloned()
         .collect::<Vec<_>>();
-    for address in addresses {
+
+    for address in addresses.iter() {
         let balance_before =
             ethnum_to_web3(
-                storage.ethereum_account_closure(&address, U256::default(), |a| a.balance),
+                storage.ethereum_account_closure(address, U256::default(), |a| a.balance),
             );
 
-        let mut balance_after = ethnum_to_web3(backend.balance(&address).await?);
+        let mut balance_after = ethnum_to_web3(backend.balance(address).await?);
 
-        if address == from {
+        if *address == from {
             balance_after = balance_before
                 - ethnum_to_web3(gas_used.unwrap_or_default())
                     * ethnum_to_web3(gas_price.unwrap_or_default());
@@ -316,13 +315,13 @@ async fn build_state_diff(
                 balance: diff_new_u256(balance_before, balance_after),
                 nonce: diff_new_u256(
                     web3::types::U256::from(
-                        storage.ethereum_account_closure(&address, 0, |a| a.trx_count),
+                        storage.ethereum_account_closure(address, 0, |a| a.trx_count),
                     ),
-                    web3::types::U256::from(backend.nonce(&address).await?),
+                    web3::types::U256::from(backend.nonce(address).await?),
                 ),
-                code: match storage.ethereum_account_closure(&address, false, |a| a.is_contract()) {
+                code: match storage.ethereum_account_closure(address, false, |a| a.is_contract()) {
                     false => {
-                        let code = web3::types::Bytes(backend.code(&address).await?.to_vec());
+                        let code = web3::types::Bytes(backend.code(address).await?.to_vec());
                         if code.0.is_empty() {
                             Diff::Same
                         } else {
@@ -331,14 +330,14 @@ async fn build_state_diff(
                     }
                     true => diff_new(
                         storage.ethereum_account_closure(
-                            &address,
+                            address,
                             web3::types::Bytes::default(),
                             |a| web3::types::Bytes(a.contract_data().unwrap().code().to_vec()),
                         ),
-                        web3::types::Bytes(backend.code(&address).await?.to_vec()),
+                        web3::types::Bytes(backend.code(address).await?.to_vec()),
                     ),
                 },
-                storage: match backend.initial_storage.borrow().get(&address) {
+                storage: match backend.initial_storage.borrow().get(address) {
                     None => BTreeMap::new(),
                     Some(storage) => {
                         let mut map = BTreeMap::new();
@@ -347,7 +346,7 @@ async fn build_state_diff(
                                 H256::from(key.to_be_bytes()),
                                 Diff::Changed(ChangedType {
                                     from: H256::from(value),
-                                    to: H256::from(backend.get_storage(&address, key).await?),
+                                    to: H256::from(backend.get_storage(address, key).await?),
                                 }),
                             );
                         }

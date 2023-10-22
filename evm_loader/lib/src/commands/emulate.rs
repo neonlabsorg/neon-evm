@@ -194,7 +194,6 @@ pub(crate) async fn emulate_transaction<'a>(
         .map(move |result| (result, storage))
 }
 
-#[allow(clippy::await_holding_refcell_ref)]
 pub(crate) async fn emulate_trx<'a>(
     tx_params: TxParams,
     storage: &'a EmulatorAccountStorage<'a>,
@@ -287,6 +286,33 @@ pub(crate) async fn emulate_trx<'a>(
     let accounts_gas = storage.apply_accounts_operations(accounts_operations).await;
     info!("Gas - steps: {steps_gas}, actions: {actions_gas}, accounts: {accounts_gas}");
 
+    Ok(evm_loader::evm::tracing::EmulationResult {
+        exit_status,
+        steps_executed,
+        used_gas: tx_params
+            .gas_used
+            .map(U256::as_u64)
+            .unwrap_or(steps_gas + begin_end_gas + actions_gas + accounts_gas),
+        actions,
+        state_diff: build_state_diff(
+            tx_params.from,
+            tx_params.gas_used,
+            tx_params.gas_price,
+            storage,
+            backend,
+        )
+        .await?,
+    })
+}
+
+#[allow(clippy::await_holding_refcell_ref)]
+async fn build_state_diff(
+    from: Address,
+    gas_used: Option<U256>,
+    gas_price: Option<U256>,
+    storage: &EmulatorAccountStorage<'_>,
+    backend: ExecutorState<'_, EmulatorAccountStorage<'_>>,
+) -> Result<StateDiff, NeonError> {
     let mut map = BTreeMap::new();
 
     let addresses = storage
@@ -304,10 +330,10 @@ pub(crate) async fn emulate_trx<'a>(
 
         let mut balance_after = ethnum_to_web3(backend.balance(&address).await?);
 
-        if address == tx_params.from {
+        if address == from {
             balance_after = balance_before
-                - ethnum_to_web3(tx_params.gas_used.unwrap_or_default())
-                    * ethnum_to_web3(tx_params.gas_price.unwrap_or_default());
+                - ethnum_to_web3(gas_used.unwrap_or_default())
+                    * ethnum_to_web3(gas_price.unwrap_or_default());
         }
 
         info!(
@@ -363,16 +389,8 @@ pub(crate) async fn emulate_trx<'a>(
         );
     }
 
-    Ok(evm_loader::evm::tracing::EmulationResult {
-        exit_status,
-        steps_executed,
-        used_gas: tx_params
-            .gas_used
-            .map(U256::as_u64)
-            .unwrap_or(steps_gas + begin_end_gas + actions_gas + accounts_gas),
-        actions,
-        state_diff: StateDiff(map),
-    })
+    let state_diff = StateDiff(map);
+    Ok(state_diff)
 }
 
 fn ethnum_to_web3(v: U256) -> web3::types::U256 {

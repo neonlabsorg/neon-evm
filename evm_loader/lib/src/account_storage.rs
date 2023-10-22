@@ -446,7 +446,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
     async fn ethereum_account_map_or<F, R>(&self, address: &Address, default: R, f: F) -> R
     where
-        F: FnOnce(&EthereumAccountOwned) -> R,
+        F: FnOnce(EthereumAccountOwned) -> R,
     {
         self.add_ethereum_account(address, false).await;
         self.ethereum_account_closure(address, default, |mut ether_account| {
@@ -455,7 +455,7 @@ impl<'a> EmulatorAccountStorage<'a> {
                     account_override.apply(&mut ether_account);
                 }
             }
-            f(&ether_account)
+            f(ether_account)
         })
     }
 

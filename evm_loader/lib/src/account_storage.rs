@@ -122,7 +122,7 @@ pub struct EmulatorAccountStorage<'a> {
     pub accounts: RefCell<HashMap<Address, NeonAccount>>,
     pub solana_accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
     rpc_client: &'a dyn Rpc,
-    pub evm_loader: Pubkey,
+    evm_loader: Pubkey,
     block_number: u64,
     block_timestamp: i64,
     neon_token_mint: Pubkey,
@@ -285,7 +285,7 @@ impl<'a> EmulatorAccountStorage<'a> {
     }
 
     async fn add_ethereum_account(&self, address: &Address, writable: bool) -> bool {
-        info!("Add ethereum account {address} {writable}");
+        debug!("add_ethereum_account(address={address}, writable={writable})");
 
         if let Some(ref mut account) = self.accounts.borrow_mut().get_mut(address) {
             account.writable |= writable;
@@ -295,7 +295,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         let account =
             NeonAccount::rpc_load(self.rpc_client, &self.evm_loader, *address, writable).await;
-        info!("Adding initial account {address} {account:?}");
+        debug!("Added account address={address} account={account:?}");
         self.accounts.borrow_mut().insert(*address, account);
 
         false

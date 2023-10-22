@@ -459,6 +459,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         })
     }
 
+    // TODO: Maybe use above method inside this one
     async fn ethereum_contract_map_or<F, R>(&self, address: &Address, default: R, f: F) -> R
     where
         F: FnOnce(ContractData) -> R,
@@ -570,6 +571,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         }
 
         // return empty hash(&[]) as a default value, or code's hash if contract exists
+        // TODO: Add account overrides logic here too
         self.ethereum_contract_map_or(address, hash(&[]).to_bytes(), |c| hash(c.code()).to_bytes())
             .await
     }

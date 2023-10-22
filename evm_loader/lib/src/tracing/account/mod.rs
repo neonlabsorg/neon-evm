@@ -6,6 +6,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
+// TODO: Make immutable borrow
 pub type EthereumAccountOwned = AccountDataOwned<ether_account::Data>;
 
 #[derive(Debug)]

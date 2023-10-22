@@ -204,6 +204,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         Ok(storage)
     }
 
+    // TODO: Maybe remove this
     async fn initialize_cached_accounts(&self, addresses: &[Address], solana_accounts: &[Pubkey]) {
         let pubkeys: Vec<_> = addresses
             .iter()

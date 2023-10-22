@@ -459,11 +459,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         F: FnOnce(&EthereumAccount) -> R,
     {
         self.add_ethereum_account(address, false).await;
-
-        let mut accounts = self.accounts.borrow_mut();
-        let neon_account = accounts.get_mut(address).expect("get account error");
-
-        neon_account.ethereum_account_closure(&self.evm_loader, default, |mut ether_account| {
+        self.ethereum_account_closure(address, default, |mut ether_account| {
             if let Some(account_overrides) = &self.state_overrides {
                 if let Some(account_override) = account_overrides.get(address) {
                     account_override.apply(&mut ether_account);
@@ -479,13 +475,18 @@ impl<'a> EmulatorAccountStorage<'a> {
         R: Clone,
     {
         self.add_ethereum_account(address, false).await;
-
-        let mut accounts = self.accounts.borrow_mut();
-        let neon_account = accounts.get_mut(address).expect("get account error");
-
-        neon_account.ethereum_account_closure(&self.evm_loader, default.clone(), |a| {
+        self.ethereum_account_closure(address, default.clone(), |a| {
             a.contract_data().map_or(default, f)
         })
+    }
+
+    pub fn ethereum_account_closure<F, R>(&self, address: &Address, default: R, f: F) -> R
+    where
+        F: FnOnce(EthereumAccount) -> R,
+    {
+        let mut accounts = self.accounts.borrow_mut();
+        let neon_account = accounts.get_mut(address).expect("get account error");
+        neon_account.ethereum_account_closure(&self.evm_loader, default, f)
     }
 }
 

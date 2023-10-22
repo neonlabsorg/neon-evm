@@ -330,10 +330,10 @@ async fn build_state_diff(
                 },
                 storage: match backend.initial_storage.borrow().get(address) {
                     None => BTreeMap::new(),
-                    Some(storage) => {
-                        let mut map = BTreeMap::new();
-                        for (key, value) in storage {
-                            map.insert(
+                    Some(initial_storage) => {
+                        let mut storage_diff = BTreeMap::new();
+                        for (key, value) in initial_storage {
+                            storage_diff.insert(
                                 H256::from(key.to_be_bytes()),
                                 Diff::Changed(ChangedType {
                                     from: H256::from(value),
@@ -341,7 +341,7 @@ async fn build_state_diff(
                                 }),
                             );
                         }
-                        map
+                        storage_diff
                     }
                 },
             },

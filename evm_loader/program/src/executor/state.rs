@@ -370,10 +370,10 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         let value = self.get_storage(from_address, from_index).await?;
 
         let mut initial_storage = self.initial_storage.borrow_mut();
-        let storage = initial_storage.entry(*from_address).or_default();
+        let account_initial_storage = initial_storage.entry(*from_address).or_default();
 
-        if !storage.contains_key(from_index) {
-            storage.insert(*from_index, value);
+        if !account_initial_storage.contains_key(from_index) {
+            account_initial_storage.insert(*from_index, value);
         }
 
         Ok(value)

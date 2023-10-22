@@ -291,10 +291,7 @@ async fn build_state_diff(
         .collect::<Vec<_>>();
 
     for address in addresses.iter() {
-        let balance_before =
-            ethnum_to_web3(
-                storage.ethereum_account_closure(address, U256::default(), |a| a.balance),
-            );
+        let balance_before = ethnum_to_web3(storage.balance(address).await);
 
         let mut balance_after = ethnum_to_web3(backend.balance(address).await?);
 
@@ -314,9 +311,7 @@ async fn build_state_diff(
             AccountDiff {
                 balance: diff_new_u256(balance_before, balance_after),
                 nonce: diff_new_u256(
-                    web3::types::U256::from(
-                        storage.ethereum_account_closure(address, 0, |a| a.trx_count),
-                    ),
+                    web3::types::U256::from(storage.nonce(address).await),
                     web3::types::U256::from(backend.nonce(address).await?),
                 ),
                 code: match storage.ethereum_account_closure(address, false, |a| a.is_contract()) {
@@ -329,11 +324,7 @@ async fn build_state_diff(
                         }
                     }
                     true => diff_new(
-                        storage.ethereum_account_closure(
-                            address,
-                            web3::types::Bytes::default(),
-                            |a| web3::types::Bytes(a.contract_data().unwrap().code().to_vec()),
-                        ),
+                        web3::types::Bytes(storage.code(address).await.to_vec()),
                         web3::types::Bytes(backend.code(address).await?.to_vec()),
                     ),
                 },

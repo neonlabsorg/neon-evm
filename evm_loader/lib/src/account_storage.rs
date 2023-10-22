@@ -95,7 +95,7 @@ impl NeonAccount {
         Self::new(address, key, account, writable)
     }
 
-    pub fn ethereum_account_closure<F, R>(&mut self, program_id: &Pubkey, default: R, f: F) -> R
+    pub fn ethereum_account_closure<F, R>(&self, program_id: &Pubkey, default: R, f: F) -> R
     where
         F: FnOnce(EthereumAccountOwned) -> R,
     {
@@ -481,9 +481,11 @@ impl<'a> EmulatorAccountStorage<'a> {
     where
         F: FnOnce(EthereumAccountOwned) -> R,
     {
-        let mut accounts = self.accounts.borrow_mut();
-        let neon_account = accounts.get_mut(address).expect("get account error");
-        neon_account.ethereum_account_closure(&self.evm_loader, default, f)
+        self.accounts
+            .borrow()
+            .get(address)
+            .expect("get account error")
+            .ethereum_account_closure(&self.evm_loader, default, f)
     }
 }
 

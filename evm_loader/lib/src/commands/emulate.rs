@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
 use evm_loader::evm::tracing::TracerTypeOpt;
-use evm_loader::evm::tracing::{AccountOverrides, BlockOverrides};
 use evm_loader::{
     account_storage::AccountStorage,
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
@@ -18,6 +17,7 @@ use evm_loader::{
     types::{Address, Transaction},
 };
 
+use crate::tracing::{AccountOverrides, BlockOverrides};
 use crate::types::TxParams;
 use crate::{
     account_storage::{EmulatorAccountStorage, NeonAccount, SolanaAccount},

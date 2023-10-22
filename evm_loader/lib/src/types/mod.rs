@@ -7,7 +7,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 pub use tracer_ch_db::ClickHouseDb as TracerDb;
 
-use evm_loader::evm::tracing::TraceCallConfig;
+use crate::tracing::TraceCallConfig;
 use evm_loader::types::hexbytes::HexBytes;
 use {
     ethnum::U256,

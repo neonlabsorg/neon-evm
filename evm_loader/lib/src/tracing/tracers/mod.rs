@@ -1,8 +1,8 @@
-use crate::evm::tracing::tracers::openeth::tracer::OpenEthereumTracer;
-use crate::evm::tracing::tracers::struct_logger::StructLogger;
-use crate::evm::tracing::TraceConfig;
-use crate::evm::tracing::TracerType;
+use crate::tracing::tracers::openeth::tracer::OpenEthereumTracer;
+use crate::tracing::tracers::struct_logger::StructLogger;
+use crate::tracing::TraceConfig;
 use ethnum::U256;
+use evm_loader::evm::tracing::TracerType;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -12,7 +12,7 @@ pub mod struct_logger;
 pub fn new_tracer(
     gas_used: Option<U256>,
     trace_config: &TraceConfig,
-) -> crate::error::Result<TracerType> {
+) -> evm_loader::error::Result<TracerType> {
     Ok(Rc::new(RefCell::new(
         match trace_config.tracer.as_deref() {
             None | Some("") => Box::new(StructLogger::new(gas_used, trace_config)),
@@ -20,7 +20,7 @@ pub fn new_tracer(
                 serde_json::from_value(trace_config.tracer_config.clone().unwrap()).unwrap(),
             )),
             _ => {
-                return Err(crate::error::Error::Custom(format!(
+                return Err(evm_loader::error::Error::Custom(format!(
                     "Unsupported tracer: {:?}",
                     trace_config.tracer
                 )))

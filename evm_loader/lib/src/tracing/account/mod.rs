@@ -1,6 +1,6 @@
-use crate::account::ether_contract::INTERNAL_STORAGE_SIZE;
-use crate::account::{ether_account, Packable};
-use crate::error::{Error, Result};
+use evm_loader::account::ether_contract::INTERNAL_STORAGE_SIZE;
+use evm_loader::account::{ether_account, Packable};
+use evm_loader::error::{Error, Result};
 use solana_sdk::account::Account;
 use solana_sdk::pubkey::Pubkey;
 use std::fmt::Debug;

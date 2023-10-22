@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
+use crate::tracing::account::{ContractData, EthereumAccountOwned};
+use crate::tracing::{AccountOverrides, BlockOverrides};
 use crate::{rpc::Rpc, NeonError};
 use ethnum::U256;
 use evm_loader::account_storage::{find_slot_hash, AccountOperation, AccountsOperations};
-use evm_loader::evm::tracing::account::{ContractData, EthereumAccountOwned};
-use evm_loader::evm::tracing::{AccountOverrides, BlockOverrides};
 use evm_loader::{
     account::{ether_storage::EthereumStorageAddress, EthereumStorage, ACCOUNT_SEED_VERSION},
     account_storage::AccountStorage,

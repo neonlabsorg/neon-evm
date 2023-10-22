@@ -1,6 +1,6 @@
-use crate::evm::tracing::tracers::openeth::types::{CallAnalytics, TraceResults};
-use crate::evm::tracing::{EmulationResult, Event, EventListener};
-use crate::types::hexbytes::HexBytes;
+use crate::tracing::tracers::openeth::types::{CallAnalytics, TraceResults};
+use evm_loader::evm::tracing::{EmulationResult, Event, EventListener};
+use evm_loader::types::hexbytes::HexBytes;
 use serde_json::Value;
 use std::fmt::Debug;
 

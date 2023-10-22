@@ -1,4 +1,4 @@
-use crate::types::hexbytes::HexBytes;
+use evm_loader::types::hexbytes::HexBytes;
 /// Types copied from <https://github.com/openethereum/openethereum/blob/main/crates/rpc/src/v1/types/trace.rs>
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};

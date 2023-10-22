@@ -3,10 +3,10 @@ use std::rc::Rc;
 use serde_json::Value;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
-use evm_loader::evm::tracing::tracers::new_tracer;
-use evm_loader::evm::tracing::TraceCallConfig;
 use evm_loader::types::Address;
 
+use crate::tracing::tracers::new_tracer;
+use crate::tracing::TraceCallConfig;
 use crate::{commands::emulate::emulate_transaction, errors::NeonError, rpc::Rpc, types::TxParams};
 
 #[allow(clippy::too_many_arguments)]

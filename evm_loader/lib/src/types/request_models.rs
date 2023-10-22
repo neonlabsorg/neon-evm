@@ -1,6 +1,6 @@
+use crate::tracing::TraceCallConfig;
 use crate::types::{PubkeyBase58, TxParams};
 use ethnum::U256;
-use evm_loader::evm::tracing::TraceCallConfig;
 use evm_loader::types::Address;
 use serde::{Deserialize, Serialize};
 use solana_sdk::debug_account_data::debug_account_data;

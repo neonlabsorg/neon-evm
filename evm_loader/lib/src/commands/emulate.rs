@@ -325,9 +325,7 @@ pub(crate) async fn emulate_trx<'a>(
                     ),
                     web3::types::U256::from(backend.nonce(&address).await?),
                 ),
-                code: match storage
-                    .ethereum_account_closure(&address, false, |a| a.contract_data().is_some())
-                {
+                code: match storage.ethereum_account_closure(&address, false, |a| a.is_contract()) {
                     false => {
                         let code = web3::types::Bytes(backend.code(&address).await?.to_vec());
                         if code.0.is_empty() {

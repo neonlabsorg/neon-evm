@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use crate::account::EthereumAccount;
+use crate::evm::tracing::account::EthereumAccountOwned;
 use crate::executor::Action;
 use crate::types::hexbytes::HexBytes;
 use crate::types::Address;
@@ -13,6 +13,7 @@ use web3::types::StateDiff;
 
 use super::{Context, ExitStatus};
 
+pub mod account;
 pub mod tracers;
 
 #[derive(Debug, Clone)]
@@ -87,7 +88,7 @@ pub struct AccountOverride {
 }
 
 impl AccountOverride {
-    pub fn apply(&self, ether_account: &mut EthereumAccount) {
+    pub fn apply(&self, ether_account: &mut EthereumAccountOwned) {
         if let Some(nonce) = self.nonce {
             ether_account.trx_count = nonce;
         }

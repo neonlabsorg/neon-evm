@@ -225,32 +225,6 @@ pub struct StorageDiff {
     pub val: U256,
 }
 
-#[derive(Debug, Clone, Serialize)]
-/// Serde-friendly `Diff` shadow.
-pub enum Diff<T>
-where
-    T: Serialize,
-{
-    #[serde(rename = "=")]
-    Same,
-    #[serde(rename = "+")]
-    Born(T),
-    #[serde(rename = "-")]
-    Died(T),
-    #[serde(rename = "*")]
-    Changed(ChangedType<T>),
-}
-
-#[derive(Debug, Clone, Serialize)]
-/// Aux type for `Diff::Changed`.
-pub struct ChangedType<T>
-where
-    T: Serialize,
-{
-    from: T,
-    to: T,
-}
-
 #[derive(Debug, Clone)]
 pub enum Res {
     /// Call

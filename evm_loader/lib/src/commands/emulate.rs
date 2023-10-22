@@ -127,55 +127,6 @@ pub async fn execute(
     block_overrides: &Option<BlockOverrides>,
     state_overrides: Option<AccountOverrides>,
 ) -> NeonResult<EmulationResultWithAccounts> {
-    let (emulation_result, storage) = emulate_transaction(
-        rpc_client,
-        evm_loader,
-        tx_params,
-        token_mint,
-        chain_id,
-        step_limit,
-        commitment,
-        accounts,
-        solana_accounts,
-        block_overrides,
-        state_overrides,
-        None,
-    )
-    .await?;
-    let accounts = storage.accounts.borrow().values().cloned().collect();
-    let solana_accounts = storage.solana_accounts.borrow().values().cloned().collect();
-
-    Ok(EmulationResultWithAccounts {
-        accounts,
-        solana_accounts,
-        token_accounts: vec![],
-        emulation_result: emulation_result.into(),
-    })
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn emulate_transaction<'a>(
-    rpc_client: &'a dyn Rpc,
-    evm_loader: Pubkey,
-    tx_params: TxParams,
-    token_mint: Pubkey,
-    chain_id: u64,
-    step_limit: u64,
-    commitment: CommitmentConfig,
-    accounts: &[Address],
-    solana_accounts: &[Pubkey],
-    block_overrides: &Option<BlockOverrides>,
-    state_overrides: Option<AccountOverrides>,
-    tracer: TracerTypeOpt,
-) -> Result<
-    (
-        evm_loader::evm::tracing::EmulationResult,
-        EmulatorAccountStorage<'a>,
-    ),
-    NeonError,
-> {
-    setup_syscall_stubs(rpc_client).await?;
-
     let storage = EmulatorAccountStorage::with_accounts(
         rpc_client,
         evm_loader,
@@ -189,9 +140,27 @@ pub(crate) async fn emulate_transaction<'a>(
     )
     .await?;
 
-    emulate_trx(tx_params, &storage, chain_id, step_limit, tracer)
-        .await
-        .map(move |result| (result, storage))
+    let mut backend = ExecutorState::new(&storage);
+
+    let emulation_result = emulate_trx(
+        tx_params,
+        &storage,
+        chain_id,
+        step_limit,
+        None,
+        &mut backend,
+    )
+    .await?;
+
+    let accounts = storage.accounts.borrow().values().cloned().collect();
+    let solana_accounts = storage.solana_accounts.borrow().values().cloned().collect();
+
+    Ok(EmulationResultWithAccounts {
+        accounts,
+        solana_accounts,
+        token_accounts: vec![],
+        emulation_result: emulation_result.into(),
+    })
 }
 
 pub(crate) async fn emulate_trx<'a>(
@@ -200,8 +169,8 @@ pub(crate) async fn emulate_trx<'a>(
     chain_id: u64,
     step_limit: u64,
     tracer: TracerTypeOpt,
+    backend: &mut ExecutorState<'_, EmulatorAccountStorage<'_>>,
 ) -> Result<evm_loader::evm::tracing::EmulationResult, NeonError> {
-    let mut backend = ExecutorState::new(storage);
     let (exit_status, actions, steps_executed) = {
         let trx_payload = if tx_params.access_list.is_some() {
             let access_list = tx_params
@@ -263,9 +232,9 @@ pub(crate) async fn emulate_trx<'a>(
             signed_hash: <[u8; 32]>::default(),
         };
 
-        let mut evm = Machine::new(&mut trx, tx_params.from, &mut backend, tracer).await?;
+        let mut evm = Machine::new(&mut trx, tx_params.from, backend, tracer).await?;
 
-        let (result, steps_executed) = evm.execute(step_limit, &mut backend).await?;
+        let (result, steps_executed) = evm.execute(step_limit, backend).await?;
         if result == ExitStatus::StepLimit {
             return Err(NeonError::TooManySteps);
         }
@@ -311,7 +280,7 @@ async fn build_state_diff(
     gas_used: Option<U256>,
     gas_price: Option<U256>,
     storage: &EmulatorAccountStorage<'_>,
-    backend: ExecutorState<'_, EmulatorAccountStorage<'_>>,
+    backend: &ExecutorState<'_, EmulatorAccountStorage<'_>>,
 ) -> Result<StateDiff, NeonError> {
     let mut map = BTreeMap::new();
 
@@ -389,8 +358,7 @@ async fn build_state_diff(
         );
     }
 
-    let state_diff = StateDiff(map);
-    Ok(state_diff)
+    Ok(StateDiff(map))
 }
 
 fn ethnum_to_web3(v: U256) -> web3::types::U256 {

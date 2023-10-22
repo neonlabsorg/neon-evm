@@ -18,7 +18,7 @@ pub struct EmulationResult {
     pub state_diff: StateDiff,
 }
 
-pub trait EventListener: Send + Sync + Debug {
+pub trait EventListener: Debug {
     fn event(&mut self, event: Event);
     fn into_traces(self: Box<Self>, emulation_result: EmulationResult) -> Value;
 }

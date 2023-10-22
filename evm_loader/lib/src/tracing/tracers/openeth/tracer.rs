@@ -1,8 +1,11 @@
-use crate::tracing::tracers::openeth::types::{CallAnalytics, TraceResults};
+use std::fmt::Debug;
+
+use serde_json::Value;
+
 use evm_loader::evm::tracing::{EmulationResult, Event, EventListener};
 use evm_loader::types::hexbytes::HexBytes;
-use serde_json::Value;
-use std::fmt::Debug;
+
+use crate::tracing::tracers::openeth::types::{CallAnalytics, TraceResults};
 
 #[derive(Debug)]
 pub struct OpenEthereumTracer {

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
+use crate::commands::emulate::setup_syscall_stubs;
 use crate::tracing::account::{ContractData, EthereumAccountOwned};
 use crate::tracing::{AccountOverrides, BlockOverrides};
 use crate::{rpc::Rpc, NeonError};
@@ -186,6 +187,8 @@ impl<'a> EmulatorAccountStorage<'a> {
         block_overrides: &Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
     ) -> Result<EmulatorAccountStorage<'a>, NeonError> {
+        setup_syscall_stubs(rpc_client).await?;
+
         let storage = Self::new(
             rpc_client,
             evm_loader,
@@ -203,11 +206,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         Ok(storage)
     }
 
-    pub async fn initialize_cached_accounts(
-        &self,
-        addresses: &[Address],
-        solana_accounts: &[Pubkey],
-    ) {
+    async fn initialize_cached_accounts(&self, addresses: &[Address], solana_accounts: &[Pubkey]) {
         let pubkeys: Vec<_> = addresses
             .iter()
             .map(|address| make_solana_program_address(address, &self.evm_loader).0)

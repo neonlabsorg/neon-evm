@@ -345,22 +345,21 @@ async fn build_code_diff(
     backend: &ExecutorState<'_, EmulatorAccountStorage<'_>>,
     address: &Address,
 ) -> Result<Diff<Bytes>, NeonError> {
-    Ok(
-        match storage.ethereum_account_closure(address, false, |a| a.is_contract()) {
-            false => {
-                let code = Bytes(backend.code(address).await?.to_vec());
-                if code.0.is_empty() {
-                    Diff::Same
-                } else {
-                    Diff::Born(code)
-                }
-            }
-            true => diff_new(
-                Bytes(storage.code(address).await.to_vec()),
-                Bytes(backend.code(address).await?.to_vec()),
-            ),
-        },
-    )
+    let initial_code = storage.code(address).await.to_vec();
+    let final_code = backend.code(address).await?.to_vec();
+
+    Ok(match (initial_code.is_empty(), final_code.is_empty()) {
+        (true, false) => Diff::Born(Bytes(final_code)),
+        (true, true) => Diff::Same,
+        (false, true) => {
+            error!("Code for address={address} cannot be deleted");
+            diff_new(Bytes(initial_code), Bytes(final_code))
+        }
+        (false, false) => {
+            error!("Code for address={address} cannot be updated");
+            diff_new(Bytes(initial_code), Bytes(final_code))
+        }
+    })
 }
 
 fn build_storage_diff(

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use crate::tracing::account::EthereumAccountOwned;
+use crate::tracing::account::EthereumAccountImmut;
 use crate::types::Address;
 use ethnum::U256;
 use evm_loader::types::hexbytes::HexBytes;
@@ -40,7 +40,7 @@ pub struct AccountOverride {
 }
 
 impl AccountOverride {
-    pub fn apply(&self, ether_account: &mut EthereumAccountOwned) {
+    pub fn apply(&self, ether_account: &mut EthereumAccountImmut) {
         if let Some(nonce) = self.nonce {
             ether_account.trx_count = nonce;
         }

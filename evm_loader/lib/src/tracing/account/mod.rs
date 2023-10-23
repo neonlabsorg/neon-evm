@@ -6,28 +6,26 @@ use solana_sdk::pubkey::Pubkey;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
-// TODO: Make immutable borrow
-pub type EthereumAccountOwned = AccountDataOwned<ether_account::Data>;
+pub type EthereumAccountImmut<'a> = AccountDataImmut<'a, ether_account::Data>;
 
 #[derive(Debug)]
-pub struct AccountDataOwned<T>
+pub struct AccountDataImmut<'a, T>
 where
     T: Packable + Debug,
 {
     dirty: bool,
     data: T,
-    _key: Pubkey,
-    pub info: Account,
+    pub info: &'a Account,
 }
 
-impl<T> AccountDataOwned<T>
+impl<'a, T> AccountDataImmut<'a, T>
 where
     T: Packable + Debug,
 {
     pub const SIZE: usize = 1 + T::SIZE;
     pub const TAG: u8 = T::TAG;
 
-    pub fn from_account(program_id: Pubkey, key: Pubkey, info: Account) -> Result<Self> {
+    pub fn from_account(program_id: Pubkey, key: Pubkey, info: &'a Account) -> Result<Self> {
         if info.owner != program_id {
             return Err(Error::AccountInvalidOwner(key, program_id));
         }
@@ -42,7 +40,6 @@ where
         Ok(Self {
             dirty: false,
             data,
-            _key: key,
             info,
         })
     }
@@ -69,7 +66,7 @@ struct AccountParts<'a> {
     _remaining: &'a [u8],
 }
 
-impl<T> Deref for AccountDataOwned<T>
+impl<T> Deref for AccountDataImmut<'_, T>
 where
     T: Packable + Debug,
 {
@@ -80,7 +77,7 @@ where
     }
 }
 
-impl<T> DerefMut for AccountDataOwned<T>
+impl<T> DerefMut for AccountDataImmut<'_, T>
 where
     T: Packable + Debug,
 {
@@ -91,10 +88,10 @@ where
 }
 
 pub struct ContractData<'a> {
-    account: &'a EthereumAccountOwned,
+    account: &'a EthereumAccountImmut<'a>,
 }
 
-impl EthereumAccountOwned {
+impl EthereumAccountImmut<'_> {
     #[must_use]
     pub fn is_contract(&self) -> bool {
         self.code_size() != 0
@@ -120,7 +117,7 @@ impl ContractData<'_> {
         let offset = INTERNAL_STORAGE_SIZE;
         let len = self.account.data.code_size as usize;
 
-        &self.account.info.data[EthereumAccountOwned::SIZE..][offset..][..len]
+        &self.account.info.data[EthereumAccountImmut::SIZE..][offset..][..len]
     }
 
     #[must_use]
@@ -128,6 +125,6 @@ impl ContractData<'_> {
         let offset = 0;
         let len = INTERNAL_STORAGE_SIZE;
 
-        &self.account.info.data[EthereumAccountOwned::SIZE..][offset..][..len]
+        &self.account.info.data[EthereumAccountImmut::SIZE..][offset..][..len]
     }
 }

@@ -302,6 +302,41 @@ async fn build_state_diff(
             hex::encode(to_bytes(balance_before)),
             hex::encode(to_bytes(balance_after))
         );
+
+        let mut initial_storage = backend.initial_storage.borrow_mut();
+        let initial_storage = initial_storage.entry(*address).or_default();
+
+        let mut final_storage = backend.final_storage.borrow_mut();
+        let final_storage = final_storage.entry(*address).or_default();
+
+        let storage_keys = initial_storage.keys().chain(final_storage.keys());
+
+        let mut storage_diff = BTreeMap::new();
+
+        for key in storage_keys {
+            let initial_value = initial_storage.get(key);
+            let final_value = final_storage.get(key);
+
+            match (initial_value, final_value) {
+                (None, Some(final_value)) => {
+                    storage_diff.insert(
+                        H256::from(key.to_be_bytes()),
+                        Diff::Born(H256::from(final_value)),
+                    );
+                }
+                (Some(initial_value), Some(final_value)) => {
+                    storage_diff.insert(
+                        H256::from(key.to_be_bytes()),
+                        Diff::Changed(ChangedType {
+                            from: H256::from(initial_value),
+                            to: H256::from(final_value),
+                        }),
+                    );
+                }
+                _ => {}
+            }
+        }
+
         map.insert(
             H160::from(address.0),
             AccountDiff {
@@ -324,22 +359,7 @@ async fn build_state_diff(
                         web3::types::Bytes(backend.code(address).await?.to_vec()),
                     ),
                 },
-                storage: match backend.initial_storage.borrow().get(address) {
-                    None => BTreeMap::new(),
-                    Some(initial_storage) => {
-                        let mut storage_diff = BTreeMap::new();
-                        for (key, value) in initial_storage {
-                            storage_diff.insert(
-                                H256::from(key.to_be_bytes()),
-                                Diff::Changed(ChangedType {
-                                    from: H256::from(value),
-                                    to: H256::from(backend.get_storage(address, key).await?),
-                                }),
-                            );
-                        }
-                        storage_diff
-                    }
-                },
+                storage: storage_diff,
             },
         );
     }

@@ -20,6 +20,7 @@ use super::OwnedAccountInfo;
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
 pub struct ExecutorState<'a, B: AccountStorage> {
     pub initial_storage: RefCell<HashMap<Address, HashMap<U256, [u8; 32]>>>,
+    pub final_storage: RefCell<HashMap<Address, HashMap<U256, [u8; 32]>>>,
     pub backend: &'a B,
     cache: RefCell<Cache>,
     actions: Vec<Action>,
@@ -41,6 +42,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         let (cache, actions, stack, exit_status) = bincode::deserialize(buffer)?;
         Ok(Self {
             initial_storage: RefCell::new(HashMap::new()),
+            final_storage: RefCell::new(HashMap::new()),
             backend,
             cache,
             actions,
@@ -59,6 +61,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 
         Self {
             initial_storage: RefCell::new(HashMap::new()),
+            final_storage: RefCell::new(HashMap::new()),
             backend,
             cache: RefCell::new(cache),
             actions: Vec::with_capacity(64),
@@ -386,6 +389,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             value,
         };
         self.actions.push(set_storage);
+
+        let mut final_storage = self.final_storage.borrow_mut();
+        let account_final_storage = final_storage.entry(address).or_default();
+
+        account_final_storage.insert(index, value);
 
         Ok(())
     }

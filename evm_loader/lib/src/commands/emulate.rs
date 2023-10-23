@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 
 use ethnum::U256;
-use log::{debug, info};
+use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
@@ -26,7 +26,7 @@ use crate::{
     NeonResult,
 };
 use evm_loader::evm::database::Database;
-use web3::types::{AccountDiff, ChangedType, Diff, StateDiff, H160, H256};
+use web3::types::{AccountDiff, Bytes, ChangedType, Diff, StateDiff, H160, H256};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulationResult {
@@ -287,84 +287,125 @@ async fn build_state_diff(
         .collect::<Vec<_>>();
 
     for address in addresses.iter() {
-        let balance_before = ethnum_to_web3(storage.balance(address).await);
-
-        let mut balance_after = ethnum_to_web3(backend.balance(address).await?);
-
-        if *address == from {
-            balance_after = balance_before
-                - ethnum_to_web3(gas_used.unwrap_or_default())
-                    * ethnum_to_web3(gas_price.unwrap_or_default());
-        }
-
-        info!(
-            "balance_diff {address}: {} {}",
-            hex::encode(to_bytes(balance_before)),
-            hex::encode(to_bytes(balance_after))
-        );
-
-        let mut initial_storage = backend.initial_storage.borrow_mut();
-        let initial_storage = initial_storage.entry(*address).or_default();
-
-        let mut final_storage = backend.final_storage.borrow_mut();
-        let final_storage = final_storage.entry(*address).or_default();
-
-        let storage_keys = initial_storage.keys().chain(final_storage.keys());
-
-        let mut storage_diff = BTreeMap::new();
-
-        for key in storage_keys {
-            let initial_value = initial_storage.get(key);
-            let final_value = final_storage.get(key);
-
-            match (initial_value, final_value) {
-                (None, Some(final_value)) => {
-                    storage_diff.insert(
-                        H256::from(key.to_be_bytes()),
-                        Diff::Born(H256::from(final_value)),
-                    );
-                }
-                (Some(initial_value), Some(final_value)) => {
-                    storage_diff.insert(
-                        H256::from(key.to_be_bytes()),
-                        Diff::Changed(ChangedType {
-                            from: H256::from(initial_value),
-                            to: H256::from(final_value),
-                        }),
-                    );
-                }
-                _ => {}
-            }
-        }
-
         map.insert(
             H160::from(address.0),
             AccountDiff {
-                balance: diff_new_u256(balance_before, balance_after),
-                nonce: diff_new_u256(
-                    web3::types::U256::from(storage.nonce(address).await),
-                    web3::types::U256::from(backend.nonce(address).await?),
-                ),
-                code: match storage.ethereum_account_closure(address, false, |a| a.is_contract()) {
-                    false => {
-                        let code = web3::types::Bytes(backend.code(address).await?.to_vec());
-                        if code.0.is_empty() {
-                            Diff::Same
-                        } else {
-                            Diff::Born(code)
-                        }
-                    }
-                    true => diff_new(
-                        web3::types::Bytes(storage.code(address).await.to_vec()),
-                        web3::types::Bytes(backend.code(address).await?.to_vec()),
-                    ),
-                },
-                storage: storage_diff,
+                balance: build_balance_diff(from, gas_used, gas_price, storage, backend, address)
+                    .await?,
+                nonce: build_nonce_diff(storage, backend, address).await?,
+                code: build_code_diff(storage, backend, address).await?,
+                storage: build_storage_diff(backend, address),
             },
         );
     }
 
     Ok(StateDiff(map))
+}
+
+async fn build_balance_diff(
+    from: Address,
+    gas_used: Option<U256>,
+    gas_price: Option<U256>,
+    storage: &EmulatorAccountStorage<'_>,
+    backend: &ExecutorState<'_, EmulatorAccountStorage<'_>>,
+    address: &Address,
+) -> Result<Diff<web3::types::U256>, NeonError> {
+    let balance_before = ethnum_to_web3(storage.balance(address).await);
+
+    let mut balance_after = ethnum_to_web3(backend.balance(address).await?);
+
+    if *address == from {
+        balance_after = balance_before
+            - ethnum_to_web3(gas_used.unwrap_or_default())
+                * ethnum_to_web3(gas_price.unwrap_or_default());
+    }
+
+    info!(
+        "balance_diff {address}: {} {}",
+        hex::encode(to_bytes(balance_before)),
+        hex::encode(to_bytes(balance_after))
+    );
+
+    Ok(diff_new_u256(balance_before, balance_after))
+}
+
+async fn build_nonce_diff(
+    storage: &EmulatorAccountStorage<'_>,
+    backend: &ExecutorState<'_, EmulatorAccountStorage<'_>>,
+    address: &Address,
+) -> Result<Diff<web3::types::U256>, NeonError> {
+    Ok(diff_new_u256(
+        web3::types::U256::from(storage.nonce(address).await),
+        web3::types::U256::from(backend.nonce(address).await?),
+    ))
+}
+
+async fn build_code_diff(
+    storage: &EmulatorAccountStorage<'_>,
+    backend: &ExecutorState<'_, EmulatorAccountStorage<'_>>,
+    address: &Address,
+) -> Result<Diff<Bytes>, NeonError> {
+    Ok(
+        match storage.ethereum_account_closure(address, false, |a| a.is_contract()) {
+            false => {
+                let code = Bytes(backend.code(address).await?.to_vec());
+                if code.0.is_empty() {
+                    Diff::Same
+                } else {
+                    Diff::Born(code)
+                }
+            }
+            true => diff_new(
+                Bytes(storage.code(address).await.to_vec()),
+                Bytes(backend.code(address).await?.to_vec()),
+            ),
+        },
+    )
+}
+
+fn build_storage_diff(
+    backend: &ExecutorState<EmulatorAccountStorage>,
+    address: &Address,
+) -> BTreeMap<H256, Diff<H256>> {
+    let mut initial_storage = backend.initial_storage.borrow_mut();
+    let initial_storage = initial_storage.entry(*address).or_default();
+
+    let mut final_storage = backend.final_storage.borrow_mut();
+    let final_storage = final_storage.entry(*address).or_default();
+
+    let storage_keys = initial_storage.keys().chain(final_storage.keys());
+
+    let mut storage_diff = BTreeMap::new();
+
+    for key in storage_keys {
+        let initial_value = initial_storage.get(key);
+        let final_value = final_storage.get(key);
+
+        match (initial_value, final_value) {
+            (None, Some(final_value)) => {
+                storage_diff.insert(
+                    H256::from(key.to_be_bytes()),
+                    Diff::Born(H256::from(final_value)),
+                );
+            }
+            (Some(initial_value), Some(final_value)) => {
+                storage_diff.insert(
+                    H256::from(key.to_be_bytes()),
+                    Diff::Changed(ChangedType {
+                        from: H256::from(initial_value),
+                        to: H256::from(final_value),
+                    }),
+                );
+            }
+            (Some(initial_value), None) => {
+                error!("Storage key={key}, value={initial_value:?} cannot be deleted");
+            }
+            (None, None) => {
+                error!("Storage key={key} cannot be empty");
+            }
+        }
+    }
+    storage_diff
 }
 
 fn ethnum_to_web3(v: U256) -> web3::types::U256 {

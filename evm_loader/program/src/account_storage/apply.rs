@@ -182,17 +182,24 @@ impl<'a> ProgramAccountStorage<'a> {
                 let cell = StorageCellAddress::new(&crate::ID, contract.pubkey(), &index);
                 let account = self.accounts.get(cell.pubkey()).clone();
 
-                let mut storage = if system_program::check_id(account.owner) {
-                    StorageCell::create(address, index, &self.accounts)?
+                if system_program::check_id(account.owner) {
+                    let len = values.len();
+                    let mut storage = StorageCell::create(address, index, len, &self.accounts)?;
+                    let mut cells = storage.cells_mut();
+
+                    assert_eq!(cells.len(), len);
+                    for (cell, (subindex, value)) in cells.iter_mut().zip(values) {
+                        cell.subindex = subindex;
+                        cell.value = value;
+                    }
                 } else {
-                    StorageCell::from_account(&crate::ID, account)?
+                    let mut storage = StorageCell::from_account(&crate::ID, account)?;
+                    for (subindex, value) in values {
+                        storage.update(subindex, &value)?;
+                    }
+
+                    storage.sync_lamports(rent, &self.accounts)?;
                 };
-
-                for (subindex, value) in values {
-                    storage.update(subindex, &value)?;
-                }
-
-                storage.sync_lamports(rent, &self.accounts)?;
             }
         }
 

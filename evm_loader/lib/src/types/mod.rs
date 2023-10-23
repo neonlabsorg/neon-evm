@@ -17,6 +17,8 @@ use ethnum::U256;
 use serde::{Deserialize, Serialize};
 use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
 
+use crate::commands::get_config::ChainInfo;
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Clone, Default)]
 pub struct ChDbConfig {
     pub clickhouse_url: Vec<String>,
@@ -116,6 +118,7 @@ impl std::fmt::Debug for TxParams {
 pub struct EmulateRequest {
     pub tx: TxParams,
     pub step_limit: Option<u64>,
+    pub chains: Option<Vec<ChainInfo>>,
     pub trace_config: Option<TraceCallConfig>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub accounts: Vec<Pubkey>,

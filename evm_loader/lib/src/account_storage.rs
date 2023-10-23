@@ -51,6 +51,7 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
     pub async fn new(
         rpc_client: &'rpc dyn Rpc,
         program_id: Pubkey,
+        chains: Option<Vec<ChainInfo>>,
         block_overrides: Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
     ) -> Result<EmulatorAccountStorage<'rpc>, NeonError> {
@@ -66,13 +67,15 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
             Some(time) => time,
         };
 
-        let config = crate::commands::get_config::execute(rpc_client, program_id).await?;
-        info!("{:?}", config);
+        let chains = match chains {
+            None => crate::commands::get_config::read_chains(rpc_client, program_id).await?,
+            Some(chains) => chains,
+        };
 
         Ok(Self {
             accounts: RefCell::new(HashMap::new()),
             program_id,
-            chains: config.chains,
+            chains,
             gas: 0,
             rpc_client,
             block_number,
@@ -85,10 +88,18 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
         rpc_client: &'rpc dyn Rpc,
         program_id: Pubkey,
         accounts: &[Pubkey],
+        chains: Option<Vec<ChainInfo>>,
         block_overrides: Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
     ) -> Result<EmulatorAccountStorage<'rpc>, NeonError> {
-        let storage = Self::new(rpc_client, program_id, block_overrides, state_overrides).await?;
+        let storage = Self::new(
+            rpc_client,
+            program_id,
+            chains,
+            block_overrides,
+            state_overrides,
+        )
+        .await?;
 
         storage.download_accounts(accounts).await?;
 

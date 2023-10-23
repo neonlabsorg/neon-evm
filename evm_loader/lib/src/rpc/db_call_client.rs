@@ -6,13 +6,14 @@ use solana_client::{
     client_error::Result as ClientResult,
     client_error::{ClientError, ClientErrorKind},
     rpc_config::{RpcSendTransactionConfig, RpcTransactionConfig},
-    rpc_response::{Response, RpcResponseContext, RpcResult},
+    rpc_response::{Response, RpcResponseContext, RpcResult, RpcSimulateTransactionResult},
 };
 use solana_sdk::{
     account::Account,
     clock::{Slot, UnixTimestamp},
     commitment_config::CommitmentConfig,
     hash::Hash,
+    instruction::Instruction,
     pubkey::Pubkey,
     signature::Signature,
     transaction::Transaction,
@@ -192,6 +193,24 @@ impl Rpc for CallDbClient {
         Err(e!(
             "get_latest_blockhash_with_commitment() not implemented for db_call_client"
         ))
+    }
+
+    fn can_simulate_transaction(&self) -> bool {
+        false
+    }
+
+    async fn simulate_transaction(
+        &self,
+        _signer: Option<Pubkey>,
+        _instructions: &[Instruction],
+    ) -> RpcResult<RpcSimulateTransactionResult> {
+        Err(e!(
+            "simulate_transaction() not implemented for db_call_client"
+        ))
+    }
+
+    async fn identity(&self) -> ClientResult<Pubkey> {
+        Err(e!("identity() not implemented for db_call_client"))
     }
 
     fn as_any(&self) -> &dyn Any {

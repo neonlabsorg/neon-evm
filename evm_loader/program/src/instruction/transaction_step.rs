@@ -21,16 +21,15 @@ pub fn do_begin<'a>(
 
     let accounts = ProgramAccountStorage::new(accounts)?;
 
+    let mut backend = ExecutorState::new(&accounts);
+    let evm = Machine::new(trx, origin, &mut backend)?;
+
     // Burn `gas_limit` tokens from the origin account
     // Later we will mint them to the operator
     let mut origin_balance = accounts.create_balance_account(origin, storage.trx_chain_id())?;
     origin_balance.burn(storage.gas_limit_in_tokens()?)?;
 
-    let mut backend = ExecutorState::new(&accounts);
-    let evm = Machine::new(trx, origin, &mut backend)?;
-
     serialize_evm_state(&mut storage, &backend, &evm)?;
-
     finalize(0, storage, accounts, None, gasometer)
 }
 

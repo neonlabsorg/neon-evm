@@ -53,6 +53,7 @@ pub async fn execute(
         rpc_client,
         program_id,
         &config.accounts,
+        config.chains,
         block_overrides,
         state_overrides,
     )

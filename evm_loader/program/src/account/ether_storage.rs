@@ -77,9 +77,9 @@ impl StorageCellAddress {
 }
 
 #[repr(C, packed)]
-struct Cell {
-    subindex: u8,
-    value: [u8; 32],
+pub struct Cell {
+    pub subindex: u8,
+    pub value: [u8; 32],
 }
 
 pub struct StorageCell<'a> {
@@ -99,12 +99,20 @@ impl<'a> StorageCell<'a> {
         Ok(Self { account })
     }
 
-    pub fn create(contract: Address, index: U256, accounts: &AccountsDB<'a>) -> Result<Self> {
+    pub fn create(
+        contract: Address,
+        index: U256,
+        allocate_cells: usize,
+        accounts: &AccountsDB<'a>,
+    ) -> Result<Self> {
         let (base_key, base_bump) = contract.find_solana_address(&crate::ID);
         let base_account = accounts.get(&base_key);
 
         let cell = StorageCellAddress::new(&crate::ID, &base_key, &index);
         let cell_account = accounts.get(&cell.pubkey).clone();
+
+        assert!(allocate_cells <= u8::MAX.into());
+        let space = ACCOUNT_PREFIX_LEN + (allocate_cells * size_of::<Cell>());
 
         let system = accounts.system();
 
@@ -115,14 +123,14 @@ impl<'a> StorageCell<'a> {
             &[&[ACCOUNT_SEED_VERSION], contract.as_bytes(), &[base_bump]],
             &cell_account,
             cell.seed(),
-            ACCOUNT_PREFIX_LEN,
+            space,
         )?;
 
         super::set_tag(&crate::ID, &cell_account, TAG_STORAGE_CELL)?;
         StorageCell::from_account(&crate::ID, cell_account)
     }
 
-    fn cells(&self) -> Ref<[Cell]> {
+    pub fn cells(&self) -> Ref<[Cell]> {
         let data = self.account.data.borrow();
         let data = Ref::map(data, |d| &d[CELLS_OFFSET..]);
 
@@ -139,7 +147,7 @@ impl<'a> StorageCell<'a> {
         })
     }
 
-    fn cells_mut(&mut self) -> RefMut<[Cell]> {
+    pub fn cells_mut(&mut self) -> RefMut<[Cell]> {
         let data = self.account.data.borrow_mut();
         let data = RefMut::map(data, |d| &mut d[CELLS_OFFSET..]);
 

@@ -1,10 +1,11 @@
 use base64::Engine;
 use std::collections::BTreeMap;
+use tokio::sync::{Mutex, MutexGuard, OnceCell};
 
 use serde::{Deserialize, Serialize};
 use solana_program_test::{ProgramTest, ProgramTestContext};
 use solana_sdk::{
-    account::Account,
+    account::{Account, AccountSharedData},
     account_utils::StateMut,
     bpf_loader, bpf_loader_deprecated,
     bpf_loader_upgradeable::{self, UpgradeableLoaderState},
@@ -27,7 +28,7 @@ pub enum Status {
 }
 
 #[serde_as]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChainInfo {
     pub id: u64,
     pub name: String,
@@ -46,7 +47,9 @@ pub struct GetConfigResponse {
     pub config: BTreeMap<String, String>,
 }
 
-pub async fn read_program_data_from_account(
+static PROGRAM_TEST: OnceCell<Mutex<ProgramTestContext>> = OnceCell::const_new();
+
+async fn read_program_data_from_account(
     rpc_client: &dyn Rpc,
     program_id: Pubkey,
 ) -> NeonResult<Vec<u8>> {
@@ -79,59 +82,131 @@ pub async fn read_program_data_from_account(
     }
 }
 
-async fn simulate_config(
-    context: &mut ProgramTestContext,
+async fn lock_program_test(
     program_id: Pubkey,
-    instruction: u8,
-    data: &[u8],
-) -> NeonResult<Vec<u8>> {
-    fn base64_decode(s: &str) -> Vec<u8> {
-        base64::engine::general_purpose::STANDARD.decode(s).unwrap()
+    program_data: Vec<u8>,
+) -> MutexGuard<'static, ProgramTestContext> {
+    async fn init_program_test() -> Mutex<ProgramTestContext> {
+        let program_test = ProgramTest::default();
+        let context = program_test.start_with_context().await;
+        Mutex::new(context)
     }
 
-    let payer = context.payer.pubkey();
-    let input = [&[instruction], data].concat();
+    let mut context = PROGRAM_TEST
+        .get_or_init(init_program_test)
+        .await
+        .lock()
+        .await;
 
-    let tx = Transaction::new_signed_with_payer(
-        &[Instruction::new_with_bytes(program_id, &input, vec![])],
-        Some(&payer),
-        &[&context.payer],
-        context.last_blockhash,
+    context.set_account(
+        &program_id,
+        &AccountSharedData::from(Account {
+            lamports: Rent::default().minimum_balance(program_data.len()).max(1),
+            data: program_data,
+            owner: bpf_loader::id(),
+            executable: true,
+            rent_epoch: 0,
+        }),
     );
 
-    let result = context
-        .banks_client
-        .simulate_transaction(tx)
-        .await
-        .map_err(|e| NeonError::from(Box::new(e)))?;
+    context
+}
 
-    result.result.unwrap()?;
+enum ConfigSimulator<'r> {
+    Rpc(Pubkey, &'r dyn Rpc),
+    ProgramTest(MutexGuard<'static, ProgramTestContext>),
+}
 
-    let logs = result.simulation_details.unwrap().logs;
-    // Program return: 53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io AQAAAAAAAAA=
-    let return_data = logs
-        .into_iter()
-        .find_map(|msg| {
-            let prefix = std::format!("Program return: {program_id} ");
-            msg.strip_prefix(&prefix).map(base64_decode)
-        })
-        .unwrap();
+impl<'r> ConfigSimulator<'r> {
+    pub async fn new(
+        rpc_client: &'r dyn Rpc,
+        program_id: Pubkey,
+    ) -> NeonResult<ConfigSimulator<'r>> {
+        let simulator = if rpc_client.can_simulate_transaction() {
+            let identity = rpc_client.identity().await?;
+            Self::Rpc(identity, rpc_client)
+        } else {
+            let program_data = read_program_data_from_account(rpc_client, program_id).await?;
+            let mut program_test = lock_program_test(program_id, program_data).await;
+            program_test.get_new_latest_blockhash().await?;
 
-    Ok(return_data)
+            Self::ProgramTest(program_test)
+        };
+
+        Ok(simulator)
+    }
+
+    async fn simulate_config(
+        &mut self,
+        program_id: Pubkey,
+        instruction: u8,
+        data: &[u8],
+    ) -> NeonResult<Vec<u8>> {
+        fn base64_decode(s: &str) -> Vec<u8> {
+            base64::engine::general_purpose::STANDARD.decode(s).unwrap()
+        }
+
+        let input = [&[instruction], data].concat();
+
+        let logs = match self {
+            ConfigSimulator::Rpc(signer, rpc) => {
+                let result = rpc
+                    .simulate_transaction(
+                        Some(*signer),
+                        &[Instruction::new_with_bytes(program_id, &input, vec![])],
+                    )
+                    .await?
+                    .value;
+
+                if let Some(e) = result.err {
+                    return Err(e.into());
+                }
+                result.logs.unwrap()
+            }
+            ConfigSimulator::ProgramTest(context) => {
+                let payer_pubkey = context.payer.pubkey();
+                let tx = Transaction::new_signed_with_payer(
+                    &[Instruction::new_with_bytes(program_id, &input, vec![])],
+                    Some(&payer_pubkey),
+                    &[&context.payer],
+                    context.last_blockhash,
+                );
+                let result = context
+                    .banks_client
+                    .simulate_transaction(tx)
+                    .await
+                    .map_err(|e| NeonError::from(Box::new(e)))?;
+
+                result.result.unwrap()?;
+                result.simulation_details.unwrap().logs
+            }
+        };
+
+        // Program return: 53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io AQAAAAAAAAA=
+        let return_data = logs
+            .into_iter()
+            .find_map(|msg| {
+                let prefix = std::format!("Program return: {program_id} ");
+                msg.strip_prefix(&prefix).map(base64_decode)
+            })
+            .unwrap();
+
+        Ok(return_data)
+    }
 }
 
 async fn get_version(
-    context: &mut ProgramTestContext,
+    context: &mut ConfigSimulator<'_>,
     program_id: Pubkey,
 ) -> NeonResult<(String, String)> {
-    let return_data = simulate_config(context, program_id, 0xA7, &[]).await?;
+    let return_data = context.simulate_config(program_id, 0xA7, &[]).await?;
     let (version, revision) = bincode::deserialize(&return_data)?;
 
     Ok((version, revision))
 }
 
-async fn get_status(context: &mut ProgramTestContext, program_id: Pubkey) -> NeonResult<Status> {
-    let return_data = simulate_config(context, program_id, 0xA6, &[]).await?;
+async fn get_status(context: &mut ConfigSimulator<'_>, program_id: Pubkey) -> NeonResult<Status> {
+    let return_data = context.simulate_config(program_id, 0xA6, &[]).await?;
     match return_data[0] {
         0 => Ok(Status::Emergency),
         1 => Ok(Status::Ok),
@@ -140,28 +215,28 @@ async fn get_status(context: &mut ProgramTestContext, program_id: Pubkey) -> Neo
 }
 
 async fn get_environment(
-    context: &mut ProgramTestContext,
+    context: &mut ConfigSimulator<'_>,
     program_id: Pubkey,
 ) -> NeonResult<String> {
-    let return_data = simulate_config(context, program_id, 0xA2, &[]).await?;
+    let return_data = context.simulate_config(program_id, 0xA2, &[]).await?;
     let environment = String::from_utf8(return_data)?;
 
     Ok(environment)
 }
 
 async fn get_chains(
-    context: &mut ProgramTestContext,
+    context: &mut ConfigSimulator<'_>,
     program_id: Pubkey,
 ) -> NeonResult<Vec<ChainInfo>> {
     let mut result = Vec::new();
 
-    let return_data = simulate_config(context, program_id, 0xA0, &[]).await?;
+    let return_data = context.simulate_config(program_id, 0xA0, &[]).await?;
     let chain_count = return_data.as_slice().try_into()?;
     let chain_count = usize::from_le_bytes(chain_count);
 
     for i in 0..chain_count {
         let index = i.to_le_bytes();
-        let return_data = simulate_config(context, program_id, 0xA1, &index).await?;
+        let return_data = context.simulate_config(program_id, 0xA1, &index).await?;
 
         let (id, name, token) = bincode::deserialize(&return_data)?;
         result.push(ChainInfo { id, name, token });
@@ -171,18 +246,18 @@ async fn get_chains(
 }
 
 async fn get_properties(
-    context: &mut ProgramTestContext,
+    context: &mut ConfigSimulator<'_>,
     program_id: Pubkey,
 ) -> NeonResult<BTreeMap<String, String>> {
     let mut result = BTreeMap::new();
 
-    let return_data = simulate_config(context, program_id, 0xA3, &[]).await?;
+    let return_data = context.simulate_config(program_id, 0xA3, &[]).await?;
     let count = return_data.as_slice().try_into()?;
     let count = usize::from_le_bytes(count);
 
     for i in 0..count {
         let index = i.to_le_bytes();
-        let return_data = simulate_config(context, program_id, 0xA4, &index).await?;
+        let return_data = context.simulate_config(program_id, 0xA4, &index).await?;
 
         let (name, value) = bincode::deserialize(&return_data)?;
         result.insert(name, value);
@@ -192,30 +267,23 @@ async fn get_properties(
 }
 
 pub async fn execute(rpc_client: &dyn Rpc, program_id: Pubkey) -> NeonResult<GetConfigResponse> {
-    let program_data = read_program_data_from_account(rpc_client, program_id).await?;
+    let mut simulator = ConfigSimulator::new(rpc_client, program_id).await?;
 
-    let mut program_test = ProgramTest::default();
-    program_test.add_account(
-        program_id,
-        Account {
-            lamports: Rent::default().minimum_balance(program_data.len()).max(1),
-            data: program_data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        },
-    );
-
-    let mut context = program_test.start_with_context().await;
-
-    let (version, revision) = get_version(&mut context, program_id).await?;
+    let (version, revision) = get_version(&mut simulator, program_id).await?;
 
     Ok(GetConfigResponse {
         version,
         revision,
-        status: get_status(&mut context, program_id).await?,
-        environment: get_environment(&mut context, program_id).await?,
-        chains: get_chains(&mut context, program_id).await?,
-        config: get_properties(&mut context, program_id).await?,
+        status: get_status(&mut simulator, program_id).await?,
+        environment: get_environment(&mut simulator, program_id).await?,
+        chains: get_chains(&mut simulator, program_id).await?,
+        config: get_properties(&mut simulator, program_id).await?,
     })
+}
+
+pub async fn read_chains(rpc_client: &dyn Rpc, program_id: Pubkey) -> NeonResult<Vec<ChainInfo>> {
+    let mut simulator = ConfigSimulator::new(rpc_client, program_id).await?;
+
+    let chains = get_chains(&mut simulator, program_id).await?;
+    Ok(chains)
 }

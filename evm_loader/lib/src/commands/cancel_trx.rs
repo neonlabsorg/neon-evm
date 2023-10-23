@@ -39,7 +39,7 @@ pub async fn execute(
     let mut accounts_meta: Vec<AccountMeta> = vec![
         AccountMeta::new(*storage_account, false), // State account
         AccountMeta::new(*operator, true),         // Operator
-        AccountMeta::new(origin_pubkey, true),
+        AccountMeta::new(origin_pubkey, false),
     ];
 
     for blocked_account_meta in storage.blocked_accounts().iter() {

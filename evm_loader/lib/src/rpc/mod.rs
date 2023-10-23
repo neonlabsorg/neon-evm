@@ -10,9 +10,8 @@ use solana_client::{
     client_error::Result as ClientResult,
     nonblocking::rpc_client::RpcClient,
     rpc_config::{RpcSendTransactionConfig, RpcTransactionConfig},
-    rpc_response::RpcResult,
+    rpc_response::{RpcResult, RpcSimulateTransactionResult},
 };
-use solana_sdk::message::Message;
 use solana_sdk::native_token::lamports_to_sol;
 use solana_sdk::{
     account::Account,
@@ -23,6 +22,7 @@ use solana_sdk::{
     signature::Signature,
     transaction::Transaction,
 };
+use solana_sdk::{instruction::Instruction, message::Message};
 use solana_transaction_status::{
     EncodedConfirmedBlock, EncodedConfirmedTransactionWithStatusMeta, TransactionStatus,
 };
@@ -80,6 +80,16 @@ pub trait Rpc {
         &self,
         commitment: CommitmentConfig,
     ) -> ClientResult<(Hash, u64)>;
+
+    fn can_simulate_transaction(&self) -> bool;
+
+    async fn simulate_transaction(
+        &self,
+        signer: Option<Pubkey>,
+        instructions: &[Instruction],
+    ) -> RpcResult<RpcSimulateTransactionResult>;
+
+    async fn identity(&self) -> ClientResult<Pubkey>;
 
     fn as_any(&self) -> &dyn Any;
 }

@@ -1,6 +1,5 @@
 use actix_web::http::StatusCode;
 use actix_web::web::Json;
-use evm_loader::types::Address;
 use serde::Serialize;
 use serde_json::{json, Value};
 use solana_sdk::pubkey::Pubkey;
@@ -51,7 +50,7 @@ pub(crate) async fn parse_emulation_params(
     config: &Config,
     context: &Context<'_>,
     params: &EmulationParamsRequestModel,
-) -> (Pubkey, u64, u64, Vec<Address>, Vec<Pubkey>) {
+) -> (Pubkey, u64, u64) {
     // Read ELF params only if token_mint or chain_id is not set.
     let mut token: Option<Pubkey> = params.token_mint.map(Into::into);
     let mut chain = params.chain_id;
@@ -82,15 +81,7 @@ pub(crate) async fn parse_emulation_params(
     let chain = chain.expect("chain_id get error");
     let max_steps = params.max_steps_to_execute;
 
-    let accounts = params.cached_accounts.clone().unwrap_or_default();
-
-    let solana_accounts = params
-        .solana_accounts
-        .clone()
-        .map(|vec| vec.into_iter().map(Into::into).collect())
-        .unwrap_or_default();
-
-    (token, chain, max_steps, accounts, solana_accounts)
+    (token, chain, max_steps)
 }
 
 fn process_result<T: Serialize>(

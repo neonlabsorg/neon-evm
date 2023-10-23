@@ -32,7 +32,7 @@ pub async fn trace(
 
     let context = Context::new(&*rpc_client, &state.config);
 
-    let (token, chain, steps, accounts, solana_accounts) = parse_emulation_params(
+    let (token, chain, steps) = parse_emulation_params(
         &state.config,
         &context,
         &trace_request.emulate_request.emulation_params,
@@ -48,8 +48,6 @@ pub async fn trace(
             chain,
             steps,
             state.config.commitment,
-            &accounts,
-            &solana_accounts,
             trace_request.trace_call_config.unwrap_or_default(),
         )
         .await

@@ -32,7 +32,7 @@ pub async fn emulate(
 
     let context = Context::new(&*rpc_client, &state.config);
 
-    let (token, chain, steps, accounts, solana_accounts) =
+    let (token, chain, steps) =
         parse_emulation_params(&state.config, &context, &emulate_request.emulation_params).await;
 
     process_result(
@@ -44,8 +44,6 @@ pub async fn emulate(
             chain,
             steps,
             state.config.commitment,
-            &accounts,
-            &solana_accounts,
             &None,
             None,
         )

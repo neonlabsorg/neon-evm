@@ -121,8 +121,6 @@ pub async fn execute(
     chain_id: u64,
     step_limit: u64,
     commitment: CommitmentConfig,
-    accounts: &[Address],
-    solana_accounts: &[Pubkey],
     block_overrides: &Option<BlockOverrides>,
     state_overrides: Option<AccountOverrides>,
 ) -> NeonResult<EmulationResultWithAccounts> {
@@ -132,8 +130,6 @@ pub async fn execute(
         token_mint,
         chain_id,
         commitment,
-        accounts,
-        solana_accounts,
         block_overrides,
         state_overrides,
     )

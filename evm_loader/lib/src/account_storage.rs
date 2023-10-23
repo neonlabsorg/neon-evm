@@ -180,6 +180,8 @@ impl<'a> EmulatorAccountStorage<'a> {
         token_mint: Pubkey,
         chain_id: u64,
         commitment: CommitmentConfig,
+        accounts: &[Address],
+        solana_accounts: &[Pubkey],
         block_overrides: &Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
     ) -> Result<EmulatorAccountStorage<'a>, NeonError> {
@@ -195,8 +197,46 @@ impl<'a> EmulatorAccountStorage<'a> {
             state_overrides,
         )
         .await?;
+        storage
+            .initialize_cached_accounts(accounts, solana_accounts)
+            .await;
 
         Ok(storage)
+    }
+
+    // TODO: Maybe remove this
+    async fn initialize_cached_accounts(&self, addresses: &[Address], solana_accounts: &[Pubkey]) {
+        let pubkeys: Vec<_> = addresses
+            .iter()
+            .map(|address| make_solana_program_address(address, &self.evm_loader).0)
+            .chain(solana_accounts.iter().copied())
+            .collect();
+
+        if let Ok(accounts) = self.rpc_client.get_multiple_accounts(&pubkeys).await {
+            let entries = addresses
+                .iter()
+                .zip(accounts.iter().take(addresses.len()))
+                .zip(pubkeys.iter().take(addresses.len()));
+            for ((&address, account), &pubkey) in entries {
+                self.accounts.borrow_mut().insert(
+                    address,
+                    NeonAccount::new(address, pubkey, account.clone(), false),
+                );
+            }
+
+            let entries = accounts.iter().skip(addresses.len()).zip(solana_accounts);
+            let mut solana_accounts_storage = self.solana_accounts.borrow_mut();
+            for (account, &pubkey) in entries {
+                solana_accounts_storage.insert(
+                    pubkey,
+                    SolanaAccount {
+                        pubkey: pubkey.into(),
+                        is_writable: false,
+                        data: account.clone(),
+                    },
+                );
+            }
+        }
     }
 
     pub async fn get_account(&self, pubkey: &Pubkey) -> client_error::Result<Option<Account>> {

@@ -4,6 +4,8 @@ use evm_loader::executor::ExecutorState;
 use serde_json::Value;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
+use evm_loader::types::Address;
+
 use crate::account_storage::EmulatorAccountStorage;
 use crate::commands::emulate::emulate_trx;
 use crate::tracing::tracers::new_tracer;
@@ -19,6 +21,8 @@ pub async fn trace_transaction(
     chain_id: u64,
     steps: u64,
     commitment: CommitmentConfig,
+    accounts: &[Address],
+    solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
 ) -> Result<Value, NeonError> {
     let storage = EmulatorAccountStorage::with_accounts(
@@ -27,6 +31,8 @@ pub async fn trace_transaction(
         token,
         chain_id,
         commitment,
+        accounts,
+        solana_accounts,
         &trace_call_config.block_overrides,
         trace_call_config.state_overrides,
     )

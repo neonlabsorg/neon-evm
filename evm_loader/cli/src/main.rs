@@ -25,7 +25,7 @@ use std::io::Read;
 use ethnum::U256;
 use log::debug;
 use serde_json::json;
-use solana_clap_utils::input_parsers::{pubkey_of, value_of};
+use solana_clap_utils::input_parsers::{pubkey_of, value_of, values_of};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
@@ -131,7 +131,8 @@ async fn execute<'a>(
     match (cmd, params) {
         ("emulate", Some(params)) => {
             let (tx, trace_call_config) = parse_tx(params);
-            let (token, chain, steps) = parse_tx_params(config, context, params).await;
+            let (token, chain, steps, accounts, solana_accounts) =
+                parse_tx_params(config, context, params).await;
             emulate::execute(
                 context.rpc_client,
                 config.evm_loader,
@@ -140,6 +141,8 @@ async fn execute<'a>(
                 chain,
                 steps,
                 config.commitment,
+                &accounts,
+                &solana_accounts,
                 &trace_call_config.block_overrides,
                 trace_call_config.state_overrides,
             )
@@ -148,7 +151,8 @@ async fn execute<'a>(
         }
         ("trace", Some(params)) => {
             let (tx, trace_call_config) = parse_tx(params);
-            let (token, chain, steps) = parse_tx_params(config, context, params).await;
+            let (token, chain, steps, accounts, solana_accounts) =
+                parse_tx_params(config, context, params).await;
             trace::trace_transaction(
                 context.rpc_client,
                 config.evm_loader,
@@ -157,6 +161,8 @@ async fn execute<'a>(
                 chain,
                 steps,
                 config.commitment,
+                &accounts,
+                &solana_accounts,
                 trace_call_config,
             )
             .await
@@ -283,7 +289,7 @@ pub async fn parse_tx_params<'a>(
     config: &Config,
     context: &Context<'_>,
     params: &'a ArgMatches<'a>,
-) -> (Pubkey, u64, u64) {
+) -> (Pubkey, u64, u64, Vec<Address>, Vec<Pubkey>) {
     // Read ELF params only if token_mint or chain_id is not set.
     let mut token = pubkey_of(params, "token_mint");
     let mut chain = value_of(params, "chain_id");
@@ -315,7 +321,10 @@ pub async fn parse_tx_params<'a>(
     let max_steps =
         value_of::<u64>(params, "max_steps_to_execute").expect("max_steps_to_execute parse error");
 
-    (token, chain, max_steps)
+    let accounts = values_of::<Address>(params, "cached_accounts").unwrap_or_default();
+    let solana_accounts = values_of::<Pubkey>(params, "solana_accounts").unwrap_or_default();
+
+    (token, chain, max_steps, accounts, solana_accounts)
 }
 
 fn address_or_deploy_of(matches: &ArgMatches<'_>, name: &str) -> Option<Address> {

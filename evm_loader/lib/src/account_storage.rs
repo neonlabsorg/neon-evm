@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
 use crate::commands::emulate::setup_syscall_stubs;
-use crate::tracing::account::{ContractData, EthereumAccountImmut};
+use crate::tracing::account::{ContractData, EthereumAccountFromSolanaAccount};
 use crate::tracing::{AccountOverrides, BlockOverrides};
 use crate::{rpc::Rpc, NeonError};
 use ethnum::U256;
@@ -98,11 +98,15 @@ impl NeonAccount {
 
     pub fn ethereum_account_closure<F, R>(&self, program_id: &Pubkey, default: R, f: F) -> R
     where
-        F: FnOnce(EthereumAccountImmut) -> R,
+        F: FnOnce(EthereumAccountFromSolanaAccount) -> R,
     {
         if let Some(account_data) = &self.data {
-            EthereumAccountImmut::from_account(*program_id, self.account.0, account_data)
-                .map_or(default, f)
+            EthereumAccountFromSolanaAccount::from_account(
+                *program_id,
+                self.account.0,
+                account_data,
+            )
+            .map_or(default, f)
         } else {
             default
         }
@@ -446,7 +450,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
     async fn ethereum_account_map_or<F, R>(&self, address: &Address, default: R, f: F) -> R
     where
-        F: FnOnce(EthereumAccountImmut) -> R,
+        F: FnOnce(EthereumAccountFromSolanaAccount) -> R,
     {
         self.add_ethereum_account(address, false).await;
         self.ethereum_account_closure(address, default, |mut ether_account| {
@@ -473,7 +477,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
     fn ethereum_account_closure<F, R>(&self, address: &Address, default: R, f: F) -> R
     where
-        F: FnOnce(EthereumAccountImmut) -> R,
+        F: FnOnce(EthereumAccountFromSolanaAccount) -> R,
     {
         self.accounts
             .borrow()

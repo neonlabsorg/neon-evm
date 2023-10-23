@@ -6,10 +6,11 @@ use solana_sdk::pubkey::Pubkey;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
-pub type EthereumAccountImmut<'a> = AccountDataImmut<'a, ether_account::Data>;
+pub type EthereumAccountFromSolanaAccount<'a> =
+    AccountDataFromSolanaAccount<'a, ether_account::Data>;
 
 #[derive(Debug)]
-pub struct AccountDataImmut<'a, T>
+pub struct AccountDataFromSolanaAccount<'a, T>
 where
     T: Packable + Debug,
 {
@@ -18,7 +19,7 @@ where
     pub info: &'a Account,
 }
 
-impl<'a, T> AccountDataImmut<'a, T>
+impl<'a, T> AccountDataFromSolanaAccount<'a, T>
 where
     T: Packable + Debug,
 {
@@ -66,7 +67,7 @@ struct AccountParts<'a> {
     _remaining: &'a [u8],
 }
 
-impl<T> Deref for AccountDataImmut<'_, T>
+impl<T> Deref for AccountDataFromSolanaAccount<'_, T>
 where
     T: Packable + Debug,
 {
@@ -77,7 +78,7 @@ where
     }
 }
 
-impl<T> DerefMut for AccountDataImmut<'_, T>
+impl<T> DerefMut for AccountDataFromSolanaAccount<'_, T>
 where
     T: Packable + Debug,
 {
@@ -88,10 +89,10 @@ where
 }
 
 pub struct ContractData<'a> {
-    account: &'a EthereumAccountImmut<'a>,
+    account: &'a EthereumAccountFromSolanaAccount<'a>,
 }
 
-impl EthereumAccountImmut<'_> {
+impl EthereumAccountFromSolanaAccount<'_> {
     #[must_use]
     pub fn is_contract(&self) -> bool {
         self.code_size() != 0
@@ -117,7 +118,7 @@ impl ContractData<'_> {
         let offset = INTERNAL_STORAGE_SIZE;
         let len = self.account.data.code_size as usize;
 
-        &self.account.info.data[EthereumAccountImmut::SIZE..][offset..][..len]
+        &self.account.info.data[EthereumAccountFromSolanaAccount::SIZE..][offset..][..len]
     }
 
     #[must_use]
@@ -125,6 +126,6 @@ impl ContractData<'_> {
         let offset = 0;
         let len = INTERNAL_STORAGE_SIZE;
 
-        &self.account.info.data[EthereumAccountImmut::SIZE..][offset..][..len]
+        &self.account.info.data[EthereumAccountFromSolanaAccount::SIZE..][offset..][..len]
     }
 }

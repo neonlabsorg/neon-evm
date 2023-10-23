@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use ethnum::U256;
 use evm_loader::evm::ExitStatus;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 
 use crate::tracing::TraceConfig;
@@ -14,7 +14,7 @@ use evm_loader::types::hexbytes::HexBytes;
 /// while replaying a transaction in debug mode as well as transaction
 /// execution status, the amount of gas used and the return value
 /// see <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/logger/logger.go#L404>
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct StructLoggerResult {
     /// Total used gas but include the refunded gas
@@ -30,13 +30,13 @@ pub struct StructLoggerResult {
 /// `StructLog` stores a structured log emitted by the EVM while replaying a
 /// transaction in debug mode
 /// see <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/logger/logger.go#L413>
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct StructLog {
     /// Program counter.
     pc: u64,
     /// Operation name
-    op: String,
+    op: &'static str,
     /// Amount of used gas
     gas: u64,
     /// Gas cost for this instruction.
@@ -78,7 +78,7 @@ impl StructLog {
         memory: Option<Vec<String>>,
         stack: Option<Vec<U256>>,
     ) -> Self {
-        let op = OPNAMES[opcode as usize].to_string();
+        let op = OPNAMES[opcode as usize];
         Self {
             pc,
             op,
@@ -234,7 +234,7 @@ mod tests {
                 .to_string(),
             struct_logs: vec![StructLog {
                 pc: 8,
-                op: "PUSH2".to_string(),
+                op: "PUSH2",
                 gas: 0,
                 gas_cost: 0,
                 depth: 1,
@@ -262,7 +262,7 @@ mod tests {
                 .to_string(),
             struct_logs: vec![StructLog {
                 pc: 0,
-                op: "PUSH1".to_string(),
+                op: "PUSH1",
                 gas: 0,
                 gas_cost: 0,
                 depth: 1,
@@ -286,7 +286,7 @@ mod tests {
                 .to_string(),
             struct_logs: vec![StructLog {
                 pc: 0,
-                op: "PUSH1".to_string(),
+                op: "PUSH1",
                 gas: 0,
                 gas_cost: 0,
                 depth: 1,

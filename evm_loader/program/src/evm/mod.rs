@@ -25,7 +25,7 @@ mod buffer;
 pub mod database;
 mod memory;
 mod opcode;
-mod opcode_table;
+pub mod opcode_table;
 mod precompile;
 mod stack;
 #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
@@ -483,6 +483,10 @@ mod tests {
 
     #[maybe_async(?Send)]
     impl AccountStorage for TestAccountStorage {
+        fn all_addresses(&self) -> Vec<Address> {
+            todo!()
+        }
+
         fn neon_token_mint(&self) -> &Pubkey {
             todo!()
         }

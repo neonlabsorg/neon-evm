@@ -9,7 +9,7 @@ edition = "2021"
 thiserror = "1.0"
 anyhow = "1.0"
 bincode = "1.3.1"
-evm-loader = { path = "../program", default-features = false, features = ["log", "async-trait", "serde_json", "tokio"] }
+evm-loader = { path = "../program", default-features = false, features = ["log", "async-trait", "serde_json", "tokio", "web3"] }
 solana-sdk = "=1.16.17"
 solana-client = "=1.16.17"
 solana-clap-utils = "=1.16.17"
@@ -31,7 +31,9 @@ tokio = { version = "1", features = ["full"] }
 clickhouse = "0.11.5"
 tracing = "0.1"
 async-trait = "0.1.73"
-build-info = "0.0.31"
+build-info = { version = "0.0.31", features = ["serde"] }
+web3 = "0.19.0"
+map-macro = "0.2.6"
 
 [build-dependencies]
 build-info-build = "0.0.31"

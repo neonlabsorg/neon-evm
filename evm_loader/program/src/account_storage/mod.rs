@@ -56,6 +56,8 @@ pub struct ProgramAccountStorage<'a> {
 /// Trait to access account info
 #[maybe_async(?Send)]
 pub trait AccountStorage {
+    fn all_addresses(&self) -> Vec<Address>;
+
     /// Get `NEON` token mint
     fn neon_token_mint(&self) -> &Pubkey;
 

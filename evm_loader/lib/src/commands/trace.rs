@@ -1,21 +1,17 @@
-use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 
-use serde::{Deserialize, Serialize};
+use evm_loader::evm::tracing::{EmulationResult, TracerType};
+use evm_loader::executor::ExecutorState;
 use serde_json::Value;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
-use evm_loader::evm::tracing::tracers::new_tracer;
-use evm_loader::evm::tracing::{TraceCallConfig, TraceConfig};
 use evm_loader::types::Address;
 
-use crate::{
-    account_storage::EmulatorAccountStorage,
-    commands::emulate::{emulate_transaction, emulate_trx, setup_syscall_stubs},
-    errors::NeonError,
-    rpc::Rpc,
-    types::TxParams,
-};
+use crate::account_storage::EmulatorAccountStorage;
+use crate::commands::emulate::emulate_trx;
+use crate::tracing::tracers::new_tracer;
+use crate::tracing::TraceCallConfig;
+use crate::{errors::NeonError, rpc::Rpc, types::TxParams};
 
 #[allow(clippy::too_many_arguments)]
 pub async fn trace_transaction(
@@ -30,54 +26,6 @@ pub async fn trace_transaction(
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
 ) -> Result<Value, NeonError> {
-    let tracer = new_tracer(&trace_call_config.trace_config)?;
-
-    let (emulation_result, _storage) = emulate_transaction(
-        rpc_client,
-        evm_loader,
-        tx,
-        token,
-        chain_id,
-        steps,
-        commitment,
-        accounts,
-        solana_accounts,
-        &trace_call_config.block_overrides,
-        trace_call_config.state_overrides,
-        Some(Rc::clone(&tracer)),
-    )
-    .await?;
-
-    Ok(Rc::try_unwrap(tracer)
-        .expect("There is must be only one reference")
-        .into_inner()
-        .into_traces(emulation_result))
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct TraceBlockReturn(pub Vec<Value>);
-
-impl Display for TraceBlockReturn {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{ traced call(s): {} }}", self.0.len())
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub async fn trace_block(
-    rpc_client: &dyn Rpc,
-    evm_loader: Pubkey,
-    transactions: Vec<TxParams>,
-    token: Pubkey,
-    chain_id: u64,
-    steps: u64,
-    commitment: CommitmentConfig,
-    accounts: &[Address],
-    solana_accounts: &[Pubkey],
-    trace_config: &TraceConfig,
-) -> Result<TraceBlockReturn, NeonError> {
-    setup_syscall_stubs(rpc_client).await?;
-
     let storage = EmulatorAccountStorage::with_accounts(
         rpc_client,
         evm_loader,
@@ -86,40 +34,31 @@ pub async fn trace_block(
         commitment,
         accounts,
         solana_accounts,
-        &None,
-        None,
+        &trace_call_config.block_overrides,
+        trace_call_config.state_overrides,
     )
     .await?;
 
-    let mut results = vec![];
-    for tx_params in transactions {
-        let result = trace_trx(tx_params, &storage, chain_id, steps, trace_config).await?;
-        results.push(result);
-    }
+    let mut backend = ExecutorState::new(&storage);
 
-    Ok(TraceBlockReturn(results))
-}
-
-async fn trace_trx<'a>(
-    tx_params: TxParams,
-    storage: &'a EmulatorAccountStorage<'a>,
-    chain_id: u64,
-    steps: u64,
-    trace_config: &TraceConfig,
-) -> Result<Value, NeonError> {
-    let tracer = new_tracer(trace_config)?;
+    let tracer = new_tracer(tx.gas_used, &trace_call_config.trace_config)?;
 
     let emulation_result = emulate_trx(
-        tx_params,
-        storage,
+        tx,
+        &storage,
         chain_id,
         steps,
         Some(Rc::clone(&tracer)),
+        &mut backend,
     )
     .await?;
 
-    Ok(Rc::try_unwrap(tracer)
-        .expect("There is must be only one reference")
+    Ok(into_traces(tracer, emulation_result))
+}
+
+pub fn into_traces(tracer: TracerType, emulation_result: EmulationResult) -> Value {
+    Rc::try_unwrap(tracer)
+        .expect("There must be only one reference")
         .into_inner()
-        .into_traces(emulation_result))
+        .into_traces(emulation_result)
 }

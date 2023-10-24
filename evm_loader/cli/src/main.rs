@@ -23,7 +23,6 @@ pub use config::Config;
 use std::io::Read;
 
 use ethnum::U256;
-use evm_loader::evm::tracing::TraceCallConfig;
 use log::debug;
 use serde_json::json;
 use solana_clap_utils::input_parsers::{pubkey_of, value_of, values_of};
@@ -41,6 +40,7 @@ use crate::{
     types::{TransactionParams, TxParams},
 };
 use evm_loader::types::Address;
+use neon_lib::tracing::TraceCallConfig;
 use neon_lib::types::TracerDb;
 
 type NeonCliResult = Result<serde_json::Value, NeonError>;
@@ -279,6 +279,7 @@ fn parse_tx(params: &ArgMatches) -> (TxParams, TraceCallConfig) {
         data,
         value,
         gas_limit,
+        gas_used: None,
         gas_price,
         access_list,
     };

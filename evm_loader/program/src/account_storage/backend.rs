@@ -11,6 +11,10 @@ use std::convert::TryInto;
 use super::find_slot_hash;
 
 impl<'a> AccountStorage for ProgramAccountStorage<'a> {
+    fn all_addresses(&self) -> Vec<Address> {
+        self.ethereum_accounts.keys().cloned().collect()
+    }
+
     fn neon_token_mint(&self) -> &Pubkey {
         &crate::config::token_mint::ID
     }

@@ -105,6 +105,14 @@ where
     pub const TAG: u8 = T::TAG;
 
     pub fn from_account(program_id: &Pubkey, info: &'a AccountInfo<'a>) -> Result<Self> {
+        Ok(Self {
+            dirty: false,
+            data: Self::from_account_info(program_id, info)?,
+            info,
+        })
+    }
+
+    pub fn from_account_info(program_id: &Pubkey, info: &'a AccountInfo<'a>) -> Result<T> {
         if info.owner != program_id {
             return Err(Error::AccountInvalidOwner(*info.key, *program_id));
         }
@@ -114,13 +122,7 @@ where
             return Err(Error::AccountInvalidTag(*info.key, T::TAG));
         }
 
-        let data = T::unpack(&parts.data);
-
-        Ok(Self {
-            dirty: false,
-            data,
-            info,
-        })
+        Ok(T::unpack(&parts.data))
     }
 
     pub fn init(program_id: &Pubkey, info: &'a AccountInfo<'a>, data: T) -> Result<Self> {

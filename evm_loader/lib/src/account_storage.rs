@@ -1,16 +1,15 @@
 use async_trait::async_trait;
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
+use crate::commands::emulate::setup_syscall_stubs;
+use crate::tracing::{AccountOverrides, BlockOverrides};
 use crate::{rpc::Rpc, NeonError};
 use ethnum::U256;
-use evm_loader::account::ether_contract;
+use evm_loader::account::ether_contract::INTERNAL_STORAGE_SIZE;
+use evm_loader::account::{ether_account, AccountData, EthereumAccount};
 use evm_loader::account_storage::{find_slot_hash, AccountOperation, AccountsOperations};
-use evm_loader::evm::tracing::{AccountOverrides, BlockOverrides};
 use evm_loader::{
-    account::{
-        ether_storage::EthereumStorageAddress, EthereumAccount, EthereumStorage,
-        ACCOUNT_SEED_VERSION,
-    },
+    account::{ether_storage::EthereumStorageAddress, EthereumStorage, ACCOUNT_SEED_VERSION},
     account_storage::AccountStorage,
     config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
     executor::{Action, OwnedAccountInfo},
@@ -46,22 +45,42 @@ pub struct NeonAccount {
     additional_resize_steps: usize,
     #[serde(skip)]
     data: Option<Account>,
+    #[serde(skip)]
+    ether_account_data: Option<ether_account::Data>,
 }
 
 impl NeonAccount {
-    fn new(address: Address, pubkey: Pubkey, account: Option<Account>, writable: bool) -> Self {
-        if let Some(account) = account {
+    fn new(
+        program_id: Pubkey,
+        address: Address,
+        pubkey: Pubkey,
+        account: Option<Account>,
+        writable: bool,
+    ) -> Self {
+        if let Some(mut account) = account {
             trace!("Account found {}", address);
+
+            let data_len = account.data.len();
+
+            let account_info = account_info(&pubkey, &mut account);
+            let (account, data) = match AccountData::from_account_info(&program_id, &account_info) {
+                Ok(data) => (Some(account), Some(data)),
+                Err(err) => {
+                    error!("from_account error {:?}", err);
+                    (None, None)
+                }
+            };
 
             Self {
                 address,
                 account: pubkey.into(),
                 writable,
                 new: false,
-                size: account.data.len(),
-                size_current: account.data.len(),
+                size: data_len,
+                size_current: data_len,
                 additional_resize_steps: 0,
-                data: Some(account),
+                data: account,
+                ether_account_data: data,
             }
         } else {
             trace!("Account not found {}", address);
@@ -75,6 +94,7 @@ impl NeonAccount {
                 size_current: 0,
                 additional_resize_steps: 0,
                 data: None,
+                ether_account_data: None,
             }
         }
     }
@@ -95,7 +115,49 @@ impl NeonAccount {
                 None
             }
         };
-        Self::new(address, key, account, writable)
+        Self::new(*evm_loader, address, key, account, writable)
+    }
+
+    #[must_use]
+    pub fn is_contract(&self) -> bool {
+        self.code_size() != 0
+    }
+
+    #[must_use]
+    pub fn code_size(&self) -> usize {
+        self.ether_account_data
+            .as_ref()
+            .map_or(0, |data| data.code_size as usize)
+    }
+
+    #[must_use]
+    pub fn contract_data(&self) -> Option<ContractData> {
+        if !self.is_contract() {
+            return None;
+        }
+        Some(ContractData { account: self })
+    }
+}
+
+pub struct ContractData<'a> {
+    account: &'a NeonAccount,
+}
+
+impl ContractData<'_> {
+    #[must_use]
+    pub fn code(&self) -> &[u8] {
+        let offset = INTERNAL_STORAGE_SIZE;
+        let len = self.account.code_size();
+
+        &self.account.data.as_ref().unwrap().data[EthereumAccount::SIZE..][offset..][..len]
+    }
+
+    #[must_use]
+    pub fn storage(&self) -> &[u8] {
+        let offset = 0;
+        let len = INTERNAL_STORAGE_SIZE;
+
+        &self.account.data.as_ref().unwrap().data[EthereumAccount::SIZE..][offset..][..len]
     }
 }
 
@@ -175,6 +237,8 @@ impl<'a> EmulatorAccountStorage<'a> {
         block_overrides: &Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
     ) -> Result<EmulatorAccountStorage<'a>, NeonError> {
+        setup_syscall_stubs(rpc_client).await?;
+
         let storage = Self::new(
             rpc_client,
             evm_loader,
@@ -192,11 +256,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         Ok(storage)
     }
 
-    pub async fn initialize_cached_accounts(
-        &self,
-        addresses: &[Address],
-        solana_accounts: &[Pubkey],
-    ) {
+    async fn initialize_cached_accounts(&self, addresses: &[Address], solana_accounts: &[Pubkey]) {
         let pubkeys: Vec<_> = addresses
             .iter()
             .map(|address| make_solana_program_address(address, &self.evm_loader).0)
@@ -211,7 +271,7 @@ impl<'a> EmulatorAccountStorage<'a> {
             for ((&address, account), &pubkey) in entries {
                 self.accounts.borrow_mut().insert(
                     address,
-                    NeonAccount::new(address, pubkey, account.clone(), false),
+                    NeonAccount::new(self.evm_loader, address, pubkey, account.clone(), false),
                 );
             }
 
@@ -277,6 +337,8 @@ impl<'a> EmulatorAccountStorage<'a> {
     }
 
     async fn add_ethereum_account(&self, address: &Address, writable: bool) -> bool {
+        debug!("add_ethereum_account(address={address}, writable={writable})");
+
         if let Some(ref mut account) = self.accounts.borrow_mut().get_mut(address) {
             account.writable |= writable;
 
@@ -285,6 +347,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         let account =
             NeonAccount::rpc_load(self.rpc_client, &self.evm_loader, *address, writable).await;
+        debug!("Added account address={address} account={account:?}");
         self.accounts.borrow_mut().insert(*address, account);
 
         false
@@ -435,54 +498,60 @@ impl<'a> EmulatorAccountStorage<'a> {
 
     async fn ethereum_account_map_or<F, R>(&self, address: &Address, default: R, f: F) -> R
     where
-        F: FnOnce(&EthereumAccount) -> R,
+        F: FnOnce(ether_account::Data) -> R,
     {
         self.add_ethereum_account(address, false).await;
-
-        let mut accounts = self.accounts.borrow_mut();
-        let solana_account = accounts.get_mut(address).expect("get account error");
-
-        if let Some(account_data) = &mut solana_account.data {
-            let info = account_info(solana_account.account.as_ref(), account_data);
-            EthereumAccount::from_account(&self.evm_loader, &info)
-                .map(|mut ether_account| {
-                    if let Some(account_overrides) = &self.state_overrides {
-                        if let Some(account_override) = account_overrides.get(address) {
-                            account_override.apply(&mut ether_account);
-                        }
+        self.accounts
+            .borrow()
+            .get(address)
+            .expect("get account error")
+            .ether_account_data
+            .clone()
+            .map_or(default, |mut ether_account| {
+                if let Some(account_overrides) = &self.state_overrides {
+                    if let Some(account_override) = account_overrides.get(address) {
+                        account_override.apply(&mut ether_account);
                     }
-                    ether_account
-                })
-                .map_or(default, |a| f(&a))
-        } else {
-            default
-        }
+                }
+                f(ether_account)
+            })
+    }
+
+    async fn solana_account_map_or<F, R>(&self, address: &Address, default: R, f: F) -> R
+    where
+        F: FnOnce(&Account) -> R,
+    {
+        self.add_ethereum_account(address, false).await;
+        self.accounts
+            .borrow()
+            .get(address)
+            .expect("get account error")
+            .data
+            .as_ref()
+            .map_or(default, f)
     }
 
     async fn ethereum_contract_map_or<F, R>(&self, address: &Address, default: R, f: F) -> R
     where
-        F: FnOnce(ether_contract::ContractData) -> R,
+        F: FnOnce(ContractData) -> R,
+        R: Clone,
     {
         self.add_ethereum_account(address, false).await;
-
-        let mut accounts = self.accounts.borrow_mut();
-        let solana_account = accounts.get_mut(address).expect("get account error");
-
-        if let Some(account_data) = &mut solana_account.data {
-            let info = account_info(solana_account.account.as_ref(), account_data);
-            let account = EthereumAccount::from_account(&self.evm_loader, &info);
-            match &account {
-                Ok(a) => a.contract_data().map_or(default, f),
-                Err(_) => default,
-            }
-        } else {
-            default
-        }
+        self.accounts
+            .borrow()
+            .get(address)
+            .expect("get account error")
+            .contract_data()
+            .map_or(default, f)
     }
 }
 
 #[async_trait(?Send)]
 impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
+    fn all_addresses(&self) -> Vec<Address> {
+        self.accounts.borrow().keys().cloned().collect()
+    }
+
     fn neon_token_mint(&self) -> &Pubkey {
         info!("neon_token_mint");
         &self.neon_token_mint
@@ -569,10 +638,9 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         }
 
         // return empty hash(&[]) as a default value, or code's hash if contract exists
-        self.ethereum_contract_map_or(address, hash(&[]).to_bytes(), |c| {
-            hash(&c.code()).to_bytes()
-        })
-        .await
+        // TODO: Add account overrides logic here too
+        self.ethereum_contract_map_or(address, hash(&[]).to_bytes(), |c| hash(c.code()).to_bytes())
+            .await
     }
 
     async fn code(&self, address: &Address) -> evm_loader::evm::Buffer {
@@ -585,7 +653,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
                 .as_ref()
                 .and_then(|account_overrides| account_overrides.get(address)?.code.as_ref())
                 .map_or_else(
-                    || Buffer::from_slice(&c.code()),
+                    || Buffer::from_slice(c.code()),
                     |code| Buffer::from_slice(&code.0),
                 )
         })
@@ -674,7 +742,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     }
 
     async fn solana_account_space(&self, address: &Address) -> Option<usize> {
-        self.ethereum_account_map_or(address, None, |account| Some(account.info.data_len()))
+        self.solana_account_map_or(address, None, |account| Some(account.data.len()))
             .await
     }
 

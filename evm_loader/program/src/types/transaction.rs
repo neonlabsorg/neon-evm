@@ -20,7 +20,7 @@ impl rlp::Decodable for StorageKey {
     }
 }
 
-#[cfg(not(target_os = "solana"))]
+#[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
 impl TryFrom<crate::types::hexbytes::HexBytes> for StorageKey {
     type Error = String;
 

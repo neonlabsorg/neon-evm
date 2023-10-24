@@ -178,7 +178,7 @@ impl From<&'static str> for Error {
 ///
 macro_rules! Err {
     ( $n:expr; $($args:expr),* ) => ({
-        #[cfg(target_os = "solana")]
+        #[cfg(any(target_os = "solana", feature = "test-bpf"))]
         solana_program::msg!("{}:{} : {}", file!(), line!(), &format!($($args),*));
 
         #[cfg(all(not(target_os = "solana"), feature = "log"))]
@@ -201,7 +201,7 @@ macro_rules! Err {
 ///
 macro_rules! E {
     ( $n:expr; $($args:expr),* ) => ({
-        #[cfg(target_os = "solana")]
+        #[cfg(any(target_os = "solana", feature = "test-bpf"))]
         solana_program::msg!("{}:{} : {}", file!(), line!(), &format!($($args),*));
 
         #[cfg(all(not(target_os = "solana"), feature = "log"))]

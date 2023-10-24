@@ -1,4 +1,4 @@
-#[cfg(target_os = "solana")]
+#[cfg(any(target_os = "solana", feature = "test-bpf"))]
 use {
     crate::account::program,
     crate::types::{Address, Transaction},
@@ -42,7 +42,7 @@ impl<'a> FinalizedState<'a> {
 }
 
 impl<'a> State<'a> {
-    #[cfg(target_os = "solana")]
+    #[cfg(any(target_os = "solana", feature = "test-bpf"))]
     pub fn new(
         program_id: &'a Pubkey,
         info: &'a AccountInfo<'a>,
@@ -145,7 +145,7 @@ impl<'a> State<'a> {
         Ok(finalized)
     }
 
-    #[cfg(target_os = "solana")]
+    #[cfg(any(target_os = "solana", feature = "test-bpf"))]
     fn make_deposit(
         &self,
         system_program: &program::System<'a>,
@@ -196,7 +196,7 @@ impl<'a> State<'a> {
         Ok(accounts)
     }
 
-    #[cfg(target_os = "solana")]
+    #[cfg(any(target_os = "solana", feature = "test-bpf"))]
     fn write_blocked_accounts(
         &mut self,
         program_id: &Pubkey,

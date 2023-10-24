@@ -39,7 +39,7 @@ impl Stack {
         }
     }
 
-    #[cfg(not(target_os = "solana"))]
+    #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
     pub fn to_vec(&self) -> Vec<[u8; 32]> {
         let slice = unsafe {
             let start = self.begin.cast::<[u8; 32]>();

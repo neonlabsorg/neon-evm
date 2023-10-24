@@ -61,7 +61,7 @@ impl Memory {
         }
     }
 
-    #[cfg(not(target_os = "solana"))]
+    #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
     pub fn to_vec(&self) -> Vec<u8> {
         let slice = unsafe { std::slice::from_raw_parts(self.data, self.size) };
         slice.to_vec()

@@ -11,7 +11,7 @@ use solana_program::log::sol_log_data;
 
 pub use buffer::Buffer;
 
-#[cfg(not(target_os = "solana"))]
+#[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
 use crate::evm::tracing::TracerTypeOpt;
 use crate::{
     error::{build_revert_message, Error, Result},
@@ -28,19 +28,19 @@ mod opcode;
 mod opcode_table;
 mod precompile;
 mod stack;
-#[cfg(not(target_os = "solana"))]
+#[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
 pub mod tracing;
 mod utils;
 
 macro_rules! tracing_event {
     ($self:ident, $x:expr) => {
-        #[cfg(not(target_os = "solana"))]
+        #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
         if let Some(tracer) = &$self.tracer {
             tracer.borrow_mut().event($x);
         }
     };
     ($self:ident, $condition:expr, $x:expr) => {
-        #[cfg(not(target_os = "solana"))]
+        #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
         if let Some(tracer) = &$self.tracer {
             if $condition {
                 tracer.borrow_mut().event($x);
@@ -51,7 +51,7 @@ macro_rules! tracing_event {
 
 macro_rules! trace_end_step {
     ($self:ident, $return_data:expr) => {
-        #[cfg(not(target_os = "solana"))]
+        #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
         if let Some(tracer) = &$self.tracer {
             tracer
                 .borrow_mut()
@@ -62,7 +62,7 @@ macro_rules! trace_end_step {
         }
     };
     ($self:ident, $condition:expr; $return_data_getter:expr) => {
-        #[cfg(not(target_os = "solana"))]
+        #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
         if $condition {
             trace_end_step!($self, $return_data_getter)
         }
@@ -153,7 +153,7 @@ pub struct Machine<B: Database> {
     #[serde(skip)]
     phantom: PhantomData<*const B>,
 
-    #[cfg(not(target_os = "solana"))]
+    #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
     #[serde(skip)]
     tracer: TracerTypeOpt,
 }
@@ -167,7 +167,7 @@ impl<B: Database> Machine<B> {
         cursor.position().try_into().map_err(Error::from)
     }
 
-    #[cfg(target_os = "solana")]
+    #[cfg(any(target_os = "solana", feature = "test-bpf"))]
     pub fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
         fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &B) {
             if let Some((key, range)) = buffer.uninit_data() {
@@ -200,7 +200,7 @@ impl<B: Database> Machine<B> {
         trx: &mut Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(not(target_os = "solana"))] tracer: TracerTypeOpt,
+        #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))] tracer: TracerTypeOpt,
     ) -> Result<Self> {
         let origin_nonce = backend.nonce(&origin).await?;
 
@@ -235,7 +235,7 @@ impl<B: Database> Machine<B> {
                 trx,
                 origin,
                 backend,
-                #[cfg(not(target_os = "solana"))]
+                #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
                 tracer,
             )
             .await
@@ -244,7 +244,7 @@ impl<B: Database> Machine<B> {
                 trx,
                 origin,
                 backend,
-                #[cfg(not(target_os = "solana"))]
+                #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
                 tracer,
             )
             .await
@@ -256,7 +256,7 @@ impl<B: Database> Machine<B> {
         trx: &mut Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(not(target_os = "solana"))] tracer: TracerTypeOpt,
+        #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))] tracer: TracerTypeOpt,
     ) -> Result<Self> {
         assert!(trx.target().is_some());
 
@@ -291,7 +291,7 @@ impl<B: Database> Machine<B> {
             reason: Reason::Call,
             parent: None,
             phantom: PhantomData,
-            #[cfg(not(target_os = "solana"))]
+            #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
             tracer,
         })
     }
@@ -301,7 +301,7 @@ impl<B: Database> Machine<B> {
         trx: &mut Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(not(target_os = "solana"))] tracer: TracerTypeOpt,
+        #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))] tracer: TracerTypeOpt,
     ) -> Result<Self> {
         assert!(trx.target().is_none());
 
@@ -339,7 +339,7 @@ impl<B: Database> Machine<B> {
             call_data: Buffer::empty(),
             parent: None,
             phantom: PhantomData,
-            #[cfg(not(target_os = "solana"))]
+            #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
             tracer,
         })
     }
@@ -383,6 +383,8 @@ impl<B: Database> Machine<B> {
                         memory: self.memory.to_vec()
                     }
                 );
+
+                // let _opname = crate::evm::opcode_table::OPNAMES[opcode as usize];
 
                 let opcode_result = match self.execute_opcode(backend, opcode).await {
                     Ok(result) => result,
@@ -444,7 +446,7 @@ impl<B: Database> Machine<B> {
             reason,
             parent: None,
             phantom: PhantomData,
-            #[cfg(not(target_os = "solana"))]
+            #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
             tracer: self.tracer.clone(),
         };
 
@@ -459,5 +461,182 @@ impl<B: Database> Machine<B> {
         core::mem::swap(self, &mut other);
 
         other
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::account::ether_account;
+    use crate::account_storage::AccountStorage;
+    use crate::executor::{ExecutorState, OwnedAccountInfo};
+    use solana_program::account_info::AccountInfo;
+    use solana_program::pubkey::Pubkey;
+    use std::collections::HashMap;
+
+    struct TestAccountStorage {
+        chain_id: u64,
+        block_number: U256,
+        block_timestamp: U256,
+        accounts: HashMap<Address, ether_account::Data>,
+    }
+
+    #[maybe_async(?Send)]
+    impl AccountStorage for TestAccountStorage {
+        fn neon_token_mint(&self) -> &Pubkey {
+            todo!()
+        }
+
+        fn program_id(&self) -> &Pubkey {
+            todo!()
+        }
+
+        fn operator(&self) -> &Pubkey {
+            todo!()
+        }
+
+        fn block_number(&self) -> U256 {
+            self.block_number
+        }
+
+        fn block_timestamp(&self) -> U256 {
+            self.block_timestamp
+        }
+
+        async fn block_hash(&self, _number: u64) -> [u8; 32] {
+            todo!()
+        }
+
+        fn chain_id(&self) -> u64 {
+            self.chain_id
+        }
+
+        async fn exists(&self, address: &Address) -> bool {
+            self.accounts.contains_key(address)
+        }
+
+        async fn nonce(&self, address: &Address) -> u64 {
+            self.accounts
+                .get(address)
+                .map(|data| data.trx_count)
+                .unwrap_or_default()
+        }
+
+        async fn balance(&self, address: &Address) -> U256 {
+            self.accounts
+                .get(address)
+                .map(|data| data.balance)
+                .unwrap_or_default()
+        }
+
+        async fn code_size(&self, address: &Address) -> usize {
+            self.accounts
+                .get(address)
+                .map(|data| data.code_size as usize)
+                .unwrap_or_default()
+        }
+
+        async fn code_hash(&self, _address: &Address) -> [u8; 32] {
+            todo!()
+        }
+
+        async fn code(&self, _address: &Address) -> Buffer {
+            todo!()
+        }
+
+        async fn generation(&self, _address: &Address) -> u32 {
+            todo!()
+        }
+
+        async fn storage(&self, _address: &Address, _index: &U256) -> [u8; 32] {
+            todo!()
+        }
+
+        async fn clone_solana_account(&self, _address: &Pubkey) -> OwnedAccountInfo {
+            todo!()
+        }
+
+        async fn map_solana_account<F, R>(&self, _address: &Pubkey, _action: F) -> R
+        where
+            F: FnOnce(&AccountInfo) -> R,
+        {
+            todo!()
+        }
+
+        async fn solana_account_space(&self, _address: &Address) -> Option<usize> {
+            todo!()
+        }
+    }
+
+    #[maybe_async::test(feature = "test-bpf", async(not(feature = "test-bpf"), tokio::test))]
+    async fn test_contract_creation() {
+        let address = Address::from_hex("0x82211934c340b29561381392348d48413e15adc8").unwrap();
+
+        let chain_id = 123u64;
+        let nonce = 0;
+
+        let input_data = hex::decode("608060405234801561001057600080fd5b506101e3806100206000396000f3fe608060405234801561001057600080fd5b50600436106100415760003560e01c80632e64cec1146100465780636057361d14610064578063d09de08a14610080575b600080fd5b61004e61008a565b60405161005b91906100d1565b60405180910390f35b61007e6004803603810190610079919061011d565b610093565b005b61008861009d565b005b60008054905090565b8060008190555050565b60016000808282546100af9190610179565b92505081905550565b6000819050919050565b6100cb816100b8565b82525050565b60006020820190506100e660008301846100c2565b92915050565b600080fd5b6100fa816100b8565b811461010557600080fd5b50565b600081359050610117816100f1565b92915050565b600060208284031215610133576101326100ec565b5b600061014184828501610108565b91505092915050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b6000610184826100b8565b915061018f836100b8565b92508282019050808211156101a7576101a661014a565b5b9291505056fea2646970667358221220ebb58b4c4a532694d88df38fd2089943f69980725510d4814d3bd8ccf0c4717464736f6c63430008120033").unwrap();
+
+        let mut trx = Transaction {
+            transaction: crate::types::TransactionPayload::Legacy(crate::types::LegacyTx {
+                nonce,
+                gas_price: U256::ZERO,
+                gas_limit: U256::MAX,
+                target: None,
+                value: U256::ZERO,
+                call_data: Buffer::from_slice(&input_data),
+                v: U256::default(),
+                r: U256::default(),
+                s: U256::default(),
+                chain_id: Some(U256::from(chain_id)),
+                recovery_id: u8::default(),
+            }),
+            byte_len: usize::default(),
+            hash: <[u8; 32]>::default(),
+            signed_hash: <[u8; 32]>::default(),
+        };
+
+        let mut accounts = HashMap::new();
+        accounts.insert(
+            address,
+            ether_account::Data {
+                address,
+                bump_seed: 0,
+                trx_count: nonce,
+                balance: Default::default(),
+                generation: 0,
+                code_size: 0,
+                rw_blocked: false,
+            },
+        );
+
+        let storage = TestAccountStorage {
+            chain_id,
+            block_number: U256::ZERO,
+            block_timestamp: U256::ZERO,
+            accounts,
+        };
+
+        let mut backend = ExecutorState::new(&storage);
+
+        let mut machine = Machine::new(
+            &mut trx,
+            address,
+            &mut backend,
+            #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
+            None,
+        )
+        .await
+        .unwrap();
+
+        let result = machine.execute(1000, &mut backend).await.unwrap();
+
+        assert_eq!(
+            result,
+            (
+                ExitStatus::Return(input_data.into_iter().skip(32).collect()),
+                17
+            )
+        )
     }
 }

@@ -4,7 +4,7 @@ use crate::types::Address;
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::account_info::AccountInfo;
-#[cfg(target_os = "solana")]
+#[cfg(any(target_os = "solana", feature = "test-bpf"))]
 use {
     crate::account::EthereumStorage, solana_program::clock::Clock, std::cell::RefCell,
     std::collections::HashSet,
@@ -15,11 +15,11 @@ use solana_program::slot_history::Slot;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-#[cfg(target_os = "solana")]
+#[cfg(any(target_os = "solana", feature = "test-bpf"))]
 mod apply;
-#[cfg(target_os = "solana")]
+#[cfg(any(target_os = "solana", feature = "test-bpf"))]
 mod backend;
-#[cfg(target_os = "solana")]
+#[cfg(any(target_os = "solana", feature = "test-bpf"))]
 mod base;
 
 #[derive(Debug)]
@@ -37,7 +37,7 @@ pub enum AccountsReadiness {
     NeedMoreReallocations,
 }
 
-#[cfg(target_os = "solana")]
+#[cfg(any(target_os = "solana", feature = "test-bpf"))]
 pub struct ProgramAccountStorage<'a> {
     program_id: &'a Pubkey,
     operator: &'a Pubkey,

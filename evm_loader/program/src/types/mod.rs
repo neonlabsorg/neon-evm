@@ -6,6 +6,6 @@ pub use transaction::Transaction;
 pub use transaction::TransactionPayload;
 
 mod address;
-#[cfg(not(target_os = "solana"))]
+#[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
 pub mod hexbytes;
 mod transaction;

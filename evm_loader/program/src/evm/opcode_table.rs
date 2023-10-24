@@ -4,10 +4,10 @@ use super::{database::Database, opcode::Action, Machine};
 
 macro_rules! opcode_table {
     ($( $opcode:literal, $opname:literal, $op:path;)*) => {
-        #[cfg(target_os = "solana")]
+        #[cfg(any(target_os = "solana", feature = "test-bpf"))]
         type OpCode<B> = fn(&mut Machine<B>, &mut B) -> Result<Action>;
 
-        #[cfg(target_os = "solana")]
+        #[cfg(any(target_os = "solana", feature = "test-bpf"))]
         impl<B: Database> Machine<B> {
             const OPCODES: [OpCode<B>; 256] = {
                 let mut opcodes: [OpCode<B>; 256] = [Self::opcode_unknown; 256];
@@ -24,7 +24,7 @@ macro_rules! opcode_table {
             }
         }
 
-        #[cfg(not(target_os = "solana"))]
+        #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
         impl<B: Database> Machine<B> {
             pub async fn execute_opcode(&mut self, backend: &mut B, opcode: u8) -> Result<Action> {
                 match opcode {
@@ -34,7 +34,7 @@ macro_rules! opcode_table {
             }
         }
 
-        #[cfg(not(target_os = "solana"))]
+        #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
         pub const OPNAMES: [&str; 256] = {
             let mut opnames: [&str; 256] = ["<invalid>"; 256];
 

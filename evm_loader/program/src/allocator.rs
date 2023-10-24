@@ -55,7 +55,7 @@ unsafe impl std::alloc::GlobalAlloc for SolanaAllocator {
         if !ptr.is_null() {
             #[cfg(target_os = "solana")]
             solana_program::syscalls::sol_memset_(ptr, 0, layout.size() as u64);
-            #[cfg(not(target_os = "solana"))]
+            #[cfg(any(not(target_os = "solana"), feature = "test-bpf"))]
             std::ptr::write_bytes(ptr, 0, layout.size());
         }
 
@@ -71,7 +71,7 @@ unsafe impl std::alloc::GlobalAlloc for SolanaAllocator {
 
             #[cfg(target_os = "solana")]
             solana_program::syscalls::sol_memcpy_(new_ptr, ptr, copy_bytes as u64);
-            #[cfg(not(target_os = "solana"))]
+            #[cfg(any(not(target_os = "solana"), feature = "test-bpf"))]
             std::ptr::copy_nonoverlapping(ptr, new_ptr, copy_bytes);
 
             self.dealloc(ptr, layout);

@@ -19,13 +19,13 @@ pub mod error;
 pub mod account;
 pub mod account_storage;
 pub mod config;
-#[cfg(target_os = "solana")]
+#[cfg(any(target_os = "solana", feature = "test-bpf"))]
 pub mod entrypoint;
 pub mod evm;
 pub mod executor;
 pub mod external_programs;
 pub mod gasometer;
-#[cfg(target_os = "solana")]
+#[cfg(any(target_os = "solana", feature = "test-bpf"))]
 pub mod instruction;
 pub mod state_account;
 pub mod types;

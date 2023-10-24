@@ -8,10 +8,12 @@ use solana_program::rent::Rent;
 use solana_program::system_program;
 use solana_program::sysvar::Sysvar;
 
+use crate::account::BalanceAccount;
 use crate::account::{AllocateResult, ContractAccount, StorageCell};
-use crate::account::{BalanceAccount, StorageCellAddress};
 use crate::account_storage::ProgramAccountStorage;
-use crate::config::{PAYMENT_TO_TREASURE, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT};
+use crate::config::{
+    ACCOUNT_SEED_VERSION, PAYMENT_TO_TREASURE, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
+};
 use crate::error::Result;
 use crate::executor::Action;
 use crate::types::Address;
@@ -50,7 +52,14 @@ impl<'a> ProgramAccountStorage<'a> {
 
         for action in actions {
             if let Action::EvmSetCode { address, code, .. } = action {
-                let result = ContractAccount::allocate(address, code, &rent, &self.accounts)?;
+                let result = ContractAccount::allocate(
+                    *address,
+                    code,
+                    &rent,
+                    &self.accounts,
+                    Some(&self.keys),
+                )?;
+
                 if result == AllocateResult::NeedMore {
                     total_result = AllocateResult::NeedMore;
                 }
@@ -104,7 +113,13 @@ impl<'a> ProgramAccountStorage<'a> {
                     chain_id,
                     code,
                 } => {
-                    ContractAccount::init(&address, chain_id, &code, &self.accounts)?;
+                    ContractAccount::init(
+                        address,
+                        chain_id,
+                        &code,
+                        &self.accounts,
+                        Some(&self.keys),
+                    )?;
                 }
                 Action::EvmSelfDestruct { address: _ } => {
                     // EIP-6780: SELFDESTRUCT only in the same transaction
@@ -179,12 +194,15 @@ impl<'a> ProgramAccountStorage<'a> {
             }
 
             for (index, values) in infinite_values {
-                let cell = StorageCellAddress::new(&crate::ID, contract.pubkey(), &index);
-                let account = self.accounts.get(cell.pubkey()).clone();
+                let cell_address = self.keys.storage_cell_address(&crate::ID, address, index);
 
+                let account = self.accounts.get(cell_address.pubkey());
                 if system_program::check_id(account.owner) {
+                    let (_, bump) = self.keys.contract_with_bump_seed(&crate::ID, address);
+                    let sign: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], address.as_bytes(), &[bump]];
+
                     let len = values.len();
-                    let mut storage = StorageCell::create(address, index, len, &self.accounts)?;
+                    let mut storage = StorageCell::create(cell_address, len, &self.accounts, sign)?;
                     let mut cells = storage.cells_mut();
 
                     assert_eq!(cells.len(), len);
@@ -193,7 +211,7 @@ impl<'a> ProgramAccountStorage<'a> {
                         cell.value = value;
                     }
                 } else {
-                    let mut storage = StorageCell::from_account(&crate::ID, account)?;
+                    let mut storage = StorageCell::from_account(&crate::ID, account.clone())?;
                     for (subindex, value) in values {
                         storage.update(subindex, &value)?;
                     }

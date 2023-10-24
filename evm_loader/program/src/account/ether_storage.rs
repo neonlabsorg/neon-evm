@@ -1,7 +1,7 @@
 use std::cell::{Ref, RefMut};
 use std::mem::size_of;
 
-use super::{AccountsDB, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION, TAG_STORAGE_CELL};
+use super::{AccountsDB, ACCOUNT_PREFIX_LEN, TAG_STORAGE_CELL};
 use crate::error::Result;
 use crate::types::Address;
 use ethnum::U256;
@@ -18,7 +18,9 @@ pub struct Data {
     pub index: U256,
 }
 
+#[derive(Copy, Clone)]
 pub struct StorageCellAddress {
+    base: Pubkey,
     seed: [u8; 32],
     pubkey: Pubkey,
 }
@@ -60,6 +62,7 @@ impl StorageCellAddress {
         let pubkey = Pubkey::create_with_seed(base, seed, program_id).unwrap();
 
         Self {
+            base: *base,
             seed: seed_buffer,
             pubkey,
         }
@@ -100,16 +103,13 @@ impl<'a> StorageCell<'a> {
     }
 
     pub fn create(
-        contract: Address,
-        index: U256,
+        address: StorageCellAddress,
         allocate_cells: usize,
         accounts: &AccountsDB<'a>,
+        signer_seeds: &[&[u8]],
     ) -> Result<Self> {
-        let (base_key, base_bump) = contract.find_solana_address(&crate::ID);
-        let base_account = accounts.get(&base_key);
-
-        let cell = StorageCellAddress::new(&crate::ID, &base_key, &index);
-        let cell_account = accounts.get(&cell.pubkey).clone();
+        let base_account = accounts.get(&address.base);
+        let cell_account = accounts.get(&address.pubkey);
 
         assert!(allocate_cells <= u8::MAX.into());
         let space = ACCOUNT_PREFIX_LEN + (allocate_cells * size_of::<Cell>());
@@ -120,14 +120,16 @@ impl<'a> StorageCell<'a> {
             &crate::ID,
             accounts.operator(),
             base_account,
-            &[&[ACCOUNT_SEED_VERSION], contract.as_bytes(), &[base_bump]],
-            &cell_account,
-            cell.seed(),
+            signer_seeds,
+            cell_account,
+            address.seed(),
             space,
         )?;
 
-        super::set_tag(&crate::ID, &cell_account, TAG_STORAGE_CELL)?;
-        StorageCell::from_account(&crate::ID, cell_account)
+        super::set_tag(&crate::ID, cell_account, TAG_STORAGE_CELL)?;
+        Ok(Self {
+            account: cell_account.clone(),
+        })
     }
 
     pub fn cells(&self) -> Ref<[Cell]> {

@@ -16,10 +16,10 @@ mod backend;
 #[cfg(target_os = "solana")]
 mod base;
 mod block_hash;
-#[cfg(target_os = "solana")]
-mod keys_cache;
-
 pub use block_hash::find_slot_hash;
+
+mod keys_cache;
+pub use keys_cache::KeysCache;
 
 #[cfg(target_os = "solana")]
 pub struct ProgramAccountStorage<'a> {

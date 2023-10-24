@@ -1,10 +1,7 @@
 use crate::error::{Error, Result};
 use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
-use std::{
-    cell::{Ref, RefMut},
-    collections::HashMap,
-};
+use std::cell::{Ref, RefMut};
 
 pub use crate::config::ACCOUNT_SEED_VERSION;
 
@@ -166,7 +163,7 @@ pub unsafe fn delete(account: &AccountInfo, operator: &Operator) {
 }
 
 pub struct AccountsDB<'a> {
-    map: HashMap<Pubkey, AccountInfo<'a>>,
+    sorted_accounts: Vec<AccountInfo<'a>>,
     operator: Operator<'a>,
     operator_balance: Option<BalanceAccount<'a>>,
     system: Option<System<'a>>,
@@ -181,14 +178,12 @@ impl<'a> AccountsDB<'a> {
         system: Option<System<'a>>,
         treasury: Option<Treasury<'a>>,
     ) -> Self {
-        let mut map = HashMap::with_capacity(accounts.len());
-
-        for account in accounts {
-            map.insert(*account.key, account.clone());
-        }
+        let mut sorted_accounts = accounts.to_vec();
+        sorted_accounts.sort_unstable_by_key(|a| a.key);
+        sorted_accounts.dedup_by_key(|a| a.key);
 
         Self {
-            map,
+            sorted_accounts,
             operator,
             operator_balance,
             system,
@@ -197,7 +192,7 @@ impl<'a> AccountsDB<'a> {
     }
 
     pub fn accounts_len(&self) -> usize {
-        self.map.len()
+        self.sorted_accounts.len()
     }
 
     pub fn system(&self) -> &System<'a> {
@@ -237,19 +232,20 @@ impl<'a> AccountsDB<'a> {
     }
 
     pub fn get(&self, pubkey: &Pubkey) -> &AccountInfo<'a> {
-        if let Some(account) = self.map.get(pubkey) {
-            return account;
-        }
+        let Ok(index) = self.sorted_accounts.binary_search_by_key(&pubkey, |a| a.key) else {
+            panic!("address {pubkey} must be present in the transaction");
+        };
 
-        panic!("address {pubkey} must be present in the transaction");
+        // We just got an 'index' from the binary_search over this vector.
+        unsafe { self.sorted_accounts.get_unchecked(index) }
     }
 }
 
 impl<'a, 'r> IntoIterator for &'r AccountsDB<'a> {
     type Item = &'r AccountInfo<'a>;
-    type IntoIter = std::collections::hash_map::Values<'r, Pubkey, AccountInfo<'a>>;
+    type IntoIter = std::slice::Iter<'r, AccountInfo<'a>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.map.values()
+        self.sorted_accounts.iter()
     }
 }

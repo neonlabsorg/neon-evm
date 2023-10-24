@@ -143,6 +143,6 @@ fn execute(program_id: &Pubkey, accounts: Accounts, address: Address, chain_id: 
         Some(accounts.system_program),
         None,
     );
-    let mut balance_account = BalanceAccount::create(address, chain_id, &accounts_db)?;
+    let mut balance_account = BalanceAccount::create(address, chain_id, &accounts_db, None)?;
     balance_account.mint(deposit)
 }

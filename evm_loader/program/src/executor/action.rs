@@ -41,6 +41,7 @@ pub enum Action {
     EvmSetCode {
         address: Address,
         chain_id: u64,
+        #[serde(with = "serde_bytes")]
         code: Vec<u8>,
     },
     EvmSelfDestruct {

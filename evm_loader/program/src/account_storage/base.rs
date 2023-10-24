@@ -61,6 +61,6 @@ impl<'a> ProgramAccountStorage<'a> {
         address: Address,
         chain_id: u64,
     ) -> Result<BalanceAccount<'a>> {
-        BalanceAccount::create(address, chain_id, &self.accounts)
+        BalanceAccount::create(address, chain_id, &self.accounts, Some(&self.keys))
     }
 }

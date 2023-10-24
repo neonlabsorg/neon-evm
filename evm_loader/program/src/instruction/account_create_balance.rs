@@ -27,7 +27,7 @@ pub fn process<'a>(
 
     solana_program::msg!("Address: {}, ChainID: {}", address, chain_id);
 
-    BalanceAccount::create(address, chain_id, &accounts_db)?;
+    BalanceAccount::create(address, chain_id, &accounts_db, None)?;
 
     Ok(())
 }

@@ -1,5 +1,6 @@
 use crate::{
     account::TAG_EMPTY,
+    account_storage::KeysCache,
     error::{Error, Result},
     types::Address,
 };
@@ -73,12 +74,16 @@ impl<'a> ContractAccount<'a> {
     }
 
     pub fn allocate(
-        address: &Address,
+        address: Address,
         code: &[u8],
         rent: &Rent,
         accounts: &AccountsDB,
+        keys: Option<&KeysCache>,
     ) -> Result<AllocateResult> {
-        let (pubkey, bump_seed) = address.find_solana_address(&crate::ID);
+        let (pubkey, bump_seed) = keys
+            .map(|keys| keys.contract_with_bump_seed(&crate::ID, address))
+            .unwrap_or_else(|| address.find_solana_address(&crate::ID));
+
         let info = accounts.get(&pubkey);
 
         let required_size = Self::required_account_size(code);
@@ -117,12 +122,16 @@ impl<'a> ContractAccount<'a> {
     }
 
     pub fn init(
-        address: &Address,
+        address: Address,
         chain_id: u64,
         code: &[u8],
         accounts: &AccountsDB<'a>,
+        keys: Option<&KeysCache>,
     ) -> Result<Self> {
-        let (pubkey, _) = address.find_solana_address(&crate::ID);
+        let (pubkey, _) = keys
+            .map(|keys| keys.contract_with_bump_seed(&crate::ID, address))
+            .unwrap_or_else(|| address.find_solana_address(&crate::ID));
+
         let account = accounts.get(&pubkey).clone();
 
         super::validate_tag(&crate::ID, &account, TAG_EMPTY)?;

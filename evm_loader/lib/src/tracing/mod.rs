@@ -1,6 +1,6 @@
 use crate::types::Address;
 use ethnum::U256;
-use evm_loader::account::EthereumAccount;
+use evm_loader::account::ether_account;
 use evm_loader::types::hexbytes::HexBytes;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -40,7 +40,7 @@ pub struct AccountOverride {
 }
 
 impl AccountOverride {
-    pub fn apply(&self, ether_account: &mut EthereumAccount) {
+    pub fn apply(&self, ether_account: &mut ether_account::Data) {
         if let Some(nonce) = self.nonce {
             ether_account.trx_count = nonce;
         }

@@ -279,3 +279,15 @@ pub(crate) async fn setup_syscall_stubs(rpc_client: &dyn Rpc) -> Result<(), Neon
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    #[test]
+    fn test() {
+        let signature = solana_sdk::signature::Signature::from_str("5R5o7y2CSJ7FtjN5Qj8swNaUmMcdMDJu4KXbd6aBhLgixSoWo63iHbijaJecrgdS793ZoFK4fzPphfkQ4V9JYiJ7").unwrap();
+        println!("{:?}", signature.as_ref());
+        // assert!(false)
+    }
+}

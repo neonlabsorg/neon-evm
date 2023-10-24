@@ -7,7 +7,7 @@ use ethnum::U256;
 use crate::account::EthereumAccount;
 use crate::config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 
-const INTERNAL_STORAGE_SIZE: usize =
+pub const INTERNAL_STORAGE_SIZE: usize =
     size_of::<U256>() * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as usize;
 
 pub struct ContractData<'this, 'acc> {

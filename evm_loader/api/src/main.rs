@@ -23,6 +23,7 @@ use std::{env, net::SocketAddr, str::FromStr};
 
 use crate::api_server::handlers::build_info::build_info_route;
 use crate::api_server::handlers::emulate::emulate;
+use crate::api_server::handlers::get_ether_account_data::get_batch_ether_account_data;
 use crate::api_server::handlers::get_ether_account_data::get_ether_account_data;
 use crate::api_server::handlers::get_storage_at::get_storage_at;
 use crate::api_server::handlers::trace::trace;
@@ -70,6 +71,7 @@ async fn main() -> NeonApiResult<()> {
                 .service(build_info_route)
                 .service(emulate)
                 .service(get_ether_account_data)
+                .service(get_batch_ether_account_data)
                 .service(get_storage_at)
                 .service(trace)
                 .wrap(RequestIdentifier::with_uuid()),

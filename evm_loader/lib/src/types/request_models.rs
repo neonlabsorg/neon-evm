@@ -16,6 +16,12 @@ pub struct GetEtherRequest {
 }
 
 #[derive(Deserialize, Serialize, Debug, Default)]
+pub struct GetEtherBatchRequest {
+    pub ether: Vec<Address>,
+    pub slot: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
 pub struct GetStorageAtRequest {
     pub contract_id: Address,
     pub index: U256,

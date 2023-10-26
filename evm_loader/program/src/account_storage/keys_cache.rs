@@ -81,3 +81,9 @@ impl KeysCache {
             })
     }
 }
+
+impl Default for KeysCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}

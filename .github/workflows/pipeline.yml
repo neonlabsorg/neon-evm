@@ -11,6 +11,7 @@ on:
       - multiple_tokens
     tags:
       - "*"
+  workflow_dispatch:
 env:
   DHUBU: ${{secrets.DHUBU}}
   DHUBP: ${{secrets.DHUBP}}

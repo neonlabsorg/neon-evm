@@ -3,7 +3,7 @@ import requests
 
 
 class GithubClient():
-    PROXY_ENDPOINT = "https://api.github.com/repos/neonlabsorg/proxy-model.py"
+    PROXY_ENDPOINT = os.environ.get("PROXY_ENDPOINT")
 
     def __init__(self, token):
         self.headers = {"Authorization": f"Bearer {token}",

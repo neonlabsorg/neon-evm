@@ -29,7 +29,7 @@ ERR_MSG_TPL = {
 
 DOCKER_USER = os.environ.get("DHUBU")
 DOCKER_PASSWORD = os.environ.get("DHUBP")
-IMAGE_NAME = 'neonlabsorg/evm_loader'
+IMAGE_NAME = os.environ.get("IMAGE_NAME")
 SOLANA_NODE_VERSION = 'v1.16.17'
 SOLANA_BPF_VERSION = 'v1.16.17'
 

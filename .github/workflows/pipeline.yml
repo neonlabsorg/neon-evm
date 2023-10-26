@@ -13,6 +13,7 @@ on:
 env:
   DHUBU: ${{secrets.DHUBU}}
   DHUBP: ${{secrets.DHUBP}}
+  IMAGE_NAME: ${{vars.IMAGE_NAME}}
   BUILD_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
 concurrency:

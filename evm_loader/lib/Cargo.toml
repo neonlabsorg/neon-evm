@@ -35,11 +35,10 @@ rand = "0.8"
 ethnum = { version = "1.4", default-features = false, features = ["serde"] }
 goblin = { version = "0.6.0" }
 scroll = "0.11.0"
-tokio = { version = "1", features = ["full"] }
 clickhouse = "0.11.5"
 tracing = "0.1"
 async-trait = "0.1.73"
-build-info = "0.0.31"
+build-info = { version = "0.0.31", features = ["serde"] }
 neon-lib-interface = { path = "../lib-interface" }
 abi_stable = "0.11.2"
 async-ffi = { version = "0.4.1", features = ["abi_stable"] }

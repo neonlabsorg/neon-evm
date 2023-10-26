@@ -16,8 +16,6 @@ pub enum NeonRPCError {
     NeonError(#[from] NeonError),
     #[error("Neon lib error. {0:?}")]
     NeonEVMLibLoadError(#[from] NeonEVMLibLoadError),
-    #[error("Neon RPC: Incorrect parameters.")]
-    IncorrectParameters(),
 }
 
 impl From<NeonRPCError> for jsonrpc_v2::Error {

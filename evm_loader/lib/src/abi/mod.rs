@@ -32,10 +32,6 @@ use neon_lib_interface::{
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 
-lazy_static! {
-    static ref RT: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
-}
-
 pub const _MODULE_WM_: &WithMetadata<NeonEVMLib> = &WithMetadata::new(NeonEVMLib {
     hash,
     get_version,
@@ -55,7 +51,8 @@ fn get_version() -> RString {
 #[sabi_extern_fn]
 fn invoke<'a>(method: RStr<'a>, params: RStr<'a>) -> RNeonEVMLibResult<'a> {
     async move {
-        RT.block_on(dispatch(method.as_str(), params.as_str()))
+        dispatch(method.as_str(), params.as_str())
+            .await
             .map(RString::from)
             .map_err(neon_error_to_rstring)
             .into()
@@ -63,7 +60,11 @@ fn invoke<'a>(method: RStr<'a>, params: RStr<'a>) -> RNeonEVMLibResult<'a> {
     .into_local_ffi()
 }
 
-async fn build_context() -> Result<AbiContext, NeonError> {
+lazy_static! {
+    static ref ABI_CONTEXT: AbiContext = build_context().unwrap();
+}
+
+fn build_context() -> Result<AbiContext, NeonError> {
     let api_options = config::load_api_config_from_enviroment();
     let config = config::create_from_api_config(&api_options)?;
 
@@ -72,13 +73,12 @@ async fn build_context() -> Result<AbiContext, NeonError> {
 
 async fn dispatch(method_str: &str, params_str: &str) -> Result<String, NeonError> {
     let method: LibMethods = method_str.parse()?;
-    let abi_context = build_context().await?;
     let RequestWithSlot {
         slot,
         tx_index_in_block,
     } = serde_json::from_str(params_str).map_err(|_| params_to_neon_error(params_str))?;
-    let rpc_client = context::build_rpc_client(&abi_context, slot, tx_index_in_block).await?;
-    let config = &abi_context.config;
+    let rpc_client = context::build_rpc_client(&ABI_CONTEXT, slot, tx_index_in_block).await?;
+    let config = &ABI_CONTEXT.config;
     let context = crate::Context::new(rpc_client.as_ref(), config);
 
     match method {
@@ -139,7 +139,7 @@ fn neon_error_to_rstring(error: NeonError) -> RString {
     RString::from(serde_json::to_string(&neon_error_to_neon_lib_error(error)).unwrap())
 }
 
-pub(crate) async fn parse_emulation_params(
+pub async fn parse_emulation_params(
     config: &Config,
     context: &Context<'_>,
     params: &EmulationParamsRequestModel,

@@ -1,5 +1,6 @@
 use actix_request_identifier::RequestId;
 use actix_web::{http::StatusCode, post, web::Json, Responder};
+use neon_lib::abi::parse_emulation_params;
 use std::convert::Into;
 
 use crate::api_server::handlers::process_error;
@@ -8,7 +9,7 @@ use crate::{
     types::request_models::EmulateRequestModel, NeonApiState,
 };
 
-use super::{parse_emulation_params, process_result};
+use super::process_result;
 
 #[tracing::instrument(skip(state, request_id), fields(id = request_id.as_str()))]
 #[post("/emulate")]

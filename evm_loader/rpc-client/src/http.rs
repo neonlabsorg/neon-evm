@@ -16,6 +16,8 @@ use neon_lib::{
         TraceRequestModel,
     },
 };
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use crate::{config::NeonRpcClientConfig, NeonRpcClient, NeonRpcClientResult};
 
@@ -115,19 +117,20 @@ impl NeonRpcClient for NeonRpcHttpClient {
 impl NeonRpcHttpClient {
     async fn request<R, P>(&self, method: LibMethods, params: P) -> NeonRpcClientResult<R>
     where
-        P: jsonrpsee_core::Serialize, // + jsonrpsee_core::traits::ToRpcParams + Send,
-        R: jsonrpsee_core::DeserializeOwned,
+        P: Serialize, // + jsonrpsee_core::traits::ToRpcParams + Send,
+        R: DeserializeOwned,
     {
-        let client = self.client.clone();
-        Ok(client.request(method.into(), rpc_params![params]).await?)
+        Ok(self
+            .client
+            .request(method.into(), rpc_params![params])
+            .await?)
     }
 
     async fn request_without_params<R>(&self, method: LibMethods) -> NeonRpcClientResult<R>
     where
-        R: jsonrpsee_core::DeserializeOwned,
+        R: DeserializeOwned,
     {
-        let client = self.client.clone();
-        Ok(client.request(method.into(), rpc_params![]).await?)
+        Ok(self.client.request(method.into(), rpc_params![]).await?)
     }
 }
 
@@ -152,6 +155,5 @@ mod tests {
             .await
             .unwrap();
         println!("{:?}", res);
-        // assert_eq!(add(1, 2), 3);
     }
 }

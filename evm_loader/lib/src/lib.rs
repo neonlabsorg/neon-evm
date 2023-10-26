@@ -1,4 +1,4 @@
-mod abi;
+pub mod abi;
 pub mod account_storage;
 pub mod build_info;
 pub mod build_info_common;

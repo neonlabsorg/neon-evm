@@ -50,7 +50,7 @@ async fn main() -> NeonRPCResult<()> {
     let _ = config::create_from_api_config(&api_config)?;
 
     let ctx = Context { libraries };
-    let rpc = rpc::build_rpc(ctx)?;
+    let rpc = rpc::build_rpc(ctx);
 
     let listener_addr = matches
         .value_of("host")

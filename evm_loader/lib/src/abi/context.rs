@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 pub struct AbiContext {
     pub tracer_db: TracerDb,
-    pub rpc_client: Arc<dyn rpc::Rpc>,
+    pub rpc_client: Arc<dyn rpc::Rpc + Send + Sync>,
     pub config: Config,
 }
 

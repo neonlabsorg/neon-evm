@@ -104,6 +104,7 @@ where
     pub const SIZE: usize = 1 + T::SIZE;
     pub const TAG: u8 = T::TAG;
 
+    // TODO: Decouple this from AccountInfo
     pub fn from_account(program_id: &Pubkey, info: &'a AccountInfo<'a>) -> Result<Self> {
         if info.owner != program_id {
             return Err(Error::AccountInvalidOwner(*info.key, *program_id));

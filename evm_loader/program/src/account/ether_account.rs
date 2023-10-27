@@ -14,7 +14,7 @@ use super::{program::System, EthereumAccount, Packable};
 use super::{Operator, ACCOUNT_SEED_VERSION};
 
 /// Ethereum account data v3
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Data {
     /// Ethereum address
     pub address: Address,

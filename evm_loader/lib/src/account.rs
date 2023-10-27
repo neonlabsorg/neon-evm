@@ -47,6 +47,23 @@ where
     }
 }
 
+pub fn from_account<T: Packable>(
+    program_id: Pubkey,
+    key: Pubkey,
+    info: &Account,
+) -> error::Result<T> {
+    if info.owner != program_id {
+        return Err(Error::AccountInvalidOwner(key, program_id));
+    }
+
+    let parts = split_account_data(key, &info.data[..], T::SIZE)?;
+    if *parts.tag != T::TAG {
+        return Err(Error::AccountInvalidTag(key, T::TAG));
+    }
+
+    Ok(T::unpack(parts.data))
+}
+
 fn split_account_data(
     key: Pubkey,
     account_data: &[u8],

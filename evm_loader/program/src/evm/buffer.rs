@@ -17,7 +17,7 @@ enum Inner {
     },
     Account {
         key: Pubkey,
-        data: *mut u8,
+        data: *const u8,
         range: Range<usize>,
     },
     AccountUninit {
@@ -36,13 +36,13 @@ pub struct Buffer {
 impl Buffer {
     fn new(inner: Inner) -> Self {
         let (ptr, len) = match &inner {
-            Inner::Empty => (NonNull::dangling().as_ptr(), 0),
-            Inner::Owned { ptr, len } => (ptr.as_ptr(), *len),
+            Inner::Empty => (NonNull::dangling().as_ptr() as *const u8, 0),
+            Inner::Owned { ptr, len } => (ptr.as_ptr() as *const u8, *len),
             Inner::Account { data, range, .. } => {
                 let ptr = unsafe { data.add(range.start) };
                 (ptr, range.len())
             }
-            Inner::AccountUninit { .. } => (std::ptr::null_mut(), 0),
+            Inner::AccountUninit { .. } => (std::ptr::null(), 0),
         };
 
         Buffer { ptr, len, inner }
@@ -58,7 +58,7 @@ impl Buffer {
     pub unsafe fn from_account(account: &AccountInfo, range: Range<usize>) -> Self {
         // todo cell_leak #69099
         let ptr = account.data.as_ptr();
-        let data = (*ptr).as_mut_ptr();
+        let data = (*ptr).as_ptr();
 
         Buffer::new(Inner::Account {
             key: *account.key,

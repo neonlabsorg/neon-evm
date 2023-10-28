@@ -73,7 +73,7 @@ pub trait AccountStorage {
     /// Get block timestamp
     fn block_timestamp(&self) -> U256;
     /// Get block hash
-    async fn block_hash(&self, number: u64) -> [u8; 32];
+    async fn block_hash(&mut self, number: u64) -> [u8; 32];
     /// Get chain id
     fn chain_id(&self) -> u64;
 
@@ -97,10 +97,10 @@ pub trait AccountStorage {
     async fn storage(&mut self, address: &Address, index: &U256) -> [u8; 32];
 
     /// Clone existing solana account
-    async fn clone_solana_account(&self, address: &Pubkey) -> OwnedAccountInfo;
+    async fn clone_solana_account(&mut self, address: &Pubkey) -> OwnedAccountInfo;
 
     /// Map existing solana account
-    async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
+    async fn map_solana_account<F, R>(&mut self, address: &Pubkey, action: F) -> R
     where
         F: FnOnce(&AccountInfo) -> R;
 

@@ -173,7 +173,7 @@ pub struct SolanaAccount {
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'a> {
     pub accounts: HashMap<Address, NeonAccount>,
-    pub solana_accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
+    pub solana_accounts: HashMap<Pubkey, SolanaAccount>,
     rpc_client: &'a dyn Rpc,
     evm_loader: Pubkey,
     block_number: u64,
@@ -214,7 +214,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 
         Ok(Self {
             accounts: HashMap::new(),
-            solana_accounts: RefCell::new(HashMap::new()),
+            solana_accounts: HashMap::new(),
             rpc_client,
             evm_loader,
             block_number,
@@ -281,9 +281,8 @@ impl<'a> EmulatorAccountStorage<'a> {
             }
 
             let entries = accounts.iter().skip(addresses.len()).zip(solana_accounts);
-            let mut solana_accounts_storage = self.solana_accounts.borrow_mut();
             for (account, &pubkey) in entries {
-                solana_accounts_storage.insert(
+                self.solana_accounts.insert(
                     pubkey,
                     SolanaAccount {
                         pubkey: pubkey.into(),
@@ -295,8 +294,8 @@ impl<'a> EmulatorAccountStorage<'a> {
         }
     }
 
-    async fn get_account(&self, pubkey: &Pubkey) -> client_error::Result<Option<Account>> {
-        if let Some(account) = self.solana_accounts.borrow().get(pubkey) {
+    async fn get_account(&mut self, pubkey: &Pubkey) -> client_error::Result<Option<Account>> {
+        if let Some(account) = self.solana_accounts.get(pubkey) {
             if let Some(ref data) = account.data {
                 return Ok(Some(data.clone()));
             }
@@ -308,7 +307,6 @@ impl<'a> EmulatorAccountStorage<'a> {
             .await?;
 
         self.solana_accounts
-            .borrow_mut()
             .entry(*pubkey)
             .and_modify(|a| a.data = result.value.clone())
             .or_insert(SolanaAccount {
@@ -358,7 +356,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         false
     }
 
-    async fn add_solana_account(&self, pubkey: Pubkey, is_writable: bool) {
+    async fn add_solana_account(&mut self, pubkey: Pubkey, is_writable: bool) {
         if solana_sdk::system_program::check_id(&pubkey) {
             return;
         }
@@ -367,21 +365,19 @@ impl<'a> EmulatorAccountStorage<'a> {
             return;
         }
 
-        let mut solana_accounts = self.solana_accounts.borrow_mut();
-
         let account = SolanaAccount {
             pubkey: pubkey.into(),
             is_writable,
             data: None,
         };
         if is_writable {
-            solana_accounts
+            self.solana_accounts
                 .entry(pubkey)
                 // If account is present in cache ensure the data is not lost
                 .and_modify(|a| a.is_writable = true)
                 .or_insert(account);
         } else {
-            solana_accounts.entry(pubkey).or_insert(account);
+            self.solana_accounts.entry(pubkey).or_insert(account);
         }
     }
 
@@ -591,7 +587,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         self.block_timestamp.try_into().unwrap()
     }
 
-    async fn block_hash(&self, slot: u64) -> [u8; 32] {
+    async fn block_hash(&mut self, slot: u64) -> [u8; 32] {
         info!("block_hash {slot}");
 
         self.add_solana_account(slot_hashes::ID, false).await;
@@ -752,7 +748,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         self.chain_id
     }
 
-    async fn clone_solana_account(&self, address: &Pubkey) -> OwnedAccountInfo {
+    async fn clone_solana_account(&mut self, address: &Pubkey) -> OwnedAccountInfo {
         info!("clone_solana_account {}", address);
 
         if address == &FAKE_OPERATOR {
@@ -780,7 +776,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         }
     }
 
-    async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
+    async fn map_solana_account<F, R>(&mut self, address: &Pubkey, action: F) -> R
     where
         F: FnOnce(&AccountInfo) -> R,
     {

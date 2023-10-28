@@ -145,7 +145,7 @@ pub async fn execute(
         emulate_trx(tx_params, chain_id, step_limit, None, &mut backend).await?;
 
     let accounts = storage.accounts.values().cloned().collect();
-    let solana_accounts = storage.solana_accounts.borrow().values().cloned().collect();
+    let solana_accounts = storage.solana_accounts.values().cloned().collect();
 
     Ok(EmulationResultWithAccounts {
         accounts,

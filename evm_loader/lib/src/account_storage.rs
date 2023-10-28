@@ -172,7 +172,7 @@ pub struct SolanaAccount {
 
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'a> {
-    pub accounts: RefCell<HashMap<Address, NeonAccount>>,
+    pub accounts: HashMap<Address, NeonAccount>,
     pub solana_accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
     rpc_client: &'a dyn Rpc,
     evm_loader: Pubkey,
@@ -213,7 +213,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         };
 
         Ok(Self {
-            accounts: RefCell::new(HashMap::new()),
+            accounts: HashMap::new(),
             solana_accounts: RefCell::new(HashMap::new()),
             rpc_client,
             evm_loader,
@@ -240,7 +240,7 @@ impl<'a> EmulatorAccountStorage<'a> {
     ) -> Result<EmulatorAccountStorage<'a>, NeonError> {
         setup_syscall_stubs(rpc_client).await?;
 
-        let storage = Self::new(
+        let mut storage = Self::new(
             rpc_client,
             evm_loader,
             token_mint,
@@ -257,7 +257,11 @@ impl<'a> EmulatorAccountStorage<'a> {
         Ok(storage)
     }
 
-    async fn initialize_cached_accounts(&self, addresses: &[Address], solana_accounts: &[Pubkey]) {
+    async fn initialize_cached_accounts(
+        &mut self,
+        addresses: &[Address],
+        solana_accounts: &[Pubkey],
+    ) {
         let pubkeys: Vec<_> = addresses
             .iter()
             .map(|address| make_solana_program_address(address, &self.evm_loader).0)
@@ -270,7 +274,7 @@ impl<'a> EmulatorAccountStorage<'a> {
                 .zip(accounts.iter().take(addresses.len()))
                 .zip(pubkeys.iter().take(addresses.len()));
             for ((&address, account), &pubkey) in entries {
-                self.accounts.borrow_mut().insert(
+                self.accounts.insert(
                     address,
                     NeonAccount::new(self.evm_loader, address, pubkey, account.clone(), false),
                 );
@@ -337,10 +341,10 @@ impl<'a> EmulatorAccountStorage<'a> {
         }
     }
 
-    async fn add_ethereum_account(&self, address: &Address, writable: bool) -> bool {
+    async fn add_ethereum_account(&mut self, address: &Address, writable: bool) -> bool {
         debug!("add_ethereum_account(address={address}, writable={writable})");
 
-        if let Some(ref mut account) = self.accounts.borrow_mut().get_mut(address) {
+        if let Some(ref mut account) = self.accounts.get_mut(address) {
             account.writable |= writable;
 
             return true;
@@ -349,7 +353,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         let account =
             NeonAccount::rpc_load(self.rpc_client, &self.evm_loader, *address, writable).await;
         debug!("Added account address={address} account={account:?}");
-        self.accounts.borrow_mut().insert(*address, account);
+        self.accounts.insert(*address, account);
 
         false
     }
@@ -381,7 +385,7 @@ impl<'a> EmulatorAccountStorage<'a> {
         }
     }
 
-    pub async fn apply_actions(&self, actions: &[Action]) -> u64 {
+    pub async fn apply_actions(&mut self, actions: &[Action]) -> u64 {
         info!("apply_actions");
 
         let mut gas = 0_u64;
@@ -468,19 +472,18 @@ impl<'a> EmulatorAccountStorage<'a> {
         gas
     }
 
-    pub async fn apply_accounts_operations(&self, operations: AccountsOperations) -> u64 {
+    pub async fn apply_accounts_operations(&mut self, operations: AccountsOperations) -> u64 {
         let mut gas = 0_u64;
         let rent = Rent::get().expect("Rent get error");
 
         let mut iterations = 0_usize;
 
-        let mut accounts = self.accounts.borrow_mut();
         for (address, operation) in operations {
             let new_size = match operation {
                 AccountOperation::Create { space } => space,
                 AccountOperation::Resize { to, .. } => to,
             };
-            accounts.entry(address).and_modify(|a| {
+            self.accounts.entry(address).and_modify(|a| {
                 a.size = new_size;
                 a.additional_resize_steps =
                     new_size.saturating_sub(a.size_current).saturating_sub(1)
@@ -497,13 +500,12 @@ impl<'a> EmulatorAccountStorage<'a> {
         gas.saturating_add(iterations_cost)
     }
 
-    async fn ethereum_account_map_or<F, R>(&self, address: &Address, default: R, f: F) -> R
+    async fn ethereum_account_map_or<F, R>(&mut self, address: &Address, default: R, f: F) -> R
     where
         F: FnOnce(ether_account::Data) -> R,
     {
         self.add_ethereum_account(address, false).await;
         self.accounts
-            .borrow()
             .get(address)
             .expect("get account error")
             .ether_account_data
@@ -518,13 +520,12 @@ impl<'a> EmulatorAccountStorage<'a> {
             })
     }
 
-    async fn solana_account_map_or<F, R>(&self, address: &Address, default: R, f: F) -> R
+    async fn solana_account_map_or<F, R>(&mut self, address: &Address, default: R, f: F) -> R
     where
         F: FnOnce(&Account) -> R,
     {
         self.add_ethereum_account(address, false).await;
         self.accounts
-            .borrow()
             .get(address)
             .expect("get account error")
             .data
@@ -532,27 +533,26 @@ impl<'a> EmulatorAccountStorage<'a> {
             .map_or(default, f)
     }
 
-    async fn ethereum_contract_map_or<F, R>(&self, address: &Address, default: R, f: F) -> R
+    async fn ethereum_contract_map_or<F, R>(&mut self, address: &Address, default: R, f: F) -> R
     where
-        F: FnOnce(ContractData) -> R,
+        F: FnOnce(ContractData, Option<&AccountOverrides>) -> R,
         R: Clone,
     {
         self.add_ethereum_account(address, false).await;
         self.accounts
-            .borrow()
             .get(address)
             .expect("get account error")
             .contract_data()
-            .map_or(default, f)
+            .map_or(default, |a| f(a, self.state_overrides.as_ref()))
     }
 
-    async fn get_code(&self, address: &Address) -> Buffer {
-        self.ethereum_contract_map_or(address, Buffer::empty(), |c| {
-            self.state_overrides
+    async fn get_code(&mut self, address: &Address) -> Buffer {
+        self.ethereum_contract_map_or(address, Buffer::empty(), |c, state_overrides| {
+            state_overrides
                 .as_ref()
                 .and_then(|account_overrides| account_overrides.get(address)?.code.as_ref())
                 .map_or_else(
-                    || Buffer::from_slice(&c.code()),
+                    || Buffer::from_slice(c.code()),
                     |code| Buffer::from_slice(&code.0),
                 )
         })
@@ -563,7 +563,7 @@ impl<'a> EmulatorAccountStorage<'a> {
 #[async_trait(?Send)]
 impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     fn all_addresses(&self) -> Vec<Address> {
-        self.accounts.borrow().keys().cloned().collect()
+        self.accounts.keys().cloned().collect()
     }
 
     fn neon_token_mint(&self) -> &Pubkey {
@@ -604,37 +604,36 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         }
     }
 
-    async fn exists(&self, address: &Address) -> bool {
+    async fn exists(&mut self, address: &Address) -> bool {
         info!("exists {address}");
 
         self.add_ethereum_account(address, false).await;
 
-        let accounts = self.accounts.borrow();
-        accounts.contains_key(address)
+        self.accounts.contains_key(address)
     }
 
-    async fn nonce(&self, address: &Address) -> u64 {
+    async fn nonce(&mut self, address: &Address) -> u64 {
         info!("nonce {address}");
 
         self.ethereum_account_map_or(address, 0_u64, |a| a.trx_count)
             .await
     }
 
-    async fn balance(&self, address: &Address) -> U256 {
+    async fn balance(&mut self, address: &Address) -> U256 {
         info!("balance {address}");
 
         self.ethereum_account_map_or(address, U256::ZERO, |a| a.balance)
             .await
     }
 
-    async fn code_size(&self, address: &Address) -> usize {
+    async fn code_size(&mut self, address: &Address) -> usize {
         info!("code_size {address}");
 
         self.ethereum_account_map_or(address, 0, |a| a.code_size as usize)
             .await
     }
 
-    async fn code_hash(&self, address: &Address) -> [u8; 32] {
+    async fn code_hash(&mut self, address: &Address) -> [u8; 32] {
         use solana_sdk::keccak::hash;
 
         info!("code_hash {address}");
@@ -655,13 +654,13 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         hash(self.get_code(address).await.as_ref()).to_bytes()
     }
 
-    async fn code(&self, address: &Address) -> Buffer {
+    async fn code(&mut self, address: &Address) -> Buffer {
         info!("code {address}");
 
         self.get_code(address).await
     }
 
-    async fn generation(&self, address: &Address) -> u32 {
+    async fn generation(&mut self, address: &Address) -> u32 {
         let value = self
             .ethereum_account_map_or(address, 0_u32, |c| c.generation)
             .await;
@@ -670,7 +669,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         value
     }
 
-    async fn storage(&self, address: &Address, index: &U256) -> [u8; 32] {
+    async fn storage(&mut self, address: &Address, index: &U256) -> [u8; 32] {
         if let Some(account_overrides) = &self.state_overrides {
             if let Some(account_override) = account_overrides.get(address) {
                 match (&account_override.state, &account_override.state_diff) {
@@ -694,7 +693,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         }
         let value = if *index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT) {
             let index: usize = index.as_usize() * 32;
-            self.ethereum_contract_map_or(address, <[u8; 32]>::default(), |c| {
+            self.ethereum_contract_map_or(address, <[u8; 32]>::default(), |c, _| {
                 c.storage()[index..index + 32].try_into().unwrap()
             })
             .await
@@ -742,7 +741,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         value
     }
 
-    async fn solana_account_space(&self, address: &Address) -> Option<usize> {
+    async fn solana_account_space(&mut self, address: &Address) -> Option<usize> {
         self.solana_account_map_or(address, None, |account| Some(account.data.len()))
             .await
     }

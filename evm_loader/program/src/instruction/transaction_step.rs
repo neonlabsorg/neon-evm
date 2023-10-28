@@ -214,7 +214,7 @@ fn serialize_evm_state(state: &mut State, backend: &EvmBackend, machine: &Evm) -
 
 fn deserialize_evm_state<'a, 'r>(
     state: &State<'a>,
-    account_storage: &'r ProgramAccountStorage<'a>,
+    account_storage: &'r mut ProgramAccountStorage<'a>,
 ) -> Result<(EvmBackend<'a, 'r>, Evm<'a, 'r>)> {
     let buffer = state.evm_data();
 

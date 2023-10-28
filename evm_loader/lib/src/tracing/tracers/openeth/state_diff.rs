@@ -11,7 +11,7 @@ use web3::types::{AccountDiff, Bytes, ChangedType, Diff, StateDiff, H160, H256};
 pub async fn build_state_diff(
     from: Address,
     tx_fee: U256,
-    backend: &ExecutorState<'_, impl AccountStorage>,
+    backend: &mut ExecutorState<'_, impl AccountStorage>,
 ) -> Result<StateDiff, NeonError> {
     let mut state_diff = BTreeMap::new();
 
@@ -33,7 +33,7 @@ pub async fn build_state_diff(
 async fn build_balance_diff(
     from: Address,
     tx_fee: U256,
-    backend: &ExecutorState<'_, impl AccountStorage>,
+    backend: &mut ExecutorState<'_, impl AccountStorage>,
     address: &Address,
 ) -> Result<Diff<web3::types::U256>, NeonError> {
     let balance_before = backend.backend.balance(address).await;
@@ -50,7 +50,7 @@ async fn build_balance_diff(
 }
 
 async fn build_nonce_diff(
-    backend: &ExecutorState<'_, impl AccountStorage>,
+    backend: &mut ExecutorState<'_, impl AccountStorage>,
     address: &Address,
 ) -> Result<Diff<web3::types::U256>, NeonError> {
     Ok(diff_new_u256(
@@ -60,7 +60,7 @@ async fn build_nonce_diff(
 }
 
 async fn build_code_diff(
-    backend: &ExecutorState<'_, impl AccountStorage>,
+    backend: &mut ExecutorState<'_, impl AccountStorage>,
     address: &Address,
 ) -> Result<Diff<Bytes>, NeonError> {
     let initial_code = backend.backend.code(address).await.to_vec();

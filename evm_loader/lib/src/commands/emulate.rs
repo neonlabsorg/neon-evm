@@ -125,7 +125,7 @@ pub async fn execute(
     block_overrides: &Option<BlockOverrides>,
     state_overrides: Option<AccountOverrides>,
 ) -> NeonResult<EmulationResultWithAccounts> {
-    let storage = EmulatorAccountStorage::with_accounts(
+    let mut storage = EmulatorAccountStorage::with_accounts(
         rpc_client,
         evm_loader,
         token_mint,
@@ -138,19 +138,11 @@ pub async fn execute(
     )
     .await?;
 
-    let mut backend = ExecutorState::new(&storage);
+    let mut backend = ExecutorState::new(&mut storage);
 
-    let emulation_result = emulate_trx(
-        tx_params,
-        &storage,
-        chain_id,
-        step_limit,
-        None,
-        &mut backend,
-    )
-    .await?;
+    let emulation_result = emulate_trx(tx_params, chain_id, step_limit, None, &mut backend).await?;
 
-    let accounts = storage.accounts.borrow().values().cloned().collect();
+    let accounts = storage.accounts.values().cloned().collect();
     let solana_accounts = storage.solana_accounts.borrow().values().cloned().collect();
 
     Ok(EmulationResultWithAccounts {
@@ -163,7 +155,6 @@ pub async fn execute(
 
 pub(crate) async fn emulate_trx<'a>(
     tx_params: TxParams,
-    storage: &'a EmulatorAccountStorage<'a>,
     chain_id: u64,
     step_limit: u64,
     tracer: TracerTypeOpt,
@@ -172,7 +163,7 @@ pub(crate) async fn emulate_trx<'a>(
     let from = tx_params.from;
     let gas_used = tx_params.gas_used;
 
-    let mut trx = tx_params_to_transaction(tx_params, storage, chain_id).await;
+    let mut trx = tx_params_to_transaction(tx_params, backend.backend, chain_id).await;
 
     let mut evm = Machine::new(&mut trx, from, backend, tracer).await?;
 
@@ -186,13 +177,16 @@ pub(crate) async fn emulate_trx<'a>(
     debug!("Execute done, result={exit_status:?}");
     debug!("{steps_executed} steps executed");
 
-    let accounts_operations = storage.calc_accounts_operations(&actions).await;
+    let accounts_operations = backend.backend.calc_accounts_operations(&actions).await;
 
     let max_iterations = (steps_executed + (EVM_STEPS_MIN - 1)) / EVM_STEPS_MIN;
     let steps_gas = max_iterations * (LAMPORTS_PER_SIGNATURE + PAYMENT_TO_TREASURE);
     let begin_end_gas = 2 * LAMPORTS_PER_SIGNATURE;
-    let actions_gas = storage.apply_actions(&actions).await;
-    let accounts_gas = storage.apply_accounts_operations(accounts_operations).await;
+    let actions_gas = backend.backend.apply_actions(&actions).await;
+    let accounts_gas = backend
+        .backend
+        .apply_accounts_operations(accounts_operations)
+        .await;
     info!("Gas - steps: {steps_gas}, actions: {actions_gas}, accounts: {accounts_gas}");
 
     let tx_fee = gas_used.unwrap_or_default() * trx.gas_price();
@@ -210,7 +204,7 @@ pub(crate) async fn emulate_trx<'a>(
 
 pub async fn tx_params_to_transaction(
     tx_params: TxParams,
-    storage: &impl AccountStorage,
+    storage: &mut impl AccountStorage,
     chain_id: u64,
 ) -> Transaction {
     let trx_payload = if tx_params.access_list.is_some() {

@@ -49,26 +49,26 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         find_slot_hash(slot, &slot_hashes_data[..])
     }
 
-    fn exists(&self, address: &Address) -> bool {
+    fn exists(&mut self, address: &Address) -> bool {
         self.ethereum_accounts.contains_key(address)
     }
 
-    fn nonce(&self, address: &Address) -> u64 {
+    fn nonce(&mut self, address: &Address) -> u64 {
         self.ethereum_account(address)
             .map_or(0_u64, |a| a.trx_count)
     }
 
-    fn balance(&self, address: &Address) -> U256 {
+    fn balance(&mut self, address: &Address) -> U256 {
         self.ethereum_account(address)
             .map_or(U256::ZERO, |a| a.balance)
     }
 
-    fn code_size(&self, address: &Address) -> usize {
+    fn code_size(&mut self, address: &Address) -> usize {
         self.ethereum_account(address)
             .map_or(0, |a| a.code_size as usize)
     }
 
-    fn code_hash(&self, address: &Address) -> [u8; 32] {
+    fn code_hash(&mut self, address: &Address) -> [u8; 32] {
         use solana_program::keccak::hash;
 
         // https://eips.ethereum.org/EIPS/eip-1052
@@ -90,7 +90,7 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
             .to_bytes()
     }
 
-    fn code(&self, address: &Address) -> crate::evm::Buffer {
+    fn code(&mut self, address: &Address) -> crate::evm::Buffer {
         use crate::evm::Buffer;
 
         if let Some(account) = self.ethereum_account(address) {
@@ -104,12 +104,12 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         }
     }
 
-    fn generation(&self, address: &Address) -> u32 {
+    fn generation(&mut self, address: &Address) -> u32 {
         self.ethereum_account(address)
             .map_or(0_u32, |c| c.generation)
     }
 
-    fn storage(&self, address: &Address, index: &U256) -> [u8; 32] {
+    fn storage(&mut self, address: &Address, index: &U256) -> [u8; 32] {
         if *index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT) {
             let index: usize = index.as_usize() * 32;
             return self
@@ -139,7 +139,7 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         action(info)
     }
 
-    fn solana_account_space(&self, address: &Address) -> Option<usize> {
+    fn solana_account_space(&mut self, address: &Address) -> Option<usize> {
         let (pubkey, _) = self.solana_address(address);
         let info = self.solana_accounts[&pubkey];
 

@@ -174,15 +174,15 @@ impl<B: Database> Machine<B> {
     }
 
     #[cfg(target_os = "solana")]
-    pub fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
-        fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &B) {
+    pub fn deserialize_from(buffer: &[u8], backend: &mut B) -> Result<Self> {
+        fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &mut B) {
             if let Some((key, range)) = buffer.uninit_data() {
                 *buffer =
                     backend.map_solana_account(&key, |i| unsafe { Buffer::from_account(i, range) });
             }
         }
 
-        fn reinit_machine<B: Database>(mut machine: &mut Machine<B>, backend: &B) {
+        fn reinit_machine<B: Database>(mut machine: &mut Machine<B>, backend: &mut B) {
             loop {
                 reinit_buffer(&mut machine.call_data, backend);
                 reinit_buffer(&mut machine.execution_code, backend);

@@ -59,7 +59,7 @@ impl AccountStorage for TestAccountStorage {
         self.block_timestamp
     }
 
-    async fn block_hash(&self, _number: u64) -> [u8; 32] {
+    async fn block_hash(&mut self, _number: u64) -> [u8; 32] {
         todo!()
     }
 
@@ -114,11 +114,11 @@ impl AccountStorage for TestAccountStorage {
             .to_be_bytes()
     }
 
-    async fn clone_solana_account(&self, _address: &Pubkey) -> OwnedAccountInfo {
+    async fn clone_solana_account(&mut self, _address: &Pubkey) -> OwnedAccountInfo {
         todo!()
     }
 
-    async fn map_solana_account<F, R>(&self, _address: &Pubkey, _action: F) -> R
+    async fn map_solana_account<F, R>(&mut self, _address: &Pubkey, _action: F) -> R
     where
         F: FnOnce(&AccountInfo) -> R,
     {

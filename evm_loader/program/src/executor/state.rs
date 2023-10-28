@@ -111,7 +111,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     }
 
     #[maybe_async]
-    pub async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
+    pub async fn external_account(&mut self, address: Pubkey) -> Result<OwnedAccountInfo> {
         let metas = self
             .actions
             .iter()
@@ -215,7 +215,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 async fn insert_account_if_not_present<B: AccountStorage>(
     cache: &RefCell<Cache>,
     key: Pubkey,
-    backend: &B,
+    backend: &mut B,
 ) {
     if !cache.borrow().solana_accounts.contains_key(&key) {
         let owned_account_info = backend.clone_solana_account(&key).await;
@@ -402,7 +402,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
-    async fn block_hash(&self, number: U256) -> Result<[u8; 32]> {
+    async fn block_hash(&mut self, number: U256) -> Result<[u8; 32]> {
         // geth:
         //  - checks the overflow
         //  - converts to u64
@@ -437,7 +437,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(cache.block_timestamp)
     }
 
-    async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
+    async fn map_solana_account<F, R>(&mut self, address: &Pubkey, action: F) -> R
     where
         F: FnOnce(&solana_program::account_info::AccountInfo) -> R,
     {

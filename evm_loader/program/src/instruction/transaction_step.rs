@@ -225,10 +225,10 @@ fn deserialize_evm_state<'a, 'r>(
     let buffer = state.evm_data();
 
     let executor_state_data = &buffer[..state.evm_state_len];
-    let backend = ExecutorState::deserialize_from(executor_state_data, account_storage)?;
+    let mut backend = ExecutorState::deserialize_from(executor_state_data, account_storage)?;
 
     let evm_data = &buffer[state.evm_state_len..][..state.evm_machine_len];
-    let evm = Machine::deserialize_from(evm_data, &backend)?;
+    let evm = Machine::deserialize_from(evm_data, &mut backend)?;
 
     Ok((backend, evm))
 }

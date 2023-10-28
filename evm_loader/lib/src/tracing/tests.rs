@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::rc::Rc;
 
 use async_trait::async_trait;
 use ether_account::Data;
@@ -11,7 +10,7 @@ use evm_loader::account::ether_account;
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::evm::database::Database;
 use evm_loader::evm::tracing::{EmulationResult, TracerType};
-use evm_loader::evm::{Buffer, ExitStatus, Machine};
+use evm_loader::evm::{Buffer, ExitStatus, Machine, MachineResult};
 use evm_loader::executor::{ExecutorState, OwnedAccountInfo};
 use evm_loader::solana_program::pubkey::Pubkey;
 use evm_loader::types::{Address, Transaction};
@@ -139,7 +138,7 @@ async fn test_trace_contract_creation() {
     let trace_config = TraceConfig::default();
     let tracer = new_tracer(gas_used, &trace_config).unwrap();
 
-    let (code, emulation_result) = trace_contract_creation(gas_used, &tracer).await;
+    let (code, emulation_result, tracer) = trace_contract_creation(gas_used, tracer).await;
 
     assert_eq!(
         emulation_result.exit_status,
@@ -160,7 +159,7 @@ async fn test_trace_state_diff_contract_creation() {
     let trace_config = state_diff_trace_config();
     let tracer = new_tracer(gas_used, &trace_config).unwrap();
 
-    let (code, emulation_result) = trace_contract_creation(gas_used, &tracer).await;
+    let (code, emulation_result, tracer) = trace_contract_creation(gas_used, tracer).await;
 
     assert_eq!(
         emulation_result.exit_status,
@@ -175,8 +174,8 @@ async fn test_trace_state_diff_contract_creation() {
 
 async fn trace_contract_creation(
     gas_used: Option<U256>,
-    tracer: &TracerType,
-) -> (Vec<u8>, EmulationResult) {
+    tracer: TracerType,
+) -> (Vec<u8>, EmulationResult, TracerType) {
     let from = Address::from_hex("0x82211934c340b29561381392348d48413e15adc8").unwrap();
     let contract = Address::from_hex("0x356726f027a805fab3bd7dd0413a96d81bc6f599").unwrap();
 
@@ -216,9 +215,10 @@ async fn trace_contract_creation(
 
     let mut backend = ExecutorState::new(&mut test_account_storage);
 
-    let emulation_result = emulate_trx(from, gas_used, &mut trx, tracer, &mut backend).await;
+    let (emulation_result, tracer) =
+        emulate_trx(from, gas_used, &mut trx, tracer, &mut backend).await;
 
-    (code, emulation_result)
+    (code, emulation_result, tracer)
 }
 
 #[tokio::test]
@@ -240,7 +240,8 @@ async fn test_trace_increment_call() {
 
     let mut backend = ExecutorState::new(&mut test_account_storage);
 
-    let emulation_result = emulate_trx(origin, gas_used, &mut trx, &tracer, &mut backend).await;
+    let (emulation_result, tracer) =
+        emulate_trx(origin, gas_used, &mut trx, tracer, &mut backend).await;
 
     assert_eq!(emulation_result.exit_status, ExitStatus::Stop);
     assert_eq!(emulation_result.steps_executed, 112);
@@ -274,7 +275,8 @@ async fn test_trace_state_diff_increment_call() {
 
     let mut backend = ExecutorState::new(&mut test_account_storage);
 
-    let emulation_result = emulate_trx(origin, gas_used, &mut trx, &tracer, &mut backend).await;
+    let (emulation_result, tracer) =
+        emulate_trx(origin, gas_used, &mut trx, tracer, &mut backend).await;
 
     assert_eq!(emulation_result.exit_status, ExitStatus::Stop);
     assert_eq!(emulation_result.steps_executed, 112);
@@ -367,7 +369,8 @@ async fn test_trace_transfer_transaction() {
 
     let mut backend = ExecutorState::new(&mut test_account_storage);
 
-    let emulation_result = emulate_trx(origin, gas_used, &mut trx, &tracer, &mut backend).await;
+    let (emulation_result, tracer) =
+        emulate_trx(origin, gas_used, &mut trx, tracer, &mut backend).await;
 
     assert_eq!(emulation_result.exit_status, ExitStatus::Stop);
     assert_eq!(emulation_result.steps_executed, 1);
@@ -402,7 +405,8 @@ async fn test_trace_state_diff_transfer_transaction() {
 
     let mut backend = ExecutorState::new(&mut test_account_storage);
 
-    let emulation_result = emulate_trx(origin, gas_used, &mut trx, &tracer, &mut backend).await;
+    let (emulation_result, tracer) =
+        emulate_trx(origin, gas_used, &mut trx, tracer, &mut backend).await;
 
     assert_eq!(emulation_result.exit_status, ExitStatus::Stop);
     assert_eq!(emulation_result.steps_executed, 1);
@@ -474,24 +478,31 @@ async fn emulate_trx<B: AccountStorage>(
     origin: Address,
     gas_used: Option<U256>,
     trx: &mut Transaction,
-    tracer: &TracerType,
+    tracer: TracerType,
     backend: &mut ExecutorState<'_, B>,
-) -> EmulationResult {
-    let mut machine = Machine::new(trx, origin, backend, Some(Rc::clone(tracer)))
+) -> (EmulationResult, TracerType) {
+    let mut machine = Machine::new(trx, origin, backend, Some(tracer))
         .await
         .unwrap();
 
-    let (exit_status, steps_executed) = machine.execute(1000, backend).await.unwrap();
+    let MachineResult {
+        exit_status,
+        steps_executed,
+        tracer,
+    } = machine.execute(1000, backend).await.unwrap();
 
     let actions = backend.into_actions();
 
     let tx_fee = gas_used.unwrap_or_default() * trx.gas_price();
 
-    EmulationResult {
-        exit_status,
-        steps_executed,
-        used_gas: 0,
-        actions,
-        state_diff: build_state_diff(origin, tx_fee, backend).await.unwrap(),
-    }
+    (
+        EmulationResult {
+            exit_status,
+            steps_executed,
+            used_gas: 0,
+            actions,
+            state_diff: build_state_diff(origin, tx_fee, backend).await.unwrap(),
+        },
+        tracer.unwrap(),
+    )
 }

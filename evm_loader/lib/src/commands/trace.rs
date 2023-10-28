@@ -26,7 +26,7 @@ pub async fn trace_transaction(
     solana_accounts: &[Pubkey],
     trace_call_config: TraceCallConfig,
 ) -> Result<Value, NeonError> {
-    let storage = EmulatorAccountStorage::with_accounts(
+    let mut storage = EmulatorAccountStorage::with_accounts(
         rpc_client,
         evm_loader,
         token,
@@ -39,19 +39,12 @@ pub async fn trace_transaction(
     )
     .await?;
 
-    let mut backend = ExecutorState::new(&storage);
+    let mut backend = ExecutorState::new(&mut storage);
 
     let tracer = new_tracer(tx.gas_used, &trace_call_config.trace_config)?;
 
-    let emulation_result = emulate_trx(
-        tx,
-        &storage,
-        chain_id,
-        steps,
-        Some(Rc::clone(&tracer)),
-        &mut backend,
-    )
-    .await?;
+    let emulation_result =
+        emulate_trx(tx, chain_id, steps, Some(Rc::clone(&tracer)), &mut backend).await?;
 
     Ok(into_traces(tracer, emulation_result))
 }

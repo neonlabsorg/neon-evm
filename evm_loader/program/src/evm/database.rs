@@ -8,19 +8,19 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 pub trait Database {
     fn chain_id(&self) -> U256;
 
-    async fn nonce(&self, address: &Address) -> Result<u64>;
+    async fn nonce(&mut self, address: &Address) -> Result<u64>;
     fn increment_nonce(&mut self, address: Address) -> Result<()>;
 
-    async fn balance(&self, address: &Address) -> Result<U256>;
+    async fn balance(&mut self, address: &Address) -> Result<U256>;
     async fn transfer(&mut self, source: Address, target: Address, value: U256) -> Result<()>;
 
-    async fn code_size(&self, address: &Address) -> Result<usize>;
-    async fn code_hash(&self, address: &Address) -> Result<[u8; 32]>;
-    async fn code(&self, address: &Address) -> Result<Buffer>;
+    async fn code_size(&mut self, address: &Address) -> Result<usize>;
+    async fn code_hash(&mut self, address: &Address) -> Result<[u8; 32]>;
+    async fn code(&mut self, address: &Address) -> Result<Buffer>;
     fn set_code(&mut self, address: Address, code: Buffer) -> Result<()>;
     fn selfdestruct(&mut self, address: Address) -> Result<()>;
 
-    async fn storage(&self, address: &Address, index: &U256) -> Result<[u8; 32]>;
+    async fn storage(&mut self, address: &Address, index: &U256) -> Result<[u8; 32]>;
     fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
 
     async fn block_hash(&self, number: U256) -> Result<[u8; 32]>;

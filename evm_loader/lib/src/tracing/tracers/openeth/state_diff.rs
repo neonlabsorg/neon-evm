@@ -96,21 +96,23 @@ fn build_storage_diff<B: AccountStorage>(
     backend: &ExecutorState<B>,
     address: &Address,
 ) -> BTreeMap<H256, Diff<H256>> {
-    let mut initial_storage = backend.initial_storage.borrow_mut();
-    let account_initial_storage = initial_storage.entry(*address).or_default();
+    let initial_storage = backend.initial_storage.borrow();
+    let account_initial_storage = initial_storage.get(address);
 
-    let mut final_storage = backend.final_storage.borrow_mut();
-    let account_final_storage = final_storage.entry(*address).or_default();
+    let final_storage = backend.final_storage.borrow();
+    let account_final_storage = final_storage.get(address);
 
     let account_storage_keys = account_initial_storage
-        .keys()
-        .chain(account_final_storage.keys());
+        .iter()
+        .chain(account_final_storage.iter())
+        .map(|map| map.keys())
+        .flatten();
 
     let mut storage_diff = BTreeMap::new();
 
     for key in account_storage_keys {
-        let initial_value = account_initial_storage.get(key);
-        let final_value = account_final_storage.get(key);
+        let initial_value = account_initial_storage.and_then(|m| m.get(key));
+        let final_value = account_final_storage.and_then(|m| m.get(key));
 
         let key = H256::from(key.to_be_bytes());
 

@@ -76,11 +76,18 @@ async fn build_code_diff(
         (true, true) => Diff::Same,
         (false, true) => {
             error!("Code for address={address} cannot be deleted");
-            diff_new(Bytes(initial_code), Bytes(final_code))
+            Diff::Died(Bytes(initial_code))
         }
         (false, false) => {
-            error!("Code for address={address} cannot be updated");
-            diff_new(Bytes(initial_code), Bytes(final_code))
+            if initial_code == final_code {
+                Diff::Same
+            } else {
+                error!("Code for address={address} cannot be updated");
+                Diff::Changed(ChangedType {
+                    from: Bytes(initial_code),
+                    to: Bytes(final_code),
+                })
+            }
         }
     })
 }
@@ -115,14 +122,22 @@ fn build_storage_diff<B: AccountStorage>(
             (Some(initial_value), Some(final_value)) => {
                 storage_diff.insert(
                     H256::from(key.to_be_bytes()),
-                    Diff::Changed(ChangedType {
-                        from: H256::from(initial_value),
-                        to: H256::from(final_value),
-                    }),
+                    if initial_value == final_value {
+                        Diff::Same
+                    } else {
+                        Diff::Changed(ChangedType {
+                            from: H256::from(initial_value),
+                            to: H256::from(final_value),
+                        })
+                    },
                 );
             }
             (Some(initial_value), None) => {
                 error!("Storage key={key}, value={initial_value:?} cannot be deleted");
+                storage_diff.insert(
+                    H256::from(key.to_be_bytes()),
+                    Diff::Died(H256::from(initial_value)),
+                );
             }
             (None, None) => {
                 error!("Storage key={key} cannot be empty");
@@ -145,10 +160,10 @@ fn diff_new_u256(from: U256, to: U256) -> Diff<web3::types::U256> {
         return Diff::Born(to);
     }
 
-    diff_new(from, to)
-}
+    if to == web3::types::U256::zero() {
+        return Diff::Died(from);
+    }
 
-fn diff_new<T: Eq>(from: T, to: T) -> Diff<T> {
     if from == to {
         return Diff::Same;
     }

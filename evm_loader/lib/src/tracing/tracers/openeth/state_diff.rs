@@ -112,16 +112,15 @@ fn build_storage_diff<B: AccountStorage>(
         let initial_value = account_initial_storage.get(key);
         let final_value = account_final_storage.get(key);
 
+        let key = H256::from(key.to_be_bytes());
+
         match (initial_value, final_value) {
             (None, Some(final_value)) => {
-                storage_diff.insert(
-                    H256::from(key.to_be_bytes()),
-                    Diff::Born(H256::from(final_value)),
-                );
+                storage_diff.insert(key, Diff::Born(H256::from(final_value)));
             }
             (Some(initial_value), Some(final_value)) => {
                 storage_diff.insert(
-                    H256::from(key.to_be_bytes()),
+                    key,
                     if initial_value == final_value {
                         Diff::Same
                     } else {
@@ -134,10 +133,7 @@ fn build_storage_diff<B: AccountStorage>(
             }
             (Some(initial_value), None) => {
                 error!("Storage key={key}, value={initial_value:?} cannot be deleted");
-                storage_diff.insert(
-                    H256::from(key.to_be_bytes()),
-                    Diff::Died(H256::from(initial_value)),
-                );
+                storage_diff.insert(key, Diff::Died(H256::from(initial_value)));
             }
             (None, None) => {
                 error!("Storage key={key} cannot be empty");
@@ -148,13 +144,13 @@ fn build_storage_diff<B: AccountStorage>(
     storage_diff
 }
 
-fn ethnum_to_web3(v: U256) -> web3::types::U256 {
+fn to_web3_u256(v: U256) -> web3::types::U256 {
     web3::types::U256::from(v.to_be_bytes())
 }
 
 fn diff_new_u256(from: U256, to: U256) -> Diff<web3::types::U256> {
-    let from = ethnum_to_web3(from);
-    let to = ethnum_to_web3(to);
+    let from = to_web3_u256(from);
+    let to = to_web3_u256(to);
 
     if from == web3::types::U256::zero() {
         return Diff::Born(to);

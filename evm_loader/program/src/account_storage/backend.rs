@@ -38,7 +38,7 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
             .expect("Timestamp is positive")
     }
 
-    fn block_hash(&self, slot: u64) -> [u8; 32] {
+    fn block_hash(&mut self, slot: u64) -> [u8; 32] {
         let slot_hashes_account = self
             .solana_accounts
             .get(&slot_hashes::ID)
@@ -130,12 +130,12 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
             .map_or_else(<[u8; 32]>::default, |a| a.get(subindex))
     }
 
-    fn clone_solana_account(&self, address: &Pubkey) -> OwnedAccountInfo {
+    fn clone_solana_account(&mut self, address: &Pubkey) -> OwnedAccountInfo {
         let info = self.solana_accounts[address];
         OwnedAccountInfo::from_account_info(self.program_id, info)
     }
 
-    fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
+    fn map_solana_account<F, R>(&mut self, address: &Pubkey, action: F) -> R
     where
         F: FnOnce(&AccountInfo) -> R,
     {

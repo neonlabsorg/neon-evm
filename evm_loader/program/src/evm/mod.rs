@@ -174,15 +174,15 @@ impl<B: Database> Machine<B> {
     }
 
     #[cfg(any(target_os = "solana", feature = "test-bpf"))]
-    pub fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
-        fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &B) {
+    pub fn deserialize_from(buffer: &[u8], backend: &mut B) -> Result<Self> {
+        fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &mut B) {
             if let Some((key, range)) = buffer.uninit_data() {
                 *buffer =
                     backend.map_solana_account(&key, |i| unsafe { Buffer::from_account(i, range) });
             }
         }
 
-        fn reinit_machine<B: Database>(mut machine: &mut Machine<B>, backend: &B) {
+        fn reinit_machine<B: Database>(mut machine: &mut Machine<B>, backend: &mut B) {
             loop {
                 reinit_buffer(&mut machine.call_data, backend);
                 reinit_buffer(&mut machine.execution_code, backend);
@@ -524,7 +524,7 @@ mod tests {
             self.block_timestamp
         }
 
-        async fn block_hash(&self, _number: u64) -> [u8; 32] {
+        async fn block_hash(&mut self, _number: u64) -> [u8; 32] {
             todo!()
         }
 
@@ -573,11 +573,11 @@ mod tests {
             todo!()
         }
 
-        async fn clone_solana_account(&self, _address: &Pubkey) -> OwnedAccountInfo {
+        async fn clone_solana_account(&mut self, _address: &Pubkey) -> OwnedAccountInfo {
             todo!()
         }
 
-        async fn map_solana_account<F, R>(&self, _address: &Pubkey, _action: F) -> R
+        async fn map_solana_account<F, R>(&mut self, _address: &Pubkey, _action: F) -> R
         where
             F: FnOnce(&AccountInfo) -> R,
         {

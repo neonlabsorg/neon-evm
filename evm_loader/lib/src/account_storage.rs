@@ -63,14 +63,13 @@ impl NeonAccount {
 
             let data_len = account.data.len();
 
-            let (account, data) =
-                match from_account::<ether_account::Data>(program_id, pubkey, &account) {
-                    Ok(data) => (Some(account), Some(data)),
-                    Err(err) => {
-                        error!("from_account error {:?}", err);
-                        (None, None)
-                    }
-                };
+            let (account, data) = match from_account(program_id, pubkey, &account) {
+                Ok(data) => (Some(account), Some(data)),
+                Err(err) => {
+                    error!("from_account error {:?}", err);
+                    (None, None)
+                }
+            };
 
             Self {
                 address,

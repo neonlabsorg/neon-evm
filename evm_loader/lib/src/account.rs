@@ -1,51 +1,8 @@
-use evm_loader::account::ether_contract::INTERNAL_STORAGE_SIZE;
-use evm_loader::account::{ether_account, Packable};
+use evm_loader::account::Packable;
 use evm_loader::error;
 use evm_loader::error::Error;
 use evm_loader::solana_program::pubkey::Pubkey;
 use solana_sdk::account::Account;
-use std::fmt::Debug;
-use std::ops::{Deref, DerefMut};
-
-pub type EthereumAccountFromSolanaAccount<'a> =
-    AccountDataFromSolanaAccount<'a, ether_account::Data>;
-
-#[derive(Debug)]
-pub struct AccountDataFromSolanaAccount<'a, T>
-where
-    T: Packable + Debug,
-{
-    dirty: bool,
-    data: T,
-    pub info: &'a Account,
-}
-
-impl<'a, T> AccountDataFromSolanaAccount<'a, T>
-where
-    T: Packable + Debug,
-{
-    pub const SIZE: usize = 1 + T::SIZE;
-    pub const TAG: u8 = T::TAG;
-
-    pub fn from_account(program_id: Pubkey, key: Pubkey, info: &'a Account) -> error::Result<Self> {
-        if info.owner != program_id {
-            return Err(Error::AccountInvalidOwner(key, program_id));
-        }
-
-        let parts = split_account_data(key, &info.data[..], T::SIZE)?;
-        if *parts.tag != T::TAG {
-            return Err(Error::AccountInvalidTag(key, T::TAG));
-        }
-
-        let data = T::unpack(parts.data);
-
-        Ok(Self {
-            dirty: false,
-            data,
-            info,
-        })
-    }
-}
 
 pub fn from_account<T: Packable>(
     program_id: Pubkey,
@@ -87,67 +44,4 @@ struct AccountParts<'a> {
     tag: &'a u8,
     data: &'a [u8],
     _remaining: &'a [u8],
-}
-
-impl<T> Deref for AccountDataFromSolanaAccount<'_, T>
-where
-    T: Packable + Debug,
-{
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.data
-    }
-}
-
-impl<T> DerefMut for AccountDataFromSolanaAccount<'_, T>
-where
-    T: Packable + Debug,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.dirty = true;
-        &mut self.data
-    }
-}
-
-pub struct ContractData<'a> {
-    account: &'a EthereumAccountFromSolanaAccount<'a>,
-}
-
-impl EthereumAccountFromSolanaAccount<'_> {
-    #[must_use]
-    pub fn is_contract(&self) -> bool {
-        self.code_size() != 0
-    }
-
-    #[must_use]
-    pub fn code_size(&self) -> usize {
-        self.code_size as usize
-    }
-
-    #[must_use]
-    pub fn contract_data(&self) -> Option<ContractData> {
-        if !self.is_contract() {
-            return None;
-        }
-        Some(ContractData { account: self })
-    }
-}
-
-impl ContractData<'_> {
-    #[must_use]
-    pub fn code(&self) -> &[u8] {
-        let offset = INTERNAL_STORAGE_SIZE;
-        let len = self.account.data.code_size as usize;
-
-        &self.account.info.data[EthereumAccountFromSolanaAccount::SIZE..][offset..][..len]
-    }
-
-    #[must_use]
-    pub fn storage(&self) -> &[u8] {
-        let offset = 0;
-        let len = INTERNAL_STORAGE_SIZE;
-
-        &self.account.info.data[EthereumAccountFromSolanaAccount::SIZE..][offset..][..len]
-    }
 }

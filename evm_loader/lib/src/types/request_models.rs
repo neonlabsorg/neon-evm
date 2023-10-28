@@ -1,6 +1,6 @@
+use crate::tracing::TraceCallConfig;
 use crate::types::{PubkeyBase58, TxParams};
 use ethnum::U256;
-use evm_loader::evm::tracing::TraceCallConfig;
 use evm_loader::types::Address;
 use serde::{Deserialize, Serialize};
 use solana_sdk::debug_account_data::debug_account_data;
@@ -29,6 +29,7 @@ pub struct TxParamsRequestModel {
     pub data: Option<Vec<u8>>,
     pub value: Option<U256>,
     pub gas_limit: Option<U256>,
+    pub gas_used: Option<U256>,
     pub gas_price: Option<U256>,
     pub access_list: Option<Vec<AccessListItem>>,
 }
@@ -60,6 +61,7 @@ impl From<TxParamsRequestModel> for TxParams {
             data: model.data,
             value: model.value,
             gas_limit: model.gas_limit,
+            gas_used: model.gas_used,
             gas_price: model.gas_price,
             access_list: model.access_list,
         }

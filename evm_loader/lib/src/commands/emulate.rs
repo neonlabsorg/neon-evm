@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
 use evm_loader::evm::tracing::TracerTypeOpt;
-use evm_loader::evm::tracing::{AccountOverrides, BlockOverrides};
 use evm_loader::{
     account_storage::AccountStorage,
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
@@ -15,7 +14,10 @@ use evm_loader::{
     gasometer::LAMPORTS_PER_SIGNATURE,
     types::{Address, Transaction},
 };
+use state_diff::build_state_diff;
 
+use crate::tracing::tracers::openeth::state_diff;
+use crate::tracing::{AccountOverrides, BlockOverrides};
 use crate::types::TxParams;
 use crate::{
     account_storage::{EmulatorAccountStorage, NeonAccount, SolanaAccount},
@@ -123,55 +125,6 @@ pub async fn execute(
     block_overrides: &Option<BlockOverrides>,
     state_overrides: Option<AccountOverrides>,
 ) -> NeonResult<EmulationResultWithAccounts> {
-    let (emulation_result, storage) = emulate_transaction(
-        rpc_client,
-        evm_loader,
-        tx_params,
-        token_mint,
-        chain_id,
-        step_limit,
-        commitment,
-        accounts,
-        solana_accounts,
-        block_overrides,
-        state_overrides,
-        None,
-    )
-    .await?;
-    let accounts = storage.accounts.borrow().values().cloned().collect();
-    let solana_accounts = storage.solana_accounts.borrow().values().cloned().collect();
-
-    Ok(EmulationResultWithAccounts {
-        accounts,
-        solana_accounts,
-        token_accounts: vec![],
-        emulation_result: emulation_result.into(),
-    })
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn emulate_transaction<'a>(
-    rpc_client: &'a dyn Rpc,
-    evm_loader: Pubkey,
-    tx_params: TxParams,
-    token_mint: Pubkey,
-    chain_id: u64,
-    step_limit: u64,
-    commitment: CommitmentConfig,
-    accounts: &[Address],
-    solana_accounts: &[Pubkey],
-    block_overrides: &Option<BlockOverrides>,
-    state_overrides: Option<AccountOverrides>,
-    tracer: TracerTypeOpt,
-) -> Result<
-    (
-        evm_loader::evm::tracing::EmulationResult,
-        EmulatorAccountStorage<'a>,
-    ),
-    NeonError,
-> {
-    setup_syscall_stubs(rpc_client).await?;
-
     let storage = EmulatorAccountStorage::with_accounts(
         rpc_client,
         evm_loader,
@@ -185,9 +138,27 @@ pub(crate) async fn emulate_transaction<'a>(
     )
     .await?;
 
-    emulate_trx(tx_params, &storage, chain_id, step_limit, tracer)
-        .await
-        .map(move |result| (result, storage))
+    let mut backend = ExecutorState::new(&storage);
+
+    let emulation_result = emulate_trx(
+        tx_params,
+        &storage,
+        chain_id,
+        step_limit,
+        None,
+        &mut backend,
+    )
+    .await?;
+
+    let accounts = storage.accounts.borrow().values().cloned().collect();
+    let solana_accounts = storage.solana_accounts.borrow().values().cloned().collect();
+
+    Ok(EmulationResultWithAccounts {
+        accounts,
+        solana_accounts,
+        token_accounts: vec![],
+        emulation_result: emulation_result.into(),
+    })
 }
 
 pub(crate) async fn emulate_trx<'a>(
@@ -196,79 +167,21 @@ pub(crate) async fn emulate_trx<'a>(
     chain_id: u64,
     step_limit: u64,
     tracer: TracerTypeOpt,
+    backend: &mut ExecutorState<'_, EmulatorAccountStorage<'_>>,
 ) -> Result<evm_loader::evm::tracing::EmulationResult, NeonError> {
-    let (exit_status, actions, steps_executed) = {
-        let mut backend = ExecutorState::new(storage);
-        let trx_payload = if tx_params.access_list.is_some() {
-            let access_list = tx_params
-                .access_list
-                .expect("access_list is present")
-                .into_iter()
-                .map(|item| {
-                    (
-                        item.address,
-                        item.storage_keys
-                            .into_iter()
-                            .map(|k| {
-                                evm_loader::types::StorageKey::try_from(k)
-                                    .expect("key to be correct")
-                            })
-                            .collect(),
-                    )
-                })
-                .collect();
-            evm_loader::types::TransactionPayload::AccessList(evm_loader::types::AccessListTx {
-                nonce: match tx_params.nonce {
-                    Some(nonce) => nonce,
-                    None => storage.nonce(&tx_params.from).await,
-                },
-                gas_price: tx_params.gas_price.unwrap_or_default(),
-                gas_limit: tx_params.gas_limit.unwrap_or(U256::MAX),
-                target: tx_params.to,
-                value: tx_params.value.unwrap_or_default(),
-                call_data: evm_loader::evm::Buffer::from_slice(&tx_params.data.unwrap_or_default()),
-                r: U256::default(),
-                s: U256::default(),
-                chain_id: chain_id.into(),
-                recovery_id: u8::default(),
-                access_list,
-            })
-        } else {
-            evm_loader::types::TransactionPayload::Legacy(evm_loader::types::LegacyTx {
-                nonce: match tx_params.nonce {
-                    Some(nonce) => nonce,
-                    None => storage.nonce(&tx_params.from).await,
-                },
-                gas_price: tx_params.gas_price.unwrap_or_default(),
-                gas_limit: tx_params.gas_limit.unwrap_or(U256::MAX),
-                target: tx_params.to,
-                value: tx_params.value.unwrap_or_default(),
-                call_data: evm_loader::evm::Buffer::from_slice(&tx_params.data.unwrap_or_default()),
-                v: U256::default(),
-                r: U256::default(),
-                s: U256::default(),
-                chain_id: Some(chain_id.into()),
-                recovery_id: u8::default(),
-            })
-        };
+    let from = tx_params.from;
+    let gas_used = tx_params.gas_used;
 
-        let mut trx = Transaction {
-            transaction: trx_payload,
-            byte_len: usize::default(),
-            hash: <[u8; 32]>::default(),
-            signed_hash: <[u8; 32]>::default(),
-        };
+    let mut trx = tx_params_to_transaction(tx_params, storage, chain_id).await;
 
-        let mut evm = Machine::new(&mut trx, tx_params.from, &mut backend, tracer).await?;
+    let mut evm = Machine::new(&mut trx, from, backend, tracer).await?;
 
-        let (result, steps_executed) = evm.execute(step_limit, &mut backend).await?;
-        if result == ExitStatus::StepLimit {
-            return Err(NeonError::TooManySteps);
-        }
+    let (exit_status, steps_executed) = evm.execute(step_limit, backend).await?;
+    if exit_status == ExitStatus::StepLimit {
+        return Err(NeonError::TooManySteps);
+    }
 
-        let actions = backend.into_actions();
-        (result, actions, steps_executed)
-    };
+    let actions = backend.into_actions();
 
     debug!("Execute done, result={exit_status:?}");
     debug!("{steps_executed} steps executed");
@@ -282,12 +195,82 @@ pub(crate) async fn emulate_trx<'a>(
     let accounts_gas = storage.apply_accounts_operations(accounts_operations).await;
     info!("Gas - steps: {steps_gas}, actions: {actions_gas}, accounts: {accounts_gas}");
 
+    let tx_fee = gas_used.unwrap_or_default() * trx.gas_price();
+
     Ok(evm_loader::evm::tracing::EmulationResult {
         exit_status,
         steps_executed,
-        used_gas: steps_gas + begin_end_gas + actions_gas + accounts_gas,
+        used_gas: gas_used
+            .map(U256::as_u64)
+            .unwrap_or(steps_gas + begin_end_gas + actions_gas + accounts_gas),
         actions,
+        state_diff: build_state_diff(from, tx_fee, storage, backend).await?,
     })
+}
+
+pub async fn tx_params_to_transaction(
+    tx_params: TxParams,
+    storage: &impl AccountStorage,
+    chain_id: u64,
+) -> Transaction {
+    let trx_payload = if tx_params.access_list.is_some() {
+        let access_list = tx_params
+            .access_list
+            .expect("access_list is present")
+            .into_iter()
+            .map(|item| {
+                (
+                    item.address,
+                    item.storage_keys
+                        .into_iter()
+                        .map(|k| {
+                            evm_loader::types::StorageKey::try_from(k).expect("key to be correct")
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+        evm_loader::types::TransactionPayload::AccessList(evm_loader::types::AccessListTx {
+            nonce: match tx_params.nonce {
+                Some(nonce) => nonce,
+                None => storage.nonce(&tx_params.from).await,
+            },
+            gas_price: tx_params.gas_price.unwrap_or_default(),
+            gas_limit: tx_params.gas_limit.unwrap_or(U256::MAX),
+            target: tx_params.to,
+            value: tx_params.value.unwrap_or_default(),
+            call_data: evm_loader::evm::Buffer::from_slice(&tx_params.data.unwrap_or_default()),
+            r: U256::default(),
+            s: U256::default(),
+            chain_id: chain_id.into(),
+            recovery_id: u8::default(),
+            access_list,
+        })
+    } else {
+        evm_loader::types::TransactionPayload::Legacy(evm_loader::types::LegacyTx {
+            nonce: match tx_params.nonce {
+                Some(nonce) => nonce,
+                None => storage.nonce(&tx_params.from).await,
+            },
+            gas_price: tx_params.gas_price.unwrap_or_default(),
+            gas_limit: tx_params.gas_limit.unwrap_or(U256::MAX),
+            target: tx_params.to,
+            value: tx_params.value.unwrap_or_default(),
+            call_data: evm_loader::evm::Buffer::from_slice(&tx_params.data.unwrap_or_default()),
+            v: U256::default(),
+            r: U256::default(),
+            s: U256::default(),
+            chain_id: Some(chain_id.into()),
+            recovery_id: u8::default(),
+        })
+    };
+
+    Transaction {
+        transaction: trx_payload,
+        byte_len: usize::default(),
+        hash: <[u8; 32]>::default(),
+        signed_hash: <[u8; 32]>::default(),
+    }
 }
 
 pub(crate) async fn setup_syscall_stubs(rpc_client: &dyn Rpc) -> Result<(), NeonError> {

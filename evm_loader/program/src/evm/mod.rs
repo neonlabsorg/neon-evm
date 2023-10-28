@@ -35,15 +35,15 @@ mod utils;
 macro_rules! tracing_event {
     ($self:ident, $x:expr) => {
         #[cfg(not(target_os = "solana"))]
-        if let Some(tracer) = &$self.tracer {
-            tracer.borrow_mut().event($x);
+        if let Some(tracer) = &mut $self.tracer {
+            tracer.event($x);
         }
     };
     ($self:ident, $condition:expr, $x:expr) => {
         #[cfg(not(target_os = "solana"))]
-        if let Some(tracer) = &$self.tracer {
+        if let Some(tracer) = &mut $self.tracer {
             if $condition {
-                tracer.borrow_mut().event($x);
+                tracer.event($x);
             }
         }
     };
@@ -52,13 +52,11 @@ macro_rules! tracing_event {
 macro_rules! trace_end_step {
     ($self:ident, $return_data:expr) => {
         #[cfg(not(target_os = "solana"))]
-        if let Some(tracer) = &$self.tracer {
-            tracer
-                .borrow_mut()
-                .event(crate::evm::tracing::Event::EndStep {
-                    gas_used: 0_u64,
-                    return_data: $return_data,
-                })
+        if let Some(tracer) = &mut $self.tracer {
+            tracer.event(crate::evm::tracing::Event::EndStep {
+                gas_used: 0_u64,
+                return_data: $return_data,
+            })
         }
     };
     ($self:ident, $condition:expr; $return_data_getter:expr) => {
@@ -123,6 +121,14 @@ pub struct Context {
     pub value: U256,
 
     pub code_address: Option<Address>,
+}
+
+// #[derive(Debug, PartialEq)]
+pub struct MachineResult {
+    pub exit_status: ExitStatus,
+    pub steps_executed: u64,
+    #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
+    pub tracer: TracerTypeOpt,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -345,7 +351,7 @@ impl<B: Database> Machine<B> {
     }
 
     #[maybe_async]
-    pub async fn execute(&mut self, step_limit: u64, backend: &mut B) -> Result<(ExitStatus, u64)> {
+    pub async fn execute(&mut self, step_limit: u64, backend: &mut B) -> Result<MachineResult> {
         assert!(self.execution_code.is_initialized());
         assert!(self.call_data.is_initialized());
         assert!(self.return_data.is_initialized());
@@ -417,7 +423,12 @@ impl<B: Database> Machine<B> {
             }
         );
 
-        Ok((status, step))
+        Ok(MachineResult {
+            exit_status: status,
+            steps_executed: step,
+            #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
+            tracer: self.tracer.take(),
+        })
     }
 
     fn fork(
@@ -445,7 +456,7 @@ impl<B: Database> Machine<B> {
             parent: None,
             phantom: PhantomData,
             #[cfg(not(target_os = "solana"))]
-            tracer: self.tracer.clone(),
+            tracer: self.tracer.take(),
         };
 
         core::mem::swap(self, &mut other);
@@ -456,6 +467,12 @@ impl<B: Database> Machine<B> {
         assert!(self.parent.is_some());
 
         let mut other = *self.parent.take().unwrap();
+
+        #[cfg(all(not(target_os = "solana"), not(feature = "test-bpf")))]
+        {
+            other.tracer = self.tracer.take();
+        }
+
         core::mem::swap(self, &mut other);
 
         other

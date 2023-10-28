@@ -5,7 +5,7 @@ use crate::account::{program, EthereumAccount, Operator, State, Treasury};
 use crate::account_storage::{AccountsReadiness, ProgramAccountStorage};
 use crate::config::{EVM_STEPS_LAST_ITERATION_MAX, EVM_STEPS_MIN, PAYMENT_TO_TREASURE};
 use crate::error::{Error, Result};
-use crate::evm::{ExitStatus, Machine};
+use crate::evm::{ExitStatus, Machine, MachineResult};
 use crate::executor::{Action, ExecutorState};
 use crate::gasometer::Gasometer;
 use crate::state_account::Deposit;
@@ -62,22 +62,28 @@ pub fn do_continue<'a>(
 
     let (mut backend, mut evm) = deserialize_evm_state(&storage, account_storage)?;
 
-    let (result, steps_executed) = {
+    let MachineResult {
+        exit_status,
+        steps_executed,
+    } = {
         match backend.exit_status() {
-            Some(status) => (status.clone(), 0_u64),
+            Some(status) => MachineResult {
+                exit_status: status.clone(),
+                steps_executed: 0_u64,
+            },
             None => evm.execute(step_count, &mut backend)?,
         }
     };
 
-    if (result != ExitStatus::StepLimit) && (steps_executed > 0) {
-        backend.set_exit_status(result.clone());
+    if (exit_status != ExitStatus::StepLimit) && (steps_executed > 0) {
+        backend.set_exit_status(exit_status.clone());
     }
 
     if steps_executed > 0 {
         serialize_evm_state(&mut storage, &backend, &evm)?;
     }
 
-    let results = match result {
+    let results = match exit_status {
         ExitStatus::StepLimit => None,
         _ if steps_executed > EVM_STEPS_LAST_ITERATION_MAX => None,
         result => Some((result, backend.into_actions())),

@@ -3,6 +3,7 @@ use crate::account_storage::{AccountsReadiness, ProgramAccountStorage};
 use crate::config::CHAIN_ID;
 use crate::error::{Error, Result};
 use crate::evm::Machine;
+use crate::evm::MachineResult;
 use crate::executor::ExecutorState;
 use crate::gasometer::Gasometer;
 use crate::instruction::transaction_step::log_return_value;
@@ -55,11 +56,14 @@ pub fn execute<'a>(
         let mut backend = ExecutorState::new(account_storage);
 
         let mut evm = Machine::new(trx, caller_address, &mut backend)?;
-        let (result, _) = evm.execute(u64::MAX, &mut backend)?;
+        let MachineResult {
+            exit_status,
+            steps_executed: _,
+        } = evm.execute(u64::MAX, &mut backend)?;
 
         let actions = backend.into_actions();
 
-        (result, actions)
+        (exit_status, actions)
     };
 
     let accounts_readiness = account_storage.apply_state_change(

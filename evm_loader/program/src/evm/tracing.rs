@@ -1,6 +1,4 @@
-use std::cell::RefCell;
 use std::fmt::Debug;
-use std::rc::Rc;
 
 use crate::executor::Action;
 use ethnum::U256;
@@ -23,8 +21,7 @@ pub trait EventListener: Debug {
     fn into_traces(self: Box<Self>, emulation_result: EmulationResult) -> Value;
 }
 
-pub type TracerType = Rc<RefCell<Box<dyn EventListener>>>;
-pub type TracerType2 = Rc<RefCell<dyn EventListener>>;
+pub type TracerType = Box<dyn EventListener>;
 pub type TracerTypeOpt = Option<TracerType>;
 
 /// Trace event

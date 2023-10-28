@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 
 use evm_loader::evm::tracing::TracerTypeOpt;
+use evm_loader::evm::MachineResult;
 use evm_loader::{
     account_storage::AccountStorage,
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
@@ -140,7 +141,8 @@ pub async fn execute(
 
     let mut backend = ExecutorState::new(&mut storage);
 
-    let emulation_result = emulate_trx(tx_params, chain_id, step_limit, None, &mut backend).await?;
+    let (emulation_result, _) =
+        emulate_trx(tx_params, chain_id, step_limit, None, &mut backend).await?;
 
     let accounts = storage.accounts.values().cloned().collect();
     let solana_accounts = storage.solana_accounts.borrow().values().cloned().collect();
@@ -159,7 +161,7 @@ pub(crate) async fn emulate_trx<'a>(
     step_limit: u64,
     tracer: TracerTypeOpt,
     backend: &mut ExecutorState<'_, EmulatorAccountStorage<'_>>,
-) -> Result<evm_loader::evm::tracing::EmulationResult, NeonError> {
+) -> Result<(evm_loader::evm::tracing::EmulationResult, TracerTypeOpt), NeonError> {
     let from = tx_params.from;
     let gas_used = tx_params.gas_used;
 
@@ -167,7 +169,11 @@ pub(crate) async fn emulate_trx<'a>(
 
     let mut evm = Machine::new(&mut trx, from, backend, tracer).await?;
 
-    let (exit_status, steps_executed) = evm.execute(step_limit, backend).await?;
+    let MachineResult {
+        exit_status,
+        steps_executed,
+        tracer,
+    } = evm.execute(step_limit, backend).await?;
     if exit_status == ExitStatus::StepLimit {
         return Err(NeonError::TooManySteps);
     }
@@ -191,15 +197,18 @@ pub(crate) async fn emulate_trx<'a>(
 
     let tx_fee = gas_used.unwrap_or_default() * trx.gas_price();
 
-    Ok(evm_loader::evm::tracing::EmulationResult {
-        exit_status,
-        steps_executed,
-        used_gas: gas_used
-            .map(U256::as_u64)
-            .unwrap_or(steps_gas + begin_end_gas + actions_gas + accounts_gas),
-        actions,
-        state_diff: build_state_diff(from, tx_fee, backend).await?,
-    })
+    Ok((
+        evm_loader::evm::tracing::EmulationResult {
+            exit_status,
+            steps_executed,
+            used_gas: gas_used
+                .map(U256::as_u64)
+                .unwrap_or(steps_gas + begin_end_gas + actions_gas + accounts_gas),
+            actions,
+            state_diff: build_state_diff(from, tx_fee, backend).await?,
+        },
+        tracer,
+    ))
 }
 
 pub async fn tx_params_to_transaction(

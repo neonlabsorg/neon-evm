@@ -27,7 +27,7 @@ impl<'a> ProgramAccountStorage<'a> {
         mut operator: EthereumAccount<'a>,
         value: U256,
     ) -> ProgramResult {
-        let origin_balance = self.balance(&origin);
+        let origin_balance = self.balance(&origin).unwrap_or_default();
         if origin_balance < value {
             return Err!(ProgramError::InsufficientFunds; "Account {} - insufficient funds", origin);
         }
@@ -426,7 +426,7 @@ impl<'a> ProgramAccountStorage<'a> {
             return Err!(ProgramError::InvalidArgument; "Account {} - expect initialized", source);
         }
 
-        if self.balance(source) < value {
+        if self.balance(source).unwrap_or_default() < value {
             return Err!(ProgramError::InsufficientFunds; "Account {} - insufficient funds, required = {}", source, value);
         }
 

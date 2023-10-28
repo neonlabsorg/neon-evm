@@ -53,14 +53,12 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         self.ethereum_accounts.contains_key(address)
     }
 
-    fn nonce(&self, address: &Address) -> u64 {
-        self.ethereum_account(address)
-            .map_or(0_u64, |a| a.trx_count)
+    fn nonce(&self, address: &Address) -> Option<u64> {
+        self.ethereum_account(address).map(|a| a.trx_count)
     }
 
-    fn balance(&self, address: &Address) -> U256 {
-        self.ethereum_account(address)
-            .map_or(U256::ZERO, |a| a.balance)
+    fn balance(&self, address: &Address) -> Option<U256> {
+        self.ethereum_account(address).map(|a| a.balance)
     }
 
     fn code_size(&self, address: &Address) -> usize {
@@ -74,7 +72,9 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         // https://eips.ethereum.org/EIPS/eip-1052
         // https://eips.ethereum.org/EIPS/eip-161
         if self.code_size(address) == 0 {
-            if self.nonce(address) == 0 && self.balance(address) == 0 {
+            if self.nonce(address).unwrap_or_default() == 0
+                && self.balance(address).unwrap_or_default() == 0
+            {
                 // non-existent account
                 return <[u8; 32]>::default();
             }

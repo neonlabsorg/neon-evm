@@ -7,7 +7,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 pub use tracer_ch_db::ClickHouseDb as TracerDb;
 
-use evm_loader::evm::tracing::TraceCallConfig;
+use crate::tracing::TraceCallConfig;
 use evm_loader::types::hexbytes::HexBytes;
 use {
     ethnum::U256,
@@ -27,7 +27,7 @@ pub struct AccessListItem {
     pub storage_keys: Vec<HexBytes>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, Default)]
 pub struct TxParams {
     pub nonce: Option<u64>,
     pub from: Address,
@@ -35,6 +35,7 @@ pub struct TxParams {
     pub data: Option<Vec<u8>>,
     pub value: Option<U256>,
     pub gas_limit: Option<U256>,
+    pub gas_used: Option<U256>,
     pub gas_price: Option<U256>,
     pub access_list: Option<Vec<AccessListItem>>,
 }

@@ -17,6 +17,7 @@ ARG REVISION
 ENV NEON_REVISION=${REVISION}
 RUN cargo fmt --check && \
     cargo clippy --release && \
+    cargo test --release && \
     cargo build --release && \
     cargo build-bpf --features devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
     cargo build-bpf --features testnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet.so && \

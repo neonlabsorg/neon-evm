@@ -4,10 +4,14 @@ use solana_sdk::{program_error::ProgramError, program_stubs::SyscallStubs, sysva
 use crate::{errors::NeonError, rpc::Rpc};
 
 pub struct Stubs {
-    rent: Rent,
+    pub rent: Rent,
 }
 
 impl Stubs {
+    pub fn new_rent(rent: Rent) -> Self {
+        Stubs { rent }
+    }
+
     pub async fn new(rpc_client: &dyn Rpc) -> Result<Box<Stubs>, NeonError> {
         let rent_pubkey = solana_sdk::sysvar::rent::id();
         let data = rpc_client.get_account_data(&rent_pubkey).await?;

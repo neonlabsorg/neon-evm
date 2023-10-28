@@ -56,6 +56,9 @@ pub struct ProgramAccountStorage<'a> {
 /// Trait to access account info
 #[maybe_async(?Send)]
 pub trait AccountStorage {
+    #[cfg(not(target_os = "solana"))]
+    fn all_addresses(&self) -> Vec<Address>;
+
     /// Get `NEON` token mint
     fn neon_token_mint(&self) -> &Pubkey;
 
@@ -77,9 +80,9 @@ pub trait AccountStorage {
     /// Check if ethereum account exists
     async fn exists(&self, address: &Address) -> bool;
     /// Get account nonce
-    async fn nonce(&self, address: &Address) -> u64;
+    async fn nonce(&self, address: &Address) -> Option<u64>;
     /// Get account balance
-    async fn balance(&self, address: &Address) -> U256;
+    async fn balance(&self, address: &Address) -> Option<U256>;
 
     /// Get code size
     async fn code_size(&self, address: &Address) -> usize;

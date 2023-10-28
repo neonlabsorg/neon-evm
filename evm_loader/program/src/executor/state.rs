@@ -5,6 +5,8 @@ use ethnum::{AsU256, U256};
 use maybe_async::maybe_async;
 use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
+#[cfg(not(target_os = "solana"))]
+use web3::types::H256;
 
 use crate::account_storage::AccountStorage;
 use crate::error::{Error, Result};
@@ -19,6 +21,10 @@ use super::OwnedAccountInfo;
 /// Represents the state of executor abstracted away from a self.backend.
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
 pub struct ExecutorState<'a, B: AccountStorage> {
+    #[cfg(not(target_os = "solana"))]
+    pub initial_storage: RefCell<BTreeMap<Address, BTreeMap<H256, H256>>>,
+    #[cfg(not(target_os = "solana"))]
+    pub final_storage: RefCell<BTreeMap<Address, BTreeMap<H256, H256>>>,
     pub backend: &'a B,
     cache: RefCell<Cache>,
     actions: Vec<Action>,
@@ -27,6 +33,7 @@ pub struct ExecutorState<'a, B: AccountStorage> {
 }
 
 impl<'a, B: AccountStorage> ExecutorState<'a, B> {
+    #[cfg(target_os = "solana")]
     pub fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize> {
         let mut cursor = std::io::Cursor::new(buffer);
 
@@ -36,6 +43,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         cursor.position().try_into().map_err(Error::from)
     }
 
+    #[cfg(target_os = "solana")]
     pub fn deserialize_from(buffer: &[u8], backend: &'a B) -> Result<Self> {
         let (cache, actions, stack, exit_status) = bincode::deserialize(buffer)?;
         Ok(Self {
@@ -56,6 +64,10 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         };
 
         Self {
+            #[cfg(not(target_os = "solana"))]
+            initial_storage: RefCell::new(BTreeMap::new()),
+            #[cfg(not(target_os = "solana"))]
+            final_storage: RefCell::new(BTreeMap::new()),
             backend,
             cache: RefCell::new(cache),
             actions: Vec::with_capacity(64),
@@ -64,10 +76,10 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         }
     }
 
-    pub fn into_actions(self) -> Vec<Action> {
+    pub fn actions(&self) -> Vec<Action> {
         assert!(self.stack.is_empty());
 
-        self.actions
+        self.actions.clone()
     }
 
     pub fn exit_status(&self) -> Option<&ExitStatus> {
@@ -181,6 +193,24 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 
         Ok(accounts[&address].clone())
     }
+
+    #[maybe_async]
+    pub async fn get_storage(&self, from_address: &Address, from_index: &U256) -> Result<[u8; 32]> {
+        for action in self.actions.iter().rev() {
+            if let Action::EvmSetStorage {
+                address,
+                index,
+                value,
+            } = action
+            {
+                if (from_address == address) && (from_index == index) {
+                    return Ok(*value);
+                }
+            }
+        }
+
+        Ok(self.backend.storage(from_address, from_index).await)
+    }
 }
 
 #[maybe_async]
@@ -206,7 +236,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn nonce(&self, from_address: &Address) -> Result<u64> {
-        let mut nonce = self.backend.nonce(from_address).await;
+        let mut nonce = self.backend.nonce(from_address).await.unwrap_or_default();
 
         for action in &self.actions {
             if let Action::EvmIncrementNonce { address } = action {
@@ -227,7 +257,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn balance(&self, from_address: &Address) -> Result<U256> {
-        let mut balance = self.backend.balance(from_address).await;
+        let mut balance = self.backend.balance(from_address).await.unwrap_or_default();
 
         for action in &self.actions {
             match action {
@@ -346,20 +376,20 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn storage(&self, from_address: &Address, from_index: &U256) -> Result<[u8; 32]> {
-        for action in self.actions.iter().rev() {
-            if let Action::EvmSetStorage {
-                address,
-                index,
-                value,
-            } = action
-            {
-                if (from_address == address) && (from_index == index) {
-                    return Ok(*value);
-                }
-            }
+        let value = self.get_storage(from_address, from_index).await?;
+
+        #[cfg(not(target_os = "solana"))]
+        {
+            let mut initial_storage = self.initial_storage.borrow_mut();
+            let account_initial_storage = initial_storage.entry(*from_address).or_default();
+
+            let key = H256::from(from_index.to_be_bytes());
+            account_initial_storage
+                .entry(key)
+                .or_insert_with(|| H256::from(value));
         }
 
-        Ok(self.backend.storage(from_address, from_index).await)
+        Ok(value)
     }
 
     fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
@@ -369,6 +399,15 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             value,
         };
         self.actions.push(set_storage);
+
+        #[cfg(not(target_os = "solana"))]
+        {
+            self.final_storage
+                .borrow_mut()
+                .entry(address)
+                .or_default()
+                .insert(H256::from(index.to_be_bytes()), H256::from(value));
+        }
 
         Ok(())
     }

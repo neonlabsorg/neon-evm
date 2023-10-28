@@ -80,7 +80,7 @@ pub fn do_continue<'a>(
     let results = match result {
         ExitStatus::StepLimit => None,
         _ if steps_executed > EVM_STEPS_LAST_ITERATION_MAX => None,
-        result => Some((result, backend.into_actions())),
+        result => Some((result, backend.actions())),
     };
 
     finalize(

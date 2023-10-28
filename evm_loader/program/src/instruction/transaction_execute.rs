@@ -57,7 +57,7 @@ pub fn execute<'a>(
         let mut evm = Machine::new(trx, caller_address, &mut backend)?;
         let (result, _) = evm.execute(u64::MAX, &mut backend)?;
 
-        let actions = backend.into_actions();
+        let actions = backend.actions();
 
         (result, actions)
     };

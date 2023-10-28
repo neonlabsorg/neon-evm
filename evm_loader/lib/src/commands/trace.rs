@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use evm_loader::evm::tracing::{EmulationResult, TracerType};
 use evm_loader::executor::ExecutorState;
 use serde_json::Value;
@@ -43,15 +41,12 @@ pub async fn trace_transaction(
 
     let tracer = new_tracer(tx.gas_used, trace_call_config.trace_config)?;
 
-    let emulation_result =
-        emulate_trx(tx, chain_id, steps, Some(Rc::clone(&tracer)), &mut backend).await?;
+    let (emulation_result, tracer) =
+        emulate_trx(tx, chain_id, steps, Some(tracer), &mut backend).await?;
 
-    Ok(into_traces(tracer, emulation_result))
+    Ok(into_traces(tracer.unwrap(), emulation_result))
 }
 
 pub fn into_traces(tracer: TracerType, emulation_result: EmulationResult) -> Value {
-    Rc::try_unwrap(tracer)
-        .expect("There must be only one reference")
-        .into_inner()
-        .into_traces(emulation_result)
+    tracer.into_traces(emulation_result)
 }

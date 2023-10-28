@@ -75,14 +75,14 @@ async fn build_code_diff(
         (true, false) => Diff::Born(Bytes(final_code)),
         (true, true) => Diff::Same,
         (false, true) => {
-            error!("Code for address={address} cannot be deleted");
+            error!("Code for address={address} initial_code={initial_code:?} cannot be deleted");
             Diff::Died(Bytes(initial_code))
         }
         (false, false) => {
             if initial_code == final_code {
                 Diff::Same
             } else {
-                error!("Code for address={address} cannot be updated");
+                error!("Code for address={address} initial_code={initial_code:?} final_code={final_code:?} cannot be updated");
                 Diff::Changed(ChangedType {
                     from: Bytes(initial_code),
                     to: Bytes(final_code),

@@ -4,8 +4,8 @@ use evm_loader::account_storage::AccountStorage;
 use evm_loader::evm::database::Database;
 use evm_loader::executor::ExecutorState;
 use evm_loader::types::Address;
-use log::{error, info};
 use std::collections::BTreeMap;
+use tracing::{debug, error, info};
 use web3::types::{AccountDiff, Bytes, ChangedType, Diff, StateDiff, H160, H256};
 
 #[allow(clippy::await_holding_refcell_ref)]
@@ -97,9 +97,11 @@ fn build_storage_diff<B: AccountStorage>(
     address: &Address,
 ) -> BTreeMap<H256, Diff<H256>> {
     let initial_storage = backend.initial_storage.borrow();
+    debug!("initial_storage={initial_storage:?}");
     let account_initial_storage = initial_storage.get(address);
 
     let final_storage = backend.final_storage.borrow();
+    debug!("final_storage={final_storage:?}");
     let account_final_storage = final_storage.get(address);
 
     let account_storage_keys = account_initial_storage

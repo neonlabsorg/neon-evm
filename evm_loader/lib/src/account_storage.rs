@@ -7,7 +7,7 @@ use crate::tracing::{AccountOverrides, BlockOverrides};
 use crate::{rpc::Rpc, NeonError};
 use ethnum::U256;
 use evm_loader::account::ether_contract::INTERNAL_STORAGE_SIZE;
-use evm_loader::account::{ether_account, Packable};
+use evm_loader::account::{ether_account, EthereumAccount};
 use evm_loader::account_storage::{find_slot_hash, AccountOperation, AccountsOperations};
 use evm_loader::{
     account::{ether_storage::EthereumStorageAddress, EthereumStorage, ACCOUNT_SEED_VERSION},
@@ -150,7 +150,7 @@ impl ContractData<'_> {
         let offset = INTERNAL_STORAGE_SIZE;
         let len = self.account.code_size();
 
-        &self.account.data.as_ref().unwrap().data[ether_account::Data::SIZE..][offset..][..len]
+        &self.account.data.as_ref().unwrap().data[EthereumAccount::SIZE..][offset..][..len]
     }
 
     #[must_use]
@@ -158,7 +158,7 @@ impl ContractData<'_> {
         let offset = 0;
         let len = INTERNAL_STORAGE_SIZE;
 
-        &self.account.data.as_ref().unwrap().data[ether_account::Data::SIZE..][offset..][..len]
+        &self.account.data.as_ref().unwrap().data[EthereumAccount::SIZE..][offset..][..len]
     }
 }
 

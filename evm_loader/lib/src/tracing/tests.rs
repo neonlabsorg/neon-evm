@@ -68,45 +68,45 @@ impl AccountStorage for TestAccountStorage {
         self.chain_id
     }
 
-    async fn exists(&self, address: &Address) -> bool {
+    async fn exists(&mut self, address: &Address) -> bool {
         self.accounts.contains_key(address)
     }
 
-    async fn nonce(&self, address: &Address) -> u64 {
+    async fn nonce(&mut self, address: &Address) -> u64 {
         self.accounts
             .get(address)
             .map(|data| data.trx_count)
             .unwrap_or_default()
     }
 
-    async fn balance(&self, address: &Address) -> U256 {
+    async fn balance(&mut self, address: &Address) -> U256 {
         self.accounts
             .get(address)
             .map(|data| data.balance)
             .unwrap_or_default()
     }
 
-    async fn code_size(&self, address: &Address) -> usize {
+    async fn code_size(&mut self, address: &Address) -> usize {
         self.accounts
             .get(address)
             .map(|data| data.code_size as usize)
             .unwrap_or_default()
     }
 
-    async fn code_hash(&self, address: &Address) -> [u8; 32] {
+    async fn code_hash(&mut self, address: &Address) -> [u8; 32] {
         solana_sdk::keccak::hash(self.code.get(address).cloned().unwrap_or_default().as_ref())
             .to_bytes()
     }
 
-    async fn code(&self, address: &Address) -> Buffer {
+    async fn code(&mut self, address: &Address) -> Buffer {
         self.code.get(address).cloned().unwrap_or_default()
     }
 
-    async fn generation(&self, _address: &Address) -> u32 {
+    async fn generation(&mut self, _address: &Address) -> u32 {
         todo!()
     }
 
-    async fn storage(&self, address: &Address, index: &U256) -> [u8; 32] {
+    async fn storage(&mut self, address: &Address, index: &U256) -> [u8; 32] {
         self.storage
             .get(address)
             .unwrap()
@@ -126,7 +126,7 @@ impl AccountStorage for TestAccountStorage {
         todo!()
     }
 
-    async fn solana_account_space(&self, _address: &Address) -> Option<usize> {
+    async fn solana_account_space(&mut self, _address: &Address) -> Option<usize> {
         todo!()
     }
 }
@@ -180,7 +180,7 @@ async fn trace_contract_creation(
     let from = Address::from_hex("0x82211934c340b29561381392348d48413e15adc8").unwrap();
     let contract = Address::from_hex("0x356726f027a805fab3bd7dd0413a96d81bc6f599").unwrap();
 
-    let test_account_storage = TestAccountStorage {
+    let mut test_account_storage = TestAccountStorage {
         chain_id: 123u64,
         accounts: hash_map! {
             from => Data {
@@ -199,6 +199,7 @@ async fn trace_contract_creation(
 
     let code = hex::decode("608060405234801561001057600080fd5b506101e3806100206000396000f3fe608060405234801561001057600080fd5b50600436106100415760003560e01c80632e64cec1146100465780636057361d14610064578063d09de08a14610080575b600080fd5b61004e61008a565b60405161005b91906100d1565b60405180910390f35b61007e6004803603810190610079919061011d565b610093565b005b61008861009d565b005b60008054905090565b8060008190555050565b60016000808282546100af9190610179565b92505081905550565b6000819050919050565b6100cb816100b8565b82525050565b60006020820190506100e660008301846100c2565b92915050565b600080fd5b6100fa816100b8565b811461010557600080fd5b50565b600081359050610117816100f1565b92915050565b600060208284031215610133576101326100ec565b5b600061014184828501610108565b91505092915050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b6000610184826100b8565b915061018f836100b8565b92508282019050808211156101a7576101a661014a565b5b9291505056fea2646970667358221220ebb58b4c4a532694d88df38fd2089943f69980725510d4814d3bd8ccf0c4717464736f6c63430008120033").unwrap();
 
+    let chain_id = test_account_storage.chain_id;
     let mut trx = tx_params_to_transaction(
         TxParams {
             from,
@@ -208,22 +209,14 @@ async fn trace_contract_creation(
             gas_price: Some(U256::from(360_307_885_736u64)),
             ..TxParams::default()
         },
-        &test_account_storage,
-        test_account_storage.chain_id,
+        &mut test_account_storage,
+        chain_id,
     )
     .await;
 
-    let mut backend = ExecutorState::new(&test_account_storage);
+    let mut backend = ExecutorState::new(&mut test_account_storage);
 
-    let emulation_result = emulate_trx(
-        from,
-        gas_used,
-        &mut trx,
-        tracer,
-        &test_account_storage,
-        &mut backend,
-    )
-    .await;
+    let emulation_result = emulate_trx(from, gas_used, &mut trx, tracer, &mut backend).await;
 
     (code, emulation_result)
 }
@@ -241,21 +234,13 @@ async fn test_trace_increment_call() {
 
     let index = U256::ZERO;
 
-    let test_account_storage = increment_call_test_storage(origin, target, index);
+    let mut test_account_storage = increment_call_test_storage(origin, target, index);
 
-    let mut trx = increment_tx_params(gas_used, origin, target, &test_account_storage).await;
+    let mut trx = increment_tx_params(gas_used, origin, target, &mut test_account_storage).await;
 
-    let mut backend = ExecutorState::new(&test_account_storage);
+    let mut backend = ExecutorState::new(&mut test_account_storage);
 
-    let emulation_result = emulate_trx(
-        origin,
-        gas_used,
-        &mut trx,
-        &tracer,
-        &test_account_storage,
-        &mut backend,
-    )
-    .await;
+    let emulation_result = emulate_trx(origin, gas_used, &mut trx, &tracer, &mut backend).await;
 
     assert_eq!(emulation_result.exit_status, ExitStatus::Stop);
     assert_eq!(emulation_result.steps_executed, 112);
@@ -283,21 +268,13 @@ async fn test_trace_state_diff_increment_call() {
 
     let index = U256::ZERO;
 
-    let test_account_storage = increment_call_test_storage(origin, target, index);
+    let mut test_account_storage = increment_call_test_storage(origin, target, index);
 
-    let mut trx = increment_tx_params(gas_used, origin, target, &test_account_storage).await;
+    let mut trx = increment_tx_params(gas_used, origin, target, &mut test_account_storage).await;
 
-    let mut backend = ExecutorState::new(&test_account_storage);
+    let mut backend = ExecutorState::new(&mut test_account_storage);
 
-    let emulation_result = emulate_trx(
-        origin,
-        gas_used,
-        &mut trx,
-        &tracer,
-        &test_account_storage,
-        &mut backend,
-    )
-    .await;
+    let emulation_result = emulate_trx(origin, gas_used, &mut trx, &tracer, &mut backend).await;
 
     assert_eq!(emulation_result.exit_status, ExitStatus::Stop);
     assert_eq!(emulation_result.steps_executed, 112);
@@ -316,7 +293,7 @@ async fn increment_tx_params(
     gas_used: Option<U256>,
     origin: Address,
     target: Address,
-    test_account_storage: &TestAccountStorage,
+    test_account_storage: &mut TestAccountStorage,
 ) -> Transaction {
     tx_params_to_transaction(
         TxParams {
@@ -376,28 +353,21 @@ async fn test_trace_transfer_transaction() {
     let origin = Address::from_hex("0x4bbac480d466865807ec5e98ffdf429c170e2a4e").unwrap();
     let target = Address::from_hex("0xf2418612ef70c2207da5d42511b7f58587ba27e3").unwrap();
 
-    let test_account_storage = transfer_transaction_storage(origin, target);
+    let mut test_account_storage = transfer_transaction_storage(origin, target);
 
     let value = U256::from(100000000000000000u64);
 
     let gas_used = Some(U256::from(10_000u64));
 
-    let mut trx = transfer_tx_params(origin, target, &test_account_storage, value, gas_used).await;
+    let mut trx =
+        transfer_tx_params(origin, target, &mut test_account_storage, value, gas_used).await;
 
     let trace_config = TraceConfig::default();
     let tracer = new_tracer(gas_used, &trace_config).unwrap();
 
-    let mut backend = ExecutorState::new(&test_account_storage);
+    let mut backend = ExecutorState::new(&mut test_account_storage);
 
-    let emulation_result = emulate_trx(
-        origin,
-        gas_used,
-        &mut trx,
-        &tracer,
-        &test_account_storage,
-        &mut backend,
-    )
-    .await;
+    let emulation_result = emulate_trx(origin, gas_used, &mut trx, &tracer, &mut backend).await;
 
     assert_eq!(emulation_result.exit_status, ExitStatus::Stop);
     assert_eq!(emulation_result.steps_executed, 1);
@@ -418,28 +388,21 @@ async fn test_trace_state_diff_transfer_transaction() {
     let origin = Address::from_hex("0x4bbac480d466865807ec5e98ffdf429c170e2a4e").unwrap();
     let target = Address::from_hex("0xf2418612ef70c2207da5d42511b7f58587ba27e3").unwrap();
 
-    let test_account_storage = transfer_transaction_storage(origin, target);
+    let mut test_account_storage = transfer_transaction_storage(origin, target);
 
     let value = U256::from(100_000_000_000_000_000u64);
 
     let gas_used = Some(U256::from(10_000u64));
 
-    let mut trx = transfer_tx_params(origin, target, &test_account_storage, value, gas_used).await;
+    let mut trx =
+        transfer_tx_params(origin, target, &mut test_account_storage, value, gas_used).await;
 
     let trace_config = state_diff_trace_config();
     let tracer = new_tracer(gas_used, &trace_config).unwrap();
 
-    let mut backend = ExecutorState::new(&test_account_storage);
+    let mut backend = ExecutorState::new(&mut test_account_storage);
 
-    let emulation_result = emulate_trx(
-        origin,
-        gas_used,
-        &mut trx,
-        &tracer,
-        &test_account_storage,
-        &mut backend,
-    )
-    .await;
+    let emulation_result = emulate_trx(origin, gas_used, &mut trx, &tracer, &mut backend).await;
 
     assert_eq!(emulation_result.exit_status, ExitStatus::Stop);
     assert_eq!(emulation_result.steps_executed, 1);
@@ -477,7 +440,7 @@ fn transfer_transaction_storage(origin: Address, target: Address) -> TestAccount
 async fn transfer_tx_params(
     origin: Address,
     target: Address,
-    test_account_storage: &TestAccountStorage,
+    test_account_storage: &mut TestAccountStorage,
     value: U256,
     gas_used: Option<U256>,
 ) -> Transaction {
@@ -512,7 +475,6 @@ async fn emulate_trx<B: AccountStorage>(
     gas_used: Option<U256>,
     trx: &mut Transaction,
     tracer: &TracerType,
-    storage: &B,
     backend: &mut ExecutorState<'_, B>,
 ) -> EmulationResult {
     let mut machine = Machine::new(trx, origin, backend, Some(Rc::clone(tracer)))
@@ -530,8 +492,6 @@ async fn emulate_trx<B: AccountStorage>(
         steps_executed,
         used_gas: 0,
         actions,
-        state_diff: build_state_diff(origin, tx_fee, storage, backend)
-            .await
-            .unwrap(),
+        state_diff: build_state_diff(origin, tx_fee, backend).await.unwrap(),
     }
 }

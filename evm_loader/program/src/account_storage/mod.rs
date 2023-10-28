@@ -77,23 +77,23 @@ pub trait AccountStorage {
     fn chain_id(&self) -> u64;
 
     /// Check if ethereum account exists
-    async fn exists(&self, address: &Address) -> bool;
+    async fn exists(&mut self, address: &Address) -> bool;
     /// Get account nonce
-    async fn nonce(&self, address: &Address) -> u64;
+    async fn nonce(&mut self, address: &Address) -> u64;
     /// Get account balance
-    async fn balance(&self, address: &Address) -> U256;
+    async fn balance(&mut self, address: &Address) -> U256;
 
     /// Get code size
-    async fn code_size(&self, address: &Address) -> usize;
+    async fn code_size(&mut self, address: &Address) -> usize;
     /// Get code hash
-    async fn code_hash(&self, address: &Address) -> [u8; 32];
+    async fn code_hash(&mut self, address: &Address) -> [u8; 32];
     /// Get code data
-    async fn code(&self, address: &Address) -> crate::evm::Buffer;
+    async fn code(&mut self, address: &Address) -> crate::evm::Buffer;
     /// Get contract generation
-    async fn generation(&self, address: &Address) -> u32;
+    async fn generation(&mut self, address: &Address) -> u32;
 
     /// Get data from storage
-    async fn storage(&self, address: &Address, index: &U256) -> [u8; 32];
+    async fn storage(&mut self, address: &Address, index: &U256) -> [u8; 32];
 
     /// Clone existing solana account
     async fn clone_solana_account(&self, address: &Pubkey) -> OwnedAccountInfo;
@@ -109,9 +109,9 @@ pub trait AccountStorage {
     }
 
     /// Solana account data len
-    async fn solana_account_space(&self, address: &Address) -> Option<usize>;
+    async fn solana_account_space(&mut self, address: &Address) -> Option<usize>;
 
-    async fn calc_accounts_operations(&self, actions: &[Action]) -> AccountsOperations {
+    async fn calc_accounts_operations(&mut self, actions: &[Action]) -> AccountsOperations {
         let mut accounts = HashMap::new();
         for action in actions {
             let (address, code_size) = match action {

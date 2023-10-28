@@ -515,44 +515,44 @@ mod tests {
             self.chain_id
         }
 
-        async fn exists(&self, address: &Address) -> bool {
+        async fn exists(&mut self, address: &Address) -> bool {
             self.accounts.contains_key(address)
         }
 
-        async fn nonce(&self, address: &Address) -> u64 {
+        async fn nonce(&mut self, address: &Address) -> u64 {
             self.accounts
                 .get(address)
                 .map(|data| data.trx_count)
                 .unwrap_or_default()
         }
 
-        async fn balance(&self, address: &Address) -> U256 {
+        async fn balance(&mut self, address: &Address) -> U256 {
             self.accounts
                 .get(address)
                 .map(|data| data.balance)
                 .unwrap_or_default()
         }
 
-        async fn code_size(&self, address: &Address) -> usize {
+        async fn code_size(&mut self, address: &Address) -> usize {
             self.accounts
                 .get(address)
                 .map(|data| data.code_size as usize)
                 .unwrap_or_default()
         }
 
-        async fn code_hash(&self, _address: &Address) -> [u8; 32] {
+        async fn code_hash(&mut self, _address: &Address) -> [u8; 32] {
             todo!()
         }
 
-        async fn code(&self, _address: &Address) -> Buffer {
+        async fn code(&mut self, _address: &Address) -> Buffer {
             todo!()
         }
 
-        async fn generation(&self, _address: &Address) -> u32 {
+        async fn generation(&mut self, _address: &Address) -> u32 {
             todo!()
         }
 
-        async fn storage(&self, _address: &Address, _index: &U256) -> [u8; 32] {
+        async fn storage(&mut self, _address: &Address, _index: &U256) -> [u8; 32] {
             todo!()
         }
 
@@ -567,7 +567,7 @@ mod tests {
             todo!()
         }
 
-        async fn solana_account_space(&self, _address: &Address) -> Option<usize> {
+        async fn solana_account_space(&mut self, _address: &Address) -> Option<usize> {
             todo!()
         }
     }
@@ -614,14 +614,14 @@ mod tests {
             },
         );
 
-        let storage = TestAccountStorage {
+        let mut storage = TestAccountStorage {
             chain_id,
             block_number: U256::ZERO,
             block_timestamp: U256::ZERO,
             accounts,
         };
 
-        let mut backend = ExecutorState::new(&storage);
+        let mut backend = ExecutorState::new(&mut storage);
 
         let mut machine = Machine::new(
             &mut trx,

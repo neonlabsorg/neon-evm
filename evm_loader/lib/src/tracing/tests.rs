@@ -219,7 +219,7 @@ async fn trace_contract_creation(
         from,
         gas_used,
         &mut trx,
-        &tracer,
+        tracer,
         &test_account_storage,
         &mut backend,
     )
@@ -324,7 +324,7 @@ async fn increment_tx_params(
             to: Some(target),
             data: Some(hex::decode("d09de08a").unwrap()),
             gas_used,
-            gas_price: Some(U256::from(36_012_356_2234u64)),
+            gas_price: Some(U256::from(360_123_562_234_u64)),
             gas_limit: Some(U256::from(30_000u64)),
             ..TxParams::default()
         },
@@ -510,16 +510,16 @@ fn state_diff_trace_config() -> TraceConfig {
 async fn emulate_trx<B: AccountStorage>(
     origin: Address,
     gas_used: Option<U256>,
-    mut trx: &mut Transaction,
+    trx: &mut Transaction,
     tracer: &TracerType,
     storage: &B,
-    mut backend: &mut ExecutorState<'_, B>,
+    backend: &mut ExecutorState<'_, B>,
 ) -> EmulationResult {
-    let mut machine = Machine::new(&mut trx, origin, backend, Some(Rc::clone(&tracer)))
+    let mut machine = Machine::new(trx, origin, backend, Some(Rc::clone(tracer)))
         .await
         .unwrap();
 
-    let (exit_status, steps_executed) = machine.execute(1000, &mut backend).await.unwrap();
+    let (exit_status, steps_executed) = machine.execute(1000, backend).await.unwrap();
 
     let actions = backend.into_actions();
 

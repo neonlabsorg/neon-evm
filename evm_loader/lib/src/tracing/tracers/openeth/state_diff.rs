@@ -105,8 +105,7 @@ fn build_storage_diff<B: AccountStorage>(
     let account_storage_keys = account_initial_storage
         .iter()
         .chain(account_final_storage.iter())
-        .map(|map| map.keys())
-        .flatten();
+        .flat_map(|map| map.keys());
 
     let mut storage_diff = BTreeMap::new();
 

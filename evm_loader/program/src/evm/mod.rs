@@ -607,7 +607,7 @@ mod tests {
                 address,
                 bump_seed: 0,
                 trx_count: nonce,
-                balance: Default::default(),
+                balance: U256::default(),
                 generation: 0,
                 code_size: 0,
                 rw_blocked: false,
@@ -641,6 +641,6 @@ mod tests {
                 ExitStatus::Return(input_data.into_iter().skip(32).collect()),
                 17
             )
-        )
+        );
     }
 }

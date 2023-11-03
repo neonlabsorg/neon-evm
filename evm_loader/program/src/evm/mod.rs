@@ -81,6 +81,7 @@ pub enum ExitStatus {
     StepLimit,
 }
 
+#[cfg(not(target_os = "solana"))]
 impl ExitStatus {
     #[must_use]
     pub fn status(&self) -> &'static str {

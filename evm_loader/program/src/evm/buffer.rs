@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::{
     alloc::{GlobalAlloc, Layout},
     ops::{Deref, Range},
@@ -11,10 +12,7 @@ const BUFFER_ALIGN: usize = 1;
 #[derive(Debug)]
 enum Inner {
     Empty,
-    Owned {
-        ptr: NonNull<u8>,
-        len: usize,
-    },
+    Owned(Rc<Allocation>),
     Account {
         key: Pubkey,
         data: *const u8,
@@ -33,11 +31,55 @@ pub struct Buffer {
     inner: Inner,
 }
 
+#[derive(Debug)]
+struct Allocation {
+    ptr: NonNull<u8>,
+    len: usize,
+}
+
+impl Allocation {
+    #[must_use]
+    fn from_slice(v: &[u8]) -> Self {
+        unsafe {
+            let len = v.len();
+
+            let layout = Layout::from_size_align_unchecked(len, BUFFER_ALIGN);
+            let ptr = crate::allocator::EVM.alloc(layout);
+            if ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+
+            cfg_if::cfg_if! {
+                if #[cfg(target_os = "solana")] {
+                    solana_program::syscalls::sol_memcpy_(ptr, v.as_ptr(), len as u64);
+                } else {
+                    std::ptr::copy_nonoverlapping(v.as_ptr(), ptr, len);
+                }
+            }
+
+            Allocation {
+                ptr: NonNull::new_unchecked(ptr),
+                len,
+            }
+        }
+    }
+}
+
+impl Drop for Allocation {
+    fn drop(&mut self) {
+        let Allocation { ptr, len } = self;
+        unsafe {
+            let layout = Layout::from_size_align_unchecked(*len, BUFFER_ALIGN);
+            crate::allocator::EVM.dealloc(ptr.as_ptr(), layout);
+        }
+    }
+}
+
 impl Buffer {
     fn new(inner: Inner) -> Self {
         let (ptr, len) = match &inner {
             Inner::Empty => (NonNull::dangling().as_ptr() as *const u8, 0),
-            Inner::Owned { ptr, len } => (ptr.as_ptr() as *const u8, *len),
+            Inner::Owned(allocation) => (allocation.ptr.as_ptr() as *const u8, allocation.len),
             Inner::Account { data, range, .. } => {
                 let ptr = unsafe { data.add(range.start) };
                 (ptr, range.len())
@@ -73,28 +115,7 @@ impl Buffer {
             return Self::empty();
         }
 
-        unsafe {
-            let len = v.len();
-
-            let layout = Layout::from_size_align_unchecked(len, BUFFER_ALIGN);
-            let ptr = crate::allocator::EVM.alloc(layout);
-            if ptr.is_null() {
-                std::alloc::handle_alloc_error(layout);
-            }
-
-            cfg_if::cfg_if! {
-                if #[cfg(target_os = "solana")] {
-                    solana_program::syscalls::sol_memcpy_(ptr, v.as_ptr(), len as u64);
-                } else {
-                    std::ptr::copy_nonoverlapping(v.as_ptr(), ptr, len);
-                }
-            }
-
-            Buffer::new(Inner::Owned {
-                ptr: NonNull::new_unchecked(ptr),
-                len,
-            })
-        }
+        Buffer::new(Inner::Owned(Rc::new(Allocation::from_slice(v))))
     }
 
     #[must_use]
@@ -129,17 +150,6 @@ impl Buffer {
     }
 }
 
-impl Drop for Buffer {
-    fn drop(&mut self) {
-        if let Inner::Owned { ptr, len } = self.inner {
-            unsafe {
-                let layout = Layout::from_size_align_unchecked(len, BUFFER_ALIGN);
-                crate::allocator::EVM.dealloc(ptr.as_ptr(), layout);
-            }
-        }
-    }
-}
-
 impl Deref for Buffer {
     type Target = [u8];
 
@@ -156,7 +166,7 @@ impl Clone for Buffer {
     fn clone(&self) -> Self {
         match &self.inner {
             Inner::Empty => Self::empty(),
-            Inner::Owned { .. } => Self::from_slice(self),
+            Inner::Owned(allocation) => Self::new(Inner::Owned(allocation.clone())),
             Inner::Account { key, data, range } => Self::new(Inner::Account {
                 key: *key,
                 data: *data,
@@ -185,8 +195,9 @@ impl serde::Serialize for Buffer {
 
         match &self.inner {
             Inner::Empty => serializer.serialize_unit_variant("evm_buffer", 0, "empty"),
-            Inner::Owned { ptr, len } => {
-                let slice = unsafe { std::slice::from_raw_parts(ptr.as_ptr(), *len) };
+            Inner::Owned(allocation) => {
+                let slice =
+                    unsafe { std::slice::from_raw_parts(allocation.ptr.as_ptr(), allocation.len) };
                 let bytes = serde_bytes::Bytes::new(slice);
                 serializer.serialize_newtype_variant("evm_buffer", 1, "owned", bytes)
             }

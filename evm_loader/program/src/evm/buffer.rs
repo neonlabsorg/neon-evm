@@ -164,18 +164,25 @@ impl Deref for Buffer {
 impl Clone for Buffer {
     #[inline]
     fn clone(&self) -> Self {
-        match &self.inner {
-            Inner::Empty => Self::empty(),
-            Inner::Owned(allocation) => Self::new(Inner::Owned(allocation.clone())),
-            Inner::Account { key, data, range } => Self::new(Inner::Account {
+        Self::new(self.inner.clone())
+    }
+}
+
+impl Clone for Inner {
+    #[inline]
+    fn clone(&self) -> Self {
+        match &self {
+            Inner::Empty => Inner::Empty,
+            Inner::Owned(allocation) => Inner::Owned(allocation.clone()),
+            Inner::Account { key, data, range } => Inner::Account {
                 key: *key,
                 data: *data,
                 range: range.clone(),
-            }),
-            Inner::AccountUninit { key, range } => Self::new(Inner::AccountUninit {
+            },
+            Inner::AccountUninit { key, range } => Inner::AccountUninit {
                 key: *key,
                 range: range.clone(),
-            }),
+            },
         }
     }
 }

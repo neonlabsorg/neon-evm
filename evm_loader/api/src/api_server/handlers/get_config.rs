@@ -14,7 +14,7 @@ use super::process_result;
 #[post("/config")]
 #[get("/config")]
 pub async fn get_config(state: NeonApiState, request_id: RequestId) -> impl Responder {
-    let rpc_client = match api_context::build_rpc_client(&state, None).await {
+    let rpc_client = match api_context::build_rpc_client(&state, None, None).await {
         Ok(rpc_client) => rpc_client,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };

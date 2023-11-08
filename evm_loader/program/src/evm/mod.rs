@@ -301,14 +301,8 @@ impl<B: Database> Machine<B> {
             call_data: trx.into_call_data(),
             return_data: Buffer::empty(),
             return_range: 0..0,
-            stack: Stack::new(
-                #[cfg(not(target_os = "solana"))]
-                tracer.clone(),
-            ),
-            memory: Memory::new(
-                #[cfg(not(target_os = "solana"))]
-                tracer.clone(),
-            ),
+            stack: Stack::new(),
+            memory: Memory::new(),
             pc: 0_usize,
             is_static: false,
             reason: Reason::Call,
@@ -359,14 +353,8 @@ impl<B: Database> Machine<B> {
             gas_limit: trx.gas_limit(),
             return_data: Buffer::empty(),
             return_range: 0..0,
-            stack: Stack::new(
-                #[cfg(not(target_os = "solana"))]
-                tracer.clone(),
-            ),
-            memory: Memory::new(
-                #[cfg(not(target_os = "solana"))]
-                tracer.clone(),
-            ),
+            stack: Stack::new(),
+            memory: Memory::new(),
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,
@@ -473,14 +461,8 @@ impl<B: Database> Machine<B> {
             call_data,
             return_data: Buffer::empty(),
             return_range: 0..0,
-            stack: Stack::new(
-                #[cfg(not(target_os = "solana"))]
-                self.tracer.clone(),
-            ),
-            memory: Memory::new(
-                #[cfg(not(target_os = "solana"))]
-                self.tracer.clone(),
-            ),
+            stack: Stack::new(),
+            memory: Memory::new(),
             pc: 0_usize,
             is_static: self.is_static,
             reason,

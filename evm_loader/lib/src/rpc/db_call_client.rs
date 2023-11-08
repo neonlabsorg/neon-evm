@@ -25,11 +25,16 @@ use std::any::Any;
 
 pub struct CallDbClient {
     tracer_db: TracerDb,
-    pub slot: u64,
+    slot: u64,
+    tx_index_in_block: Option<u64>,
 }
 
 impl CallDbClient {
-    pub async fn new(tracer_db: TracerDb, slot: u64) -> Result<Self, NeonError> {
+    pub async fn new(
+        tracer_db: TracerDb,
+        slot: u64,
+        tx_index_in_block: Option<u64>,
+    ) -> Result<Self, NeonError> {
         let earliest_rooted_slot = tracer_db
             .get_earliest_rooted_slot()
             .await
@@ -38,7 +43,11 @@ impl CallDbClient {
             return Err(NeonError::EarlySlot(slot, earliest_rooted_slot));
         }
 
-        Ok(Self { tracer_db, slot })
+        Ok(Self {
+            tracer_db,
+            slot,
+            tx_index_in_block,
+        })
     }
 }
 
@@ -71,7 +80,7 @@ impl Rpc for CallDbClient {
     ) -> RpcResult<Option<Account>> {
         let account = self
             .tracer_db
-            .get_account_at(key, self.slot)
+            .get_account_at(key, self.slot, self.tx_index_in_block)
             .await
             .map_err(|e| e!("load account error", key, e))?;
 
@@ -93,7 +102,7 @@ impl Rpc for CallDbClient {
         for key in pubkeys {
             let account = self
                 .tracer_db
-                .get_account_at(key, self.slot)
+                .get_account_at(key, self.slot, self.tx_index_in_block)
                 .await
                 .map_err(|e| e!("load account error", key, e))?;
             result.push(account);

@@ -393,3 +393,7 @@ operators_whitelist = [
 [chain.neon]
 id = 245022926
 token = "89dre8rZjLNft7HoupGiyxu3MNftR577ZYu8bHe2kK7g"
+
+[chain.sol]
+id = 245022927
+token = "So11111111111111111111111111111111111111112"

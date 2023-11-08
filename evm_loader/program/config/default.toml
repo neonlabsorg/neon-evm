@@ -40,11 +40,3 @@ token = "HPsV9Deocecw3GeZv1FkAPNCBRfuVyfw9MMwjwRe1xaU"
 [chain.sol]
 id = 112
 token = "So11111111111111111111111111111111111111112"
-
-[chain.abc]
-id = 113
-token = "HPsV9Deocecw3GeZv1FkAPNCBRfuVyfw9MMwjwRe1xaU"
-
-[chain.def]
-id = 114
-token = "HPsV9Deocecw3GeZv1FkAPNCBRfuVyfw9MMwjwRe1xaU"

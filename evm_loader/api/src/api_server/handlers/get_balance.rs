@@ -15,7 +15,7 @@ pub async fn get_balance(
     request_id: RequestId,
     Json(req_params): Json<GetBalanceRequest>,
 ) -> impl Responder {
-    let rpc_client = match api_context::build_rpc_client(&state, req_params.slot).await {
+    let rpc_client = match api_context::build_rpc_client(&state, req_params.slot, None).await {
         Ok(rpc_client) => rpc_client,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };

@@ -129,6 +129,7 @@ pub struct EmulateApiRequest {
     #[serde(flatten)]
     pub body: EmulateRequest,
     pub slot: Option<u64>,
+    pub tx_index_in_block: Option<u64>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Default)]

@@ -39,23 +39,13 @@ pub enum Event {
         gas_used: u64,
         return_data: Option<Vec<u8>>,
     },
-    StackPush {
-        value: [u8; 32],
-    },
-    MemorySet {
-        offset: usize,
-        data: Vec<u8>,
-    },
-    StorageSet {
-        index: U256,
-        value: [u8; 32],
-    },
     StorageAccess {
         index: U256,
         value: [u8; 32],
     },
 }
 
+/// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L993>
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockOverrides {
@@ -73,6 +63,7 @@ pub struct BlockOverrides {
     pub base_fee: Option<U256>, // NOT SUPPORTED BY Neon EVM
 }
 
+/// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L942>
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountOverride {
@@ -96,8 +87,10 @@ impl AccountOverride {
     }
 }
 
+/// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L951>
 pub type AccountOverrides = HashMap<Address, AccountOverride>;
 
+/// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/api.go#L151>
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(clippy::module_name_repetitions, clippy::struct_excessive_bools)]
@@ -112,9 +105,10 @@ pub struct TraceConfig {
     pub enable_return_data: bool,
     pub tracer: Option<String>,
     pub timeout: Option<String>,
-    pub tracer_config: Value,
+    pub tracer_config: Option<Value>,
 }
 
+/// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/api.go#L163>
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(clippy::module_name_repetitions)]

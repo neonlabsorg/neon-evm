@@ -3,20 +3,8 @@ use std::mem::size_of;
 
 use super::{AccountsDB, ACCOUNT_PREFIX_LEN, TAG_STORAGE_CELL};
 use crate::error::Result;
-use crate::types::Address;
 use ethnum::U256;
-use serde::Deserialize;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent};
-
-/// Ethereum storage data account
-#[derive(Default, Debug, Deserialize)]
-#[deprecated]
-pub struct Data {
-    pub address: Address,
-    pub generation: u32,
-    #[serde(with = "ethnum::serde::bytes::le")]
-    pub index: U256,
-}
 
 #[derive(Copy, Clone)]
 pub struct StorageCellAddress {
@@ -80,6 +68,7 @@ impl StorageCellAddress {
 }
 
 #[repr(C, packed)]
+#[derive(Copy, Clone)]
 pub struct Cell {
     pub subindex: u8,
     pub value: [u8; 32],
@@ -92,6 +81,7 @@ pub struct StorageCell<'a> {
 const CELLS_OFFSET: usize = ACCOUNT_PREFIX_LEN;
 
 impl<'a> StorageCell<'a> {
+    #[must_use]
     pub fn required_account_size(cells: usize) -> usize {
         ACCOUNT_PREFIX_LEN + cells * size_of::<Cell>()
     }
@@ -132,6 +122,12 @@ impl<'a> StorageCell<'a> {
         })
     }
 
+    #[must_use]
+    pub fn pubkey(&self) -> &'a Pubkey {
+        self.account.key
+    }
+
+    #[must_use]
     pub fn cells(&self) -> Ref<[Cell]> {
         let data = self.account.data.borrow();
         let data = Ref::map(data, |d| &d[CELLS_OFFSET..]);
@@ -142,13 +138,14 @@ impl<'a> StorageCell<'a> {
 
             // SAFETY: Cell has the same alignment as bytes
             unsafe {
-                let ptr = bytes.as_ptr() as *mut Cell;
+                let ptr = bytes.as_ptr().cast::<Cell>();
                 let len = bytes.len() / size_of::<Cell>();
                 std::slice::from_raw_parts(ptr, len)
             }
         })
     }
 
+    #[must_use]
     pub fn cells_mut(&mut self) -> RefMut<[Cell]> {
         let data = self.account.data.borrow_mut();
         let data = RefMut::map(data, |d| &mut d[CELLS_OFFSET..]);
@@ -159,7 +156,7 @@ impl<'a> StorageCell<'a> {
 
             // SAFETY: Cell has the same alignment as bytes
             unsafe {
-                let ptr = bytes.as_ptr() as *mut Cell;
+                let ptr = bytes.as_mut_ptr().cast::<Cell>();
                 let len = bytes.len() / size_of::<Cell>();
                 std::slice::from_raw_parts_mut(ptr, len)
             }

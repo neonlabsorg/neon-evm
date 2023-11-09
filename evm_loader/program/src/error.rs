@@ -221,29 +221,6 @@ macro_rules! Err {
     });
 }
 
-/// Macro to log a `ProgramError` in the current transaction log.
-/// with the source file position like: file.rc:777
-/// and additional info if needed
-/// See `https://github.com/neonlabsorg/neon-evm/issues/159`
-///
-/// # Examples
-///
-/// ```ignore
-/// #    map_err(|s| E!(ProgramError::InvalidArgument; "s={:?}", s))
-/// ```
-///
-macro_rules! E {
-    ( $n:expr; $($args:expr),* ) => ({
-        #[cfg(target_os = "solana")]
-        solana_program::msg!("{}:{} : {}", file!(), line!(), &format!($($args),*));
-
-        #[cfg(all(not(target_os = "solana"), feature = "log"))]
-        log::error!("{}", &format!($($args),*));
-
-        $n
-    });
-}
-
 #[must_use]
 fn format_revert_error(msg: &[u8]) -> Option<&str> {
     if msg.starts_with(&[0x08, 0xc3, 0x79, 0xa0]) {

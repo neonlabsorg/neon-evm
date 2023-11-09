@@ -309,6 +309,7 @@ class EvmLoader:
 
     def create_balance_account(self, ether: Union[str, bytes]) -> PublicKey:
         account_pubkey = self.ether2balance(ether)
+        contract_pubkey = PublicKey(self.ether2program(ether)[0])
         print('createBalanceAccount: {} => {}'.format(ether, account_pubkey))
 
         data = bytes.fromhex('2D') + self.ether2bytes(ether) + CHAIN_ID.to_bytes(8, 'little')
@@ -320,6 +321,7 @@ class EvmLoader:
                 AccountMeta(pubkey=self.acc.public_key, is_signer=True, is_writable=True),
                 AccountMeta(pubkey=PublicKey(SYSTEM_ADDRESS), is_signer=False, is_writable=False),
                 AccountMeta(pubkey=account_pubkey, is_signer=False, is_writable=True),
+                AccountMeta(pubkey=contract_pubkey, is_signer=False, is_writable=True),
             ]))
 
         send_transaction(solana_client, trx, self.acc)
@@ -448,6 +450,7 @@ def make_new_user(evm_loader: EvmLoader) -> Caller:
 
 def deposit_neon(evm_loader: EvmLoader, operator_keypair: Keypair, ether_address: Union[str, bytes], amount: int):
     balance_pubkey = evm_loader.ether2balance(ether_address)
+    contract_pubkey = PublicKey(evm_loader.ether2program(ether_address)[0])
 
     evm_token_authority, _auth_bump_seed = \
         PublicKey.find_program_address([bytes("Deposit", encoding='utf-8')], evm_loader.loader_id)
@@ -471,6 +474,7 @@ def deposit_neon(evm_loader: EvmLoader, operator_keypair: Keypair, ether_address
             evm_loader.ether2bytes(ether_address),
             CHAIN_ID,
             balance_pubkey,
+            contract_pubkey,
             NEON_TOKEN_MINT_ID,
             signer_token_pubkey,
             evm_pool_key,

@@ -4,7 +4,9 @@ use std::{
 };
 
 use crate::{
+    account::{TAG_ACCOUNT_CONTRACT, TAG_EMPTY},
     account_storage::KeysCache,
+    config::DEFAULT_CHAIN_ID,
     error::{Error, Result},
     types::Address,
 };
@@ -29,6 +31,7 @@ pub struct BalanceAccount<'a> {
 const HEADER_OFFSET: usize = ACCOUNT_PREFIX_LEN;
 
 impl<'a> BalanceAccount<'a> {
+    #[must_use]
     pub fn required_account_size() -> usize {
         ACCOUNT_PREFIX_LEN + size_of::<Header>()
     }
@@ -49,15 +52,32 @@ impl<'a> BalanceAccount<'a> {
         accounts: &AccountsDB<'a>,
         keys: Option<&KeysCache>,
     ) -> Result<Self> {
-        let (pubkey, bump_seed) = keys
-            .map(|keys| keys.balance_with_bump_seed(&crate::ID, address, chain_id))
-            .unwrap_or_else(|| address.find_balance_address(&crate::ID, chain_id));
+        let (pubkey, bump_seed) = keys.map_or_else(
+            || address.find_balance_address(&crate::ID, chain_id),
+            |keys| keys.balance_with_bump_seed(&crate::ID, address, chain_id),
+        );
 
+        // Already created. Return immidiately
         let account = accounts.get(&pubkey).clone();
         if !system_program::check_id(account.owner) {
             return Self::from_account(&crate::ID, account, Some(address));
         }
 
+        if chain_id == DEFAULT_CHAIN_ID {
+            // Make sure no legacy account exists
+            let legacy_pubkey = keys.map_or_else(
+                || address.find_solana_address(&crate::ID).0,
+                |keys| keys.contract(&crate::ID, address),
+            );
+
+            let legacy_account = accounts.get(&legacy_pubkey);
+            if crate::check_id(legacy_account.owner) {
+                let legacy_tag = super::tag(&crate::ID, legacy_account)?;
+                assert!(legacy_tag == TAG_EMPTY || legacy_tag == TAG_ACCOUNT_CONTRACT);
+            }
+        }
+
+        // Create a new account
         let program_seeds: &[&[u8]] = &[
             &[ACCOUNT_SEED_VERSION],
             address.as_bytes(),
@@ -91,6 +111,11 @@ impl<'a> BalanceAccount<'a> {
         Ok(balance_account)
     }
 
+    #[must_use]
+    pub fn pubkey(&self) -> &'a Pubkey {
+        self.account.key
+    }
+
     #[inline]
     fn header(&self) -> Ref<Header> {
         super::section(&self.account, HEADER_OFFSET)
@@ -101,14 +126,17 @@ impl<'a> BalanceAccount<'a> {
         super::section_mut(&self.account, HEADER_OFFSET)
     }
 
+    #[must_use]
     pub fn chain_id(&self) -> u64 {
         self.header().chain_id
     }
 
+    #[must_use]
     pub fn nonce(&self) -> u64 {
         self.header().trx_count
     }
 
+    #[must_use]
     pub fn exists(&self) -> bool {
         let header = self.header();
 
@@ -116,18 +144,22 @@ impl<'a> BalanceAccount<'a> {
     }
 
     pub fn increment_nonce(&mut self) -> Result<()> {
+        self.increment_nonce_by(1)
+    }
+
+    pub fn increment_nonce_by(&mut self, value: u64) -> Result<()> {
         let address = self.address.unwrap_or_default();
 
         let mut header = self.header_mut();
-        if header.trx_count == u64::MAX {
-            return Err(Error::NonceOverflow(address));
-        }
-
-        header.trx_count += 1;
+        header.trx_count = header
+            .trx_count
+            .checked_add(value)
+            .ok_or_else(|| Error::NonceOverflow(address))?;
 
         Ok(())
     }
 
+    #[must_use]
     pub fn balance(&self) -> U256 {
         self.header().balance
     }

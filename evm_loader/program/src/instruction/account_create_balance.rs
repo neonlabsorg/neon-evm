@@ -2,6 +2,7 @@ use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use crate::account::{program, AccountsDB, BalanceAccount, Operator};
+use crate::config::DEFAULT_CHAIN_ID;
 use crate::error::Result;
 use crate::types::Address;
 
@@ -26,6 +27,11 @@ pub fn process<'a>(
     // TODO: validate chain_id?
 
     solana_program::msg!("Address: {}, ChainID: {}", address, chain_id);
+
+    if chain_id == DEFAULT_CHAIN_ID {
+        // we don't have enough accounts to update non Neon chains
+        crate::account::legacy::update_legacy_accounts(&accounts_db)?;
+    }
 
     BalanceAccount::create(address, chain_id, &accounts_db, None)?;
 

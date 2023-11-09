@@ -75,6 +75,7 @@ pub struct AccountOverride {
 }
 
 impl AccountOverride {
+    #[must_use]
     pub fn storage(&self, index: U256) -> Option<[u8; 32]> {
         match (&self.state, &self.state_diff) {
             (None, None) => None,

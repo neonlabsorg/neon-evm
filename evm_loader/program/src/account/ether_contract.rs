@@ -4,8 +4,6 @@ use crate::{
     error::{Error, Result},
     types::Address,
 };
-use ethnum::U256;
-use serde::Deserialize;
 use solana_program::{
     account_info::AccountInfo, entrypoint::MAX_PERMITTED_DATA_INCREASE, pubkey::Pubkey, rent::Rent,
     system_program,
@@ -18,26 +16,6 @@ use std::{
 use crate::config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 
 use super::{AccountsDB, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION, TAG_ACCOUNT_CONTRACT};
-
-#[deprecated]
-#[derive(Deserialize)]
-pub struct DataV3 {
-    /// Ethereum address
-    pub address: Address,
-    /// Solana account nonce
-    pub bump_seed: u8,
-    /// Ethereum account nonce
-    pub trx_count: u64,
-    /// Neon token balance
-    #[serde(with = "ethnum::serde::bytes::le")]
-    pub balance: U256,
-    /// Account generation, increment on suicide
-    pub generation: u32,
-    /// Contract code size
-    pub code_size: u32,
-    /// Read-write lock
-    pub rw_blocked: bool,
-}
 
 #[derive(Eq, PartialEq)]
 pub enum AllocateResult {
@@ -63,6 +41,7 @@ const STORAGE_OFFSET: usize = HEADER_OFFSET + size_of::<Header>();
 const CODE_OFFSET: usize = STORAGE_OFFSET + size_of::<Storage>();
 
 impl<'a> ContractAccount<'a> {
+    #[must_use]
     pub fn required_account_size(code: &[u8]) -> usize {
         ACCOUNT_PREFIX_LEN + size_of::<Header>() + size_of::<Storage>() + code.len()
     }
@@ -80,9 +59,10 @@ impl<'a> ContractAccount<'a> {
         accounts: &AccountsDB,
         keys: Option<&KeysCache>,
     ) -> Result<AllocateResult> {
-        let (pubkey, bump_seed) = keys
-            .map(|keys| keys.contract_with_bump_seed(&crate::ID, address))
-            .unwrap_or_else(|| address.find_solana_address(&crate::ID));
+        let (pubkey, bump_seed) = keys.map_or_else(
+            || address.find_solana_address(&crate::ID),
+            |keys| keys.contract_with_bump_seed(&crate::ID, address),
+        );
 
         let info = accounts.get(&pubkey);
 
@@ -124,13 +104,15 @@ impl<'a> ContractAccount<'a> {
     pub fn init(
         address: Address,
         chain_id: u64,
+        generation: u32,
         code: &[u8],
         accounts: &AccountsDB<'a>,
         keys: Option<&KeysCache>,
     ) -> Result<Self> {
-        let (pubkey, _) = keys
-            .map(|keys| keys.contract_with_bump_seed(&crate::ID, address))
-            .unwrap_or_else(|| address.find_solana_address(&crate::ID));
+        let (pubkey, _) = keys.map_or_else(
+            || address.find_solana_address(&crate::ID),
+            |keys| keys.contract_with_bump_seed(&crate::ID, address),
+        );
 
         let account = accounts.get(&pubkey).clone();
 
@@ -141,7 +123,7 @@ impl<'a> ContractAccount<'a> {
         {
             let mut header = contract.header_mut();
             header.chain_id = chain_id;
-            header.generation = 0;
+            header.generation = generation;
         }
         {
             let mut contract_code = contract.code_mut();
@@ -151,16 +133,19 @@ impl<'a> ContractAccount<'a> {
         Ok(contract)
     }
 
+    #[must_use]
     pub fn pubkey(&self) -> &'a Pubkey {
         self.account.key
     }
 
     #[inline]
+    #[must_use]
     fn header(&self) -> Ref<Header> {
         super::section(&self.account, HEADER_OFFSET)
     }
 
     #[inline]
+    #[must_use]
     fn header_mut(&mut self) -> RefMut<Header> {
         super::section_mut(&self.account, HEADER_OFFSET)
     }
@@ -176,6 +161,7 @@ impl<'a> ContractAccount<'a> {
     }
 
     #[inline]
+    #[must_use]
     pub fn code(&self) -> Ref<Code> {
         let data = self.account.data.borrow();
         Ref::map(data, |d| &d[CODE_OFFSET..])
@@ -187,6 +173,7 @@ impl<'a> ContractAccount<'a> {
         RefMut::map(data, |d| &mut d[CODE_OFFSET..])
     }
 
+    #[must_use]
     pub fn code_buffer(&self) -> crate::evm::Buffer {
         let begin = CODE_OFFSET;
         let end = begin + self.code_len();
@@ -194,18 +181,22 @@ impl<'a> ContractAccount<'a> {
         unsafe { crate::evm::Buffer::from_account(&self.account, begin..end) }
     }
 
+    #[must_use]
     pub fn code_len(&self) -> usize {
         self.account.data_len().saturating_sub(CODE_OFFSET)
     }
 
+    #[must_use]
     pub fn chain_id(&self) -> u64 {
         self.header().chain_id
     }
 
+    #[must_use]
     pub fn generation(&self) -> u32 {
         self.header().generation
     }
 
+    #[must_use]
     pub fn storage_value(&self, index: usize) -> [u8; 32] {
         assert!(index < STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT);
 
@@ -220,5 +211,13 @@ impl<'a> ContractAccount<'a> {
 
         let cell: &mut [u8; 32] = &mut storage[index];
         cell.copy_from_slice(value);
+    }
+
+    pub fn set_storage_multiple_values(&mut self, offset: usize, values: &[[u8; 32]]) {
+        let max = offset.saturating_add(values.len());
+        assert!(max <= STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT);
+
+        let mut storage = self.storage_mut();
+        storage[offset..][..values.len()].copy_from_slice(values);
     }
 }

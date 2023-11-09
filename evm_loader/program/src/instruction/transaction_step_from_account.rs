@@ -80,6 +80,8 @@ pub fn process_inner<'a>(
             gasometer.record_address_lookup_table(accounts);
             gasometer.record_write_to_holder(&trx);
 
+            crate::account::legacy::update_legacy_accounts(&accounts_db)?;
+
             do_begin(accounts_db, storage, gasometer, trx, origin)
         }
         TAG_STATE => {

@@ -547,7 +547,7 @@ impl Transaction {
             TransactionPayload::Legacy(LegacyTx { chain_id, .. }) => chain_id,
             TransactionPayload::AccessList(AccessListTx { chain_id, .. }) => Some(chain_id),
         }
-        .map(|c| c.try_into())
+        .map(std::convert::TryInto::try_into)
         .transpose()
         .expect("chain_id < u64::max")
     }

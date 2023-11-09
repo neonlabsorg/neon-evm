@@ -1,6 +1,4 @@
 #![allow(clippy::unnecessary_wraps)]
-#![allow(clippy::needless_pass_by_ref_mut)]
-
 use std::convert::{Into, TryInto};
 
 use ethnum::U256;

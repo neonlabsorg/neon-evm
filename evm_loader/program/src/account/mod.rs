@@ -21,31 +21,21 @@ mod ether_contract;
 mod ether_storage;
 mod holder;
 mod incinerator;
+pub mod legacy;
 mod operator;
 pub mod program;
 mod state;
 pub mod token;
 mod treasury;
 
-#[deprecated]
-const _TAG_STATE_DEPRECATED: u8 = 22;
-#[deprecated]
-const _TAG_STATE_FINALIZED_DEPRECATED: u8 = 31;
-#[deprecated]
-const _TAG_HOLDER_DEPRECATED: u8 = 51;
-#[deprecated]
-const _TAG_ACCOUNT_CONTRACT_DEPRECATED: u8 = 12;
-#[deprecated]
-const _TAG_STORAGE_CELL_DEPRECATED: u8 = 42;
-
 pub const TAG_EMPTY: u8 = 0;
 pub const TAG_STATE: u8 = 23;
 pub const TAG_STATE_FINALIZED: u8 = 32;
 pub const TAG_HOLDER: u8 = 52;
 
-const TAG_ACCOUNT_BALANCE: u8 = 60;
-const TAG_ACCOUNT_CONTRACT: u8 = 70;
-const TAG_STORAGE_CELL: u8 = 43;
+pub const TAG_ACCOUNT_BALANCE: u8 = 60;
+pub const TAG_ACCOUNT_CONTRACT: u8 = 70;
+pub const TAG_STORAGE_CELL: u8 = 43;
 
 const ACCOUNT_PREFIX_LEN: usize = 2;
 
@@ -60,7 +50,7 @@ fn section<'r, T>(account: &'r AccountInfo<'_>, offset: usize) -> Ref<'r, T> {
 
         assert_eq!(std::mem::align_of::<T>(), 1);
         assert_eq!(std::mem::size_of::<T>(), bytes.len());
-        unsafe { &*(bytes.as_ptr() as *const T) }
+        unsafe { &*(bytes.as_ptr().cast()) }
     })
 }
 
@@ -75,7 +65,7 @@ fn section_mut<'r, T>(account: &'r AccountInfo<'_>, offset: usize) -> RefMut<'r,
 
         assert_eq!(std::mem::align_of::<T>(), 1);
         assert_eq!(std::mem::size_of::<T>(), bytes.len());
-        unsafe { &mut *(bytes.as_mut_ptr() as *mut T) }
+        unsafe { &mut *(bytes.as_mut_ptr().cast()) }
     })
 }
 
@@ -171,6 +161,7 @@ pub struct AccountsDB<'a> {
 }
 
 impl<'a> AccountsDB<'a> {
+    #[must_use]
     pub fn new(
         accounts: &[AccountInfo<'a>],
         operator: Operator<'a>,
@@ -191,10 +182,12 @@ impl<'a> AccountsDB<'a> {
         }
     }
 
+    #[must_use]
     pub fn accounts_len(&self) -> usize {
         self.sorted_accounts.len()
     }
 
+    #[must_use]
     pub fn system(&self) -> &System<'a> {
         if let Some(system) = &self.system {
             return system;
@@ -203,6 +196,7 @@ impl<'a> AccountsDB<'a> {
         panic!("System Account must be present in the transaction");
     }
 
+    #[must_use]
     pub fn treasury(&self) -> &Treasury<'a> {
         if let Some(treasury) = &self.treasury {
             return treasury;
@@ -211,10 +205,12 @@ impl<'a> AccountsDB<'a> {
         panic!("Treasury Account must be present in the transaction");
     }
 
+    #[must_use]
     pub fn operator(&self) -> &Operator<'a> {
         &self.operator
     }
 
+    #[must_use]
     pub fn operator_balance(&mut self) -> &mut BalanceAccount<'a> {
         if let Some(operator_balance) = &mut self.operator_balance {
             return operator_balance;
@@ -223,14 +219,17 @@ impl<'a> AccountsDB<'a> {
         panic!("Operator Balance Account must be present in the transaction");
     }
 
+    #[must_use]
     pub fn operator_key(&self) -> Pubkey {
         *self.operator.key
     }
 
+    #[must_use]
     pub fn operator_info(&self) -> &AccountInfo<'a> {
         &self.operator
     }
 
+    #[must_use]
     pub fn get(&self, pubkey: &Pubkey) -> &AccountInfo<'a> {
         let Ok(index) = self.sorted_accounts.binary_search_by_key(&pubkey, |a| a.key) else {
             panic!("address {pubkey} must be present in the transaction");

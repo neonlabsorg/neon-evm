@@ -16,6 +16,7 @@ pub struct KeysCache {
 }
 
 impl KeysCache {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             contracts: RefCell::new(HashMap::with_capacity(8)),
@@ -24,6 +25,7 @@ impl KeysCache {
         }
     }
 
+    #[must_use]
     pub fn contract_with_bump_seed(&self, program_id: &Pubkey, address: Address) -> (Pubkey, u8) {
         *self
             .contracts
@@ -32,10 +34,12 @@ impl KeysCache {
             .or_insert_with_key(|a| a.find_solana_address(program_id))
     }
 
+    #[must_use]
     pub fn contract(&self, program_id: &Pubkey, address: Address) -> Pubkey {
         self.contract_with_bump_seed(program_id, address).0
     }
 
+    #[must_use]
     pub fn balance_with_bump_seed(
         &self,
         program_id: &Pubkey,
@@ -49,10 +53,12 @@ impl KeysCache {
             .or_insert_with_key(|(a, chain_id)| a.find_balance_address(program_id, *chain_id))
     }
 
+    #[must_use]
     pub fn balance(&self, program_id: &Pubkey, address: Address, chain_id: u64) -> Pubkey {
         self.balance_with_bump_seed(program_id, address, chain_id).0
     }
 
+    #[must_use]
     pub fn storage_cell(&self, program_id: &Pubkey, address: Address, index: U256) -> Pubkey {
         *self
             .storage_cells
@@ -65,6 +71,7 @@ impl KeysCache {
             .pubkey()
     }
 
+    #[must_use]
     pub fn storage_cell_address(
         &self,
         program_id: &Pubkey,

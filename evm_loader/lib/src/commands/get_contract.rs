@@ -1,4 +1,7 @@
-use evm_loader::{account::ContractAccount, types::Address};
+use evm_loader::{
+    account::{legacy::LegacyEtherData, ContractAccount},
+    types::Address,
+};
 use serde::Serialize;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 
@@ -36,14 +39,18 @@ fn read_account(
     };
 
     let account_info = account_info(&solana_address, &mut account);
-    let contract = ContractAccount::from_account(program_id, account_info)?;
-
-    let chain_id = contract.chain_id();
-    let code = contract.code().to_vec();
+    let (chain_id, code) =
+        if let Ok(contract) = ContractAccount::from_account(program_id, account_info.clone()) {
+            (Some(contract.chain_id()), contract.code().to_vec())
+        } else if let Ok(contract) = LegacyEtherData::from_account(program_id, &account_info) {
+            (None, contract.read_code(&account_info))
+        } else {
+            (None, vec![])
+        };
 
     Ok(GetContractResponse {
         solana_address,
-        chain_id: Some(chain_id),
+        chain_id,
         code,
     })
 }

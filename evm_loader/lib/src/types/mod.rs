@@ -144,6 +144,10 @@ impl BalanceAddress {
             .find_balance_address(program_id, self.chain_id)
             .0
     }
+
+    pub fn find_contract_pubkey(&self, program_id: &Pubkey) -> Pubkey {
+        self.address.find_solana_address(program_id).0
+    }
 }
 
 #[serde_as]

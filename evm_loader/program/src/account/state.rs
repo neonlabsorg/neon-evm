@@ -173,21 +173,25 @@ impl<'a> StateAccount<'a> {
     }
 
     #[inline]
+    #[must_use]
     fn header(&self) -> Ref<Header> {
         super::section(&self.account, HEADER_OFFSET)
     }
 
     #[inline]
+    #[must_use]
     fn header_mut(&mut self) -> RefMut<Header> {
         super::section_mut(&self.account, HEADER_OFFSET)
     }
 
     #[inline]
+    #[must_use]
     fn blocked_accounts_len(&self) -> usize {
         self.header().accounts_len
     }
 
     #[inline]
+    #[must_use]
     pub fn blocked_accounts(&self) -> Ref<[BlockedAccount]> {
         let accounts_len = self.blocked_accounts_len();
         let accounts_len_bytes = accounts_len * size_of::<BlockedAccount>();
@@ -204,6 +208,7 @@ impl<'a> StateAccount<'a> {
     }
 
     #[inline]
+    #[must_use]
     fn blocked_accounts_mut(&mut self) -> RefMut<[BlockedAccount]> {
         let accounts_len = self.blocked_accounts_len();
         let accounts_len_bytes = accounts_len * size_of::<BlockedAccount>();
@@ -219,6 +224,7 @@ impl<'a> StateAccount<'a> {
         })
     }
 
+    #[must_use]
     pub fn buffer(&self) -> Ref<[u8]> {
         let accounts_len_bytes = self.blocked_accounts_len() * size_of::<BlockedAccount>();
         let buffer_offset = BLOCKED_ACCOUNTS_OFFSET + accounts_len_bytes;
@@ -227,6 +233,7 @@ impl<'a> StateAccount<'a> {
         Ref::map(data, |d| &d[buffer_offset..])
     }
 
+    #[must_use]
     pub fn buffer_mut(&mut self) -> RefMut<[u8]> {
         let accounts_len_bytes = self.blocked_accounts_len() * size_of::<BlockedAccount>();
         let buffer_offset = BLOCKED_ACCOUNTS_OFFSET + accounts_len_bytes;
@@ -235,6 +242,7 @@ impl<'a> StateAccount<'a> {
         RefMut::map(data, |d| &mut d[buffer_offset..])
     }
 
+    #[must_use]
     pub fn buffer_variables(&self) -> (usize, usize) {
         let header = self.header();
         (header.evm_state_len, header.evm_machine_len)
@@ -246,6 +254,7 @@ impl<'a> StateAccount<'a> {
         header.evm_machine_len = evm_machine_len;
     }
 
+    #[must_use]
     pub fn owner(&self) -> Pubkey {
         self.header().owner
     }
@@ -277,22 +286,27 @@ impl<'a> StateAccount<'a> {
         Ok(())
     }
 
+    #[must_use]
     pub fn trx_hash(&self) -> [u8; 32] {
         self.header().transaction_hash
     }
 
+    #[must_use]
     pub fn trx_origin(&self) -> Address {
         self.header().origin
     }
 
+    #[must_use]
     pub fn trx_chain_id(&self) -> u64 {
         self.header().chain_id
     }
 
+    #[must_use]
     pub fn trx_gas_price(&self) -> U256 {
         self.header().gas_price
     }
 
+    #[must_use]
     pub fn trx_gas_limit(&self) -> U256 {
         self.header().gas_limit
     }
@@ -305,10 +319,12 @@ impl<'a> StateAccount<'a> {
             .ok_or(Error::IntegerOverflow)
     }
 
+    #[must_use]
     pub fn gas_used(&self) -> U256 {
         self.header().gas_used
     }
 
+    #[must_use]
     pub fn gas_available(&self) -> U256 {
         let header = self.header();
         header.gas_limit.saturating_sub(header.gas_used)

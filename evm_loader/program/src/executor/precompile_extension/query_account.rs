@@ -1,5 +1,3 @@
-#![allow(clippy::needless_pass_by_ref_mut)]
-
 use std::convert::TryInto;
 
 use arrayref::{array_ref, array_refs};

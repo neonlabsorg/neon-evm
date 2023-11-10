@@ -171,6 +171,6 @@ impl<'a> Holder<'a> {
     /// # Safety
     /// Permanently deletes Holder account and all data in it
     pub unsafe fn suicide(self, operator: &Operator) {
-        crate::account::delete(&self.account, operator)
+        crate::account::delete(&self.account, operator);
     }
 }

@@ -116,6 +116,7 @@ impl<'a> ProgramAccountStorage<'a> {
                     ContractAccount::init(
                         address,
                         chain_id,
+                        0,
                         &code,
                         &self.accounts,
                         Some(&self.keys),

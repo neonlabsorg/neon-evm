@@ -40,9 +40,12 @@ impl LegacyStorageData {
     }
 
     #[allow(clippy::unused_self)]
-    pub fn read_cells(&self, account: &AccountInfo) -> Result<Vec<Cell>> {
-        let data = account.try_borrow_data()?;
-        let data = &data[Self::SIZE..];
+    #[must_use]
+    pub fn read_cells(&self, account: &AccountInfo) -> Vec<Cell> {
+        let cells_offset = 1 + Self::SIZE;
+
+        let data = account.data.borrow();
+        let data = &data[cells_offset..];
 
         static_assertions::assert_eq_align!(Cell, u8);
         assert_eq!(data.len() % size_of::<Cell>(), 0);
@@ -54,21 +57,22 @@ impl LegacyStorageData {
             std::slice::from_raw_parts(ptr, len)
         };
 
-        Ok(cells.to_vec())
+        cells.to_vec()
     }
 
     #[allow(dead_code)]
-    pub fn read_value(&self, subindex: u8, account: &AccountInfo) -> Result<[u8; 32]> {
-        let cells = self.read_cells(account)?;
+    #[must_use]
+    pub fn read_value(&self, subindex: u8, account: &AccountInfo) -> [u8; 32] {
+        let cells = self.read_cells(account);
 
         for cell in cells {
             if cell.subindex != subindex {
                 continue;
             }
 
-            return Ok(cell.value);
+            return cell.value;
         }
 
-        Ok([0_u8; 32])
+        [0_u8; 32]
     }
 }

@@ -92,6 +92,7 @@ async fn emulate_trx(
     };
 
     storage.apply_actions(actions.clone()).await?;
+    storage.mark_legacy_accounts().await?;
 
     debug!("Execute done, result={exit_status:?}");
     debug!("{steps_executed} steps executed");

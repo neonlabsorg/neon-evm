@@ -53,8 +53,8 @@ fn update_ether_account(
         super::validate_tag(&crate::ID, account, TAG_ACCOUNT_CONTRACT_DEPRECATED)?;
 
         // Read existing data
-        let storage = legacy_data.read_storage(account)?;
-        let code = legacy_data.read_code(account)?;
+        let storage = legacy_data.read_storage(account);
+        let code = legacy_data.read_code(account);
 
         // Make account smaller
         let required_len = ContractAccount::required_account_size(&code);
@@ -119,7 +119,7 @@ fn update_storage_account(
         return Ok(());
     }
 
-    let cells = legacy_data.read_cells(&cell_account)?;
+    let cells = legacy_data.read_cells(&cell_account);
 
     // Make account smaller
     let required_len = StorageCell::required_account_size(cells.len());

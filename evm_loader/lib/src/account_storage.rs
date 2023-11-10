@@ -1,7 +1,13 @@
 use async_trait::async_trait;
+use evm_loader::account::legacy::{
+    LegacyEtherData, LegacyStorageData, TAG_ACCOUNT_CONTRACT_DEPRECATED,
+    TAG_STORAGE_CELL_DEPRECATED,
+};
+use evm_loader::account::{TAG_ACCOUNT_CONTRACT, TAG_STORAGE_CELL};
 use evm_loader::account_storage::find_slot_hash;
 use evm_loader::types::Address;
 use solana_sdk::rent::Rent;
+use solana_sdk::system_program;
 use solana_sdk::sysvar::{slot_hashes, Sysvar};
 use std::collections::HashSet;
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
@@ -31,6 +37,7 @@ pub struct SolanaAccount {
     #[serde_as(as = "DisplayFromStr")]
     pubkey: Pubkey,
     is_writable: bool,
+    is_legacy: bool,
     #[serde(skip)]
     data: Option<Account>,
 }
@@ -115,6 +122,7 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
             let account = SolanaAccount {
                 pubkey: *key,
                 is_writable: false,
+                is_legacy: false,
                 data: account.clone(),
             };
 
@@ -146,6 +154,7 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
             SolanaAccount {
                 pubkey,
                 is_writable,
+                is_legacy: false,
                 data: account.clone(),
             },
         );
@@ -158,11 +167,18 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
         address: Address,
         chain_id: u64,
         is_writable: bool,
-    ) -> client_error::Result<(Pubkey, Option<Account>)> {
+    ) -> client_error::Result<(Pubkey, Option<Account>, Option<Account>)> {
         let (pubkey, _) = address.find_balance_address(self.program_id(), chain_id);
         let account = self.use_account(pubkey, is_writable).await?;
 
-        Ok((pubkey, account))
+        let legacy_account = if account.is_none() && (chain_id == self.default_chain_id()) {
+            let (legacy_pubkey, _) = address.find_solana_address(self.program_id());
+            self.use_account(legacy_pubkey, is_writable).await?
+        } else {
+            None
+        };
+
+        Ok((pubkey, account, legacy_account))
     }
 
     pub async fn use_contract_account(
@@ -212,8 +228,9 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
 
                     self.use_balance_account(source, chain_id, true).await?;
 
-                    let (key, target) = self.use_balance_account(target, chain_id, true).await?;
-                    if target.is_none() {
+                    let (key, target, legacy) =
+                        self.use_balance_account(target, chain_id, true).await?;
+                    if target.is_none() && legacy.is_none() {
                         new_balance_accounts.insert(key);
                     }
                 }
@@ -260,8 +277,9 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
                 Action::EvmIncrementNonce { address, chain_id } => {
                     info!("nonce increment {address}");
 
-                    let (key, account) = self.use_balance_account(address, chain_id, true).await?;
-                    if account.is_none() {
+                    let (key, account, legacy) =
+                        self.use_balance_account(address, chain_id, true).await?;
+                    if account.is_none() && legacy.is_none() {
                         new_balance_accounts.insert(key);
                     }
                 }
@@ -307,46 +325,176 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
         Ok(())
     }
 
-    pub async fn ethereum_balance_map_or<F, R>(
+    pub async fn mark_legacy_accounts(&mut self) -> Result<(), NeonError> {
+        let mut accounts = self.accounts.borrow_mut();
+        let mut additional_balances = Vec::new();
+
+        let rent = Rent::get()?;
+
+        for (key, account) in accounts.iter_mut() {
+            let Some(account_data) = account.data.as_mut() else {
+                continue;
+            };
+
+            let info = account_info(key, account_data);
+            if info.owner != self.program_id() {
+                continue;
+            }
+
+            let Ok(tag) = evm_loader::account::tag(self.program_id(), &info) else {
+                continue;
+            };
+
+            if tag == TAG_STORAGE_CELL_DEPRECATED {
+                account.is_writable = true;
+                account.is_legacy = true;
+            }
+
+            if tag == TAG_ACCOUNT_CONTRACT_DEPRECATED {
+                account.is_writable = true;
+                account.is_legacy = true;
+
+                let legacy_data = LegacyEtherData::from_account(self.program_id(), &info)?;
+                additional_balances.push(legacy_data.address);
+
+                if (legacy_data.code_size > 0) || (legacy_data.generation > 0) {
+                    // This is a contract, we need additional gas for conversion
+                    let lamports = rent.minimum_balance(BalanceAccount::required_account_size());
+                    self.gas = self.gas.saturating_add(lamports);
+                }
+            }
+        }
+
+        for a in additional_balances {
+            let (pubkey, _) = a.find_balance_address(self.program_id(), self.default_chain_id());
+            let account = SolanaAccount {
+                pubkey,
+                is_writable: true,
+                is_legacy: false,
+                data: None,
+            };
+
+            accounts.insert(pubkey, account);
+        }
+
+        Ok(())
+    }
+
+    pub async fn ethereum_balance_map_or<F, L, R>(
         &self,
         address: Address,
         chain_id: u64,
         default: R,
-        f: F,
+        legacy_action: L,
+        action: F,
     ) -> R
     where
+        L: FnOnce(LegacyEtherData) -> R,
         F: FnOnce(BalanceAccount) -> R,
     {
-        let (pubkey, mut account) = self
+        let (pubkey, mut account, mut legacy) = self
             .use_balance_account(address, chain_id, false)
             .await
             .unwrap();
 
         if let Some(account_data) = &mut account {
             let info = account_info(&pubkey, account_data);
-            match BalanceAccount::from_account(self.program_id(), info, Some(address)) {
-                Ok(a) => f(a),
-                Err(_) => default,
+            if let Ok(a) = BalanceAccount::from_account(self.program_id(), info, Some(address)) {
+                return action(a);
             }
-        } else {
-            default
         }
+
+        if chain_id != self.default_chain_id() {
+            return default;
+        }
+
+        if let Some(legacy_data) = &mut legacy {
+            let info = account_info(&pubkey, legacy_data);
+            if let Ok(a) = LegacyEtherData::from_account(self.program_id(), &info) {
+                return legacy_action(a);
+            }
+        }
+
+        default
     }
 
-    pub async fn ethereum_contract_map_or<F, R>(&self, address: Address, default: R, f: F) -> R
+    pub async fn ethereum_contract_map_or<F, L, R>(
+        &self,
+        address: Address,
+        default: R,
+        legacy_action: L,
+        action: F,
+    ) -> R
     where
+        L: FnOnce(LegacyEtherData, &AccountInfo) -> R,
         F: FnOnce(ContractAccount) -> R,
     {
         let (pubkey, mut account) = self.use_contract_account(address, false).await.unwrap();
 
-        if let Some(account_data) = &mut account {
-            let info = account_info(&pubkey, account_data);
-            match ContractAccount::from_account(self.program_id(), info) {
-                Ok(a) => f(a),
-                Err(_) => default,
+        let Some(account_data) = &mut account else {
+            return default;
+        };
+
+        if system_program::check_id(&account_data.owner) {
+            return default;
+        }
+
+        let info = account_info(&pubkey, account_data);
+        let Ok(tag) = evm_loader::account::tag(self.program_id(), &info) else {
+            return default;
+        };
+
+        match tag {
+            TAG_ACCOUNT_CONTRACT => {
+                let contract = ContractAccount::from_account(self.program_id(), info).unwrap();
+                action(contract)
             }
-        } else {
-            default
+            TAG_ACCOUNT_CONTRACT_DEPRECATED => {
+                let legacy_data = LegacyEtherData::from_account(self.program_id(), &info).unwrap();
+                legacy_action(legacy_data, &info)
+            }
+            _ => default,
+        }
+    }
+
+    pub async fn ethereum_storage_map_or<F, L, R>(
+        &self,
+        address: Address,
+        index: U256,
+        default: R,
+        legacy_action: L,
+        action: F,
+    ) -> R
+    where
+        L: FnOnce(LegacyStorageData, &AccountInfo) -> R,
+        F: FnOnce(StorageCell) -> R,
+    {
+        let (pubkey, mut account) = self.use_storage_cell(address, index, false).await.unwrap();
+
+        let Some(account_data) = &mut account else {
+            return default;
+        };
+
+        if system_program::check_id(&account_data.owner) {
+            return default;
+        }
+
+        let info = account_info(&pubkey, account_data);
+        let Ok(tag) = evm_loader::account::tag(self.program_id(), &info) else {
+            return default;
+        };
+
+        match tag {
+            TAG_STORAGE_CELL => {
+                let contract = StorageCell::from_account(self.program_id(), info).unwrap();
+                action(contract)
+            }
+            TAG_STORAGE_CELL_DEPRECATED => {
+                let legacy_data =
+                    LegacyStorageData::from_account(self.program_id(), &info).unwrap();
+                legacy_action(legacy_data, &info)
+            }
+            _ => default,
         }
     }
 
@@ -402,8 +550,14 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             return nonce_override;
         }
 
-        self.ethereum_balance_map_or(address, chain_id, 0_u64, |a| a.nonce())
-            .await
+        self.ethereum_balance_map_or(
+            address,
+            chain_id,
+            u64::default(),
+            |legacy| legacy.trx_count,
+            |account| account.nonce(),
+        )
+        .await
     }
 
     async fn balance(&self, address: Address, chain_id: u64) -> U256 {
@@ -414,8 +568,14 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
             return balance_override;
         }
 
-        self.ethereum_balance_map_or(address, chain_id, U256::ZERO, |a| a.balance())
-            .await
+        self.ethereum_balance_map_or(
+            address,
+            chain_id,
+            U256::default(),
+            |legacy| legacy.balance,
+            |account| account.balance(),
+        )
+        .await
     }
 
     fn is_valid_chain_id(&self, chain_id: u64) -> bool {
@@ -451,11 +611,17 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
     async fn contract_chain_id(&self, address: Address) -> evm_loader::error::Result<u64> {
         use evm_loader::error::Error;
 
-        let error = Err(Error::Custom(std::format!(
+        let default_value = Err(Error::Custom(std::format!(
             "Account {address} - invalid tag"
         )));
-        self.ethereum_contract_map_or(address, error, |a| Ok(a.chain_id()))
-            .await
+
+        self.ethereum_contract_map_or(
+            address,
+            default_value,
+            |_legacy, _| Ok(self.default_chain_id()),
+            |a| Ok(a.chain_id()),
+        )
+        .await
     }
 
     fn contract_pubkey(&self, address: Address) -> (Pubkey, u8) {
@@ -500,8 +666,14 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         }
 
         let code = self
-            .ethereum_contract_map_or(address, vec![], |c| c.code().to_vec())
+            .ethereum_contract_map_or(
+                address,
+                Vec::default(),
+                |legacy, info| legacy.read_code(info),
+                |c| c.code().to_vec(),
+            )
             .await;
+
         Buffer::from_vec(code)
     }
 
@@ -513,21 +685,25 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
 
         let value = if index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u64) {
             let index: usize = index.as_usize();
-            self.ethereum_contract_map_or(address, [0_u8; 32], |c| c.storage_value(index))
-                .await
+            self.ethereum_contract_map_or(
+                address,
+                [0_u8; 32],
+                |legacy, info| legacy.read_storage(info)[index],
+                |c| c.storage_value(index),
+            )
+            .await
         } else {
             let subindex = (index & 0xFF).as_u8();
             let index = index & !U256::new(0xFF);
 
-            let (pubkey, account) = self.use_storage_cell(address, index, false).await.unwrap();
-            if let Some(mut account) = account {
-                let account_info = account_info(&pubkey, &mut account);
-                StorageCell::from_account(self.program_id(), account_info)
-                    .map(|c| c.get(subindex))
-                    .unwrap_or_default()
-            } else {
-                <[u8; 32]>::default()
-            }
+            self.ethereum_storage_map_or(
+                address,
+                index,
+                <[u8; 32]>::default(),
+                |legacy, info| legacy.read_value(subindex, info),
+                |cell| cell.get(subindex),
+            )
+            .await
         };
 
         info!("storage {address} -> {index} = {}", hex::encode(value));
@@ -545,7 +721,7 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
                 is_writable: false,
                 lamports: 100 * 1_000_000_000,
                 data: vec![],
-                owner: solana_sdk::system_program::ID,
+                owner: system_program::ID,
                 executable: false,
                 rent_epoch: 0,
             }

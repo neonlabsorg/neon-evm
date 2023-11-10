@@ -43,7 +43,7 @@ fn read_account(
         if let Ok(contract) = ContractAccount::from_account(program_id, account_info.clone()) {
             (Some(contract.chain_id()), contract.code().to_vec())
         } else if let Ok(contract) = LegacyEtherData::from_account(program_id, &account_info) {
-            (None, contract.read_code(&account_info)?)
+            (None, contract.read_code(&account_info))
         } else {
             (None, vec![])
         };

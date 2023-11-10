@@ -77,10 +77,11 @@ impl LegacyEtherData {
     }
 
     #[allow(clippy::unused_self)]
-    pub fn read_storage(&self, account: &AccountInfo) -> Result<Vec<[u8; 32]>> {
-        let data = account.try_borrow_data()?;
+    #[must_use]
+    pub fn read_storage(&self, account: &AccountInfo) -> Vec<[u8; 32]> {
+        let data = account.data.borrow();
 
-        let storage_offset = 1 + LegacyEtherData::SIZE;
+        let storage_offset = 1 + Self::SIZE;
         let storage_len = 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 
         let storage = &data[storage_offset..][..storage_len];
@@ -91,19 +92,20 @@ impl LegacyEtherData {
             std::slice::from_raw_parts(ptr, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT)
         };
 
-        Ok(storage.to_vec())
+        storage.to_vec()
     }
 
-    pub fn read_code(&self, account: &AccountInfo) -> Result<Vec<u8>> {
-        let data = account.try_borrow_data()?;
+    #[must_use]
+    pub fn read_code(&self, account: &AccountInfo) -> Vec<u8> {
+        let data = account.data.borrow();
 
-        let storage_offset = 1 + LegacyEtherData::SIZE;
+        let storage_offset = 1 + Self::SIZE;
         let storage_len = 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 
         let code_offset = storage_offset + storage_len;
         let code_len = self.code_size as usize;
 
         let code = &data[code_offset..][..code_len];
-        Ok(code.to_vec())
+        code.to_vec()
     }
 }

@@ -1,12 +1,13 @@
 #![allow(clippy::unnecessary_wraps)]
+
 use std::convert::{Into, TryInto};
 
 use ethnum::U256;
 use maybe_async::maybe_async;
-use mpl_token_metadata::state::{
-    Creator, Metadata, TokenMetadataAccount, TokenStandard, CREATE_FEE, MAX_MASTER_EDITION_LEN,
-    MAX_METADATA_LEN,
-};
+use mpl_token_metadata::accounts;
+use mpl_token_metadata::accounts::{MasterEdition, Metadata};
+use mpl_token_metadata::instructions::CreateMasterEditionV3Builder;
+use mpl_token_metadata::types::{Creator, DataV2, TokenStandard};
 use solana_program::pubkey::Pubkey;
 
 use crate::{
@@ -161,37 +162,36 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
             vec![bump_seed],
         ];
 
-        let (metadata_pubkey, _) = mpl_token_metadata::pda::find_metadata_account(&mint);
+        let (metadata_pubkey, _) = accounts::Metadata::find_pda(&mint);
 
-        let instruction = mpl_token_metadata::instruction::create_metadata_accounts_v3(
-            mpl_token_metadata::ID,
-            metadata_pubkey,
-            mint,
-            signer_pubkey,
-            self.backend.operator(),
-            signer_pubkey,
-            name,
-            symbol,
-            uri,
-            Some(vec![
-                Creator {
-                    address: *self.backend.program_id(),
-                    verified: false,
-                    share: 0,
-                },
-                Creator {
-                    address: signer_pubkey,
-                    verified: true,
-                    share: 100,
-                },
-            ]),
-            0,     // Seller Fee
-            true,  // Update Authority == Mint Authority
-            false, // Is Mutable
-            None,  // Collection
-            None,  // Uses
-            None,  // Collection Details
-        );
+        let instruction = mpl_token_metadata::instructions::CreateMetadataAccountV3Builder::new()
+            .metadata(metadata_pubkey)
+            .mint(mint)
+            .mint_authority(signer_pubkey)
+            .payer(self.backend.operator())
+            .update_authority(signer_pubkey)
+            .data(DataV2 {
+                name,
+                symbol,
+                uri,
+                seller_fee_basis_points: 0,
+                creators: Some(vec![
+                    Creator {
+                        address: *self.backend.program_id(),
+                        verified: false,
+                        share: 0,
+                    },
+                    Creator {
+                        address: signer_pubkey,
+                        verified: true,
+                        share: 100,
+                    },
+                ]),
+                collection: None,
+                uses: None,
+            })
+            .is_mutable(false)
+            .build();
 
         let fee = self.backend.rent().minimum_balance(MAX_METADATA_LEN) + CREATE_FEE;
         self.queue_external_instruction(instruction, seeds, fee);
@@ -214,19 +214,22 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
             vec![bump_seed],
         ];
 
-        let (metadata_pubkey, _) = mpl_token_metadata::pda::find_metadata_account(&mint);
-        let (edition_pubkey, _) = mpl_token_metadata::pda::find_master_edition_account(&mint);
+        let (metadata_pubkey, _) = Metadata::find_pda(&mint);
+        let (edition_pubkey, _) = MasterEdition::find_pda(&mint);
 
-        let instruction = mpl_token_metadata::instruction::create_master_edition_v3(
-            mpl_token_metadata::ID,
-            edition_pubkey,
-            mint,
-            signer_pubkey,
-            signer_pubkey,
-            metadata_pubkey,
-            self.backend.operator(),
-            max_supply,
-        );
+        let mut builder = CreateMasterEditionV3Builder::new()
+            .edition(edition_pubkey)
+            .mint(mint)
+            .update_authority(signer_pubkey)
+            .mint_authority(signer_pubkey)
+            .metadata(metadata_pubkey)
+            .payer(self.backend.operator());
+
+        if let Some(max_supply) = max_supply {
+            builder = builder.max_supply(max_supply);
+        }
+
+        let instruction = builder.build();
 
         let fee = self.backend.rent().minimum_balance(MAX_MASTER_EDITION_LEN) + CREATE_FEE;
         self.queue_external_instruction(instruction, seeds, fee);
@@ -293,8 +296,8 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         &mut self,
         _context: &crate::evm::Context,
         mint: Pubkey,
-    ) -> Result<Option<Metadata>> {
-        let (metadata_pubkey, _) = mpl_token_metadata::pda::find_metadata_account(&mint);
+    ) -> std::result::Result<Option<Metadata>> {
+        let (metadata_pubkey, _) = Metadata::find_pda(&mint);
         let metadata_account = self.external_account(metadata_pubkey).await?;
 
         let result = {

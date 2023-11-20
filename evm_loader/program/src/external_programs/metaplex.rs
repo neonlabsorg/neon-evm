@@ -1,7 +1,6 @@
-use borsh::{BorshDeserialize, BorshSerialize};
-use mpl_token_metadata::assertions::collection::assert_collection_update_is_valid;
-use mpl_token_metadata::assertions::uses::assert_valid_use;
-use mpl_token_metadata::utils::{assert_data_valid, assert_initialized, puff_out_data_fields};
+use borsh::BorshSerialize;
+use mpl_token_metadata::accounts::Metadata;
+use mpl_token_metadata::types::{Key, TokenStandard};
 use solana_program::account_info::IntoAccountInfo;
 use solana_program::instruction::AccountMeta;
 use solana_program::program_option::COption;
@@ -10,13 +9,7 @@ use spl_token::state::Mint;
 use std::collections::BTreeMap;
 
 use crate::executor::OwnedAccountInfo;
-use mpl_token_metadata::instruction::{
-    CreateMasterEditionArgs, CreateMetadataAccountArgsV3, MetadataInstruction,
-};
-use mpl_token_metadata::state::{
-    Key, MasterEditionV2, Metadata, TokenMetadataAccount, TokenStandard, MAX_MASTER_EDITION_LEN,
-    MAX_METADATA_LEN,
-};
+
 use solana_program::{
     entrypoint::ProgramResult, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey,
 };
@@ -101,10 +94,10 @@ fn create_metadata_accounts_v3(
     puff_out_data_fields(&mut metadata);
 
     let edition_seeds = &[
-        mpl_token_metadata::state::PREFIX.as_bytes(),
+        "metadata".as_bytes(),
         mpl_token_metadata::ID.as_ref(),
         metadata.mint.as_ref(),
-        mpl_token_metadata::state::EDITION.as_bytes(),
+        "edition".as_bytes(),
     ];
     let (_, edition_bump_seed) =
         Pubkey::find_program_address(edition_seeds, &mpl_token_metadata::ID);

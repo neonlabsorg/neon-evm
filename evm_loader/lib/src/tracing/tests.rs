@@ -223,15 +223,7 @@ async fn trace_contract_creation(
 
     let mut backend = ExecutorState::new(&test_account_storage);
 
-    let emulation_result = emulate_trx(
-        from,
-        gas_used,
-        &mut trx,
-        tracer,
-        &test_account_storage,
-        &mut backend,
-    )
-    .await;
+    let emulation_result = emulate_trx(from, gas_used, &mut trx, tracer, &mut backend).await;
 
     (code, emulation_result)
 }
@@ -255,15 +247,7 @@ async fn test_trace_increment_call() {
 
     let mut backend = ExecutorState::new(&test_account_storage);
 
-    let emulation_result = emulate_trx(
-        origin,
-        gas_used,
-        &mut trx,
-        &tracer,
-        &test_account_storage,
-        &mut backend,
-    )
-    .await;
+    let emulation_result = emulate_trx(origin, gas_used, &mut trx, &tracer, &mut backend).await;
 
     assert_eq!(emulation_result.exit_status, ExitStatus::Stop);
     assert_eq!(emulation_result.steps_executed, 112);
@@ -297,15 +281,7 @@ async fn test_trace_state_diff_increment_call() {
 
     let mut backend = ExecutorState::new(&test_account_storage);
 
-    let emulation_result = emulate_trx(
-        origin,
-        gas_used,
-        &mut trx,
-        &tracer,
-        &test_account_storage,
-        &mut backend,
-    )
-    .await;
+    let emulation_result = emulate_trx(origin, gas_used, &mut trx, &tracer, &mut backend).await;
 
     assert_eq!(emulation_result.exit_status, ExitStatus::Stop);
     assert_eq!(emulation_result.steps_executed, 112);
@@ -397,15 +373,7 @@ async fn test_trace_transfer_transaction() {
 
     let mut backend = ExecutorState::new(&test_account_storage);
 
-    let emulation_result = emulate_trx(
-        origin,
-        gas_used,
-        &mut trx,
-        &tracer,
-        &test_account_storage,
-        &mut backend,
-    )
-    .await;
+    let emulation_result = emulate_trx(origin, gas_used, &mut trx, &tracer, &mut backend).await;
 
     assert_eq!(emulation_result.exit_status, ExitStatus::Stop);
     assert_eq!(emulation_result.steps_executed, 1);
@@ -439,15 +407,7 @@ async fn test_trace_state_diff_transfer_transaction() {
 
     let mut backend = ExecutorState::new(&test_account_storage);
 
-    let emulation_result = emulate_trx(
-        origin,
-        gas_used,
-        &mut trx,
-        &tracer,
-        &test_account_storage,
-        &mut backend,
-    )
-    .await;
+    let emulation_result = emulate_trx(origin, gas_used, &mut trx, &tracer, &mut backend).await;
 
     assert_eq!(emulation_result.exit_status, ExitStatus::Stop);
     assert_eq!(emulation_result.steps_executed, 1);
@@ -520,7 +480,6 @@ async fn emulate_trx<B: AccountStorage>(
     gas_used: Option<U256>,
     trx: &mut Transaction,
     tracer: &TracerType,
-    storage: &B,
     backend: &mut ExecutorState<'_, B>,
 ) -> EmulationResult {
     let mut machine = Machine::new(trx, origin, backend, Some(Rc::clone(tracer)))
@@ -538,8 +497,6 @@ async fn emulate_trx<B: AccountStorage>(
         steps_executed,
         used_gas: 0,
         actions,
-        state_diff: build_state_diff(origin, tx_fee, storage, backend)
-            .await
-            .unwrap(),
+        state_diff: build_state_diff(origin, tx_fee, backend).await.unwrap(),
     }
 }

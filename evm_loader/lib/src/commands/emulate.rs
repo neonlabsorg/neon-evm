@@ -204,7 +204,7 @@ pub(crate) async fn emulate_trx<'a>(
             .map(U256::as_u64)
             .unwrap_or(steps_gas + begin_end_gas + actions_gas + accounts_gas),
         actions,
-        state_diff: build_state_diff(from, tx_fee, storage, backend).await?,
+        state_diff: build_state_diff(from, tx_fee, backend).await?,
     })
 }
 

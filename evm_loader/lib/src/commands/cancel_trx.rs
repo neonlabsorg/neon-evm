@@ -1,6 +1,7 @@
 use evm_loader::account::StateAccount;
 use log::info;
 
+use evm_loader::evm_instruction::EvmInstruction;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
@@ -53,8 +54,11 @@ pub async fn execute(
         info!("\t{:?}", meta);
     }
 
-    let cancel_with_nonce_instruction =
-        Instruction::new_with_bincode(evm_loader, &(0x37_u8, storage.trx_hash()), accounts_meta);
+    let cancel_with_nonce_instruction = Instruction::new_with_bincode(
+        evm_loader,
+        &(EvmInstruction::Cancel.get_tag(), storage.trx_hash()),
+        accounts_meta,
+    );
 
     let instructions = vec![cancel_with_nonce_instruction];
 

@@ -7,7 +7,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-use crate::{instruction, instruction::EvmInstruction};
+use crate::{evm_instruction::EvmInstruction, instruction};
 
 entrypoint!(process_instruction);
 

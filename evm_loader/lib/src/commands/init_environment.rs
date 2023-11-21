@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{context::Context, NeonResult};
 
+use evm_loader::evm_instruction::EvmInstruction;
 use {
     crate::{
         commands::{
@@ -266,7 +267,7 @@ pub async fn execute(
                     .create_transaction(
                         &[Instruction::new_with_bincode(
                             config.evm_loader,
-                            &(0x29_u8), // evm_loader::instruction::EvmInstruction::CreateMainTreasury
+                            &(EvmInstruction::CreateMainTreasury.get_tag()),
                             vec![
                                 AccountMeta::new(main_balance_address, false),
                                 AccountMeta::new_readonly(program_data_address, false),

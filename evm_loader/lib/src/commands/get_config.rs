@@ -18,6 +18,7 @@ use solana_sdk::{
 
 use crate::{rpc::Rpc, NeonError, NeonResult};
 
+use evm_loader::evm_instruction::EvmInstruction;
 use serde_with::{serde_as, DisplayFromStr};
 
 #[derive(Debug, Serialize)]
@@ -199,14 +200,18 @@ async fn get_version(
     context: &mut ConfigSimulator<'_>,
     program_id: Pubkey,
 ) -> NeonResult<(String, String)> {
-    let return_data = context.simulate_config(program_id, 0xA7, &[]).await?;
+    let return_data = context
+        .simulate_config(program_id, EvmInstruction::ConfigGetVersion.get_tag(), &[])
+        .await?;
     let (version, revision) = bincode::deserialize(&return_data)?;
 
     Ok((version, revision))
 }
 
 async fn get_status(context: &mut ConfigSimulator<'_>, program_id: Pubkey) -> NeonResult<Status> {
-    let return_data = context.simulate_config(program_id, 0xA6, &[]).await?;
+    let return_data = context
+        .simulate_config(program_id, EvmInstruction::ConfigGetStatus.get_tag(), &[])
+        .await?;
     match return_data[0] {
         0 => Ok(Status::Emergency),
         1 => Ok(Status::Ok),
@@ -218,7 +223,13 @@ async fn get_environment(
     context: &mut ConfigSimulator<'_>,
     program_id: Pubkey,
 ) -> NeonResult<String> {
-    let return_data = context.simulate_config(program_id, 0xA2, &[]).await?;
+    let return_data = context
+        .simulate_config(
+            program_id,
+            EvmInstruction::ConfigGetEnvironment.get_tag(),
+            &[],
+        )
+        .await?;
     let environment = String::from_utf8(return_data)?;
 
     Ok(environment)
@@ -230,13 +241,25 @@ async fn get_chains(
 ) -> NeonResult<Vec<ChainInfo>> {
     let mut result = Vec::new();
 
-    let return_data = context.simulate_config(program_id, 0xA0, &[]).await?;
+    let return_data = context
+        .simulate_config(
+            program_id,
+            EvmInstruction::ConfigGetChainCount.get_tag(),
+            &[],
+        )
+        .await?;
     let chain_count = return_data.as_slice().try_into()?;
     let chain_count = usize::from_le_bytes(chain_count);
 
     for i in 0..chain_count {
         let index = i.to_le_bytes();
-        let return_data = context.simulate_config(program_id, 0xA1, &index).await?;
+        let return_data = context
+            .simulate_config(
+                program_id,
+                EvmInstruction::ConfigGetChainInfo.get_tag(),
+                &index,
+            )
+            .await?;
 
         let (id, name, token) = bincode::deserialize(&return_data)?;
         result.push(ChainInfo { id, name, token });
@@ -251,13 +274,25 @@ async fn get_properties(
 ) -> NeonResult<BTreeMap<String, String>> {
     let mut result = BTreeMap::new();
 
-    let return_data = context.simulate_config(program_id, 0xA3, &[]).await?;
+    let return_data = context
+        .simulate_config(
+            program_id,
+            EvmInstruction::ConfigGetPropertyCount.get_tag(),
+            &[],
+        )
+        .await?;
     let count = return_data.as_slice().try_into()?;
     let count = usize::from_le_bytes(count);
 
     for i in 0..count {
         let index = i.to_le_bytes();
-        let return_data = context.simulate_config(program_id, 0xA4, &index).await?;
+        let return_data = context
+            .simulate_config(
+                program_id,
+                EvmInstruction::ConfigGetPropertyByIndex.get_tag(),
+                &index,
+            )
+            .await?;
 
         let (name, value) = bincode::deserialize(&return_data)?;
         result.insert(name, value);

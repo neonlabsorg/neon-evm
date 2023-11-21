@@ -24,6 +24,7 @@ pub mod config;
 #[cfg(target_os = "solana")]
 pub mod entrypoint;
 pub mod evm;
+pub mod evm_instruction;
 pub mod executor;
 pub mod external_programs;
 pub mod gasometer;

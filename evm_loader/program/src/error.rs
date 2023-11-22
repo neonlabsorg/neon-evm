@@ -175,6 +175,9 @@ pub enum Error {
     That's why you have to use iterative transaction for the deployment."
     )]
     AccountSpaceAllocationFailure,
+
+    #[error("Invalid account for call {0}")]
+    InvalidAccountForCall(Pubkey),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

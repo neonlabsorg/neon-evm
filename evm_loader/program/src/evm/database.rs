@@ -4,6 +4,7 @@ use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
+/// Provides read-write access to account state (balance, nonce, code, storage)
 #[maybe_async(?Send)]
 pub trait Database {
     fn default_chain_id(&self) -> u64;

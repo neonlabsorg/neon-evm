@@ -34,6 +34,7 @@ pub trait Rpc {
     async fn get_slot(&self) -> ClientResult<Slot>;
 }
 
+// TODO: Fix problem with all debug calls failing if first call contains a pre multi-token transaction. Might be fixed by NDEV-1837
 #[enum_dispatch(BuildConfigSimulator, Rpc)]
 pub enum RpcEnum {
     CloneRpcClient,

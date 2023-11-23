@@ -9,7 +9,7 @@ use evm_loader::types::Address;
 use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
 use solana_sdk::sysvar::{slot_hashes, Sysvar};
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
 use crate::{rpc::Rpc, NeonError};
@@ -26,6 +26,7 @@ use solana_client::client_error;
 use solana_sdk::{account::Account, account_info::AccountInfo, pubkey, pubkey::Pubkey};
 
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
+use crate::syscall_stubs::setup_emulator_syscall_stubs;
 use crate::tracing::{AccountOverride, AccountOverrides, BlockOverrides};
 use serde_with::{serde_as, DisplayFromStr};
 
@@ -45,6 +46,8 @@ pub struct SolanaAccount {
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     pub accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
+    /// All Neon addresses used during transaction emulation
+    pub used_addresses: RefCell<BTreeSet<Address>>,
     pub gas: u64,
     rpc: &'rpc T,
     program_id: Pubkey,
@@ -81,6 +84,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
 
         Ok(Self {
             accounts: RefCell::new(HashMap::new()),
+            used_addresses: RefCell::new(BTreeSet::new()),
             program_id,
             chains,
             gas: 0,
@@ -102,6 +106,8 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         let storage = Self::new(rpc, program_id, chains, block_overrides, state_overrides).await?;
 
         storage.download_accounts(accounts).await?;
+
+        setup_emulator_syscall_stubs(rpc).await?;
 
         Ok(storage)
     }
@@ -163,6 +169,8 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         chain_id: u64,
         is_writable: bool,
     ) -> client_error::Result<(Pubkey, Option<Account>, Option<Account>)> {
+        self.used_addresses.borrow_mut().insert(address);
+
         let (pubkey, _) = address.find_balance_address(self.program_id(), chain_id);
         let account = self.use_account(pubkey, is_writable).await?;
 
@@ -181,6 +189,8 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         address: Address,
         is_writable: bool,
     ) -> client_error::Result<(Pubkey, Option<Account>)> {
+        self.used_addresses.borrow_mut().insert(address);
+
         let (pubkey, _) = address.find_solana_address(self.program_id());
         let account = self.use_account(pubkey, is_writable).await?;
 
@@ -193,6 +203,8 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         index: U256,
         is_writable: bool,
     ) -> client_error::Result<(Pubkey, Option<Account>)> {
+        self.used_addresses.borrow_mut().insert(address);
+
         let (base, _) = address.find_solana_address(self.program_id());
         let cell_address = StorageCellAddress::new(self.program_id(), &base, &index);
 
@@ -620,6 +632,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     }
 
     fn contract_pubkey(&self, address: Address) -> (Pubkey, u8) {
+        self.used_addresses.borrow_mut().insert(address); // TODO not sure about this; might not be needed
         address.find_solana_address(self.program_id())
     }
 

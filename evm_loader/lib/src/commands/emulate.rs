@@ -7,14 +7,15 @@ use solana_sdk::pubkey::Pubkey;
 
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::rpc::Rpc;
-use crate::syscall_stubs::setup_emulator_syscall_stubs;
+use crate::tracing::tracers::state_diff::ExecutorStateExt;
 use crate::types::{EmulateRequest, TxParams};
 use crate::{
     account_storage::{EmulatorAccountStorage, SolanaAccount},
     errors::NeonError,
     NeonResult,
 };
-use evm_loader::evm::tracing::TracerType;
+use evm_loader::account_storage::AccountStorage;
+use evm_loader::evm::tracing::{States, TracerType};
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
@@ -33,6 +34,7 @@ pub struct EmulateResponse {
     pub used_gas: u64,
     pub iterations: u64,
     pub solana_accounts: Vec<SolanaAccount>,
+    pub states: States,
 }
 
 impl EmulateResponse {
@@ -46,6 +48,7 @@ impl EmulateResponse {
             used_gas: 0,
             iterations: 0,
             solana_accounts: vec![],
+            states: Default::default(),
         }
     }
 }
@@ -75,43 +78,52 @@ pub async fn execute(
     )
     .await?;
 
-    let step_limit = emulate_request.step_limit.unwrap_or(100000);
-
-    setup_emulator_syscall_stubs(rpc).await?;
-    emulate_trx(emulate_request.tx, &mut storage, step_limit, tracer).await
+    let step_limit = emulate_request.step_limit.unwrap_or(100_000);
+    let mut backend = ExecutorState::new(&mut storage);
+    emulate_trx(emulate_request.tx, &mut backend, step_limit, tracer).await
 }
 
-async fn emulate_trx(
+pub async fn emulate_trx(
     tx_params: TxParams,
-    storage: &mut EmulatorAccountStorage<'_, impl Rpc>,
+    executor_state: &mut ExecutorState<
+        '_,
+        EmulatorAccountStorage<'_, impl Rpc + BuildConfigSimulator>,
+    >,
     step_limit: u64,
     tracer: Option<TracerType>,
 ) -> NeonResult<EmulateResponse> {
     info!("tx_params: {:?}", tx_params);
 
-    let (origin, tx) = tx_params.into_transaction(storage).await;
+    let tx_fee = tx_params
+        .gas_used
+        .unwrap_or_default()
+        .saturating_mul(tx_params.gas_price.unwrap_or_default());
+    let chain_id = tx_params
+        .chain_id
+        .unwrap_or_else(|| executor_state.backend.default_chain_id());
+
+    let (origin, tx) = tx_params.into_transaction(executor_state.backend).await;
 
     info!("origin: {:?}", origin);
     info!("tx: {:?}", tx);
 
-    let (exit_status, actions, steps_executed) = {
-        let mut backend = ExecutorState::new(storage);
-        let mut evm = match Machine::new(tx, origin, &mut backend, tracer).await {
-            Ok(evm) => evm,
-            Err(e) => return Ok(EmulateResponse::revert(e)),
-        };
-
-        let (result, steps_executed) = evm.execute(step_limit, &mut backend).await?;
-        if result == ExitStatus::StepLimit {
-            return Err(NeonError::TooManySteps);
-        }
-
-        let actions = backend.into_actions();
-        (result, actions, steps_executed)
+    let mut evm = match Machine::new(tx, origin, executor_state, tracer).await {
+        Ok(evm) => evm,
+        Err(e) => return Ok(EmulateResponse::revert(e)),
     };
 
-    storage.apply_actions(actions.clone()).await?;
-    storage.mark_legacy_accounts().await?;
+    let (exit_status, steps_executed) = evm.execute(step_limit, executor_state).await?;
+    if exit_status == ExitStatus::StepLimit {
+        return Err(NeonError::TooManySteps);
+    }
+
+    let actions = executor_state.actions();
+
+    executor_state
+        .backend
+        .apply_actions(actions.clone())
+        .await?;
+    executor_state.backend.mark_legacy_accounts().await?;
 
     debug!("Execute done, result={exit_status:?}");
     debug!("{steps_executed} steps executed");
@@ -124,9 +136,15 @@ async fn emulate_trx(
     let iterations: u64 = steps_iterations + begin_end_iterations + realloc_iterations(&actions);
     let iterations_gas = iterations * LAMPORTS_PER_SIGNATURE;
 
-    let used_gas = storage.gas + iterations_gas + treasury_gas + cancel_gas;
+    let used_gas = executor_state.backend.gas + iterations_gas + treasury_gas + cancel_gas;
 
-    let solana_accounts = storage.accounts.borrow().values().cloned().collect();
+    let solana_accounts = executor_state
+        .backend
+        .accounts
+        .borrow()
+        .values()
+        .cloned()
+        .collect();
 
     Ok(EmulateResponse {
         exit_status: exit_status.to_string(),
@@ -135,6 +153,9 @@ async fn emulate_trx(
         solana_accounts,
         result: exit_status.into_result().unwrap_or_default(),
         iterations,
+        states: executor_state
+            .build_states(origin, tx_fee, chain_id)
+            .await?,
     })
 }
 

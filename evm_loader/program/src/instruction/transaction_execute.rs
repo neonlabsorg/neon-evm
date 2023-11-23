@@ -36,7 +36,7 @@ pub fn execute(
     let mut account_storage = ProgramAccountStorage::new(accounts)?;
 
     let (exit_reason, apply_state) = {
-        let mut backend = ExecutorState::new(&account_storage);
+        let mut backend = ExecutorState::new(&mut account_storage);
 
         let mut evm = Machine::new(trx, origin, &mut backend)?;
         let (result, _) = evm.execute(u64::MAX, &mut backend)?;

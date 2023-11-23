@@ -1870,6 +1870,7 @@ version = "1.9.0-dev"
 dependencies = [
  "arrayref",
  "async-trait",
+ "base64 0.12.3",
  "bincode",
  "borsh 0.9.3",
  "cfg-if",
@@ -1891,6 +1892,7 @@ dependencies = [
  "static_assertions",
  "thiserror",
  "tokio",
+ "web3",
 ]
 
 [[package]]
@@ -2886,6 +2888,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "map-macro"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c2efbd1385acc8dad8a2e56558e58d949d777741fe110f2ddf3472671dbe3e6"
+
+[[package]]
 name = "matchers"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3165,6 +3173,7 @@ dependencies = [
  "goblin 0.6.1",
  "hex",
  "log",
+ "map-macro",
  "rand 0.8.5",
  "scroll",
  "serde",

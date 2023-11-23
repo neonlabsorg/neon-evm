@@ -37,7 +37,7 @@ pub struct AccessListItem {
 
 #[serde_as]
 #[skip_serializing_none]
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct TxParams {
     pub nonce: Option<u64>,
     pub from: Address,
@@ -46,6 +46,7 @@ pub struct TxParams {
     pub data: Option<Vec<u8>>,
     pub value: Option<U256>,
     pub gas_limit: Option<U256>,
+    pub gas_used: Option<U256>,
     pub gas_price: Option<U256>,
     pub access_list: Option<Vec<AccessListItem>>,
     pub chain_id: Option<u64>,

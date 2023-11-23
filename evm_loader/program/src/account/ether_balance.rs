@@ -16,11 +16,11 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey, system_program};
 use super::{AccountsDB, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION, TAG_ACCOUNT_BALANCE};
 
 #[repr(C, packed)]
-pub struct Header {
+struct Header {
     pub address: Address,
-    pub chain_id: u64,
-    pub trx_count: u64,
-    pub balance: U256,
+    chain_id: u64,
+    trx_count: u64,
+    balance: U256,
 }
 
 pub struct BalanceAccount<'a> {
@@ -52,7 +52,7 @@ impl<'a> BalanceAccount<'a> {
             |keys| keys.balance_with_bump_seed(&crate::ID, address, chain_id),
         );
 
-        // Already created. Return immidiately
+        // Already created. Return immediately
         let account = accounts.get(&pubkey).clone();
         if !system_program::check_id(account.owner) {
             let balance_account = Self::from_account(&crate::ID, account)?;
@@ -95,14 +95,27 @@ impl<'a> BalanceAccount<'a> {
             ACCOUNT_PREFIX_LEN + size_of::<Header>(),
         )?;
 
-        super::set_tag(&crate::ID, &account, TAG_ACCOUNT_BALANCE)?;
+        Self::new(&crate::ID, address, account, chain_id, 0, U256::ZERO)
+    }
+
+    pub fn new(
+        program_id: &Pubkey,
+        address: Address,
+        account: AccountInfo<'a>,
+        chain_id: u64,
+        trx_count: u64,
+        balance: U256,
+    ) -> Result<Self> {
+        super::set_tag(program_id, &account, TAG_ACCOUNT_BALANCE)?;
+
         let mut balance_account = Self { account };
+
         {
             let mut header = balance_account.header_mut();
             header.address = address;
             header.chain_id = chain_id;
-            header.trx_count = 0;
-            header.balance = U256::ZERO;
+            header.trx_count = trx_count;
+            header.balance = balance;
         }
 
         Ok(balance_account)

@@ -117,10 +117,21 @@ impl<'a> ContractAccount<'a> {
 
         let account = accounts.get(&pubkey).clone();
 
-        super::validate_tag(&crate::ID, &account, TAG_EMPTY)?;
-        super::set_tag(&crate::ID, &account, TAG_ACCOUNT_CONTRACT)?;
+        Self::new(&crate::ID, account, address, chain_id, generation, code)
+    }
 
-        let mut contract = Self::from_account(&crate::ID, account)?;
+    pub fn new(
+        program_id: &Pubkey,
+        account: AccountInfo<'a>,
+        address: Address,
+        chain_id: u64,
+        generation: u32,
+        code: &[u8],
+    ) -> Result<Self> {
+        super::validate_tag(program_id, &account, TAG_EMPTY)?;
+        super::set_tag(program_id, &account, TAG_ACCOUNT_CONTRACT)?;
+
+        let mut contract = Self::from_account(program_id, account)?;
         {
             let mut header = contract.header_mut();
             header.address = address;

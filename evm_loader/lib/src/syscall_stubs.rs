@@ -54,7 +54,7 @@ impl SyscallStubs for EmulatorStubs {
 
 pub async fn setup_emulator_syscall_stubs(rpc: &impl Rpc) -> Result<(), NeonError> {
     let syscall_stubs = EmulatorStubs::new(rpc).await?;
-    solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
+    solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs); // TODO NDEV-1837 Fix race condition with ProgramTest::setup_bank()
 
     Ok(())
 }

@@ -798,13 +798,18 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
     /// reads a (u)int256 from storage
     #[maybe_async]
     pub async fn opcode_sload(&mut self, backend: &mut B) -> Result<Action> {
+        let address = self.context.contract;
         let index = self.stack.pop_u256()?;
-        let value = backend.storage(self.context.contract, index).await?;
+        let value = backend.storage(address, index).await?;
 
         tracing_event!(
             self,
             backend,
-            super::tracing::Event::StorageAccess { index, value }
+            super::tracing::Event::StorageGet {
+                address,
+                index,
+                value
+            }
         );
 
         self.stack.push_array(&value)?;
@@ -815,8 +820,10 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
     /// writes a (u)int256 to storage
     #[maybe_async]
     pub async fn opcode_sstore(&mut self, backend: &mut B) -> Result<Action> {
+        let address = self.context.contract;
+
         if self.is_static {
-            return Err(Error::StaticModeViolation(self.context.contract));
+            return Err(Error::StaticModeViolation(address));
         }
 
         let index = self.stack.pop_u256()?;
@@ -825,10 +832,14 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         tracing_event!(
             self,
             backend,
-            super::tracing::Event::StorageAccess { index, value }
+            super::tracing::Event::StorageSet {
+                address,
+                index,
+                value
+            }
         );
 
-        backend.set_storage(self.context.contract, index, value)?;
+        backend.set_storage(address, index, value)?;
 
         Ok(Action::Continue)
     }
@@ -1319,11 +1330,17 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
     #[maybe_async]
     pub async fn opcode_return_impl(
         &mut self,
-        mut return_data: Vec<u8>,
+        #[cfg(target_os = "solana")] mut return_data: Vec<u8>,
+        #[cfg(not(target_os = "solana"))] return_data: Vec<u8>,
         backend: &mut B,
     ) -> Result<Action> {
         if self.reason == Reason::Create {
+            #[cfg(target_os = "solana")]
             let code = std::mem::take(&mut return_data);
+
+            #[cfg(not(target_os = "solana"))]
+            let code = return_data.clone();
+
             backend.set_code(self.context.contract, self.chain_id, code)?;
         }
 

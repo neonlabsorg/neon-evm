@@ -117,3 +117,246 @@ impl LegacyEtherData {
         code.to_vec()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use std::str::FromStr;
+
+    // Neon Tx hash: 0x5875c2f6395560ee537297eb29e81e222ebbaffb5cace60bb13a48b931845ef0
+    #[test]
+    fn test_deserialize_legacy_ether_data_from_account_before_tx() {
+        let mut lamports = 0;
+        let mut data = base64::decode("DIIhGTTDQLKVYTgTkjSNSEE+Fa3I/hQAAAAAAAAAYDWpG9a+FocEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=").unwrap();
+        let owner = Pubkey::new_unique();
+
+        let account_info = AccountInfo {
+            key: &Pubkey::new_unique(),
+            lamports: Rc::new(RefCell::new(&mut lamports)),
+            data: Rc::new(RefCell::new(&mut data)),
+            owner: &owner,
+            rent_epoch: 0,
+            is_signer: false,
+            is_writable: false,
+            executable: false,
+        };
+
+        let legacy_ether_data = LegacyEtherData::from_account(&owner, &account_info).unwrap();
+        assert_eq!(
+            legacy_ether_data.address,
+            Address::from_str("0x82211934c340b29561381392348d48413e15adc8").unwrap()
+        );
+        assert_eq!(legacy_ether_data.bump_seed, 254);
+        assert_eq!(legacy_ether_data.trx_count, 20);
+        assert_eq!(legacy_ether_data.balance, 83_521_153_766_242_465_120);
+        assert_eq!(legacy_ether_data.generation, 0);
+        assert_eq!(legacy_ether_data.code_size, 0);
+        assert!(!legacy_ether_data.rw_blocked);
+
+        assert_eq!(
+            legacy_ether_data
+                .address
+                .find_solana_address(
+                    &Pubkey::from_str("eeLSJgWzzxrqKv1UxtRVVH8FX3qCQWUs9QuAjJpETGU").unwrap()
+                )
+                .0,
+            Pubkey::from_str("4MCcX687JtEUjp3gQncDQxVWyQEfTtY6PP6jBXH8Z3JM").unwrap()
+        );
+    }
+
+    // Neon Tx hash: 0x5875c2f6395560ee537297eb29e81e222ebbaffb5cace60bb13a48b931845ef0
+    #[test]
+    fn test_deserialize_legacy_ether_data_from_account_after_tx() {
+        let mut lamports = 0;
+        let mut data = base64::decode("DIIhGTTDQLKVYTgTkjSNSEE+Fa3I/hUAAAAAAAAAkBWIGQpybVwEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=").unwrap();
+        let owner = Pubkey::new_unique();
+
+        let account_info = AccountInfo {
+            key: &Pubkey::new_unique(),
+            lamports: Rc::new(RefCell::new(&mut lamports)),
+            data: Rc::new(RefCell::new(&mut data)),
+            owner: &owner,
+            rent_epoch: 0,
+            is_signer: false,
+            is_writable: false,
+            executable: false,
+        };
+
+        let legacy_ether_data = LegacyEtherData::from_account(&owner, &account_info).unwrap();
+        assert_eq!(
+            legacy_ether_data.address,
+            Address::from_str("0x82211934c340b29561381392348d48413e15adc8").unwrap()
+        );
+        assert_eq!(legacy_ether_data.bump_seed, 254);
+        assert_eq!(legacy_ether_data.trx_count, 21);
+        assert_eq!(legacy_ether_data.balance, 80_447_081_106_492_626_320);
+        assert_eq!(legacy_ether_data.generation, 0);
+        assert_eq!(legacy_ether_data.code_size, 0);
+        assert!(!legacy_ether_data.rw_blocked);
+
+        assert_eq!(
+            legacy_ether_data
+                .address
+                .find_solana_address(
+                    &Pubkey::from_str("eeLSJgWzzxrqKv1UxtRVVH8FX3qCQWUs9QuAjJpETGU").unwrap()
+                )
+                .0,
+            Pubkey::from_str("4MCcX687JtEUjp3gQncDQxVWyQEfTtY6PP6jBXH8Z3JM").unwrap()
+        );
+
+        assert_eq!(
+            U256::from_str("83521153766242465120").unwrap()
+                - U256::from_str("80447081106492626320").unwrap(),
+            U256::from_str("3074072659749838800").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_deserialize_legacy_ether_data_operator_account_after_tx() {
+        let mut lamports = 0;
+        let mut data = base64::decode("DLj96bgwrCSg5dGWwC6QSXedngjV/gAAAAAAAAAAGLA73pkXZTsUAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=").unwrap();
+        let owner = Pubkey::new_unique();
+
+        let account_info = AccountInfo {
+            key: &Pubkey::new_unique(),
+            lamports: Rc::new(RefCell::new(&mut lamports)),
+            data: Rc::new(RefCell::new(&mut data)),
+            owner: &owner,
+            rent_epoch: 0,
+            is_signer: false,
+            is_writable: false,
+            executable: false,
+        };
+
+        let legacy_ether_data = LegacyEtherData::from_account(&owner, &account_info).unwrap();
+        assert_eq!(
+            legacy_ether_data.address,
+            Address::from_str("0xb8fde9b830ac24a0e5d196c02e9049779d9e08d5").unwrap()
+        );
+        assert_eq!(legacy_ether_data.bump_seed, 254);
+        assert_eq!(legacy_ether_data.trx_count, 0);
+        assert_eq!(legacy_ether_data.balance, 14_540_314_183_053_638_086_680);
+        assert_eq!(legacy_ether_data.generation, 0);
+        assert_eq!(legacy_ether_data.code_size, 0);
+        assert!(!legacy_ether_data.rw_blocked);
+
+        assert_eq!(
+            legacy_ether_data
+                .address
+                .find_solana_address(
+                    &Pubkey::from_str("eeLSJgWzzxrqKv1UxtRVVH8FX3qCQWUs9QuAjJpETGU").unwrap()
+                )
+                .0,
+            Pubkey::from_str("3ei1nFgS2aeEFRJHE9YkydSKgdkyisgbK6gpr5KJc5Qb").unwrap()
+        );
+    }
+
+    // Neon Tx hash: 0xa191c3fccc1418557937a39a76d5e9c1f2e94b2633a40147302607f6d66ed501
+    #[test]
+    fn test_deserialize_legacy_ether_data_operator_account_before_tx() {
+        let mut lamports = 0;
+        let x: [i32; 71] = [
+            12, -72, -3, -23, -72, 48, -84, 36, -96, -27, -47, -106, -64, 46, -112, 73, 119, -99,
+            -98, 8, -43, -2, 0, 0, 0, 0, 0, 0, 0, 0, 56, -49, 57, -93, -93, -6, -16, 16, 20, 3, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0,
+        ];
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let mut data = x.into_iter().map(|v| (v + 256) as u8).collect::<Vec<u8>>();
+        let owner = Pubkey::new_unique();
+
+        let account_info = AccountInfo {
+            key: &Pubkey::new_unique(),
+            lamports: Rc::new(RefCell::new(&mut lamports)),
+            data: Rc::new(RefCell::new(&mut data)),
+            owner: &owner,
+            rent_epoch: 0,
+            is_signer: false,
+            is_writable: false,
+            executable: false,
+        };
+
+        let legacy_ether_data = LegacyEtherData::from_account(&owner, &account_info).unwrap();
+        assert_eq!(
+            legacy_ether_data.address,
+            Address::from_str("0xb8fde9b830ac24a0e5d196c02e9049779d9e08d5").unwrap()
+        );
+        assert_eq!(legacy_ether_data.bump_seed, 254);
+        assert_eq!(legacy_ether_data.trx_count, 0);
+        assert_eq!(legacy_ether_data.balance, 14_537_255_081_162_869_165_880);
+        assert_eq!(legacy_ether_data.generation, 0);
+        assert_eq!(legacy_ether_data.code_size, 0);
+        assert!(!legacy_ether_data.rw_blocked);
+
+        assert_eq!(
+            legacy_ether_data
+                .address
+                .find_solana_address(
+                    &Pubkey::from_str("eeLSJgWzzxrqKv1UxtRVVH8FX3qCQWUs9QuAjJpETGU").unwrap()
+                )
+                .0,
+            Pubkey::from_str("3ei1nFgS2aeEFRJHE9YkydSKgdkyisgbK6gpr5KJc5Qb").unwrap()
+        );
+
+        assert_eq!(
+            U256::from_str("14540314183053638086680").unwrap()
+                - U256::from_str("14537255081162869165880").unwrap(),
+            U256::from_str("3059101890768920800").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_deserialize_legacy_ether_data_operator_account2() {
+        let mut lamports = 0;
+        let mut data = base64::decode("DNRaLxGm6ggK1dsEMh+eJmB5+s8U/wAAAAAAAAAAkAM0bBhiorsEAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=").unwrap();
+        let owner = Pubkey::new_unique();
+
+        let account_info = AccountInfo {
+            key: &Pubkey::new_unique(),
+            lamports: Rc::new(RefCell::new(&mut lamports)),
+            data: Rc::new(RefCell::new(&mut data)),
+            owner: &owner,
+            rent_epoch: 0,
+            is_signer: false,
+            is_writable: false,
+            executable: false,
+        };
+
+        let legacy_ether_data = LegacyEtherData::from_account(&owner, &account_info).unwrap();
+        assert_eq!(
+            legacy_ether_data.address,
+            Address::from_str("0xd45a2f11a6ea080ad5db04321f9e266079facf14").unwrap()
+        );
+        assert_eq!(legacy_ether_data.bump_seed, 255);
+        assert_eq!(legacy_ether_data.trx_count, 0);
+        assert_eq!(legacy_ether_data.balance, 14_254_406_901_792_127_583_120);
+        assert_eq!(legacy_ether_data.generation, 0);
+        assert_eq!(legacy_ether_data.code_size, 0);
+        assert!(!legacy_ether_data.rw_blocked);
+
+        assert_eq!(
+            legacy_ether_data
+                .address
+                .find_solana_address(
+                    &Pubkey::from_str("eeLSJgWzzxrqKv1UxtRVVH8FX3qCQWUs9QuAjJpETGU").unwrap()
+                )
+                .0,
+            Pubkey::from_str("9LfrbwpW44A6LkNSPWjkXiEcYHoJ3Nkk3o52M9JcWE9G").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_deserialize_pubkey() {
+        assert_eq!(
+            Pubkey::from_str("3ei1nFgS2aeEFRJHE9YkydSKgdkyisgbK6gpr5KJc5Qb")
+                .unwrap()
+                .to_bytes(),
+            [
+                39, 96, 60, 227, 133, 88, 143, 17, 237, 98, 20, 8, 36, 208, 245, 204, 107, 200, 44,
+                11, 37, 248, 129, 26, 124, 186, 187, 152, 127, 120, 149, 48
+            ]
+        );
+    }
+}

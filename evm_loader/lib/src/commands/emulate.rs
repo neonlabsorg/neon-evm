@@ -5,15 +5,17 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE;
 use solana_sdk::pubkey::Pubkey;
 
-use crate::rpc::RpcEnum;
-use crate::syscall_stubs::setup_emulator_syscall_stubs;
+use crate::commands::get_config::BuildConfigSimulator;
+use crate::rpc::Rpc;
+use crate::tracing::tracers::state_diff::ExecutorStateExt;
 use crate::types::{EmulateRequest, TxParams};
 use crate::{
     account_storage::{EmulatorAccountStorage, SolanaAccount},
     errors::NeonError,
     NeonResult,
 };
-use evm_loader::evm::tracing::TracerType;
+use evm_loader::account_storage::AccountStorage;
+use evm_loader::evm::tracing::{States, TracerType};
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
@@ -32,6 +34,7 @@ pub struct EmulateResponse {
     pub used_gas: u64,
     pub iterations: u64,
     pub solana_accounts: Vec<SolanaAccount>,
+    pub states: States,
 }
 
 impl EmulateResponse {
@@ -45,21 +48,22 @@ impl EmulateResponse {
             used_gas: 0,
             iterations: 0,
             solana_accounts: vec![],
+            states: Default::default(),
         }
     }
 }
 
 pub async fn execute(
-    rpc: &RpcEnum,
+    rpc: &(impl Rpc + BuildConfigSimulator),
     program_id: Pubkey,
-    config: EmulateRequest,
+    emulate_request: EmulateRequest,
     tracer: Option<TracerType>,
 ) -> NeonResult<EmulateResponse> {
-    let block_overrides = config
+    let block_overrides = emulate_request
         .trace_config
         .as_ref()
         .and_then(|t| t.block_overrides.clone());
-    let state_overrides = config
+    let state_overrides = emulate_request
         .trace_config
         .as_ref()
         .and_then(|t| t.state_overrides.clone());
@@ -67,50 +71,53 @@ pub async fn execute(
     let mut storage = EmulatorAccountStorage::with_accounts(
         rpc,
         program_id,
-        &config.accounts,
-        config.chains,
+        &emulate_request.accounts,
+        emulate_request.chains,
         block_overrides,
         state_overrides,
     )
     .await?;
 
-    let step_limit = config.step_limit.unwrap_or(100000);
-
-    setup_emulator_syscall_stubs(rpc).await?;
-    emulate_trx(config.tx, &mut storage, step_limit, tracer).await
+    let step_limit = emulate_request.step_limit.unwrap_or(100_000);
+    let mut backend = ExecutorState::new(&mut storage);
+    emulate_trx(emulate_request.tx, &mut backend, step_limit, tracer).await
 }
 
-async fn emulate_trx(
+pub async fn emulate_trx(
     tx_params: TxParams,
-    storage: &mut EmulatorAccountStorage<'_>,
+    backend: &mut ExecutorState<'_, EmulatorAccountStorage<'_, impl Rpc + BuildConfigSimulator>>,
     step_limit: u64,
     tracer: Option<TracerType>,
 ) -> NeonResult<EmulateResponse> {
     info!("tx_params: {:?}", tx_params);
 
-    let (origin, tx) = tx_params.into_transaction(storage).await;
+    let tx_fee = tx_params
+        .gas_used
+        .unwrap_or_default()
+        .saturating_mul(tx_params.gas_price.unwrap_or_default());
+    let chain_id = tx_params
+        .chain_id
+        .unwrap_or_else(|| backend.backend.default_chain_id());
+
+    let (origin, tx) = tx_params.into_transaction(backend.backend).await;
 
     info!("origin: {:?}", origin);
     info!("tx: {:?}", tx);
 
-    let (exit_status, actions, steps_executed) = {
-        let mut backend = ExecutorState::new(storage);
-        let mut evm = match Machine::new(tx, origin, &mut backend, tracer).await {
-            Ok(evm) => evm,
-            Err(e) => return Ok(EmulateResponse::revert(e)),
-        };
-
-        let (result, steps_executed) = evm.execute(step_limit, &mut backend).await?;
-        if result == ExitStatus::StepLimit {
-            return Err(NeonError::TooManySteps);
-        }
-
-        let actions = backend.into_actions();
-        (result, actions, steps_executed)
+    let mut evm = match Machine::new(tx, origin, backend, tracer).await {
+        Ok(evm) => evm,
+        Err(e) => return Ok(EmulateResponse::revert(e)),
     };
 
-    storage.apply_actions(actions.clone()).await?;
-    storage.mark_legacy_accounts().await?;
+    let (exit_status, steps_executed) = evm.execute(step_limit, backend).await?;
+    if exit_status == ExitStatus::StepLimit {
+        return Err(NeonError::TooManySteps);
+    }
+
+    let actions = backend.actions();
+
+    backend.backend.apply_actions(actions.clone()).await?;
+    backend.backend.mark_legacy_accounts().await?;
 
     debug!("Execute done, result={exit_status:?}");
     debug!("{steps_executed} steps executed");
@@ -123,9 +130,15 @@ async fn emulate_trx(
     let iterations: u64 = steps_iterations + begin_end_iterations + realloc_iterations(&actions);
     let iterations_gas = iterations * LAMPORTS_PER_SIGNATURE;
 
-    let used_gas = storage.gas + iterations_gas + treasury_gas + cancel_gas;
+    let used_gas = backend.backend.gas + iterations_gas + treasury_gas + cancel_gas;
 
-    let solana_accounts = storage.accounts.borrow().values().cloned().collect();
+    let solana_accounts = backend
+        .backend
+        .accounts
+        .borrow()
+        .values()
+        .cloned()
+        .collect();
 
     Ok(EmulateResponse {
         exit_status: exit_status.to_string(),
@@ -134,6 +147,7 @@ async fn emulate_trx(
         solana_accounts,
         result: exit_status.into_result().unwrap_or_default(),
         iterations,
+        states: backend.build_states(origin, tx_fee, chain_id).await?,
     })
 }
 

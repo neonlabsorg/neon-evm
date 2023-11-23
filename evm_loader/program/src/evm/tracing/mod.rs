@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use super::{Context, ExitStatus};
 
-pub trait EventListener: Send + Sync + Debug {
+pub trait EventListener: Debug {
     fn event(&mut self, event: Event);
     fn into_traces(self: Box<Self>) -> Value;
 }

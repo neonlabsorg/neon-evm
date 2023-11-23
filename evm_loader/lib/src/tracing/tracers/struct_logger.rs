@@ -5,8 +5,9 @@ use evm_loader::evm::ExitStatus;
 use serde::Serialize;
 use serde_json::{json, Value};
 
+use crate::tracing::TraceConfig;
 use evm_loader::evm::opcode_table::OPNAMES;
-use evm_loader::evm::tracing::{Event, EventListener, TraceConfig};
+use evm_loader::evm::tracing::{Event, EventListener};
 use evm_loader::types::hexbytes::HexBytes;
 
 /// `StructLoggerResult` groups all structured logs emitted by the EVM

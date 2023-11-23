@@ -1,5 +1,6 @@
 use crate::tracing::tracers::struct_logger::StructLogger;
-use evm_loader::evm::tracing::{TraceConfig, TracerType};
+use crate::tracing::TraceConfig;
+use evm_loader::evm::tracing::TracerType;
 use std::cell::RefCell;
 use std::rc::Rc;
 

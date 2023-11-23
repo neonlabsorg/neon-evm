@@ -12,6 +12,10 @@ pub struct EmulatorStubs {
 }
 
 impl EmulatorStubs {
+    pub fn new_rent(rent: Rent) -> Self {
+        EmulatorStubs { rent }
+    }
+
     pub async fn new(rpc: &impl Rpc) -> Result<Box<EmulatorStubs>, NeonError> {
         let rent_pubkey = solana_sdk::sysvar::rent::id();
         let data = rpc
@@ -58,7 +62,7 @@ impl SyscallStubs for EmulatorStubs {
 
 pub async fn setup_emulator_syscall_stubs(rpc: &impl Rpc) -> Result<(), NeonError> {
     let syscall_stubs = EmulatorStubs::new(rpc).await?;
-    solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
+    solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs); // TODO Fix race condition with ProgramTest::setup_bank()
 
     Ok(())
 }

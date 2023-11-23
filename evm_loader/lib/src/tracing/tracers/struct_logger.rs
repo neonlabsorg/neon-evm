@@ -1,14 +1,15 @@
 use std::collections::BTreeMap;
 
 use ethnum::U256;
-use evm_loader::evm::ExitStatus;
 use serde::Serialize;
 use serde_json::Value;
 use web3::types::Bytes;
 
-use crate::tracing::TraceConfig;
 use evm_loader::evm::opcode_table::OPNAMES;
-use evm_loader::evm::tracing::{Event, EventListener};
+use evm_loader::evm::tracing::{EmulationResult, Event, EventListener};
+use evm_loader::evm::ExitStatus;
+
+use crate::tracing::TraceConfig;
 
 /// `StructLoggerResult` groups all structured logs emitted by the EVM
 /// while replaying a transaction in debug mode as well as transaction
@@ -104,8 +105,8 @@ struct Config {
     enable_return_data: bool,
 }
 
-impl From<&TraceConfig> for Config {
-    fn from(trace_config: &TraceConfig) -> Self {
+impl From<TraceConfig> for Config {
+    fn from(trace_config: TraceConfig) -> Self {
         Self {
             enable_memory: trace_config.enable_memory,
             disable_storage: trace_config.disable_storage,
@@ -117,6 +118,7 @@ impl From<&TraceConfig> for Config {
 
 #[derive(Debug)]
 pub struct StructLogger {
+    gas_used: Option<U256>,
     config: Config,
     logs: Vec<StructLog>,
     depth: usize,
@@ -126,8 +128,9 @@ pub struct StructLogger {
 
 impl StructLogger {
     #[must_use]
-    pub fn new(trace_config: &TraceConfig) -> Self {
+    pub fn new(gas_used: Option<U256>, trace_config: TraceConfig) -> Self {
         StructLogger {
+            gas_used,
             config: trace_config.into(),
             logs: vec![],
             depth: 0,
@@ -144,9 +147,7 @@ impl EventListener for StructLogger {
                 self.depth += 1;
             }
             Event::EndVM { status } => {
-                if self.depth == 1 {
-                    self.exit_status = Some(status);
-                }
+                self.exit_status = Some(status);
                 self.depth -= 1;
             }
             Event::BeginStep {
@@ -196,7 +197,16 @@ impl EventListener for StructLogger {
                     last.return_data = return_data.map(Into::into);
                 }
             }
-            Event::StorageAccess { index, value } => {
+            Event::StorageGet {
+                address: _,
+                index,
+                value,
+            }
+            | Event::StorageSet {
+                address: _,
+                index,
+                value,
+            } => {
                 if !self.config.disable_storage {
                     self.storage_access = Some((index, U256::from_be_bytes(value)));
                 }
@@ -204,17 +214,20 @@ impl EventListener for StructLogger {
         };
     }
 
-    fn into_traces(self: Box<Self>) -> Value {
-        let exit_status = self.exit_status.expect("Emulation is not completed");
+    fn into_traces(self: Box<Self>, emulation_result: EmulationResult) -> Value {
+        let exit_status = self.exit_status.expect("Exit status should be set");
         let result = StructLoggerResult {
-            gas: 0,
             failed: !exit_status
                 .is_succeed()
                 .expect("Emulation is not completed"),
+            gas: self
+                .gas_used
+                .map_or(emulation_result.used_gas, U256::as_u64),
             return_value: hex::encode(exit_status.into_result().unwrap_or_default()),
             struct_logs: self.logs,
         };
-        serde_json::to_value(result).expect("serialization should not fail")
+
+        serde_json::to_value(result).expect("Conversion error")
     }
 }
 

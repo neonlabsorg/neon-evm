@@ -9,7 +9,7 @@ use evm_loader::types::Address;
 use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
 use solana_sdk::sysvar::{slot_hashes, Sysvar};
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
 use crate::{rpc::Rpc, NeonError};
@@ -26,6 +26,7 @@ use solana_client::client_error;
 use solana_sdk::{account::Account, account_info::AccountInfo, pubkey, pubkey::Pubkey};
 
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
+use crate::syscall_stubs::setup_emulator_syscall_stubs;
 use crate::tracing::{AccountOverride, AccountOverrides, BlockOverrides};
 use serde_with::{serde_as, DisplayFromStr};
 
@@ -45,6 +46,8 @@ pub struct SolanaAccount {
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     pub accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
+    /// All Neon addresses used during transaction emulation
+    pub used_addresses: RefCell<BTreeSet<Address>>,
     pub gas: u64,
     rpc: &'rpc T,
     program_id: Pubkey,
@@ -81,6 +84,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
 
         Ok(Self {
             accounts: RefCell::new(HashMap::new()),
+            used_addresses: RefCell::new(BTreeSet::new()),
             program_id,
             chains,
             gas: 0,
@@ -102,6 +106,8 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         let storage = Self::new(rpc, program_id, chains, block_overrides, state_overrides).await?;
 
         storage.download_accounts(accounts).await?;
+
+        setup_emulator_syscall_stubs(rpc).await?;
 
         Ok(storage)
     }
@@ -163,6 +169,8 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         chain_id: u64,
         is_writable: bool,
     ) -> client_error::Result<(Pubkey, Option<Account>, Option<Account>)> {
+        self.used_addresses.borrow_mut().insert(address);
+
         let (pubkey, _) = address.find_balance_address(self.program_id(), chain_id);
         let account = self.use_account(pubkey, is_writable).await?;
 
@@ -181,6 +189,8 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         address: Address,
         is_writable: bool,
     ) -> client_error::Result<(Pubkey, Option<Account>)> {
+        self.used_addresses.borrow_mut().insert(address);
+
         let (pubkey, _) = address.find_solana_address(self.program_id());
         let account = self.use_account(pubkey, is_writable).await?;
 
@@ -193,6 +203,8 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         index: U256,
         is_writable: bool,
     ) -> client_error::Result<(Pubkey, Option<Account>)> {
+        self.used_addresses.borrow_mut().insert(address);
+
         let (base, _) = address.find_solana_address(self.program_id());
         let cell_address = StorageCellAddress::new(self.program_id(), &base, &index);
 
@@ -379,38 +391,38 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         &self,
         address: Address,
         chain_id: u64,
-        default: R,
         legacy_action: L,
         action: F,
-    ) -> R
+    ) -> Option<R>
     where
         L: FnOnce(LegacyEtherData) -> R,
         F: FnOnce(BalanceAccount) -> R,
     {
-        let (pubkey, mut account, mut legacy) = self
+        let Ok((pubkey, mut account, mut legacy)) = self
             .use_balance_account(address, chain_id, false)
-            .await
-            .unwrap();
+            .await else {
+            return None;
+        };
 
         if let Some(account_data) = &mut account {
             let info = account_info(&pubkey, account_data);
             if let Ok(a) = BalanceAccount::from_account(self.program_id(), info) {
-                return action(a);
+                return Some(action(a));
             }
         }
 
         if chain_id != self.default_chain_id() {
-            return default;
+            return None;
         }
 
         if let Some(legacy_data) = &mut legacy {
             let info = account_info(&pubkey, legacy_data);
             if let Ok(a) = LegacyEtherData::from_account(self.program_id(), &info) {
-                return legacy_action(a);
+                return Some(legacy_action(a));
             }
         }
 
-        default
+        None
     }
 
     pub async fn ethereum_contract_map_or<F, L, R>(
@@ -424,7 +436,9 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         L: FnOnce(LegacyEtherData, &AccountInfo) -> R,
         F: FnOnce(ContractAccount) -> R,
     {
-        let (pubkey, mut account) = self.use_contract_account(address, false).await.unwrap();
+        let Ok((pubkey, mut account)) = self.use_contract_account(address, false).await else {
+            return default;
+        };
 
         let Some(account_data) = &mut account else {
             return default;
@@ -537,36 +551,34 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         }
     }
 
-    async fn nonce(&self, address: Address, chain_id: u64) -> u64 {
+    async fn nonce(&self, address: Address, chain_id: u64) -> Option<u64> {
         info!("nonce {address}  {chain_id}");
 
         let nonce_override = self.account_override(address, |a| a.nonce);
         if let Some(nonce_override) = nonce_override {
-            return nonce_override;
+            return Some(nonce_override);
         }
 
         self.ethereum_balance_map_or(
             address,
             chain_id,
-            u64::default(),
             |legacy| legacy.trx_count,
             |account| account.nonce(),
         )
         .await
     }
 
-    async fn balance(&self, address: Address, chain_id: u64) -> U256 {
+    async fn balance(&self, address: Address, chain_id: u64) -> Option<U256> {
         info!("balance {address} {chain_id}");
 
         let balance_override = self.account_override(address, |a| a.balance);
         if let Some(balance_override) = balance_override {
-            return balance_override;
+            return Some(balance_override);
         }
 
         self.ethereum_balance_map_or(
             address,
             chain_id,
-            U256::default(),
             |legacy| legacy.balance,
             |account| account.balance(),
         )
@@ -620,6 +632,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     }
 
     fn contract_pubkey(&self, address: Address) -> (Pubkey, u8) {
+        self.used_addresses.borrow_mut().insert(address); // TODO not sure about this
         address.find_solana_address(self.program_id())
     }
 
@@ -635,8 +648,8 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
 
         // https://eips.ethereum.org/EIPS/eip-1052
         // https://eips.ethereum.org/EIPS/eip-161
-        if (self.balance(address, chain_id).await == 0)
-            && (self.nonce(address, chain_id).await == 0)
+        if (self.balance(address, chain_id).await.unwrap_or_default() == 0)
+            && (self.nonce(address, chain_id).await.unwrap_or_default() == 0)
         {
             return <[u8; 32]>::default();
         }

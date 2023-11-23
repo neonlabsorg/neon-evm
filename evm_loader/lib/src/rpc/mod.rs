@@ -35,6 +35,7 @@ pub trait Rpc {
     async fn get_slot(&self) -> ClientResult<Slot>;
 }
 
+// TODO: Fix problem with all debug calls failing if first calling an old transaction
 #[enum_dispatch(BuildConfigSimulator, Rpc)]
 pub enum RpcEnum {
     CloneRpcClient,

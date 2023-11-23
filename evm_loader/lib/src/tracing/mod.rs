@@ -1,9 +1,13 @@
-use ethnum::U256;
-use evm_loader::types::Address;
-use serde_json::Value;
 use std::collections::HashMap;
+
+use ethnum::U256;
+use serde_json::Value;
 use web3::types::Bytes;
 
+use evm_loader::types::Address;
+
+#[cfg(test)]
+pub mod tests;
 pub mod tracers;
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L993>

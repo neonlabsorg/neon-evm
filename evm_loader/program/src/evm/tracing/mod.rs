@@ -10,8 +10,6 @@ use serde_json::Value;
 
 use super::{Context, ExitStatus};
 
-pub mod tracers;
-
 pub trait EventListener: Send + Sync + Debug {
     fn event(&mut self, event: Event);
     fn into_traces(self: Box<Self>) -> Value;

@@ -25,7 +25,7 @@ pub struct Header {
 
 pub struct BalanceAccount<'a> {
     pub address: Option<Address>,
-    account: AccountInfo<'a>,
+    pub account: AccountInfo<'a>,
 }
 
 const HEADER_OFFSET: usize = ACCOUNT_PREFIX_LEN;
@@ -122,7 +122,7 @@ impl<'a> BalanceAccount<'a> {
     }
 
     #[inline]
-    fn header_mut(&mut self) -> RefMut<Header> {
+    pub fn header_mut(&mut self) -> RefMut<Header> {
         super::section_mut(&self.account, HEADER_OFFSET)
     }
 

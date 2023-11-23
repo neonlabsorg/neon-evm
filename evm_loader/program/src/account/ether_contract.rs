@@ -146,7 +146,7 @@ impl<'a> ContractAccount<'a> {
 
     #[inline]
     #[must_use]
-    fn header_mut(&mut self) -> RefMut<Header> {
+    pub fn header_mut(&mut self) -> RefMut<Header> {
         super::section_mut(&self.account, HEADER_OFFSET)
     }
 
@@ -168,7 +168,8 @@ impl<'a> ContractAccount<'a> {
     }
 
     #[inline]
-    fn code_mut(&self) -> RefMut<Code> {
+    #[must_use]
+    pub fn code_mut(&self) -> RefMut<Code> {
         let data = self.account.data.borrow_mut();
         RefMut::map(data, |d| &mut d[CODE_OFFSET..])
     }

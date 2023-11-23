@@ -9,7 +9,7 @@ use evm_loader::types::Address;
 use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
 use solana_sdk::sysvar::{slot_hashes, Sysvar};
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
 use crate::{rpc::Rpc, NeonError};
@@ -45,6 +45,7 @@ pub struct SolanaAccount {
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'rpc> {
     pub accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
+    pub used_addresses: RefCell<BTreeSet<Address>>,
     pub gas: u64,
     rpc_client: &'rpc dyn Rpc,
     program_id: Pubkey,
@@ -81,6 +82,7 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
 
         Ok(Self {
             accounts: RefCell::new(HashMap::new()),
+            used_addresses: RefCell::new(BTreeSet::new()),
             program_id,
             chains,
             gas: 0,
@@ -169,6 +171,8 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
         is_writable: bool,
     ) -> client_error::Result<(Pubkey, Option<Account>, Option<Account>)> {
         let (pubkey, _) = address.find_balance_address(self.program_id(), chain_id);
+        self.used_addresses.borrow_mut().insert(address);
+
         let account = self.use_account(pubkey, is_writable).await?;
 
         let legacy_account = if account.is_none() && (chain_id == self.default_chain_id()) {
@@ -187,6 +191,8 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
         is_writable: bool,
     ) -> client_error::Result<(Pubkey, Option<Account>)> {
         let (pubkey, _) = address.find_solana_address(self.program_id());
+        self.used_addresses.borrow_mut().insert(address);
+
         let account = self.use_account(pubkey, is_writable).await?;
 
         Ok((pubkey, account))
@@ -392,10 +398,11 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
         L: FnOnce(LegacyEtherData) -> R,
         F: FnOnce(BalanceAccount) -> R,
     {
-        let (pubkey, mut account, mut legacy) = self
+        let Ok((pubkey, mut account, mut legacy)) = self
             .use_balance_account(address, chain_id, false)
-            .await
-            .unwrap();
+            .await else {
+            return default;
+        };
 
         if let Some(account_data) = &mut account {
             let info = account_info(&pubkey, account_data);
@@ -429,7 +436,9 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
         L: FnOnce(LegacyEtherData, &AccountInfo) -> R,
         F: FnOnce(ContractAccount) -> R,
     {
-        let (pubkey, mut account) = self.use_contract_account(address, false).await.unwrap();
+        let Ok((pubkey, mut account)) = self.use_contract_account(address, false).await else {
+            return default;
+        };
 
         let Some(account_data) = &mut account else {
             return default;
@@ -511,6 +520,10 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
 
 #[async_trait(? Send)]
 impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
+    fn used_addresses(&self) -> Vec<Address> {
+        self.used_addresses.borrow().iter().cloned().collect()
+    }
+
     fn program_id(&self) -> &Pubkey {
         debug!("program_id");
         &self.program_id
@@ -542,38 +555,38 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
         }
     }
 
-    async fn nonce(&self, address: Address, chain_id: u64) -> u64 {
+    async fn nonce(&self, address: Address, chain_id: u64) -> Option<u64> {
         info!("nonce {address}  {chain_id}");
 
         let nonce_override = self.account_override(address, |a| a.nonce);
         if let Some(nonce_override) = nonce_override {
-            return nonce_override;
+            return Some(nonce_override);
         }
 
         self.ethereum_balance_map_or(
             address,
             chain_id,
-            u64::default(),
-            |legacy| legacy.trx_count,
-            |account| account.nonce(),
+            None,
+            |legacy| Some(legacy.trx_count),
+            |account| Some(account.nonce()),
         )
         .await
     }
 
-    async fn balance(&self, address: Address, chain_id: u64) -> U256 {
+    async fn balance(&self, address: Address, chain_id: u64) -> Option<U256> {
         info!("balance {address} {chain_id}");
 
         let balance_override = self.account_override(address, |a| a.balance);
         if let Some(balance_override) = balance_override {
-            return balance_override;
+            return Some(balance_override);
         }
 
         self.ethereum_balance_map_or(
             address,
             chain_id,
-            U256::default(),
-            |legacy| legacy.balance,
-            |account| account.balance(),
+            None,
+            |legacy| Some(legacy.balance),
+            |account| Some(account.balance()),
         )
         .await
     }
@@ -640,8 +653,8 @@ impl<'a> AccountStorage for EmulatorAccountStorage<'a> {
 
         // https://eips.ethereum.org/EIPS/eip-1052
         // https://eips.ethereum.org/EIPS/eip-161
-        if (self.balance(address, chain_id).await == 0)
-            && (self.nonce(address, chain_id).await == 0)
+        if (self.balance(address, chain_id).await.unwrap_or_default() == 0)
+            && (self.nonce(address, chain_id).await.unwrap_or_default() == 0)
         {
             return <[u8; 32]>::default();
         }

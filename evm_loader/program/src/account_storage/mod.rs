@@ -32,6 +32,9 @@ pub struct ProgramAccountStorage<'a> {
 /// Trait to access account info
 #[maybe_async(?Send)]
 pub trait AccountStorage {
+    #[cfg(not(target_os = "solana"))]
+    fn used_addresses(&self) -> Vec<Address>;
+
     /// Get `NeonEVM` program id
     fn program_id(&self) -> &Pubkey;
     /// Get operator pubkey
@@ -45,9 +48,9 @@ pub trait AccountStorage {
     async fn block_hash(&self, number: u64) -> [u8; 32];
 
     /// Get account nonce
-    async fn nonce(&self, address: Address, chain_id: u64) -> u64;
+    async fn nonce(&self, address: Address, chain_id: u64) -> Option<u64>;
     /// Get account balance
-    async fn balance(&self, address: Address, chain_id: u64) -> U256;
+    async fn balance(&self, address: Address, chain_id: u64) -> Option<U256>;
 
     fn is_valid_chain_id(&self, chain_id: u64) -> bool;
     fn chain_id_to_token(&self, chain_id: u64) -> Pubkey;

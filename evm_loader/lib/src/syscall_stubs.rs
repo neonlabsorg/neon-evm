@@ -12,6 +12,10 @@ pub struct EmulatorStubs {
 }
 
 impl EmulatorStubs {
+    pub fn new_rent(rent: Rent) -> Self {
+        EmulatorStubs { rent }
+    }
+
     pub async fn new(rpc_client: &dyn Rpc) -> Result<Box<EmulatorStubs>, NeonError> {
         let rent_pubkey = solana_sdk::sysvar::rent::id();
         let data = rpc_client.get_account_data(&rent_pubkey).await?;

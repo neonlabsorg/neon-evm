@@ -4,6 +4,8 @@ use evm_loader::types::Address;
 use serde_json::Value;
 use std::collections::HashMap;
 
+#[cfg(test)]
+pub mod tests;
 pub mod tracers;
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L993>

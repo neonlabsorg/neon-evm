@@ -20,7 +20,7 @@ pub use treasury::{MainTreasury, Treasury};
 
 use self::program::System;
 
-mod ether_balance;
+pub mod ether_balance;
 mod ether_contract;
 mod ether_storage;
 mod holder;

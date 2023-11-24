@@ -12,18 +12,19 @@ use crate::{errors::NeonError, rpc::Rpc};
 pub async fn trace_transaction(
     rpc_client: &dyn Rpc,
     program_id: Pubkey,
-    config: EmulateRequest,
+    emulate_request: EmulateRequest,
 ) -> Result<Value, NeonError> {
-    let trace_config = config
+    let trace_config = emulate_request
         .trace_config
         .as_ref()
         .map(|c| c.trace_config.clone())
         .unwrap_or_default();
 
-    let tracer = new_tracer(config.tx.gas_used, trace_config)?;
+    let tracer = new_tracer(emulate_request.tx.gas_used, trace_config)?;
 
     let emulation_tracer = Some(Rc::clone(&tracer));
-    let r = super::emulate::execute(rpc_client, program_id, config, emulation_tracer).await?;
+    let r =
+        super::emulate::execute(rpc_client, program_id, emulate_request, emulation_tracer).await?;
 
     Ok(into_traces(tracer, to_emulation_result(r)))
 }

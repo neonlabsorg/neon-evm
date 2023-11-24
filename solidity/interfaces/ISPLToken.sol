@@ -38,21 +38,21 @@ interface ISPLToken {
     function getAccount(bytes32 account) external view returns(Account memory);
 
     // Return spl_token mint data. This function checks the mint is owned by correct spl_token.
-    // Return default not initialized spl_token mint data if corresponded Solana account doesn't exist.
+    // Returns the default spl_token mint data which is not initialized if corresponding Solana account doesn't exist.
     function getMint(bytes32 account) external view returns(Mint memory);
 
-    // Minting new SPL token and returning the Solana token address in bytes32 format
+    // Mints new SPL token and returns the Solana token address in bytes32 format.
     // Note - First Solana instruction to call before anything else in the SPL token mint process
     function initializeMint(bytes32 salt, uint8 decimals) external returns(bytes32);
 
-    // Minting new SPL token and returning the Solana token address in bytes32 format, authority needed
+    // Mints new SPL token and returns the Solana token address in bytes32 format, authority needed.
     // Note - First Solana instruction to call before anything else in the SPL token mint process
     function initializeMint(bytes32 salt, uint8 decimals, bytes32 mint_authority, bytes32 freeze_authority) external returns(bytes32);
 
-    // Creating Solana account, no signer needed
+    // Creates a Solana account, no signer needed.
     function initializeAccount(bytes32 salt, bytes32 mint) external returns(bytes32);
 
-    // Creating Solana account, signer needed
+    // Creates a Solana account, signer needed.
     function initializeAccount(bytes32 salt, bytes32 mint, bytes32 owner) external returns(bytes32);
 
     // Close a token account

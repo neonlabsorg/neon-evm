@@ -2,7 +2,7 @@
 pragma solidity 0.8.21;
 
 interface IMetaplex {
-    // Setting up SPL token metadata for passed SPL token address
+    // Set up SPL token metadata for passed SPL token address.
     function createMetadata(bytes32 _mint, string memory _name, string memory _symbol, string memory _uri) external returns(bytes32);
     
     // proof of the Non-Fungibility of the token

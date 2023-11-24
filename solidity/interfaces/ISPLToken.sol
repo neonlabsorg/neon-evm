@@ -30,7 +30,7 @@ interface ISPLToken {
     function findAccount(bytes32 salt) external pure returns(bytes32);
 
     // check if account is system account
-    // Note - system account is not owned by anyone, not owned also by Solaa program
+    // Note - system account is not owned by anyone, not owned also by Solana program
     function isSystemAccount(bytes32 account) external view returns(bool);
 
     // Return spl_token account data. This function checks the account is owned by correct spl_token.

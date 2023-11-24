@@ -2,7 +2,7 @@
 pragma solidity 0.8.21;
 
 interface IMetaplex {
-    // Setting up SPL token metadate for passed SPL token address
+    // Setting up SPL token metadata for passed SPL token address
     function createMetadata(bytes32 _mint, string memory _name, string memory _symbol, string memory _uri) external returns(bytes32);
     
     // proof of the Non-Fungibility of the token
@@ -12,7 +12,7 @@ interface IMetaplex {
     // Check if SPL token has been minted
     function isInitialized(bytes32 mint) external view returns(bool);
 
-    // Check if mint is NFT
+    // Check if the minted token is an NFT
     function isNFT(bytes32 mint) external view returns(bool);
 
     // Getter to return SPL token URI

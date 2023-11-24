@@ -45,6 +45,7 @@ pub struct SolanaAccount {
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'rpc> {
     pub accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
+    // TODO add storage used addresses
     pub used_addresses: RefCell<BTreeSet<Address>>,
     pub gas: u64,
     rpc_client: &'rpc dyn Rpc,

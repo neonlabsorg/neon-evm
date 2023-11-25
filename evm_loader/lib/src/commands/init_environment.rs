@@ -121,11 +121,8 @@ pub async fn execute(
         Some(fee_payer) => fee_payer,
         None => second_signer,
     };
-    let executor = Rc::new(TransactionExecutor::new(
-        context.rpc_client,
-        fee_payer,
-        send_trx,
-    ));
+    let client = context.rpc_client.as_any().downcast_ref().unwrap();
+    let executor = Rc::new(TransactionExecutor::new(client, fee_payer, send_trx));
     let keys = keys_dir.map_or(Ok(HashMap::new()), read_keys_dir)?;
 
     let program_data_address = Pubkey::find_program_address(
@@ -160,8 +157,7 @@ pub async fn execute(
             .get(&mint)
             .ok_or(EnvironmentError::MissingPrivateKey(mint))?;
         let data_len = spl_token::state::Mint::LEN;
-        let lamports = context
-            .rpc_client
+        let lamports = client
             .get_minimum_balance_for_rent_exemption(data_len)
             .await?;
         let parameters = &[
@@ -288,10 +284,7 @@ pub async fn execute(
     //====================== Create auxiliary treasury balances =======================================================
     let treasury_pool_count = program_parameters.get::<u32>("NEON_TREASURY_POOL_COUNT")?;
     for i in 0..treasury_pool_count {
-        let minimum_balance = context
-            .rpc_client
-            .get_minimum_balance_for_rent_exemption(0)
-            .await?;
+        let minimum_balance = client.get_minimum_balance_for_rent_exemption(0).await?;
         let aux_balance_address = Treasury::address(&config.evm_loader, i).0;
         let executor_clone = executor.clone();
         executor
@@ -326,7 +319,7 @@ pub async fn execute(
             .await?;
     }
 
-    executor.checkpoint(context.rpc_client.commitment()).await?;
+    executor.checkpoint(client.commitment()).await?;
 
     {
         let stats = executor.stats.borrow();

@@ -43,14 +43,12 @@ pub async fn execute(config: &Config, context: &Context<'_>) -> NeonResult<Colle
     for i in 0..pool_count {
         let (aux_balance_address, _) = Treasury::address(&config.evm_loader, i);
 
-        if let Some(aux_balance_account) = context
-            .rpc_client
+        if let Some(aux_balance_account) = client
             .get_account_with_commitment(&aux_balance_address, config.commitment)
             .await?
             .value
         {
-            let minimal_balance = context
-                .rpc_client
+            let minimal_balance = client
                 .get_minimum_balance_for_rent_exemption(aux_balance_account.data.len())
                 .await?;
             let available_lamports = aux_balance_account.lamports.saturating_sub(minimal_balance);
@@ -71,15 +69,14 @@ pub async fn execute(config: &Config, context: &Context<'_>) -> NeonResult<Colle
                     )],
                     Some(&signer.pubkey()),
                 );
-                let blockhash = context.rpc_client.get_latest_blockhash().await?;
+                let blockhash = client.get_latest_blockhash().await?;
                 message.recent_blockhash = blockhash;
 
                 check_account_for_fee(client, &signer.pubkey(), &message).await?;
 
                 let mut trx = Transaction::new_unsigned(message);
                 trx.try_sign(&[&*signer], blockhash)?;
-                context
-                    .rpc_client
+                client
                     .send_and_confirm_transaction_with_spinner(&trx)
                     .await?;
             } else {
@@ -93,24 +90,18 @@ pub async fn execute(config: &Config, context: &Context<'_>) -> NeonResult<Colle
         &[sync_native(&spl_token::id(), &main_balance_address)?],
         Some(&signer.pubkey()),
     );
-    let blockhash = context.rpc_client.get_latest_blockhash().await?;
+    let blockhash = client.get_latest_blockhash().await?;
     message.recent_blockhash = blockhash;
 
     check_account_for_fee(client, &signer.pubkey(), &message).await?;
 
     let mut trx = Transaction::new_unsigned(message);
     trx.try_sign(&[&*signer], blockhash)?;
-    context
-        .rpc_client
+    client
         .send_and_confirm_transaction_with_spinner(&trx)
         .await?;
 
-    let main_balance_account = context
-        .rpc_client
-        .get_account(&main_balance_address)
-        .await?
-        .value
-        .unwrap();
+    let main_balance_account = client.get_account(&main_balance_address).await?;
 
     Ok(CollectTreasuryReturn {
         pool_address: main_balance_address.to_string(),

@@ -14,7 +14,12 @@ pub struct EmulatorStubs {
 impl EmulatorStubs {
     pub async fn new(rpc_client: &dyn Rpc) -> Result<Box<EmulatorStubs>, NeonError> {
         let rent_pubkey = solana_sdk::sysvar::rent::id();
-        let data = rpc_client.get_account_data(&rent_pubkey).await?;
+        let data = rpc_client
+            .get_account(&rent_pubkey)
+            .await?
+            .value
+            .map(|a| a.data)
+            .unwrap_or_default();
         let rent = bincode::deserialize(&data).map_err(|_| ProgramError::InvalidArgument)?;
 
         Ok(Box::new(Self { rent }))

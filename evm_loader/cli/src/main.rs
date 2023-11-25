@@ -163,7 +163,7 @@ async fn execute<'a>(
             let storage_account =
                 pubkey_of(params, "storage_account").expect("storage_account parse error");
             cancel_trx::execute(
-                context.rpc_client,
+                context.rpc_client.as_any().downcast_ref().unwrap(),
                 context.signer()?.as_ref(),
                 config.evm_loader,
                 &storage_account,

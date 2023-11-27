@@ -14,10 +14,7 @@ impl State {
         let db_config = config.db_config.as_ref().expect("db-config not found");
         Self {
             tracer_db: TracerDb::new(db_config),
-            rpc_client: Arc::new(RpcClient::new_with_commitment(
-                config.json_rpc_url.clone(),
-                config.commitment,
-            )),
+            rpc_client: Arc::new(config.build_solana_rpc_client()),
             config,
         }
     }

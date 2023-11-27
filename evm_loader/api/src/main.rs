@@ -12,7 +12,6 @@ use actix_web::HttpServer;
 use api_server::handlers::NeonApiError;
 pub use neon_lib::commands;
 pub use neon_lib::config;
-pub use neon_lib::context;
 pub use neon_lib::errors;
 pub use neon_lib::types;
 use tracing_appender::non_blocking::NonBlockingBuilder;
@@ -31,7 +30,6 @@ use crate::api_server::handlers::get_storage_at::get_storage_at;
 use crate::api_server::handlers::trace::trace;
 use crate::build_info::get_build_info;
 pub use config::Config;
-pub use context::Context;
 use tracing::info;
 
 type NeonApiResult<T> = Result<T, NeonApiError>;

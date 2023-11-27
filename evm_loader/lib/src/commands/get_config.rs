@@ -122,7 +122,10 @@ enum ConfigSimulator<'r> {
 impl<'r> ConfigSimulator<'r> {
     pub async fn new(rpc: &'r dyn Rpc, program_id: Pubkey) -> NeonResult<ConfigSimulator<'r>> {
         let simulator = if rpc.can_simulate_transaction() {
-            let solana_rpc_client = rpc.as_any().downcast_ref::<RpcClient>().unwrap();
+            let solana_rpc_client = rpc
+                .as_any()
+                .downcast_ref::<RpcClient>()
+                .expect("only Solana RpcClient can simulate transaction");
             let identity = solana_rpc_client.get_account_with_sol().await?;
             Self::Rpc(identity, solana_rpc_client)
         } else {

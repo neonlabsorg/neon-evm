@@ -1,12 +1,12 @@
 use crate::rpc::check_account_for_fee;
 use crate::{
-    commands::get_neon_elf::read_elf_parameters_from_account, errors::NeonError, Config, Context,
-    NeonResult,
+    commands::get_neon_elf::read_elf_parameters_from_account, errors::NeonError, Config, NeonResult,
 };
 use evm_loader::account::{MainTreasury, Treasury};
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_sdk::signature::Signer;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     message::Message,
@@ -21,9 +21,12 @@ pub struct CollectTreasuryReturn {
     pub balance: u64,
 }
 
-pub async fn execute(config: &Config, context: &Context<'_>) -> NeonResult<CollectTreasuryReturn> {
-    let neon_params = read_elf_parameters_from_account(config, context).await?;
-    let signer = context.signer()?;
+pub async fn execute(
+    config: &Config,
+    rpc_client: &RpcClient,
+    signer: &dyn Signer,
+) -> NeonResult<CollectTreasuryReturn> {
+    let neon_params = read_elf_parameters_from_account(config, rpc_client).await?;
 
     let pool_count: u32 = neon_params
         .get("NEON_TREASURY_POOL_COUNT")
@@ -34,21 +37,15 @@ pub async fn execute(config: &Config, context: &Context<'_>) -> NeonResult<Colle
 
     info!("Main pool balance: {}", main_balance_address);
 
-    let client = context
-        .rpc_client
-        .as_any()
-        .downcast_ref::<RpcClient>()
-        .expect("cast to solana_client::rpc_client::RpcClient error");
-
     for i in 0..pool_count {
         let (aux_balance_address, _) = Treasury::address(&config.evm_loader, i);
 
-        if let Some(aux_balance_account) = client
+        if let Some(aux_balance_account) = rpc_client
             .get_account_with_commitment(&aux_balance_address, config.commitment)
             .await?
             .value
         {
-            let minimal_balance = client
+            let minimal_balance = rpc_client
                 .get_minimum_balance_for_rent_exemption(aux_balance_account.data.len())
                 .await?;
             let available_lamports = aux_balance_account.lamports.saturating_sub(minimal_balance);
@@ -69,14 +66,14 @@ pub async fn execute(config: &Config, context: &Context<'_>) -> NeonResult<Colle
                     )],
                     Some(&signer.pubkey()),
                 );
-                let blockhash = client.get_latest_blockhash().await?;
+                let blockhash = rpc_client.get_latest_blockhash().await?;
                 message.recent_blockhash = blockhash;
 
-                check_account_for_fee(client, &signer.pubkey(), &message).await?;
+                check_account_for_fee(rpc_client, &signer.pubkey(), &message).await?;
 
                 let mut trx = Transaction::new_unsigned(message);
-                trx.try_sign(&[&*signer], blockhash)?;
-                client
+                trx.try_sign(&[signer], blockhash)?;
+                rpc_client
                     .send_and_confirm_transaction_with_spinner(&trx)
                     .await?;
             } else {
@@ -90,18 +87,18 @@ pub async fn execute(config: &Config, context: &Context<'_>) -> NeonResult<Colle
         &[sync_native(&spl_token::id(), &main_balance_address)?],
         Some(&signer.pubkey()),
     );
-    let blockhash = client.get_latest_blockhash().await?;
+    let blockhash = rpc_client.get_latest_blockhash().await?;
     message.recent_blockhash = blockhash;
 
-    check_account_for_fee(client, &signer.pubkey(), &message).await?;
+    check_account_for_fee(rpc_client, &signer.pubkey(), &message).await?;
 
     let mut trx = Transaction::new_unsigned(message);
-    trx.try_sign(&[&*signer], blockhash)?;
-    client
+    trx.try_sign(&[signer], blockhash)?;
+    rpc_client
         .send_and_confirm_transaction_with_spinner(&trx)
         .await?;
 
-    let main_balance_account = client.get_account(&main_balance_address).await?;
+    let main_balance_account = rpc_client.get_account(&main_balance_address).await?;
 
     Ok(CollectTreasuryReturn {
         pool_address: main_balance_address.to_string(),

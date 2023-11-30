@@ -1,59 +1,10 @@
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::rc::Rc;
-
-use crate::account::EthereumAccount;
-use crate::executor::Action;
-use crate::types::hexbytes::HexBytes;
-use crate::types::Address;
 use ethnum::U256;
+use evm_loader::types::hexbytes::HexBytes;
+use evm_loader::types::Address;
 use serde_json::Value;
-
-use super::{Context, ExitStatus};
+use std::collections::HashMap;
 
 pub mod tracers;
-
-#[derive(Debug, Clone)]
-pub struct EmulationResult {
-    pub exit_status: ExitStatus,
-    pub steps_executed: u64,
-    pub used_gas: u64,
-    pub actions: Vec<Action>,
-}
-
-pub trait EventListener: Send + Sync + Debug {
-    fn event(&mut self, event: Event);
-    fn into_traces(self: Box<Self>, emulation_result: EmulationResult) -> Value;
-}
-
-pub type TracerType = Rc<RefCell<Box<dyn EventListener>>>;
-pub type TracerTypeOpt = Option<TracerType>;
-
-/// Trace event
-pub enum Event {
-    BeginVM {
-        context: Context,
-        code: Vec<u8>,
-    },
-    EndVM {
-        status: ExitStatus,
-    },
-    BeginStep {
-        opcode: u8,
-        pc: usize,
-        stack: Vec<[u8; 32]>,
-        memory: Vec<u8>,
-    },
-    EndStep {
-        gas_used: u64,
-        return_data: Option<Vec<u8>>,
-    },
-    StorageAccess {
-        index: U256,
-        value: [u8; 32],
-    },
-}
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L993>
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -85,16 +36,15 @@ pub struct AccountOverride {
 }
 
 impl AccountOverride {
-    pub fn apply(&self, ether_account: &mut EthereumAccount) {
-        if let Some(nonce) = self.nonce {
-            ether_account.trx_count = nonce;
-        }
-        if let Some(balance) = self.balance {
-            ether_account.balance = balance;
-        }
-        #[allow(clippy::cast_possible_truncation)]
-        if let Some(code) = &self.code {
-            ether_account.code_size = code.len() as u32;
+    #[must_use]
+    pub fn storage(&self, index: U256) -> Option<[u8; 32]> {
+        match (&self.state, &self.state_diff) {
+            (None, None) => None,
+            (Some(_), Some(_)) => {
+                panic!("Account has both `state` and `stateDiff` overrides")
+            }
+            (Some(state), None) => return state.get(&index).map(|value| value.to_be_bytes()),
+            (None, Some(state_diff)) => state_diff.get(&index).map(|v| v.to_be_bytes()),
         }
     }
 }
@@ -129,13 +79,4 @@ pub struct TraceCallConfig {
     pub trace_config: TraceConfig,
     pub block_overrides: Option<BlockOverrides>,
     pub state_overrides: Option<AccountOverrides>,
-}
-
-impl From<TraceConfig> for TraceCallConfig {
-    fn from(trace_config: TraceConfig) -> Self {
-        Self {
-            trace_config,
-            ..Self::default()
-        }
-    }
 }

@@ -1,13 +1,14 @@
 use std::collections::BTreeMap;
 
 use ethnum::U256;
+use evm_loader::evm::ExitStatus;
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
-use crate::evm::opcode_table::OPNAMES;
-use crate::evm::tracing::TraceConfig;
-use crate::evm::tracing::{EmulationResult, Event, EventListener};
-use crate::types::hexbytes::HexBytes;
+use crate::tracing::TraceConfig;
+use evm_loader::evm::opcode_table::OPNAMES;
+use evm_loader::evm::tracing::{Event, EventListener};
+use evm_loader::types::hexbytes::HexBytes;
 
 /// `StructLoggerResult` groups all structured logs emitted by the EVM
 /// while replaying a transaction in debug mode as well as transaction
@@ -120,6 +121,7 @@ pub struct StructLogger {
     logs: Vec<StructLog>,
     depth: usize,
     storage_access: Option<(U256, U256)>,
+    exit_status: Option<ExitStatus>,
 }
 
 impl StructLogger {
@@ -130,6 +132,7 @@ impl StructLogger {
             logs: vec![],
             depth: 0,
             storage_access: None,
+            exit_status: None,
         }
     }
 }
@@ -140,7 +143,10 @@ impl EventListener for StructLogger {
             Event::BeginVM { .. } => {
                 self.depth += 1;
             }
-            Event::EndVM { .. } => {
+            Event::EndVM { status } => {
+                if self.depth == 1 {
+                    self.exit_status = Some(status);
+                }
                 self.depth -= 1;
             }
             Event::BeginStep {
@@ -198,23 +204,19 @@ impl EventListener for StructLogger {
         };
     }
 
-    fn into_traces(self: Box<Self>, emulation_result: EmulationResult) -> Value {
-        let result = StructLoggerResult {
-            failed: !emulation_result
-                .exit_status
+    fn into_traces(self: Box<Self>) -> Value {
+        let exit_status = self.exit_status.expect("Emulation is not completed");
+        json!({
+            "struct_logs": self.logs,
+            "failed": exit_status
                 .is_succeed()
                 .expect("Emulation is not completed"),
-            gas: emulation_result.used_gas,
-            return_value: hex::encode(
-                emulation_result
-                    .exit_status
+            "return_value": hex::encode(
+                exit_status
                     .into_result()
                     .unwrap_or_default(),
-            ),
-            struct_logs: self.logs,
-        };
-
-        serde_json::to_value(result).expect("Conversion error")
+            )
+        })
     }
 }
 

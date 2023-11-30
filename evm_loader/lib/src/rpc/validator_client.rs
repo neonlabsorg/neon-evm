@@ -3,14 +3,18 @@ use async_trait::async_trait;
 use solana_client::{
     client_error::Result as ClientResult,
     nonblocking::rpc_client::RpcClient,
-    rpc_config::{RpcSendTransactionConfig, RpcTransactionConfig},
-    rpc_response::RpcResult,
+    rpc_config::{
+        RpcLargestAccountsConfig, RpcSendTransactionConfig, RpcSimulateTransactionConfig,
+        RpcTransactionConfig,
+    },
+    rpc_response::{RpcResult, RpcSimulateTransactionResult},
 };
 use solana_sdk::{
     account::Account,
     clock::{Slot, UnixTimestamp},
     commitment_config::CommitmentConfig,
     hash::Hash,
+    instruction::Instruction,
     pubkey::Pubkey,
     signature::Signature,
     transaction::Transaction,
@@ -18,7 +22,7 @@ use solana_sdk::{
 use solana_transaction_status::{
     EncodedConfirmedBlock, EncodedConfirmedTransactionWithStatusMeta, TransactionStatus,
 };
-use std::any::Any;
+use std::{any::Any, str::FromStr};
 
 #[async_trait(?Send)]
 impl Rpc for RpcClient {
@@ -36,8 +40,9 @@ impl Rpc for RpcClient {
             .await
     }
 
-    async fn get_account(&self, key: &Pubkey) -> ClientResult<Account> {
-        self.get_account(key).await
+    async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>> {
+        self.get_account_with_commitment(key, self.commitment())
+            .await
     }
 
     async fn get_account_with_commitment(
@@ -52,7 +57,13 @@ impl Rpc for RpcClient {
         &self,
         pubkeys: &[Pubkey],
     ) -> ClientResult<Vec<Option<Account>>> {
-        self.get_multiple_accounts(pubkeys).await
+        let mut result: Vec<Option<Account>> = Vec::new();
+        for chunk in pubkeys.chunks(100) {
+            let mut accounts = self.get_multiple_accounts(chunk).await?;
+            result.append(&mut accounts);
+        }
+
+        Ok(result)
     }
 
     async fn get_account_data(&self, key: &Pubkey) -> ClientResult<Vec<u8>> {
@@ -130,6 +141,46 @@ impl Rpc for RpcClient {
         commitment: CommitmentConfig,
     ) -> ClientResult<(Hash, u64)> {
         self.get_latest_blockhash_with_commitment(commitment).await
+    }
+
+    fn can_simulate_transaction(&self) -> bool {
+        true
+    }
+
+    async fn simulate_transaction(
+        &self,
+        signer: Option<Pubkey>,
+        instructions: &[Instruction],
+    ) -> RpcResult<RpcSimulateTransactionResult> {
+        let payer_pubkey = if let Some(signer) = signer {
+            signer
+        } else {
+            self.get_account_with_sol().await?
+        };
+
+        let tx = Transaction::new_with_payer(instructions, Some(&payer_pubkey));
+
+        self.simulate_transaction_with_config(
+            &tx,
+            RpcSimulateTransactionConfig {
+                sig_verify: false,
+                replace_recent_blockhash: true,
+                ..RpcSimulateTransactionConfig::default()
+            },
+        )
+        .await
+    }
+
+    async fn get_account_with_sol(&self) -> ClientResult<Pubkey> {
+        let r = self
+            .get_largest_accounts_with_config(RpcLargestAccountsConfig {
+                commitment: Some(self.commitment()),
+                filter: None,
+            })
+            .await?;
+
+        let pubkey = Pubkey::from_str(&r.value[0].address).unwrap();
+        Ok(pubkey)
     }
 
     fn as_any(&self) -> &dyn Any {

@@ -38,6 +38,9 @@ RUN /usr/local/bin/solc --optimize --optimize-runs 200 --output-dir . --bin *.so
     for file in $(ls *.bin); do xxd -r -p $file >${file}ary; done && \
         ls -l
 
+# Add neon_test_invoke_program to the genesis
+FROM neonlabsorg/neon_test_invoke_program:develop AS neon_test_invoke_program
+
 # Define solana-image that contains utility
 FROM builder AS base
 RUN apt-get update
@@ -53,6 +56,9 @@ COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader
 COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/release/neon-cli /opt/
 COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/release/neon-api /opt/
 COPY --from=contracts /opt/ /opt/solidity/
+COPY --from=neon_test_invoke_program /opt/neon_test_invoke_program.so /opt/
+COPY --from=neon_test_invoke_program /opt/neon_test_invoke_program-keypair.json /opt/
+
 COPY ci/wait-for-solana.sh \
     ci/wait-for-neon.sh \
     ci/solana-run-neon.sh \

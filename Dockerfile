@@ -29,10 +29,8 @@ RUN cargo fmt --check && \
 
 # Build Solidity contracts
 FROM ethereum/solc:stable-alpine AS contracts
-# FROM alpine:latest AS contracts
 COPY tests/contracts/*.sol /opt/
 COPY solidity/*.sol /opt/
-# COPY --from=solc /usr/local/bin/solc /usr/local/bin/solc
 WORKDIR /opt/
 RUN /usr/local/bin/solc --optimize --optimize-runs 200 --output-dir . --bin *.sol && \
     for file in $(ls *.bin); do xxd -r -p $file >${file}ary; done && \

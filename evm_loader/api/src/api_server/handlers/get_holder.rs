@@ -6,26 +6,30 @@ use actix_web::post;
 use actix_web::web::Json;
 use actix_web::{http::StatusCode, Responder};
 use std::convert::Into;
+use tracing::info;
 
 use super::process_result;
 
-#[tracing::instrument(skip(state, request_id), fields(id = request_id.as_str()))]
+#[tracing::instrument(skip_all, fields(id = request_id.as_str()))]
 #[post("/holder")]
 pub async fn get_holder_account_data(
     state: NeonApiState,
     request_id: RequestId,
-    Json(req_params): Json<GetHolderRequest>,
+    Json(get_holder_request): Json<GetHolderRequest>,
 ) -> impl Responder {
-    let rpc_client = match api_context::build_rpc_client(&state, req_params.slot, None).await {
-        Ok(rpc_client) => rpc_client,
-        Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
-    };
+    info!("get_holder_request={:?}", get_holder_request);
+
+    let rpc_client =
+        match api_context::build_rpc_client(&state, get_holder_request.slot, None).await {
+            Ok(rpc_client) => rpc_client,
+            Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
+        };
 
     process_result(
         &GetHolderCommand::execute(
             rpc_client.as_ref(),
             &state.config.evm_loader,
-            req_params.pubkey,
+            get_holder_request.pubkey,
         )
         .await
         .map_err(Into::into),

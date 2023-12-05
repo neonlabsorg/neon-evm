@@ -26,11 +26,10 @@ use serde_json::json;
 use solana_clap_utils::input_parsers::{pubkey_of, value_of};
 use tokio::time::Instant;
 
-use neon_lib::rpc::CallDbClient;
-
 use crate::build_info::get_build_info;
 use evm_loader::types::Address;
 use neon_lib::errors::NeonError;
+use neon_lib::rpc::CallDbClient;
 use neon_lib::types::TracerDb;
 use solana_clap_utils::keypair::signer_from_path;
 use solana_sdk::signature::Signer;
@@ -40,8 +39,6 @@ type NeonCliResult = Result<serde_json::Value, NeonError>;
 #[allow(clippy::too_many_lines)]
 async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
     let config = &config::create(options)?;
-
-    let signer = &*build_signer(config)?;
 
     match options.subcommand() {
         ("emulate", Some(_)) => {
@@ -94,10 +91,11 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
         }
         ("cancel-trx", Some(params)) => {
             let rpc_client = config.build_solana_rpc_client();
+            let signer = build_signer(config)?;
 
             let storage_account =
                 pubkey_of(params, "storage_account").expect("storage_account parse error");
-            cancel_trx::execute(&rpc_client, signer, config.evm_loader, &storage_account)
+            cancel_trx::execute(&rpc_client, &*signer, config.evm_loader, &storage_account)
                 .await
                 .map(|result| json!(result))
         }
@@ -111,22 +109,32 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
         }
         ("collect-treasury", Some(_)) => {
             let rpc_client = config.build_solana_rpc_client();
+            let signer = build_signer(config)?;
 
-            collect_treasury::execute(config, &rpc_client, signer)
+            collect_treasury::execute(config, &rpc_client, &*signer)
                 .await
                 .map(|result| json!(result))
         }
         ("init-environment", Some(params)) => {
             let rpc_client = config.build_solana_rpc_client();
+            let signer = build_signer(config)?;
 
             let file = params.value_of("file");
             let send_trx = params.is_present("send-trx");
             let force = params.is_present("force");
             let keys_dir = params.value_of("keys-dir");
 
-            init_environment::execute(config, &rpc_client, signer, send_trx, force, keys_dir, file)
-                .await
-                .map(|result| json!(result))
+            init_environment::execute(
+                config,
+                &rpc_client,
+                &*signer,
+                send_trx,
+                force,
+                keys_dir,
+                file,
+            )
+            .await
+            .map(|result| json!(result))
         }
         ("get-storage-at", Some(params)) => {
             let rpc = build_rpc(options, config).await?;
@@ -158,14 +166,7 @@ async fn build_rpc(
         .map(|slot_str| slot_str.parse().expect("slot parse error"));
 
     Ok(if let Some(slot) = slot {
-        Box::new(
-            CallDbClient::new(
-                TracerDb::new(config.db_config.as_ref().expect("db-config not found")),
-                slot,
-                None,
-            )
-            .await?,
-        )
+        Box::new(CallDbClient::new(TracerDb::new(config), slot, None).await?)
     } else {
         Box::new(config.build_solana_rpc_client())
     })

@@ -51,6 +51,7 @@ macro_rules! e {
         )))
     };
 }
+
 pub(crate) use e;
 
 pub(crate) async fn check_account_for_fee(

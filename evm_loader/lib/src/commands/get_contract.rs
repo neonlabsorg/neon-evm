@@ -74,11 +74,11 @@ fn read_account(
 }
 
 pub async fn execute(
-    rpc_client: &dyn Rpc,
+    rpc: &dyn Rpc,
     program_id: &Pubkey,
     accounts: &[Address],
 ) -> NeonResult<Vec<GetContractResponse>> {
-    let chain_ids = super::get_config::read_chains(rpc_client, *program_id).await?;
+    let chain_ids = super::get_config::read_chains(rpc, *program_id).await?;
     let legacy_chain_id = find_legacy_chain_id(&chain_ids);
 
     let pubkeys: Vec<_> = accounts
@@ -86,7 +86,7 @@ pub async fn execute(
         .map(|a| a.find_solana_address(program_id).0)
         .collect();
 
-    let accounts = rpc_client.get_multiple_accounts(&pubkeys).await?;
+    let accounts = rpc.get_multiple_accounts(&pubkeys).await?;
 
     let mut result = Vec::with_capacity(accounts.len());
     for (key, account) in pubkeys.into_iter().zip(accounts) {

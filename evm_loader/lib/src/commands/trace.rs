@@ -8,7 +8,7 @@ use crate::types::EmulateRequest;
 use crate::{errors::NeonError, rpc::Rpc};
 
 pub async fn trace_transaction(
-    rpc_client: &dyn Rpc,
+    rpc: &dyn Rpc,
     program_id: Pubkey,
     config: EmulateRequest,
 ) -> Result<Value, NeonError> {
@@ -21,7 +21,7 @@ pub async fn trace_transaction(
     let tracer = new_tracer(&trace_config)?;
 
     let emulation_tracer = Some(Rc::clone(&tracer));
-    let r = super::emulate::execute(rpc_client, program_id, config, emulation_tracer).await?;
+    let r = super::emulate::execute(rpc, program_id, config, emulation_tracer).await?;
 
     let mut traces = Rc::try_unwrap(tracer)
         .expect("There is must be only one reference")

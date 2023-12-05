@@ -140,11 +140,11 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
 }
 
 pub async fn execute(
-    rpc_client: &dyn Rpc,
+    rpc: &dyn Rpc,
     program_id: &Pubkey,
     address: Pubkey,
 ) -> NeonResult<GetHolderResponse> {
-    let response = rpc_client.get_account(&address).await?;
+    let response = rpc.get_account(&address).await?;
     let Some(mut account) = response.value else {
         return Ok(GetHolderResponse::empty())
     };

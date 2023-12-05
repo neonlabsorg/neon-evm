@@ -51,11 +51,8 @@ pub struct GetConfigResponse {
 
 static PROGRAM_TEST: OnceCell<Mutex<ProgramTestContext>> = OnceCell::const_new();
 
-async fn read_program_data_from_account(
-    rpc_client: &dyn Rpc,
-    program_id: Pubkey,
-) -> NeonResult<Vec<u8>> {
-    let Some(account) = rpc_client.get_account(&program_id).await?.value else {
+async fn read_program_data_from_account(rpc: &dyn Rpc, program_id: Pubkey) -> NeonResult<Vec<u8>> {
+    let Some(account) = rpc.get_account(&program_id).await?.value else {
         return Err(NeonError::AccountNotFound(program_id));
     };
 
@@ -71,7 +68,7 @@ async fn read_program_data_from_account(
         programdata_address,
     }) = account.state()
     {
-        let Some(programdata_account) = rpc_client.get_account(&programdata_address).await?.value else {
+        let Some(programdata_account) = rpc.get_account(&programdata_address).await?.value else {
             return Err(NeonError::AssociatedPdaNotFound(programdata_address, program_id));
         };
 
@@ -267,8 +264,8 @@ async fn get_properties(
     Ok(result)
 }
 
-pub async fn execute(rpc_client: &dyn Rpc, program_id: Pubkey) -> NeonResult<GetConfigResponse> {
-    let mut simulator = ConfigSimulator::new(rpc_client, program_id).await?;
+pub async fn execute(rpc: &dyn Rpc, program_id: Pubkey) -> NeonResult<GetConfigResponse> {
+    let mut simulator = ConfigSimulator::new(rpc, program_id).await?;
 
     let (version, revision) = get_version(&mut simulator, program_id).await?;
 
@@ -282,8 +279,8 @@ pub async fn execute(rpc_client: &dyn Rpc, program_id: Pubkey) -> NeonResult<Get
     })
 }
 
-pub async fn read_chains(rpc_client: &dyn Rpc, program_id: Pubkey) -> NeonResult<Vec<ChainInfo>> {
-    let mut simulator = ConfigSimulator::new(rpc_client, program_id).await?;
+pub async fn read_chains(rpc: &dyn Rpc, program_id: Pubkey) -> NeonResult<Vec<ChainInfo>> {
+    let mut simulator = ConfigSimulator::new(rpc, program_id).await?;
 
     let chains = get_chains(&mut simulator, program_id).await?;
     Ok(chains)

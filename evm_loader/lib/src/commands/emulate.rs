@@ -50,7 +50,7 @@ impl EmulateResponse {
 }
 
 pub async fn execute(
-    rpc_client: &dyn Rpc,
+    rpc: &dyn Rpc,
     program_id: Pubkey,
     config: EmulateRequest,
     tracer: Option<TracerType>,
@@ -65,7 +65,7 @@ pub async fn execute(
         .and_then(|t| t.state_overrides.clone());
 
     let mut storage = EmulatorAccountStorage::with_accounts(
-        rpc_client,
+        rpc,
         program_id,
         &config.accounts,
         config.chains,
@@ -76,7 +76,7 @@ pub async fn execute(
 
     let step_limit = config.step_limit.unwrap_or(100000);
 
-    setup_emulator_syscall_stubs(rpc_client).await?;
+    setup_emulator_syscall_stubs(rpc).await?;
     emulate_trx(config.tx, &mut storage, step_limit, tracer).await
 }
 

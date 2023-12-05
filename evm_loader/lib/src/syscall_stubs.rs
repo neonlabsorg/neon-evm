@@ -12,9 +12,9 @@ pub struct EmulatorStubs {
 }
 
 impl EmulatorStubs {
-    pub async fn new(rpc_client: &dyn Rpc) -> Result<Box<EmulatorStubs>, NeonError> {
+    pub async fn new(rpc: &dyn Rpc) -> Result<Box<EmulatorStubs>, NeonError> {
         let rent_pubkey = solana_sdk::sysvar::rent::id();
-        let data = rpc_client
+        let data = rpc
             .get_account(&rent_pubkey)
             .await?
             .value
@@ -56,8 +56,8 @@ impl SyscallStubs for EmulatorStubs {
     }
 }
 
-pub async fn setup_emulator_syscall_stubs(rpc_client: &dyn Rpc) -> Result<(), NeonError> {
-    let syscall_stubs = EmulatorStubs::new(rpc_client).await?;
+pub async fn setup_emulator_syscall_stubs(rpc: &dyn Rpc) -> Result<(), NeonError> {
+    let syscall_stubs = EmulatorStubs::new(rpc).await?;
     solana_sdk::program_stubs::set_syscall_stubs(syscall_stubs);
 
     Ok(())

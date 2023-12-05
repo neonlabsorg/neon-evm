@@ -52,10 +52,6 @@ impl Rpc for RpcClient {
         self.get_slot().await
     }
 
-    fn can_simulate_transaction(&self) -> bool {
-        true
-    }
-
     fn as_any(&self) -> &dyn Any {
         self
     }

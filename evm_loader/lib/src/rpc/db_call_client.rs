@@ -96,10 +96,6 @@ impl Rpc for CallDbClient {
         Ok(self.slot)
     }
 
-    fn can_simulate_transaction(&self) -> bool {
-        false
-    }
-
     fn as_any(&self) -> &dyn Any {
         self
     }

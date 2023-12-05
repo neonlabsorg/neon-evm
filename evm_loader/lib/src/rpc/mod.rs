@@ -34,8 +34,6 @@ pub trait Rpc {
     async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp>;
     async fn get_slot(&self) -> ClientResult<Slot>;
 
-    fn can_simulate_transaction(&self) -> bool;
-
     fn as_any(&self) -> &dyn Any;
 }
 

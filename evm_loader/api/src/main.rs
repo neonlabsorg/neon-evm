@@ -33,6 +33,7 @@ use crate::build_info::get_build_info;
 pub use config::Config;
 pub use context::Context;
 use tracing::info;
+use tracing_subscriber::EnvFilter;
 
 type NeonApiResult<T> = Result<T, NeonApiError>;
 type NeonApiState = Data<api_server::state::State>;
@@ -46,7 +47,10 @@ async fn main() -> NeonApiResult<()> {
         .lossy(false)
         .finish(std::io::stdout());
 
-    tracing_subscriber::fmt().with_writer(non_blocking).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(non_blocking)
+        .init();
 
     info!("{}", get_build_info());
 

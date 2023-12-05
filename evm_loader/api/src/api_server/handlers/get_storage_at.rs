@@ -24,7 +24,7 @@ pub async fn get_storage_at(
 
     process_result(
         &GetStorageAtCommand::execute(
-            rpc.as_ref(),
+            &rpc,
             &state.config.evm_loader,
             req_params.contract,
             req_params.index,

@@ -22,7 +22,7 @@ pub async fn get_holder_account_data(
     };
 
     process_result(
-        &GetHolderCommand::execute(rpc.as_ref(), &state.config.evm_loader, req_params.pubkey)
+        &GetHolderCommand::execute(&rpc, &state.config.evm_loader, req_params.pubkey)
             .await
             .map_err(Into::into),
     )

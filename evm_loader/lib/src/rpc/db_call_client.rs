@@ -13,7 +13,6 @@ use solana_sdk::{
     commitment_config::CommitmentConfig,
     pubkey::Pubkey,
 };
-use std::any::Any;
 
 pub struct CallDbClient {
     tracer_db: TracerDb,
@@ -94,9 +93,5 @@ impl Rpc for CallDbClient {
 
     async fn get_slot(&self) -> ClientResult<Slot> {
         Ok(self.slot)
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
     }
 }

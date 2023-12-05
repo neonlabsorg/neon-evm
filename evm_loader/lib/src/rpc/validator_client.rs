@@ -14,12 +14,32 @@ use solana_sdk::{
     pubkey::Pubkey,
     transaction::Transaction,
 };
-use std::{any::Any, str::FromStr};
+use std::ops::Deref;
+use std::str::FromStr;
+use std::sync::Arc;
+
+#[derive(Clone)]
+pub struct CloneRpcClient(Arc<RpcClient>);
+
+impl CloneRpcClient {
+    pub fn new(rpc_client: RpcClient) -> Self {
+        Self(Arc::new(rpc_client))
+    }
+}
+
+impl Deref for CloneRpcClient {
+    type Target = RpcClient;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 #[async_trait(?Send)]
-impl Rpc for RpcClient {
+impl Rpc for CloneRpcClient {
     async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>> {
-        self.get_account_with_commitment(key, self.commitment())
+        self.0
+            .get_account_with_commitment(key, self.commitment())
             .await
     }
 
@@ -28,7 +48,7 @@ impl Rpc for RpcClient {
         key: &Pubkey,
         commitment: CommitmentConfig,
     ) -> RpcResult<Option<Account>> {
-        self.get_account_with_commitment(key, commitment).await
+        self.0.get_account_with_commitment(key, commitment).await
     }
 
     async fn get_multiple_accounts(
@@ -37,7 +57,7 @@ impl Rpc for RpcClient {
     ) -> ClientResult<Vec<Option<Account>>> {
         let mut result: Vec<Option<Account>> = Vec::new();
         for chunk in pubkeys.chunks(100) {
-            let mut accounts = self.get_multiple_accounts(chunk).await?;
+            let mut accounts = self.0.get_multiple_accounts(chunk).await?;
             result.append(&mut accounts);
         }
 
@@ -45,15 +65,11 @@ impl Rpc for RpcClient {
     }
 
     async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp> {
-        self.get_block_time(slot).await
+        self.0.get_block_time(slot).await
     }
 
     async fn get_slot(&self) -> ClientResult<Slot> {
-        self.get_slot().await
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
+        self.0.get_slot().await
     }
 }
 

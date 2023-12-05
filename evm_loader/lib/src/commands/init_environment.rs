@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
-use solana_client::nonblocking::rpc_client::RpcClient;
 
 use crate::NeonResult;
 
+use crate::rpc::CloneRpcClient;
 use {
     crate::{
         commands::{
@@ -104,7 +104,7 @@ fn read_keys_dir(keys_dir: &str) -> Result<HashMap<Pubkey, Keypair>, NeonError> 
 #[allow(clippy::too_many_lines)]
 pub async fn execute(
     config: &Config,
-    client: &RpcClient,
+    client: &CloneRpcClient,
     signer: &dyn Signer,
     send_trx: bool,
     force: bool,
@@ -129,8 +129,9 @@ pub async fn execute(
         &bpf_loader_upgradeable::id(),
     )
     .0;
+    let rpc_enum = client.clone().into();
     let (program_upgrade_authority, program_data) =
-        read_program_data_from_account(config, client, &config.evm_loader).await?;
+        read_program_data_from_account(config, &rpc_enum, &config.evm_loader).await?;
     let data = file.map_or(Ok(program_data), read_program_data)?;
     let program_parameters = Parameters::new(read_elf_parameters(config, &data));
 
@@ -203,7 +204,7 @@ pub async fn execute(
 
     //====================== Create 'Deposit' NEON-token balance ======================================================
     let (deposit_authority, _) = Pubkey::find_program_address(&[b"Deposit"], &config.evm_loader);
-    let chains = super::get_config::read_chains(client, config.evm_loader).await?;
+    let chains = super::get_config::read_chains(&rpc_enum, config.evm_loader).await?;
     for chain in chains {
         let pool = get_associated_token_address(&deposit_authority, &chain.token);
 

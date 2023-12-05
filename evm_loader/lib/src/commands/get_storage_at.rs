@@ -4,13 +4,14 @@ use solana_sdk::pubkey::Pubkey;
 
 use evm_loader::{account_storage::AccountStorage, types::Address};
 
-use crate::{account_storage::EmulatorAccountStorage, rpc::Rpc, NeonResult};
+use crate::rpc::RpcEnum;
+use crate::{account_storage::EmulatorAccountStorage, NeonResult};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct GetStorageAtReturn(pub [u8; 32]);
 
 pub async fn execute(
-    rpc: &dyn Rpc,
+    rpc: &RpcEnum,
     program_id: &Pubkey,
     address: Address,
     index: U256,

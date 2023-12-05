@@ -23,13 +23,8 @@ pub async fn emulate(
     };
 
     process_result(
-        &EmulateCommand::execute(
-            rpc.as_ref(),
-            state.config.evm_loader,
-            emulate_request.body,
-            None,
-        )
-        .await
-        .map_err(Into::into),
+        &EmulateCommand::execute(&rpc, state.config.evm_loader, emulate_request.body, None)
+            .await
+            .map_err(Into::into),
     )
 }

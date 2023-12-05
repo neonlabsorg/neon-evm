@@ -24,7 +24,7 @@ pub async fn trace(
     };
 
     process_result(
-        &trace_transaction(rpc.as_ref(), state.config.evm_loader, trace_request.body)
+        &trace_transaction(&rpc, state.config.evm_loader, trace_request.body)
             .await
             .map_err(Into::into),
     )

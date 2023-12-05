@@ -12,6 +12,7 @@ use std::fmt::Display;
 
 use crate::{account_storage::account_info, rpc::Rpc, NeonResult};
 
+use crate::rpc::RpcEnum;
 use serde_with::{hex::Hex, serde_as, skip_serializing_none, DisplayFromStr};
 
 #[derive(Debug, Default, Serialize)]
@@ -140,7 +141,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
 }
 
 pub async fn execute(
-    rpc: &dyn Rpc,
+    rpc: &RpcEnum,
     program_id: &Pubkey,
     address: Pubkey,
 ) -> NeonResult<GetHolderResponse> {

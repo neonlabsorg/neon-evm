@@ -1,5 +1,6 @@
 use std::{env, str::FromStr};
 
+use crate::rpc::CloneRpcClient;
 use crate::{types::ChDbConfig, NeonError};
 use serde::{Deserialize, Serialize};
 use solana_clap_utils::{
@@ -23,6 +24,10 @@ pub struct Config {
 impl Config {
     pub fn build_solana_rpc_client(&self) -> RpcClient {
         RpcClient::new_with_commitment(self.json_rpc_url.clone(), self.commitment)
+    }
+
+    pub fn build_clone_solana_rpc_client(&self) -> CloneRpcClient {
+        CloneRpcClient::new(self.build_solana_rpc_client())
     }
 }
 

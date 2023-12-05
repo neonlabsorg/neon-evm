@@ -12,7 +12,6 @@ use neon_lib::{
         cancel_trx, collect_treasury, emulate, get_balance, get_config, get_contract, get_holder,
         get_neon_elf, get_storage_at, init_environment, trace,
     },
-    rpc,
     types::{BalanceAddress, EmulateRequest},
     Config,
 };
@@ -29,7 +28,7 @@ use tokio::time::Instant;
 use crate::build_info::get_build_info;
 use evm_loader::types::Address;
 use neon_lib::errors::NeonError;
-use neon_lib::rpc::CallDbClient;
+use neon_lib::rpc::{CallDbClient, RpcEnum};
 use neon_lib::types::TracerDb;
 use solana_clap_utils::keypair::signer_from_path;
 use solana_sdk::signature::Signer;
@@ -45,7 +44,7 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
             let rpc = build_rpc(options, config).await?;
 
             let request = read_tx_from_stdin()?;
-            emulate::execute(&*rpc, config.evm_loader, request, None)
+            emulate::execute(&rpc, config.evm_loader, request, None)
                 .await
                 .map(|result| json!(result))
         }
@@ -53,7 +52,7 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
             let rpc = build_rpc(options, config).await?;
 
             let request = read_tx_from_stdin()?;
-            trace::trace_transaction(&*rpc, config.evm_loader, request)
+            trace::trace_transaction(&rpc, config.evm_loader, request)
                 .await
                 .map(|trace| json!(trace))
         }
@@ -66,7 +65,7 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
             let account = BalanceAddress { address, chain_id };
             let accounts = std::slice::from_ref(&account);
 
-            get_balance::execute(&*rpc, &config.evm_loader, accounts)
+            get_balance::execute(&rpc, &config.evm_loader, accounts)
                 .await
                 .map(|result| json!(result))
         }
@@ -76,7 +75,7 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
             let account = address_of(params, "address").unwrap();
             let accounts = std::slice::from_ref(&account);
 
-            get_contract::execute(&*rpc, &config.evm_loader, accounts)
+            get_contract::execute(&rpc, &config.evm_loader, accounts)
                 .await
                 .map(|result| json!(result))
         }
@@ -85,7 +84,7 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
 
             let account = pubkey_of(params, "account").unwrap();
 
-            get_holder::execute(&*rpc, &config.evm_loader, account)
+            get_holder::execute(&rpc, &config.evm_loader, account)
                 .await
                 .map(|result| json!(result))
         }
@@ -103,12 +102,12 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
             let rpc = build_rpc(options, config).await?;
 
             let program_location = params.value_of("program_location");
-            get_neon_elf::execute(config, &*rpc, program_location)
+            get_neon_elf::execute(config, &rpc, program_location)
                 .await
                 .map(|result| json!(result))
         }
         ("collect-treasury", Some(_)) => {
-            let rpc_client = config.build_solana_rpc_client();
+            let rpc_client = config.build_clone_solana_rpc_client();
             let signer = build_signer(config)?;
 
             collect_treasury::execute(config, &rpc_client, &*signer)
@@ -116,7 +115,7 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
                 .map(|result| json!(result))
         }
         ("init-environment", Some(params)) => {
-            let rpc_client = config.build_solana_rpc_client();
+            let rpc_client = config.build_clone_solana_rpc_client();
             let signer = build_signer(config)?;
 
             let file = params.value_of("file");
@@ -142,14 +141,14 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
             let contract_id = address_of(params, "contract_id").expect("contract_it parse error");
             let index = u256_of(params, "index").expect("index parse error");
 
-            get_storage_at::execute(&*rpc, &config.evm_loader, contract_id, index)
+            get_storage_at::execute(&rpc, &config.evm_loader, contract_id, index)
                 .await
                 .map(|hash| json!(hex::encode(hash.0)))
         }
         ("config", Some(_)) => {
             let rpc = build_rpc(options, config).await?;
 
-            get_config::execute(&*rpc, config.evm_loader)
+            get_config::execute(&rpc, config.evm_loader)
                 .await
                 .map(|result| json!(result))
         }
@@ -157,18 +156,15 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
     }
 }
 
-async fn build_rpc(
-    options: &ArgMatches<'_>,
-    config: &Config,
-) -> Result<Box<dyn rpc::Rpc>, NeonError> {
+async fn build_rpc(options: &ArgMatches<'_>, config: &Config) -> Result<RpcEnum, NeonError> {
     let slot: Option<u64> = options
         .value_of("slot")
         .map(|slot_str| slot_str.parse().expect("slot parse error"));
 
     Ok(if let Some(slot) = slot {
-        Box::new(CallDbClient::new(TracerDb::new(config), slot, None).await?)
+        RpcEnum::CallDbClient(CallDbClient::new(TracerDb::new(config), slot, None).await?)
     } else {
-        Box::new(config.build_solana_rpc_client())
+        RpcEnum::CloneRpcClient(config.build_clone_solana_rpc_client())
     })
 }
 

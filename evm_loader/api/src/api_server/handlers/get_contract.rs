@@ -22,7 +22,7 @@ pub async fn get_contract(
     };
 
     process_result(
-        &GetContractCommand::execute(rpc.as_ref(), &state.config.evm_loader, &req_params.contract)
+        &GetContractCommand::execute(&rpc, &state.config.evm_loader, &req_params.contract)
             .await
             .map_err(Into::into),
     )

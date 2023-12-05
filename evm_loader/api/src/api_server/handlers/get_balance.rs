@@ -21,7 +21,7 @@ pub async fn get_balance(
     };
 
     process_result(
-        &GetBalanceCommand::execute(rpc.as_ref(), &state.config.evm_loader, &req_params.account)
+        &GetBalanceCommand::execute(&rpc, &state.config.evm_loader, &req_params.account)
             .await
             .map_err(Into::into),
     )

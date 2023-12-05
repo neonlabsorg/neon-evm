@@ -2,15 +2,14 @@ mod db_call_client;
 mod validator_client;
 
 pub use db_call_client::CallDbClient;
+pub use validator_client::CloneRpcClient;
 pub use validator_client::SolanaRpc;
 
 use crate::{NeonError, NeonResult};
 use async_trait::async_trait;
+use enum_dispatch::enum_dispatch;
 use solana_cli::cli::CliError;
-use solana_client::{
-    client_error::Result as ClientResult, nonblocking::rpc_client::RpcClient,
-    rpc_response::RpcResult,
-};
+use solana_client::{client_error::Result as ClientResult, rpc_response::RpcResult};
 use solana_sdk::message::Message;
 use solana_sdk::native_token::lamports_to_sol;
 use solana_sdk::{
@@ -19,9 +18,9 @@ use solana_sdk::{
     commitment_config::CommitmentConfig,
     pubkey::Pubkey,
 };
-use std::any::Any;
 
 #[async_trait(?Send)]
+#[enum_dispatch]
 pub trait Rpc {
     async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>>;
     async fn get_account_with_commitment(
@@ -33,8 +32,12 @@ pub trait Rpc {
         -> ClientResult<Vec<Option<Account>>>;
     async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp>;
     async fn get_slot(&self) -> ClientResult<Slot>;
+}
 
-    fn as_any(&self) -> &dyn Any;
+#[enum_dispatch(Rpc)]
+pub enum RpcEnum {
+    CloneRpcClient,
+    CallDbClient,
 }
 
 macro_rules! e {
@@ -55,7 +58,7 @@ macro_rules! e {
 pub(crate) use e;
 
 pub(crate) async fn check_account_for_fee(
-    rpc_client: &RpcClient,
+    rpc_client: &CloneRpcClient,
     account_pubkey: &Pubkey,
     message: &Message,
 ) -> NeonResult<()> {

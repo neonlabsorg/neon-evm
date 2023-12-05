@@ -26,6 +26,7 @@ use solana_client::client_error;
 use solana_sdk::{account::Account, account_info::AccountInfo, pubkey, pubkey::Pubkey};
 
 use crate::commands::get_config::ChainInfo;
+use crate::rpc::RpcEnum;
 use crate::tracing::{AccountOverride, AccountOverrides, BlockOverrides};
 use serde_with::{serde_as, DisplayFromStr};
 
@@ -46,7 +47,7 @@ pub struct SolanaAccount {
 pub struct EmulatorAccountStorage<'rpc> {
     pub accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
     pub gas: u64,
-    rpc: &'rpc dyn Rpc,
+    rpc: &'rpc RpcEnum,
     program_id: Pubkey,
     chains: Vec<ChainInfo>,
     block_number: u64,
@@ -56,7 +57,7 @@ pub struct EmulatorAccountStorage<'rpc> {
 
 impl<'rpc> EmulatorAccountStorage<'rpc> {
     pub async fn new(
-        rpc: &'rpc dyn Rpc,
+        rpc: &'rpc RpcEnum,
         program_id: Pubkey,
         chains: Option<Vec<ChainInfo>>,
         block_overrides: Option<BlockOverrides>,
@@ -92,7 +93,7 @@ impl<'rpc> EmulatorAccountStorage<'rpc> {
     }
 
     pub async fn with_accounts(
-        rpc: &'rpc dyn Rpc,
+        rpc: &'rpc RpcEnum,
         program_id: Pubkey,
         accounts: &[Pubkey],
         chains: Option<Vec<ChainInfo>>,

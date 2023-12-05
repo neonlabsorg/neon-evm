@@ -3,12 +3,13 @@ use std::rc::Rc;
 use serde_json::Value;
 use solana_sdk::pubkey::Pubkey;
 
+use crate::errors::NeonError;
+use crate::rpc::RpcEnum;
 use crate::tracing::tracers::new_tracer;
 use crate::types::EmulateRequest;
-use crate::{errors::NeonError, rpc::Rpc};
 
 pub async fn trace_transaction(
-    rpc: &dyn Rpc,
+    rpc: &RpcEnum,
     program_id: Pubkey,
     config: EmulateRequest,
 ) -> Result<Value, NeonError> {

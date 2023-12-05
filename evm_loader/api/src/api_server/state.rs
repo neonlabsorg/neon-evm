@@ -1,13 +1,11 @@
 use crate::Config;
-use neon_lib::rpc::CallDbClient;
+use neon_lib::rpc::{CallDbClient, CloneRpcClient, RpcEnum};
 use neon_lib::types::TracerDb;
-use neon_lib::{rpc, NeonError};
-use solana_client::nonblocking::rpc_client::RpcClient;
-use std::sync::Arc;
+use neon_lib::NeonError;
 
 pub struct State {
     pub tracer_db: TracerDb,
-    pub rpc_client: Arc<RpcClient>,
+    pub rpc_client: CloneRpcClient,
     pub config: Config,
 }
 
@@ -15,7 +13,7 @@ impl State {
     pub fn new(config: Config) -> Self {
         Self {
             tracer_db: TracerDb::new(&config),
-            rpc_client: Arc::new(config.build_solana_rpc_client()),
+            rpc_client: config.build_clone_solana_rpc_client(),
             config,
         }
     }
@@ -24,11 +22,13 @@ impl State {
         &self,
         slot: Option<u64>,
         tx_index_in_block: Option<u64>,
-    ) -> Result<Arc<dyn rpc::Rpc>, NeonError> {
+    ) -> Result<RpcEnum, NeonError> {
         Ok(if let Some(slot) = slot {
-            Arc::new(CallDbClient::new(self.tracer_db.clone(), slot, tx_index_in_block).await?)
+            RpcEnum::CallDbClient(
+                CallDbClient::new(self.tracer_db.clone(), slot, tx_index_in_block).await?,
+            )
         } else {
-            self.rpc_client.clone()
+            RpcEnum::CloneRpcClient(self.rpc_client.clone())
         })
     }
 }

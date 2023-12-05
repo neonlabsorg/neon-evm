@@ -5,12 +5,12 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE;
 use solana_sdk::pubkey::Pubkey;
 
+use crate::rpc::RpcEnum;
 use crate::syscall_stubs::setup_emulator_syscall_stubs;
 use crate::types::{EmulateRequest, TxParams};
 use crate::{
     account_storage::{EmulatorAccountStorage, SolanaAccount},
     errors::NeonError,
-    rpc::Rpc,
     NeonResult,
 };
 use evm_loader::evm::tracing::TracerType;
@@ -50,7 +50,7 @@ impl EmulateResponse {
 }
 
 pub async fn execute(
-    rpc: &dyn Rpc,
+    rpc: &RpcEnum,
     program_id: Pubkey,
     config: EmulateRequest,
     tracer: Option<TracerType>,

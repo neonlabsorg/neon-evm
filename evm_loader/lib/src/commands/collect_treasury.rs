@@ -1,11 +1,10 @@
-use crate::rpc::check_account_for_fee;
+use crate::rpc::{check_account_for_fee, CloneRpcClient, Rpc};
 use crate::{
     commands::get_neon_elf::read_elf_parameters_from_account, errors::NeonError, Config, NeonResult,
 };
 use evm_loader::account::{MainTreasury, Treasury};
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
-use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::signature::Signer;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
@@ -14,6 +13,7 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use spl_token::instruction::sync_native;
+use std::ops::Deref;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CollectTreasuryReturn {
@@ -23,10 +23,10 @@ pub struct CollectTreasuryReturn {
 
 pub async fn execute(
     config: &Config,
-    rpc_client: &RpcClient,
+    rpc_client: &CloneRpcClient,
     signer: &dyn Signer,
 ) -> NeonResult<CollectTreasuryReturn> {
-    let neon_params = read_elf_parameters_from_account(config, rpc_client).await?;
+    let neon_params = read_elf_parameters_from_account(config, &rpc_client.clone().into()).await?;
 
     let pool_count: u32 = neon_params
         .get("NEON_TREASURY_POOL_COUNT")
@@ -98,7 +98,10 @@ pub async fn execute(
         .send_and_confirm_transaction_with_spinner(&trx)
         .await?;
 
-    let main_balance_account = rpc_client.get_account(&main_balance_address).await?;
+    let main_balance_account = rpc_client
+        .deref()
+        .get_account(&main_balance_address)
+        .await?;
 
     Ok(CollectTreasuryReturn {
         pool_address: main_balance_address.to_string(),

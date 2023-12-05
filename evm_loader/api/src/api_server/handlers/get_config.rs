@@ -20,7 +20,7 @@ pub async fn get_config(state: NeonApiState, request_id: RequestId) -> impl Resp
     };
 
     process_result(
-        &GetConfigCommand::execute(rpc.as_ref(), state.config.evm_loader)
+        &GetConfigCommand::execute(&rpc, state.config.evm_loader)
             .await
             .map_err(Into::into),
     )

@@ -92,7 +92,7 @@ impl<'a> BalanceAccount<'a> {
             operator,
             &account,
             program_seeds,
-            ACCOUNT_PREFIX_LEN + size_of::<Header>(),
+            BalanceAccount::required_account_size(),
         )?;
 
         super::set_tag(&crate::ID, &account, TAG_ACCOUNT_BALANCE)?;

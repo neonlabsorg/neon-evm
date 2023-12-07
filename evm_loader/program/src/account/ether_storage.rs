@@ -47,6 +47,7 @@ impl Packable for Data {
     }
 }
 
+#[derive(Eq, PartialEq, Hash)]
 pub struct EthereumStorageAddress {
     seed: [u8; 32],
     pubkey: Pubkey,
@@ -107,7 +108,7 @@ impl EthereumStorageAddress {
 
 impl<'a> EthereumStorage<'a> {
     #[must_use]
-    pub fn get(&self, subindex: u8) -> [u8; 32] {
+    pub fn try_get(&self, subindex: u8) -> Option<[u8; 32]> {
         let data = self.info.data.borrow();
         let data = &data[Self::SIZE..];
 
@@ -116,10 +117,15 @@ impl<'a> EthereumStorage<'a> {
                 continue;
             }
 
-            return chunk[1..].try_into().unwrap();
+            return Some(chunk[1..].try_into().unwrap());
         }
 
-        [0_u8; 32]
+        None
+    }
+
+    #[must_use]
+    pub fn get(&self, subindex: u8) -> [u8; 32] {
+        self.try_get(subindex).unwrap_or_default()
     }
 
     pub fn set(

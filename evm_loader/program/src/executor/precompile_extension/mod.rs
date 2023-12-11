@@ -8,7 +8,7 @@ mod neon_token;
 mod query_account;
 mod spl_token;
 
-impl<'a, B: AccountStorage> ExecutorState<'a, B> {
+impl<B: AccountStorage> ExecutorState<'_, B> {
     #[deprecated]
     const _SYSTEM_ACCOUNT_ERC20_WRAPPER: Address = Address([
         0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01,
@@ -54,7 +54,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
                 Some(spl_token::spl_token(self, address, input, context, is_static).await)
             }
             Self::SYSTEM_ACCOUNT_METAPLEX => {
-                Some(metaplex::metaplex(self, address, input, context, is_static).await)
+                Some(self.metaplex(address, input, context, is_static).await)
             }
             _ => None,
         }

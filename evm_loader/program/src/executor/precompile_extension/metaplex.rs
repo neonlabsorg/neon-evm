@@ -25,78 +25,80 @@ use crate::{
 // "[0x69, 0x1f, 0x34, 0x31]": "name(bytes32)"
 // "[0x6b, 0xaa, 0x03, 0x30]": "symbol(bytes32)"
 
-#[maybe_async]
-pub async fn metaplex<B: AccountStorage>(
-    state: &mut ExecutorState<'_, B>,
-    address: &Address,
-    input: &[u8],
-    context: &crate::evm::Context,
-    is_static: bool,
-) -> Result<Vec<u8>> {
-    if context.value != 0 {
-        return Err(Error::Custom("Metaplex: value != 0".to_string()));
-    }
+impl<B: AccountStorage> ExecutorState<'_, B> {
+    #[maybe_async]
+    pub async fn metaplex(
+        &mut self,
+        address: &Address,
+        input: &[u8],
+        context: &crate::evm::Context,
+        is_static: bool,
+    ) -> Result<Vec<u8>> {
+        if context.value != 0 {
+            return Err(Error::Custom("Metaplex: value != 0".to_string()));
+        }
 
-    if &context.contract != address {
-        return Err(Error::Custom(
-            "Metaplex: callcode or delegatecall is not allowed".to_string(),
-        ));
-    }
+        if &context.contract != address {
+            return Err(Error::Custom(
+                "Metaplex: callcode or delegatecall is not allowed".to_string(),
+            ));
+        }
 
-    let (selector, input) = input.split_at(4);
-    let selector: [u8; 4] = selector.try_into()?;
+        let (selector, input) = input.split_at(4);
+        let selector: [u8; 4] = selector.try_into()?;
 
-    match selector {
-        [0xc5, 0x73, 0x50, 0xc6] => {
-            // "createMetadata(bytes32,string,string,string)"
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
+        match selector {
+            [0xc5, 0x73, 0x50, 0xc6] => {
+                // "createMetadata(bytes32,string,string,string)"
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
+
+                let mint = read_pubkey(input)?;
+                let name = read_string(input, 32, 256)?;
+                let symbol = read_string(input, 64, 256)?;
+                let uri = read_string(input, 96, 1024)?;
+
+                self.create_metadata(context, mint, name, symbol, uri)
             }
+            [0x4a, 0xe8, 0xb6, 0x6b] => {
+                // "createMasterEdition(bytes32,uint64)"
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
 
-            let mint = read_pubkey(input)?;
-            let name = read_string(input, 32, 256)?;
-            let symbol = read_string(input, 64, 256)?;
-            let uri = read_string(input, 96, 1024)?;
+                let mint = read_pubkey(input)?;
+                let max_supply = read_u64(&input[32..])?;
 
-            state.create_metadata(context, mint, name, symbol, uri)
-        }
-        [0x4a, 0xe8, 0xb6, 0x6b] => {
-            // "createMasterEdition(bytes32,uint64)"
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
+                self.create_master_edition(context, mint, Some(max_supply))
             }
-
-            let mint = read_pubkey(input)?;
-            let max_supply = read_u64(&input[32..])?;
-
-            state.create_master_edition(context, mint, Some(max_supply))
+            [0xf7, 0xb6, 0x37, 0xbb] => {
+                // "isInitialized(bytes32)"
+                let mint = read_pubkey(input)?;
+                self.is_initialized(context, mint).await
+            }
+            [0x23, 0x5b, 0x2b, 0x94] => {
+                // "isNFT(bytes32)"
+                let mint = read_pubkey(input)?;
+                self.is_nft(context, mint).await
+            }
+            [0x9e, 0xd1, 0x9d, 0xdb] => {
+                // "uri(bytes32)"
+                let mint = read_pubkey(input)?;
+                self.uri(context, mint).await
+            }
+            [0x69, 0x1f, 0x34, 0x31] => {
+                // "name(bytes32)"
+                let mint = read_pubkey(input)?;
+                self.token_name(context, mint).await
+            }
+            [0x6b, 0xaa, 0x03, 0x30] => {
+                // "symbol(bytes32)"
+                let mint = read_pubkey(input)?;
+                self.symbol(context, mint).await
+            }
+            _ => Err(Error::UnknownPrecompileMethodSelector(*address, selector)),
         }
-        [0xf7, 0xb6, 0x37, 0xbb] => {
-            // "isInitialized(bytes32)"
-            let mint = read_pubkey(input)?;
-            state.is_initialized(context, mint).await
-        }
-        [0x23, 0x5b, 0x2b, 0x94] => {
-            // "isNFT(bytes32)"
-            let mint = read_pubkey(input)?;
-            state.is_nft(context, mint).await
-        }
-        [0x9e, 0xd1, 0x9d, 0xdb] => {
-            // "uri(bytes32)"
-            let mint = read_pubkey(input)?;
-            state.uri(context, mint).await
-        }
-        [0x69, 0x1f, 0x34, 0x31] => {
-            // "name(bytes32)"
-            let mint = read_pubkey(input)?;
-            state.token_name(context, mint).await
-        }
-        [0x6b, 0xaa, 0x03, 0x30] => {
-            // "symbol(bytes32)"
-            let mint = read_pubkey(input)?;
-            state.symbol(context, mint).await
-        }
-        _ => Err(Error::UnknownPrecompileMethodSelector(*address, selector)),
     }
 }
 

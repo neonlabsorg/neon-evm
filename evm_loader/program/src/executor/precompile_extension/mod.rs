@@ -48,7 +48,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
                 Some(query_account::query_account(self, address, input, context, is_static).await)
             }
             Self::SYSTEM_ACCOUNT_NEON_TOKEN => {
-                Some(neon_token::neon_token(self, address, input, context, is_static).await)
+                Some(self.neon_token(address, input, context, is_static).await)
             }
             Self::SYSTEM_ACCOUNT_SPL_TOKEN => {
                 Some(spl_token::spl_token(self, address, input, context, is_static).await)

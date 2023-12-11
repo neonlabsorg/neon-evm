@@ -51,7 +51,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
                 Some(self.neon_token(address, input, context, is_static).await)
             }
             Self::SYSTEM_ACCOUNT_SPL_TOKEN => {
-                Some(spl_token::spl_token(self, address, input, context, is_static).await)
+                Some(self.spl_token(address, input, context, is_static).await)
             }
             Self::SYSTEM_ACCOUNT_METAPLEX => {
                 Some(self.metaplex(address, input, context, is_static).await)

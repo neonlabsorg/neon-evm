@@ -33,54 +33,53 @@ use crate::{
 // [0x78, 0x42, 0x3b, 0xcf] : "transfer(bytes32,bytes32,uint64)"
 // [0x7c, 0x0e, 0xb8, 0x10] : "transferWithSeed(bytes32,bytes32,bytes32,uint64)"
 
-#[allow(clippy::too_many_lines)]
-#[maybe_async]
-pub async fn spl_token<B: AccountStorage>(
-    state: &mut ExecutorState<'_, B>,
-    address: &Address,
-    input: &[u8],
-    context: &crate::evm::Context,
-    is_static: bool,
-) -> Result<Vec<u8>> {
-    if context.value != 0 {
-        return Err(Error::Custom("SplToken: value != 0".to_string()));
-    }
-
-    if &context.contract != address {
-        return Err(Error::Custom(
-            "SplToken: callcode or delegatecall is not allowed".to_string(),
-        ));
-    }
-
-    let (selector, input) = input.split_at(4);
-    let selector: [u8; 4] = selector.try_into()?;
-
-    match selector {
-        [0xb1, 0x1e, 0xcc, 0x50] => {
-            // initializeMint(bytes32 seed, uint8 decimals)
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
-            }
-
-            let seed = read_salt(input)?;
-            let decimals = read_u8(&input[32..])?;
-
-            state
-                .initialize_mint(context, seed, decimals, None, None)
-                .await
+impl<B: AccountStorage> ExecutorState<'_, B> {
+    #[allow(clippy::too_many_lines)]
+    #[maybe_async]
+    pub async fn spl_token(
+        &mut self,
+        address: &Address,
+        input: &[u8],
+        context: &crate::evm::Context,
+        is_static: bool,
+    ) -> Result<Vec<u8>> {
+        if context.value != 0 {
+            return Err(Error::Custom("SplToken: value != 0".to_string()));
         }
-        [0xc3, 0xf3, 0xf2, 0xf2] => {
-            // initializeMint(bytes32 seed, uint8 decimals, bytes32 mint_authority, bytes32 freeze_authority)
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
-            }
 
-            let seed = read_salt(input)?;
-            let decimals = read_u8(&input[32..])?;
-            let mint_authority = read_pubkey(&input[64..])?;
-            let freeze_authority = read_pubkey(&input[96..])?;
-            state
-                .initialize_mint(
+        if &context.contract != address {
+            return Err(Error::Custom(
+                "SplToken: callcode or delegatecall is not allowed".to_string(),
+            ));
+        }
+
+        let (selector, input) = input.split_at(4);
+        let selector: [u8; 4] = selector.try_into()?;
+
+        match selector {
+            [0xb1, 0x1e, 0xcc, 0x50] => {
+                // initializeMint(bytes32 seed, uint8 decimals)
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
+
+                let seed = read_salt(input)?;
+                let decimals = read_u8(&input[32..])?;
+
+                self.initialize_mint(context, seed, decimals, None, None)
+                    .await
+            }
+            [0xc3, 0xf3, 0xf2, 0xf2] => {
+                // initializeMint(bytes32 seed, uint8 decimals, bytes32 mint_authority, bytes32 freeze_authority)
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
+
+                let seed = read_salt(input)?;
+                let decimals = read_u8(&input[32..])?;
+                let mint_authority = read_pubkey(&input[64..])?;
+                let freeze_authority = read_pubkey(&input[96..])?;
+                self.initialize_mint(
                     context,
                     seed,
                     decimals,
@@ -88,147 +87,147 @@ pub async fn spl_token<B: AccountStorage>(
                     Some(freeze_authority),
                 )
                 .await
-        }
-        [0xda, 0xa1, 0x2c, 0x5c] => {
-            // initializeAccount(bytes32 seed, bytes32 mint)
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
             }
+            [0xda, 0xa1, 0x2c, 0x5c] => {
+                // initializeAccount(bytes32 seed, bytes32 mint)
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
 
-            let seed = read_salt(input)?;
-            let mint = read_pubkey(&input[32..])?;
+                let seed = read_salt(input)?;
+                let mint = read_pubkey(&input[32..])?;
 
-            state.initialize_account(context, seed, mint, None).await
-        }
-        [0xfc, 0x86, 0xb7, 0x17] => {
-            // initializeAccount(bytes32 seed, bytes32 mint, bytes32 owner)
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
+                self.initialize_account(context, seed, mint, None).await
             }
+            [0xfc, 0x86, 0xb7, 0x17] => {
+                // initializeAccount(bytes32 seed, bytes32 mint, bytes32 owner)
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
 
-            let seed = read_salt(input)?;
-            let mint = read_pubkey(&input[32..])?;
-            let owner = read_pubkey(&input[64..])?;
-            state
-                .initialize_account(context, seed, mint, Some(owner))
-                .await
-        }
-        [0x57, 0x82, 0xa0, 0x43] => {
-            // closeAccount(bytes32 account)
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
+                let seed = read_salt(input)?;
+                let mint = read_pubkey(&input[32..])?;
+                let owner = read_pubkey(&input[64..])?;
+                self.initialize_account(context, seed, mint, Some(owner))
+                    .await
             }
+            [0x57, 0x82, 0xa0, 0x43] => {
+                // closeAccount(bytes32 account)
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
 
-            let account = read_pubkey(input)?;
-            state.close_account(context, account)
-        }
-        [0xa9, 0xc1, 0x58, 0x06] => {
-            // approve(bytes32 source, bytes32 target, uint64 amount)
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
+                let account = read_pubkey(input)?;
+                self.close_account(context, account)
             }
+            [0xa9, 0xc1, 0x58, 0x06] => {
+                // approve(bytes32 source, bytes32 target, uint64 amount)
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
 
-            let source = read_pubkey(input)?;
-            let target = read_pubkey(&input[32..])?;
-            let amount = read_u64(&input[64..])?;
-            state.approve(context, source, target, amount)
-        }
-        [0xb7, 0x5c, 0x7d, 0xc6] => {
-            // revoke(bytes32 source)
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
+                let source = read_pubkey(input)?;
+                let target = read_pubkey(&input[32..])?;
+                let amount = read_u64(&input[64..])?;
+                self.approve(context, source, target, amount)
             }
+            [0xb7, 0x5c, 0x7d, 0xc6] => {
+                // revoke(bytes32 source)
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
 
-            let source = read_pubkey(input)?;
-            state.revoke(context, source)
-        }
-        [0x78, 0x42, 0x3b, 0xcf] => {
-            // transfer(bytes32 source, bytes32 target, uint64 amount)
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
+                let source = read_pubkey(input)?;
+                self.revoke(context, source)
             }
+            [0x78, 0x42, 0x3b, 0xcf] => {
+                // transfer(bytes32 source, bytes32 target, uint64 amount)
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
 
-            let source = read_pubkey(input)?;
-            let target = read_pubkey(&input[32..])?;
-            let amount = read_u64(&input[64..])?;
-            state.transfer(context, source, target, amount)
-        }
-        [0x7c, 0x0e, 0xb8, 0x10] => {
-            // transferWithSeed(bytes32,bytes32,bytes32,uint64)
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
+                let source = read_pubkey(input)?;
+                let target = read_pubkey(&input[32..])?;
+                let amount = read_u64(&input[64..])?;
+                self.transfer(context, source, target, amount)
             }
+            [0x7c, 0x0e, 0xb8, 0x10] => {
+                // transferWithSeed(bytes32,bytes32,bytes32,uint64)
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
 
-            let seed = read_salt(input)?;
-            let source = read_pubkey(&input[32..])?;
-            let target = read_pubkey(&input[64..])?;
-            let amount = read_u64(&input[96..])?;
+                let seed = read_salt(input)?;
+                let source = read_pubkey(&input[32..])?;
+                let target = read_pubkey(&input[64..])?;
+                let amount = read_u64(&input[96..])?;
 
-            state.transfer_with_seed(context, seed, source, target, amount)
-        }
-        [0xc9, 0xd0, 0xe2, 0xfd] => {
-            // mintTo(bytes32 mint, bytes32 account, uint64 amount)
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
+                self.transfer_with_seed(context, seed, source, target, amount)
             }
+            [0xc9, 0xd0, 0xe2, 0xfd] => {
+                // mintTo(bytes32 mint, bytes32 account, uint64 amount)
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
 
-            let mint = read_pubkey(input)?;
-            let account = read_pubkey(&input[32..])?;
-            let amount = read_u64(&input[64..])?;
-            state.mint_to(context, mint, account, amount)
-        }
-        [0xc0, 0x67, 0xee, 0xbb] => {
-            // burn(bytes32 mint, bytes32 account, uint64 amount)
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
+                let mint = read_pubkey(input)?;
+                let account = read_pubkey(&input[32..])?;
+                let amount = read_u64(&input[64..])?;
+                self.mint_to(context, mint, account, amount)
             }
+            [0xc0, 0x67, 0xee, 0xbb] => {
+                // burn(bytes32 mint, bytes32 account, uint64 amount)
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
 
-            let mint = read_pubkey(input)?;
-            let account = read_pubkey(&input[32..])?;
-            let amount = read_u64(&input[64..])?;
-            state.burn_spl_token(context, mint, account, amount)
-        }
-        [0x44, 0xef, 0x32, 0x44] => {
-            // freeze(bytes32 mint, bytes32 account)
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
+                let mint = read_pubkey(input)?;
+                let account = read_pubkey(&input[32..])?;
+                let amount = read_u64(&input[64..])?;
+                self.burn_spl_token(context, mint, account, amount)
             }
+            [0x44, 0xef, 0x32, 0x44] => {
+                // freeze(bytes32 mint, bytes32 account)
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
 
-            let mint = read_pubkey(input)?;
-            let account = read_pubkey(&input[32..])?;
-            state.freeze(context, mint, account)
-        }
-        [0x3d, 0x71, 0x8c, 0x9a] => {
-            // thaw(bytes32 mint, bytes32 account)
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
+                let mint = read_pubkey(input)?;
+                let account = read_pubkey(&input[32..])?;
+                self.freeze(context, mint, account)
             }
+            [0x3d, 0x71, 0x8c, 0x9a] => {
+                // thaw(bytes32 mint, bytes32 account)
+                if is_static {
+                    return Err(Error::StaticModeViolation(*address));
+                }
 
-            let mint = read_pubkey(input)?;
-            let account = read_pubkey(&input[32..])?;
-            state.thaw(context, mint, account)
+                let mint = read_pubkey(input)?;
+                let account = read_pubkey(&input[32..])?;
+                self.thaw(context, mint, account)
+            }
+            [0xeb, 0x7d, 0xa7, 0x8c] => {
+                // findAccount(bytes32 seed)
+                let seed = read_salt(input)?;
+                self.find_account(context, seed)
+            }
+            [0x6d, 0xa9, 0xde, 0x75] => {
+                // isSystemAccount(bytes32 account)
+                let account = read_pubkey(input)?;
+                self.is_system_account(context, account).await
+            }
+            [0xd1, 0xde, 0x50, 0x11] => {
+                // getAccount(bytes32 account)
+                let account = read_pubkey(input)?;
+                self.get_account(context, account).await
+            }
+            [0xa2, 0xce, 0x9c, 0x1f] => {
+                // getMint(bytes32 account)
+                let account = read_pubkey(input)?;
+                self.get_mint(context, account).await
+            }
+            _ => Err(Error::UnknownPrecompileMethodSelector(*address, selector)),
         }
-        [0xeb, 0x7d, 0xa7, 0x8c] => {
-            // findAccount(bytes32 seed)
-            let seed = read_salt(input)?;
-            state.find_account(context, seed)
-        }
-        [0x6d, 0xa9, 0xde, 0x75] => {
-            // isSystemAccount(bytes32 account)
-            let account = read_pubkey(input)?;
-            state.is_system_account(context, account).await
-        }
-        [0xd1, 0xde, 0x50, 0x11] => {
-            // getAccount(bytes32 account)
-            let account = read_pubkey(input)?;
-            state.get_account(context, account).await
-        }
-        [0xa2, 0xce, 0x9c, 0x1f] => {
-            // getMint(bytes32 account)
-            let account = read_pubkey(input)?;
-            state.get_mint(context, account).await
-        }
-        _ => Err(Error::UnknownPrecompileMethodSelector(*address, selector)),
     }
 }
 

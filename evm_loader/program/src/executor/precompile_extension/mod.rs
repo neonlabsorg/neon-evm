@@ -45,7 +45,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
     ) -> Option<Result<Vec<u8>>> {
         match *address {
             Self::SYSTEM_ACCOUNT_QUERY => {
-                Some(query_account::query_account(self, address, input, context, is_static).await)
+                Some(self.query_account(address, input, context, is_static).await)
             }
             Self::SYSTEM_ACCOUNT_NEON_TOKEN => {
                 Some(self.neon_token(address, input, context, is_static).await)

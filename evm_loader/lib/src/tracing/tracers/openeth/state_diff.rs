@@ -5,20 +5,8 @@ use tracing::{debug, info};
 use web3::types::{AccountDiff, Bytes, ChangedType, Diff, StateDiff, H160, H256, U256};
 
 // TODO: Add operator balance diff
-pub trait StatesExt {
-    fn into_state_diff(self) -> StateDiff;
-
-    fn balance_diff(&self, address: &Address) -> Diff<U256>;
-
-    fn nonce_diff(&self, address: &Address) -> Diff<U256>;
-
-    fn code_diff(&self, address: &Address) -> Diff<Bytes>;
-
-    fn storage_diff(&self, address: &Address) -> BTreeMap<H256, Diff<H256>>;
-}
-
-impl StatesExt for States {
-    fn into_state_diff(self) -> StateDiff {
+impl States {
+    pub fn into_state_diff(self) -> StateDiff {
         let mut state_diff = BTreeMap::new();
 
         for address in self.pre.keys() {

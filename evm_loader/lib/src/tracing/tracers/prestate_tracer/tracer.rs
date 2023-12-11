@@ -1,8 +1,9 @@
 use crate::tracing::tracers::prestate_tracer::state_diff::{
     build_prestate_tracer_diff_mode_result, build_prestate_tracer_state,
 };
+use crate::tracing::tracers::{EmulationResult, IntoTraces};
 use crate::tracing::TraceConfig;
-use evm_loader::evm::tracing::{EmulationResult, Event, EventListener};
+use evm_loader::evm::tracing::{Event, EventListener};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -41,8 +42,10 @@ pub struct PrestateTracerConfig {
 
 impl EventListener for PrestateTracer {
     fn event(&mut self, _event: Event) {}
+}
 
-    fn into_traces(self: Box<Self>, emulation_result: EmulationResult) -> Value {
+impl IntoTraces for PrestateTracer {
+    fn into_traces(self, emulation_result: EmulationResult) -> Value {
         if self.config.diff_mode {
             serde_json::to_value(build_prestate_tracer_diff_mode_result(
                 emulation_result.states,

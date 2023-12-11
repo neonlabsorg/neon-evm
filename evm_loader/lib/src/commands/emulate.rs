@@ -8,6 +8,7 @@ use solana_sdk::pubkey::Pubkey;
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::rpc::Rpc;
 use crate::tracing::tracers::state_diff::ExecutorStateExt;
+use crate::tracing::tracers::States;
 use crate::types::{EmulateRequest, TxParams};
 use crate::{
     account_storage::{EmulatorAccountStorage, SolanaAccount},
@@ -15,7 +16,7 @@ use crate::{
     NeonResult,
 };
 use evm_loader::account_storage::AccountStorage;
-use evm_loader::evm::tracing::{States, TracerType};
+use evm_loader::evm::tracing::{EventListener, TracerTypeOpt};
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
@@ -57,7 +58,7 @@ pub async fn execute(
     rpc: &(impl Rpc + BuildConfigSimulator),
     program_id: Pubkey,
     emulate_request: EmulateRequest,
-    tracer: Option<TracerType>,
+    tracer: TracerTypeOpt<impl EventListener>,
 ) -> NeonResult<EmulateResponse> {
     let block_overrides = emulate_request
         .trace_config
@@ -87,7 +88,7 @@ pub async fn emulate_trx(
     tx_params: TxParams,
     backend: &mut ExecutorState<'_, EmulatorAccountStorage<'_, impl Rpc + BuildConfigSimulator>>,
     step_limit: u64,
-    tracer: Option<TracerType>,
+    tracer: TracerTypeOpt<impl EventListener>,
 ) -> NeonResult<EmulateResponse> {
     info!("tx_params: {:?}", tx_params);
 

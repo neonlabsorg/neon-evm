@@ -3,10 +3,11 @@ use std::fmt::Debug;
 use serde_json::Value;
 use web3::types::Bytes;
 
-use evm_loader::evm::tracing::{EmulationResult, Event, EventListener};
+use evm_loader::evm::tracing::{Event, EventListener};
 
 use crate::tracing::tracers::openeth::state_diff::StatesExt;
 use crate::tracing::tracers::openeth::types::{CallAnalytics, TraceResults};
+use crate::tracing::tracers::{EmulationResult, IntoTraces};
 use crate::tracing::TraceConfig;
 
 #[derive(Debug)]
@@ -44,8 +45,10 @@ impl EventListener for OpenEthereumTracer {
             self.output = return_data.map(Into::into);
         }
     }
+}
 
-    fn into_traces(self: Box<Self>, emulation_result: EmulationResult) -> Value {
+impl IntoTraces for OpenEthereumTracer {
+    fn into_traces(self, emulation_result: EmulationResult) -> Value {
         serde_json::to_value(TraceResults {
             output: self.output.unwrap_or_default(),
             trace: vec![],

@@ -7,6 +7,7 @@ use super::{database::Database, tracing_event, Context, Machine, Reason};
 use crate::{
     error::{Error, Result},
     evm::{trace_end_step, Buffer},
+    machine_type,
     types::Address,
 };
 
@@ -22,7 +23,9 @@ pub enum Action {
 }
 
 #[allow(clippy::unused_async)]
-impl<B: Database> Machine<B> {
+impl<B: Database, #[cfg(not(target_os = "solana"))] T: super::tracing::EventListener>
+    machine_type![B, T]
+{
     /// Unknown instruction
     #[maybe_async]
     pub async fn opcode_unknown(&mut self, _backend: &mut B) -> Result<Action> {
@@ -998,10 +1001,10 @@ impl<B: Database> Machine<B> {
         let address = self.context.contract.as_bytes();
 
         match N {
-            0 => sol_log_data(&[b"LOG0", address, &[0], data]),                                                
-            1 => sol_log_data(&[b"LOG1", address, &[1], &topics[0], data]),                                    
-            2 => sol_log_data(&[b"LOG2", address, &[2], &topics[0], &topics[1], data]),                        
-            3 => sol_log_data(&[b"LOG3", address, &[3], &topics[0], &topics[1], &topics[2], data]),            
+            0 => sol_log_data(&[b"LOG0", address, &[0], data]),
+            1 => sol_log_data(&[b"LOG1", address, &[1], &topics[0], data]),
+            2 => sol_log_data(&[b"LOG2", address, &[2], &topics[0], &topics[1], data]),
+            3 => sol_log_data(&[b"LOG3", address, &[3], &topics[0], &topics[1], &topics[2], data]),
             4 => sol_log_data(&[b"LOG4", address, &[4], &topics[0], &topics[1], &topics[2], &topics[3], data]),
             _ => unreachable!(),
         }

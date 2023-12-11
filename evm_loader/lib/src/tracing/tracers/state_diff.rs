@@ -8,12 +8,12 @@ use crate::account_storage::EmulatorAccountStorage;
 use crate::commands::get_config::BuildConfigSimulator;
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::evm::database::Database;
-use evm_loader::evm::tracing::{Account, State, States};
 use evm_loader::evm::Buffer;
 use evm_loader::executor::ExecutorState;
 use evm_loader::types::Address;
 
 use crate::rpc::Rpc;
+use crate::tracing::tracers::{Account, State, States};
 use crate::NeonError;
 
 #[async_trait(?Send)]

@@ -6,9 +6,10 @@ use serde_json::Value;
 use web3::types::Bytes;
 
 use evm_loader::evm::opcode_table::OPNAMES;
-use evm_loader::evm::tracing::{EmulationResult, Event, EventListener};
+use evm_loader::evm::tracing::{Event, EventListener};
 use evm_loader::evm::ExitStatus;
 
+use crate::tracing::tracers::{EmulationResult, IntoTraces};
 use crate::tracing::TraceConfig;
 
 /// `StructLoggerResult` groups all structured logs emitted by the EVM
@@ -213,8 +214,10 @@ impl EventListener for StructLogger {
             }
         };
     }
+}
 
-    fn into_traces(self: Box<Self>, emulation_result: EmulationResult) -> Value {
+impl IntoTraces for StructLogger {
+    fn into_traces(self, emulation_result: EmulationResult) -> Value {
         let exit_status = self.exit_status.expect("Exit status should be set");
         let result = StructLoggerResult {
             failed: !exit_status

@@ -30,8 +30,8 @@ pub struct ExecutorState<'a, B: AccountStorage> {
     exit_status: Option<ExitStatus>,
 }
 
+#[cfg(target_os = "solana")]
 impl<'a, B: AccountStorage> ExecutorState<'a, B> {
-    #[cfg(target_os = "solana")]
     pub fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize> {
         let mut cursor = std::io::Cursor::new(buffer);
 
@@ -40,8 +40,6 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 
         cursor.position().try_into().map_err(Error::from)
     }
-
-    #[cfg(target_os = "solana")]
     pub fn deserialize_from(buffer: &[u8], backend: &'a mut B) -> Result<Self> {
         let (cache, actions, stack, exit_status) = bincode::deserialize(buffer)?;
         Ok(Self {
@@ -52,7 +50,9 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
             exit_status,
         })
     }
+}
 
+impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     #[must_use]
     pub fn new(backend: &'a mut B) -> Self {
         let cache = Cache {

@@ -134,7 +134,7 @@ pub struct Context {
 
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "B: Database")]
-pub struct Machine<B: Database> {
+pub struct Machine<B: Database, #[cfg(not(target_os = "solana"))] T: tracing::EventListener> {
     origin: Address,
     chain_id: u64,
     context: Context,
@@ -163,9 +163,10 @@ pub struct Machine<B: Database> {
 
     #[cfg(not(target_os = "solana"))]
     #[serde(skip)]
-    tracer: TracerTypeOpt,
+    tracer: TracerTypeOpt<T>,
 }
 
+#[cfg(target_os = "solana")]
 impl<B: Database> Machine<B> {
     pub fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize> {
         let mut cursor = std::io::Cursor::new(buffer);
@@ -175,7 +176,6 @@ impl<B: Database> Machine<B> {
         cursor.position().try_into().map_err(Error::from)
     }
 
-    #[cfg(target_os = "solana")]
     pub fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
         fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &B) {
             if let Some((key, range)) = buffer.uninit_data() {
@@ -202,13 +202,32 @@ impl<B: Database> Machine<B> {
 
         Ok(evm)
     }
+}
 
+#[cfg(target_os = "solana")]
+#[macro_export]
+macro_rules! machine_type {
+    [$b:ident, $t:ident] => {
+        Machine<$b>
+    }
+}
+
+#[cfg(not(target_os = "solana"))]
+#[macro_export]
+macro_rules! machine_type {
+    [$b:ident, $t:ident] => {
+        Machine<$b, $t>
+    }
+}
+
+#[allow(clippy::unused_async)]
+impl<B: Database, #[cfg(not(target_os = "solana"))] T: tracing::EventListener> machine_type![B, T] {
     #[maybe_async]
     pub async fn new(
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(not(target_os = "solana"))] tracer: TracerTypeOpt,
+        #[cfg(not(target_os = "solana"))] tracer: TracerTypeOpt<T>,
     ) -> Result<Self> {
         let trx_chain_id = trx.chain_id().unwrap_or_else(|| backend.default_chain_id());
 
@@ -269,7 +288,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(not(target_os = "solana"))] tracer: TracerTypeOpt,
+        #[cfg(not(target_os = "solana"))] tracer: TracerTypeOpt<T>,
     ) -> Result<Self> {
         assert!(trx.target().is_some());
 
@@ -319,7 +338,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(not(target_os = "solana"))] tracer: TracerTypeOpt,
+        #[cfg(not(target_os = "solana"))] tracer: TracerTypeOpt<T>,
     ) -> Result<Self> {
         assert!(trx.target().is_none());
 

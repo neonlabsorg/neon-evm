@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use evm_loader::evm::tracing::{EmulationResult, TracerType};
+use evm_loader::evm::tracing::{EventListener, TracerType};
 use serde_json::Value;
 use solana_sdk::pubkey::Pubkey;
 
@@ -8,7 +8,7 @@ use crate::commands::emulate::EmulateResponse;
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::errors::NeonError;
 use crate::rpc::Rpc;
-use crate::tracing::tracers::new_tracer;
+use crate::tracing::tracers::{new_tracer, EmulationResult, IntoTraces};
 use crate::types::EmulateRequest;
 
 pub async fn trace_transaction(
@@ -39,7 +39,10 @@ impl From<EmulateResponse> for EmulationResult {
     }
 }
 
-pub fn into_traces(tracer: TracerType, emulate_response: EmulateResponse) -> Value {
+pub fn into_traces(
+    tracer: TracerType<impl EventListener + IntoTraces>,
+    emulate_response: EmulateResponse,
+) -> Value {
     Rc::try_unwrap(tracer)
         .expect("There is must be only one reference")
         .into_inner()

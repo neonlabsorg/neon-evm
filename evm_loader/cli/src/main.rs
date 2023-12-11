@@ -26,9 +26,11 @@ use solana_clap_utils::input_parsers::{pubkey_of, value_of};
 use tokio::time::Instant;
 
 use crate::build_info::get_build_info;
+use evm_loader::evm::tracing::TracerType;
 use evm_loader::types::Address;
 use neon_lib::errors::NeonError;
 use neon_lib::rpc::{CallDbClient, RpcEnum};
+use neon_lib::tracing::tracers::TracerEnum;
 use neon_lib::types::TracerDb;
 use solana_clap_utils::keypair::signer_from_path;
 use solana_sdk::signature::Signer;
@@ -44,9 +46,14 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
             let rpc = build_rpc(options, config).await?;
 
             let request = read_tx_from_stdin()?;
-            emulate::execute(&rpc, config.evm_loader, request, None)
-                .await
-                .map(|result| json!(result))
+            emulate::execute(
+                &rpc,
+                config.evm_loader,
+                request,
+                None::<TracerType<TracerEnum>>,
+            )
+            .await
+            .map(|result| json!(result))
         }
         ("trace", Some(_)) => {
             let rpc = build_rpc(options, config).await?;

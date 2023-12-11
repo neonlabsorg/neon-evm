@@ -25,6 +25,49 @@ use crate::{
 // "[0x69, 0x1f, 0x34, 0x31]": "name(bytes32)"
 // "[0x6b, 0xaa, 0x03, 0x30]": "symbol(bytes32)"
 
+#[inline]
+fn read_u64(input: &[u8]) -> Result<u64> {
+    if input.len() < 32 {
+        return Err(Error::OutOfBounds);
+    }
+    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32])
+        .try_into()
+        .map_err(Into::into)
+}
+
+#[inline]
+fn read_pubkey(input: &[u8]) -> Result<Pubkey> {
+    if input.len() < 32 {
+        return Err(Error::OutOfBounds);
+    }
+    Ok(Pubkey::new_from_array(*arrayref::array_ref![input, 0, 32]))
+}
+
+#[inline]
+fn read_string(input: &[u8], offset_position: usize, max_length: usize) -> Result<String> {
+    if input.len() < offset_position + 32 {
+        return Err(Error::OutOfBounds);
+    }
+    let offset: usize =
+        U256::from_be_bytes(*arrayref::array_ref![input, offset_position, 32]).try_into()?;
+    if input.len() < offset.saturating_add(32) {
+        return Err(Error::OutOfBounds);
+    }
+    let length = U256::from_be_bytes(*arrayref::array_ref![input, offset, 32]).try_into()?;
+    if length > max_length {
+        return Err(Error::OutOfBounds);
+    }
+
+    let begin = offset.saturating_add(32);
+    let end = begin.saturating_add(length);
+
+    if input.len() < end {
+        return Err(Error::OutOfBounds);
+    }
+    let data = input[begin..end].to_vec();
+    String::from_utf8(data).map_err(|_| Error::Custom("Invalid utf8 string".to_string()))
+}
+
 impl<B: AccountStorage> ExecutorState<'_, B> {
     #[maybe_async]
     pub async fn metaplex(
@@ -100,52 +143,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
             _ => Err(Error::UnknownPrecompileMethodSelector(*address, selector)),
         }
     }
-}
 
-#[inline]
-fn read_u64(input: &[u8]) -> Result<u64> {
-    if input.len() < 32 {
-        return Err(Error::OutOfBounds);
-    }
-    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32])
-        .try_into()
-        .map_err(Into::into)
-}
-
-#[inline]
-fn read_pubkey(input: &[u8]) -> Result<Pubkey> {
-    if input.len() < 32 {
-        return Err(Error::OutOfBounds);
-    }
-    Ok(Pubkey::new_from_array(*arrayref::array_ref![input, 0, 32]))
-}
-
-#[inline]
-fn read_string(input: &[u8], offset_position: usize, max_length: usize) -> Result<String> {
-    if input.len() < offset_position + 32 {
-        return Err(Error::OutOfBounds);
-    }
-    let offset: usize =
-        U256::from_be_bytes(*arrayref::array_ref![input, offset_position, 32]).try_into()?;
-    if input.len() < offset.saturating_add(32) {
-        return Err(Error::OutOfBounds);
-    }
-    let length = U256::from_be_bytes(*arrayref::array_ref![input, offset, 32]).try_into()?;
-    if length > max_length {
-        return Err(Error::OutOfBounds);
-    }
-
-    let begin = offset.saturating_add(32);
-    let end = begin.saturating_add(length);
-
-    if input.len() < end {
-        return Err(Error::OutOfBounds);
-    }
-    let data = input[begin..end].to_vec();
-    String::from_utf8(data).map_err(|_| Error::Custom("Invalid utf8 string".to_string()))
-}
-
-impl<B: AccountStorage> ExecutorState<'_, B> {
     fn create_metadata(
         &mut self,
         context: &crate::evm::Context,

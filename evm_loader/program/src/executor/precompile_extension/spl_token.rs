@@ -33,6 +33,36 @@ use crate::{
 // [0x78, 0x42, 0x3b, 0xcf] : "transfer(bytes32,bytes32,uint64)"
 // [0x7c, 0x0e, 0xb8, 0x10] : "transferWithSeed(bytes32,bytes32,bytes32,uint64)"
 
+#[inline]
+fn read_u8(input: &[u8]) -> Result<u8> {
+    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32])
+        .try_into()
+        .map_err(Into::into)
+}
+
+#[inline]
+fn read_u64(input: &[u8]) -> Result<u64> {
+    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32])
+        .try_into()
+        .map_err(Into::into)
+}
+
+#[inline]
+fn read_pubkey(input: &[u8]) -> Result<Pubkey> {
+    if input.len() < 32 {
+        return Err(Error::OutOfBounds);
+    }
+    Ok(Pubkey::new_from_array(*arrayref::array_ref![input, 0, 32]))
+}
+
+#[inline]
+fn read_salt(input: &[u8]) -> Result<&[u8; 32]> {
+    if input.len() < 32 {
+        return Err(Error::OutOfBounds);
+    }
+    Ok(arrayref::array_ref![input, 0, 32])
+}
+
 impl<B: AccountStorage> ExecutorState<'_, B> {
     #[allow(clippy::too_many_lines)]
     #[maybe_async]
@@ -229,39 +259,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
             _ => Err(Error::UnknownPrecompileMethodSelector(*address, selector)),
         }
     }
-}
 
-#[inline]
-fn read_u8(input: &[u8]) -> Result<u8> {
-    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32])
-        .try_into()
-        .map_err(Into::into)
-}
-
-#[inline]
-fn read_u64(input: &[u8]) -> Result<u64> {
-    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32])
-        .try_into()
-        .map_err(Into::into)
-}
-
-#[inline]
-fn read_pubkey(input: &[u8]) -> Result<Pubkey> {
-    if input.len() < 32 {
-        return Err(Error::OutOfBounds);
-    }
-    Ok(Pubkey::new_from_array(*arrayref::array_ref![input, 0, 32]))
-}
-
-#[inline]
-fn read_salt(input: &[u8]) -> Result<&[u8; 32]> {
-    if input.len() < 32 {
-        return Err(Error::OutOfBounds);
-    }
-    Ok(arrayref::array_ref![input, 0, 32])
-}
-
-impl<B: AccountStorage> ExecutorState<'_, B> {
     fn create_account(
         &mut self,
         account: &OwnedAccountInfo,

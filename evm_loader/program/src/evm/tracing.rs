@@ -50,14 +50,19 @@ pub enum Event {
     },
 }
 
+pub trait StorageTracer {
+    fn read_storage(&self, address: Address, index: U256, value: [u8; 32]);
+    fn write_storage(&self, address: Address, index: U256, value: [u8; 32]);
+}
+
 #[derive(Default)]
 pub struct StorageStateTracer {
     initial_storage: RefCell<BTreeMap<Address, BTreeMap<H256, H256>>>,
     final_storage: RefCell<BTreeMap<Address, BTreeMap<H256, H256>>>,
 }
 
-impl StorageStateTracer {
-    pub fn read_storage(&self, address: Address, index: U256, value: [u8; 32]) {
+impl StorageTracer for StorageStateTracer {
+    fn read_storage(&self, address: Address, index: U256, value: [u8; 32]) {
         let mut initial_storage = self.initial_storage.borrow_mut();
         let account_initial_storage = initial_storage.entry(address).or_default();
 
@@ -66,14 +71,16 @@ impl StorageStateTracer {
             .or_insert_with(|| H256::from(value));
     }
 
-    pub fn write_storage(&self, address: Address, index: U256, value: [u8; 32]) {
+    fn write_storage(&self, address: Address, index: U256, value: [u8; 32]) {
         self.final_storage
             .borrow_mut()
             .entry(address)
             .or_default()
             .insert(H256::from(index.to_be_bytes()), H256::from(value));
     }
+}
 
+impl StorageStateTracer {
     pub fn initial_storage_for_address(&self, address: &Address) -> Option<BTreeMap<H256, H256>> {
         self.initial_storage.borrow().get(address).cloned()
     }

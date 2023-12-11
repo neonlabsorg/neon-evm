@@ -11,6 +11,7 @@ use crate::error::{Error, Result};
 use crate::evm::database::Database;
 #[cfg(not(target_os = "solana"))]
 use crate::evm::tracing::StorageStateTracer;
+use crate::evm::tracing::StorageTracer;
 use crate::evm::{Context, ExitStatus};
 use crate::types::Address;
 

@@ -5,6 +5,7 @@ use map_macro::hash_map;
 
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::evm::database::Database;
+use evm_loader::evm::tracing::StorageStateTracer;
 use evm_loader::executor::ExecutorState;
 use evm_loader::solana_program::pubkey::Pubkey;
 use evm_loader::types::Address;
@@ -61,7 +62,7 @@ async fn trace_transfer_transaction(trace_config: TraceConfig, expected_trace: &
 
     let tracer = new_tracer(gas_used, trace_config).unwrap();
 
-    let mut backend = ExecutorState::new(&mut test_account_storage);
+    let mut backend = ExecutorState::<_, StorageStateTracer>::new(&mut test_account_storage);
 
     let emulate_response = emulate_trx(trx, &mut backend, 1000, Some(Rc::clone(&tracer)))
         .await

@@ -7,6 +7,7 @@ use solana_sdk::account::Account;
 use evm_loader::account::ContractAccount;
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::evm::database::Database;
+use evm_loader::evm::tracing::StorageStateTracer;
 use evm_loader::executor::ExecutorState;
 use evm_loader::solana_program::pubkey::Pubkey;
 use evm_loader::types::Address;
@@ -66,7 +67,7 @@ async fn trace_increment_with_input(trace_config: TraceConfig, expected_trace: &
 
     let trx = increment_with_input_tx_params(gas_used, origin, target).await;
 
-    let mut backend = ExecutorState::new(&mut test_account_storage);
+    let mut backend = ExecutorState::<_, StorageStateTracer>::new(&mut test_account_storage);
 
     let emulate_response = emulate_trx(trx, &mut backend, 10000, Some(Rc::clone(&tracer)))
         .await

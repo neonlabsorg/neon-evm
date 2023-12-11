@@ -7,6 +7,7 @@ use solana_program::{
     system_instruction, system_program, sysvar::Sysvar,
 };
 
+use crate::evm::tracing::StorageTracer;
 use crate::{
     account::ACCOUNT_SEED_VERSION,
     account_storage::AccountStorage,
@@ -35,8 +36,8 @@ use crate::{
 
 #[allow(clippy::too_many_lines)]
 #[maybe_async]
-pub async fn spl_token<B: AccountStorage>(
-    state: &mut ExecutorState<'_, B>,
+pub async fn spl_token(
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     address: &Address,
     input: &[u8],
     context: &crate::evm::Context,
@@ -258,8 +259,8 @@ fn read_salt(input: &[u8]) -> Result<&[u8; 32]> {
     Ok(arrayref::array_ref![input, 0, 32])
 }
 
-fn create_account<B: AccountStorage>(
-    state: &mut ExecutorState<B>,
+fn create_account(
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     account: &OwnedAccountInfo,
     space: usize,
     seeds: Vec<Vec<u8>>,
@@ -288,9 +289,9 @@ fn create_account<B: AccountStorage>(
 }
 
 #[maybe_async]
-async fn initialize_mint<B: AccountStorage>(
+async fn initialize_mint(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<'_, B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     seed: &[u8],
     decimals: u8,
     mint_authority: Option<Pubkey>,
@@ -337,9 +338,9 @@ async fn initialize_mint<B: AccountStorage>(
 }
 
 #[maybe_async]
-async fn initialize_account<B: AccountStorage>(
+async fn initialize_account(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<'_, B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     seed: &[u8],
     mint: Pubkey,
     owner: Option<Pubkey>,
@@ -383,9 +384,9 @@ async fn initialize_account<B: AccountStorage>(
     Ok(account_key.to_bytes().to_vec())
 }
 
-fn close_account<B: AccountStorage>(
+fn close_account(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     account: Pubkey,
 ) -> Result<Vec<u8>> {
     let signer = context.caller;
@@ -409,9 +410,9 @@ fn close_account<B: AccountStorage>(
     Ok(vec![])
 }
 
-fn approve<B: AccountStorage>(
+fn approve(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     source: Pubkey,
     target: Pubkey,
     amount: u64,
@@ -438,9 +439,9 @@ fn approve<B: AccountStorage>(
     Ok(vec![])
 }
 
-fn revoke<B: AccountStorage>(
+fn revoke(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     account: Pubkey,
 ) -> Result<Vec<u8>> {
     let signer = context.caller;
@@ -458,9 +459,9 @@ fn revoke<B: AccountStorage>(
     Ok(vec![])
 }
 
-fn transfer<B: AccountStorage>(
+fn transfer(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     source: Pubkey,
     target: Pubkey,
     amount: u64,
@@ -487,9 +488,9 @@ fn transfer<B: AccountStorage>(
     Ok(vec![])
 }
 
-fn transfer_with_seed<B: AccountStorage>(
+fn transfer_with_seed(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     seed: &[u8; 32],
     source: Pubkey,
     target: Pubkey,
@@ -525,9 +526,9 @@ fn transfer_with_seed<B: AccountStorage>(
     Ok(vec![])
 }
 
-fn mint_to<B: AccountStorage>(
+fn mint_to(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     mint: Pubkey,
     target: Pubkey,
     amount: u64,
@@ -554,9 +555,9 @@ fn mint_to<B: AccountStorage>(
     Ok(vec![])
 }
 
-fn burn<B: AccountStorage>(
+fn burn(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     mint: Pubkey,
     source: Pubkey,
     amount: u64,
@@ -584,9 +585,9 @@ fn burn<B: AccountStorage>(
     Ok(vec![])
 }
 
-fn freeze<B: AccountStorage>(
+fn freeze(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     mint: Pubkey,
     target: Pubkey,
 ) -> Result<Vec<u8>> {
@@ -611,9 +612,9 @@ fn freeze<B: AccountStorage>(
     Ok(vec![])
 }
 
-fn thaw<B: AccountStorage>(
+fn thaw(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     mint: Pubkey,
     target: Pubkey,
 ) -> Result<Vec<u8>> {
@@ -640,9 +641,9 @@ fn thaw<B: AccountStorage>(
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn find_account<B: AccountStorage>(
+fn find_account(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     seed: &[u8],
 ) -> Result<Vec<u8>> {
     let signer = context.caller;
@@ -661,9 +662,9 @@ fn find_account<B: AccountStorage>(
 }
 
 #[maybe_async]
-async fn is_system_account<B: AccountStorage>(
+async fn is_system_account(
     _context: &crate::evm::Context,
-    state: &mut ExecutorState<'_, B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     account: Pubkey,
 ) -> Result<Vec<u8>> {
     let account = state.external_account(account).await?;
@@ -678,9 +679,9 @@ async fn is_system_account<B: AccountStorage>(
 }
 
 #[maybe_async]
-async fn get_account<B: AccountStorage>(
+async fn get_account(
     _context: &crate::evm::Context,
-    state: &mut ExecutorState<'_, B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     account: Pubkey,
 ) -> Result<Vec<u8>> {
     let account = state.external_account(account).await?;
@@ -713,9 +714,9 @@ async fn get_account<B: AccountStorage>(
 }
 
 #[maybe_async]
-async fn get_mint<B: AccountStorage>(
+async fn get_mint(
     _context: &crate::evm::Context,
-    state: &mut ExecutorState<'_, B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     account: Pubkey,
 ) -> Result<Vec<u8>> {
     let account = state.external_account(account).await?;

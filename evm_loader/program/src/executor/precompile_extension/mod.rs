@@ -1,3 +1,4 @@
+use crate::evm::tracing::StorageTracer;
 use crate::{account_storage::AccountStorage, error::Result, evm::Context, types::Address};
 use maybe_async::maybe_async;
 
@@ -8,7 +9,7 @@ mod neon_token;
 mod query_account;
 mod spl_token;
 
-impl<'a, B: AccountStorage> ExecutorState<'a, B> {
+impl<'a, B: AccountStorage, T: StorageTracer> ExecutorState<'a, B, T> {
     #[deprecated]
     const _SYSTEM_ACCOUNT_ERC20_WRAPPER: Address = Address([
         0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01,

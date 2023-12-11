@@ -9,6 +9,7 @@ use mpl_token_metadata::state::{
 };
 use solana_program::{pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
 
+use crate::evm::tracing::StorageTracer;
 use crate::{
     account::ACCOUNT_SEED_VERSION,
     account_storage::AccountStorage,
@@ -26,8 +27,8 @@ use crate::{
 // "[0x6b, 0xaa, 0x03, 0x30]": "symbol(bytes32)"
 
 #[maybe_async]
-pub async fn metaplex<B: AccountStorage>(
-    state: &mut ExecutorState<'_, B>,
+pub async fn metaplex(
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     address: &Address,
     input: &[u8],
     context: &crate::evm::Context,
@@ -143,9 +144,9 @@ fn read_string(input: &[u8], offset_position: usize, max_length: usize) -> Resul
     String::from_utf8(data).map_err(|_| Error::Custom("Invalid utf8 string".to_string()))
 }
 
-fn create_metadata<B: AccountStorage>(
+fn create_metadata(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<B>,
+    state: &mut ExecutorState<impl AccountStorage, impl StorageTracer>,
     mint: Pubkey,
     name: String,
     symbol: String,
@@ -200,9 +201,9 @@ fn create_metadata<B: AccountStorage>(
     Ok(metadata_pubkey.to_bytes().to_vec())
 }
 
-fn create_master_edition<B: AccountStorage>(
+fn create_master_edition(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<B>,
+    state: &mut ExecutorState<impl AccountStorage, impl StorageTracer>,
     mint: Pubkey,
     max_supply: Option<u64>,
 ) -> Result<Vec<u8>> {
@@ -238,9 +239,9 @@ fn create_master_edition<B: AccountStorage>(
 }
 
 #[maybe_async]
-async fn is_initialized<B: AccountStorage>(
+async fn is_initialized(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<'_, B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let is_initialized = metadata(context, state, mint)
@@ -251,9 +252,9 @@ async fn is_initialized<B: AccountStorage>(
 }
 
 #[maybe_async]
-async fn is_nft<B: AccountStorage>(
+async fn is_nft(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<'_, B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let is_nft = metadata(context, state, mint).await?.map_or_else(
@@ -265,9 +266,9 @@ async fn is_nft<B: AccountStorage>(
 }
 
 #[maybe_async]
-async fn uri<B: AccountStorage>(
+async fn uri(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<'_, B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let uri = metadata(context, state, mint)
@@ -278,9 +279,9 @@ async fn uri<B: AccountStorage>(
 }
 
 #[maybe_async]
-async fn token_name<B: AccountStorage>(
+async fn token_name(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<'_, B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let token_name = metadata(context, state, mint)
@@ -291,9 +292,9 @@ async fn token_name<B: AccountStorage>(
 }
 
 #[maybe_async]
-async fn symbol<B: AccountStorage>(
+async fn symbol(
     context: &crate::evm::Context,
-    state: &mut ExecutorState<'_, B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let symbol = metadata(context, state, mint)
@@ -304,9 +305,9 @@ async fn symbol<B: AccountStorage>(
 }
 
 #[maybe_async]
-async fn metadata<B: AccountStorage>(
+async fn metadata(
     _context: &crate::evm::Context,
-    state: &mut ExecutorState<'_, B>,
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     mint: Pubkey,
 ) -> Result<Option<Metadata>> {
     let (metadata_pubkey, _) = mpl_token_metadata::pda::find_metadata_account(&mint);

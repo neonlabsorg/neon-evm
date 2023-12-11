@@ -8,6 +8,7 @@ use crate::account_storage::EmulatorAccountStorage;
 use crate::commands::get_config::BuildConfigSimulator;
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::evm::database::Database;
+use evm_loader::evm::tracing::StorageStateTracer;
 use evm_loader::evm::Buffer;
 use evm_loader::executor::ExecutorState;
 use evm_loader::types::Address;
@@ -39,7 +40,7 @@ pub trait ExecutorStateExt {
 
 #[async_trait(?Send)]
 impl<T: Rpc + BuildConfigSimulator> ExecutorStateExt
-    for ExecutorState<'_, EmulatorAccountStorage<'_, T>>
+    for ExecutorState<'_, EmulatorAccountStorage<'_, T>, StorageStateTracer>
 {
     fn used_addresses(&self) -> BTreeSet<Address> {
         self.backend.used_addresses.borrow().clone()

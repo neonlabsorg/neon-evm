@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use ethnum::U256;
+use evm_loader::evm::tracing::StorageStateTracer;
 use map_macro::hash_map;
 
 use evm_loader::executor::ExecutorState;
@@ -76,7 +77,7 @@ async fn trace_contract_creation(trace_config: TraceConfig, expected_trace: &str
         ..TxParams::default()
     };
 
-    let mut backend = ExecutorState::new(&mut test_account_storage);
+    let mut backend = ExecutorState::<_, StorageStateTracer>::new(&mut test_account_storage);
 
     let emulate_response = emulate_trx(tx_params, &mut backend, 1000, Some(Rc::clone(&tracer)))
         .await

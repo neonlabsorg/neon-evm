@@ -21,9 +21,9 @@ use super::OwnedAccountInfo;
 
 /// Represents the state of executor abstracted away from a self.backend.
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
-pub struct ExecutorState<'a, B: AccountStorage> {
+pub struct ExecutorState<'a, B: AccountStorage, T: StorageTracer> {
     #[cfg(not(target_os = "solana"))]
-    pub storage_state_tracer: StorageStateTracer,
+    pub storage_state_tracer: T,
     pub backend: &'a mut B,
     cache: RefCell<Cache>,
     actions: Vec<Action>,
@@ -53,16 +53,16 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     }
 }
 
-impl<'a, B: AccountStorage> ExecutorState<'a, B> {
+impl<'a, B: AccountStorage, T: StorageTracer> ExecutorState<'a, B, T> {
     #[must_use]
-    pub fn new(backend: &'a mut B) -> Self {
+    pub fn new(backend: &'a mut B) -> ExecutorState<'a, B, StorageStateTracer> {
         let cache = Cache {
             solana_accounts: BTreeMap::new(),
             block_number: backend.block_number(),
             block_timestamp: backend.block_timestamp(),
         };
 
-        Self {
+        ExecutorState {
             #[cfg(not(target_os = "solana"))]
             storage_state_tracer: StorageStateTracer::default(),
             backend,
@@ -209,7 +209,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 }
 
 #[maybe_async(?Send)]
-impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
+impl<'a, B: AccountStorage, T: StorageTracer> Database for ExecutorState<'a, B, T> {
     async fn nonce(&self, from_address: Address, from_chain_id: u64) -> Result<u64> {
         let mut nonce = self
             .backend
@@ -252,7 +252,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
                     target,
                     chain_id,
                     value,
-                } if (&from_chain_id == chain_id) => {
+                } if &from_chain_id == chain_id => {
                     if &from_address == source {
                         balance = balance.checked_sub(*value).ok_or(Error::IntegerOverflow)?;
                     }

@@ -5,6 +5,7 @@ use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
+use crate::evm::tracing::StorageTracer;
 use crate::{
     account_storage::AccountStorage,
     error::{Error, Result},
@@ -32,8 +33,8 @@ use crate::{
 // "7dd6c1a0": "data(bytes32,uint64,uint64)",
 
 #[maybe_async]
-pub async fn query_account<B: AccountStorage>(
-    state: &mut ExecutorState<'_, B>,
+pub async fn query_account(
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     address: &Address,
     input: &[u8],
     context: &crate::evm::Context,
@@ -103,8 +104,8 @@ pub async fn query_account<B: AccountStorage>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_owner<B: AccountStorage>(
-    state: &mut ExecutorState<'_, B>,
+async fn account_owner(
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     address: &Pubkey,
 ) -> Result<Vec<u8>> {
     let owner = state
@@ -117,8 +118,8 @@ async fn account_owner<B: AccountStorage>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_lamports<B: AccountStorage>(
-    state: &mut ExecutorState<'_, B>,
+async fn account_lamports(
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     address: &Pubkey,
 ) -> Result<Vec<u8>> {
     let lamports: U256 = state
@@ -134,8 +135,8 @@ async fn account_lamports<B: AccountStorage>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_rent_epoch<B: AccountStorage>(
-    state: &mut ExecutorState<'_, B>,
+async fn account_rent_epoch(
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     address: &Pubkey,
 ) -> Result<Vec<u8>> {
     let epoch: U256 = state
@@ -151,8 +152,8 @@ async fn account_rent_epoch<B: AccountStorage>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_is_executable<B: AccountStorage>(
-    state: &mut ExecutorState<'_, B>,
+async fn account_is_executable(
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     address: &Pubkey,
 ) -> Result<Vec<u8>> {
     let executable: U256 = state
@@ -168,8 +169,8 @@ async fn account_is_executable<B: AccountStorage>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_data_length<B: AccountStorage>(
-    state: &mut ExecutorState<'_, B>,
+async fn account_data_length(
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     address: &Pubkey,
 ) -> Result<Vec<u8>> {
     let length: U256 = state
@@ -185,8 +186,8 @@ async fn account_data_length<B: AccountStorage>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_data<B: AccountStorage>(
-    state: &mut ExecutorState<'_, B>,
+async fn account_data(
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     address: &Pubkey,
     offset: usize,
     length: usize,
@@ -211,8 +212,8 @@ async fn account_data<B: AccountStorage>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_info<B: AccountStorage>(
-    state: &mut ExecutorState<'_, B>,
+async fn account_info(
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     address: &Pubkey,
 ) -> Result<Vec<u8>> {
     fn to_solidity_account_value(info: &AccountInfo) -> Vec<u8> {

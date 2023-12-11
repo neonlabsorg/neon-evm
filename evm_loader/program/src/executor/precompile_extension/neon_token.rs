@@ -8,6 +8,7 @@ use solana_program::{
 };
 use spl_associated_token_account::get_associated_token_address;
 
+use crate::evm::tracing::StorageTracer;
 use crate::{
     account::token,
     account_storage::AccountStorage,
@@ -23,8 +24,8 @@ use crate::{
 const NEON_TOKEN_METHOD_WITHDRAW_ID: &[u8; 4] = &[0x8e, 0x19, 0x89, 0x9e];
 
 #[maybe_async]
-pub async fn neon_token<B: AccountStorage>(
-    state: &mut ExecutorState<'_, B>,
+pub async fn neon_token(
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     address: &Address,
     input: &[u8],
     context: &crate::evm::Context,
@@ -66,8 +67,8 @@ pub async fn neon_token<B: AccountStorage>(
 }
 
 #[maybe_async]
-async fn withdraw<B: AccountStorage>(
-    state: &mut ExecutorState<'_, B>,
+async fn withdraw(
+    state: &mut ExecutorState<'_, impl AccountStorage, impl StorageTracer>,
     source: Address,
     chain_id: u64,
     target: Pubkey,

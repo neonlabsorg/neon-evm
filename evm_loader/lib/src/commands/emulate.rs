@@ -16,7 +16,7 @@ use crate::{
     NeonResult,
 };
 use evm_loader::account_storage::AccountStorage;
-use evm_loader::evm::tracing::{EventListener, TracerTypeOpt};
+use evm_loader::evm::tracing::{EventListener, StorageStateTracer, TracerTypeOpt};
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
@@ -80,13 +80,17 @@ pub async fn execute(
     .await?;
 
     let step_limit = emulate_request.step_limit.unwrap_or(100_000);
-    let mut backend = ExecutorState::new(&mut storage);
+    let mut backend = ExecutorState::<_, StorageStateTracer>::new(&mut storage);
     emulate_trx(emulate_request.tx, &mut backend, step_limit, tracer).await
 }
 
 pub async fn emulate_trx(
     tx_params: TxParams,
-    backend: &mut ExecutorState<'_, EmulatorAccountStorage<'_, impl Rpc + BuildConfigSimulator>>,
+    backend: &mut ExecutorState<
+        '_,
+        EmulatorAccountStorage<'_, impl Rpc + BuildConfigSimulator>,
+        StorageStateTracer,
+    >,
     step_limit: u64,
     tracer: TracerTypeOpt<impl EventListener>,
 ) -> NeonResult<EmulateResponse> {

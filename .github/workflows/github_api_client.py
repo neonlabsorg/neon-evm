@@ -36,7 +36,8 @@ class GithubClient():
         if response.status_code != 204:
             raise RuntimeError("proxy-model.py action is not triggered")
 
-    def get_branches_list(self, endpoint):
+    @staticmethod
+    def get_branches_list(endpoint):
         proxy_branches_obj = requests.get(
             f"{endpoint}/branches?per_page=100").json()
         return [item["name"] for item in proxy_branches_obj]

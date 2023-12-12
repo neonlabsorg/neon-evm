@@ -40,7 +40,7 @@ docker_client = docker.APIClient()
 NEON_TEST_IMAGE_NAME=f"{DOCKERHUB_ORG_NAME}/neon_tests"
 
 PROXY_ENDPOINT = os.environ.get("PROXY_ENDPOINT")
-NEON_TEST_ENDPOINT = os.environ.get("NEON_TEST_ENDPOINT")
+NEON_TESTS_ENDPOINT = os.environ.get("NEON_TESTS_ENDPOINT", "https://api.github.com/repos/neonlabsorg/neon-tests")
 
 @click.group()
 def cli():
@@ -105,12 +105,10 @@ def run_subprocess(command):
 @cli.command(name="run_tests")
 @click.option('--github_sha')
 @click.option('--neon_test_branch')
-@click.option('--token')
-def run_tests(github_sha, neon_test_branch, token):
+def run_tests(github_sha, neon_test_branch):
     os.environ["EVM_LOADER_IMAGE"] = f"{IMAGE_NAME}:{github_sha}"
 
-    github = GithubClient(token)
-    if neon_test_branch in github.get_branches_list(NEON_TEST_ENDPOINT) \
+    if neon_test_branch in GithubClient.get_branches_list(NEON_TESTS_ENDPOINT) \
             and neon_test_branch not in ('master', 'develop'):
         neon_test_image_tag = neon_test_branch
     else:
@@ -194,7 +192,7 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
 
     github = GithubClient(token)
 
-    if head_ref_branch in github.get_proxy_branches():
+    if head_ref_branch in github.get_branches_list(PROXY_ENDPOINT):
         proxy_branch = head_ref_branch
     elif re.match(VERSION_BRANCH_TEMPLATE, base_ref_branch):
         proxy_branch = base_ref_branch

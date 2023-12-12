@@ -20,7 +20,7 @@ services:
     networks:
       - net
 
-  dk-neon-api:
+  neon-core-api:
     restart: unless-stopped
     hostname: neon_api
     entrypoint:

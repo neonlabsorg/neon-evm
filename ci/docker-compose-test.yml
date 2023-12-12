@@ -23,7 +23,7 @@ services:
       - net
 
   neon-core-api:
-    container_name: dk-neon-api
+    container_name: neon-core-api
     restart: unless-stopped
     hostname: neon_api
     entrypoint:

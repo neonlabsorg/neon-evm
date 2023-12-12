@@ -37,7 +37,7 @@ SOLANA_BPF_VERSION = 'v1.16.23'
 
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 docker_client = docker.APIClient()
-NEON_TEST_IMAGE_NAME=f"{DOCKERHUB_ORG_NAME}/neon_tests"
+NEON_TEST_IMAGE_NAME = f"{DOCKERHUB_ORG_NAME.lower()}/neon_tests"
 
 PROXY_ENDPOINT = os.environ.get("PROXY_ENDPOINT")
 NEON_TESTS_ENDPOINT = os.environ.get("NEON_TESTS_ENDPOINT")

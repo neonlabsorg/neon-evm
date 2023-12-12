@@ -33,11 +33,6 @@ FROM neonlabsorg/neon_test_invoke_program:develop AS neon_test_invoke_program
 
 # Define solana-image that contains utility
 FROM builder AS base
-RUN apt-get update
-RUN apt-get -y install curl python3 python3-pip
-
-COPY tests/requirements.txt /tmp/
-RUN pip3 install -r /tmp/requirements.txt
 
 RUN solana program dump metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s /opt/metaplex.so --url mainnet-beta
 

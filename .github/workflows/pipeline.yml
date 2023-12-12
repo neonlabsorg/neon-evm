@@ -15,7 +15,7 @@ env:
   DHUBP: ${{secrets.DHUBP}}
   IMAGE_NAME: ${{vars.IMAGE_NAME}}
   PROXY_ENDPOINT: ${{vars.PROXY_ENDPOINT}}
-  NEON_TESTS_ENDPOINT: ${{vars.NEON_TESTS_ENDPOINT}}
+  NEON_TESTS_ENDPOINT: #${{vars.NEON_TESTS_ENDPOINT}}
   RUN_LINK_REPO: ${{vars.RUN_LINK_REPO}}
   BUILD_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 

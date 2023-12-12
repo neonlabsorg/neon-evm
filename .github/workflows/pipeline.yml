@@ -74,8 +74,7 @@ jobs:
         run: |
           python3 ./.github/workflows/deploy.py run_tests \
           --github_sha=${GITHUB_SHA} \
-          --neon_test_branch=${{ steps.neon_test_branch.outputs.value }} \
-          --token=${{secrets.GHTOKEN }} \
+          --neon_test_branch=${{ steps.neon_test_branch.outputs.value }}
   trigger-proxy-tests:
     runs-on: trigger-runner
     needs:

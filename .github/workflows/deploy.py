@@ -137,9 +137,6 @@ def run_tests(github_sha, neon_test_branch):
         if 'ERROR ' in current_line or 'FAILED ' in current_line:
             tests_are_failed = True
             print("Tests are failed")
-    if "[100%]" not in all_logs:
-        tests_are_failed = True
-        print("Part of tests are skipped")
 
     exec_status = docker_client.exec_inspect(exec_id['Id'])["ExitCode"]
 

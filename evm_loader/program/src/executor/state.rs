@@ -389,7 +389,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
                     }
                     _ => {
                         return Err(Error::Custom(format!(
-                            "Unknown external program: {program_id}"
+                            "Unknown external program for emulate: {program_id}"
                         )));
                     }
                 }
@@ -483,6 +483,16 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         };
 
         self.actions.push(action);
+        Ok(())
+    }
+
+    fn execute_external_instruction(
+        &mut self,
+        _instruction: Instruction,
+        _seeds: Vec<Vec<u8>>,
+        _fee: u64,
+    ) -> Result<()> {
+        assert!(false, "execute_external_instruction not implemented for ExecutorState");
         Ok(())
     }
 

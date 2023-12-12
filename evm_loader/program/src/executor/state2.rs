@@ -222,6 +222,7 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
 
     fn revert_snapshot(&mut self) {
         // TODO: revert snapshot not implemented for SyncedExecutorState
+        assert!(false, "revert snapshot not implemented for SyncedExecutorState");
     }
 
     fn commit_snapshot(&mut self) {
@@ -252,6 +253,16 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
     }
 
     fn queue_external_instruction(
+        &mut self,
+        instruction: Instruction,
+        seeds: Vec<Vec<u8>>,
+        fee: u64,
+    ) -> Result<()> {
+        self.backend.execute_external_instruction(instruction, seeds, fee)?;
+        Ok(())
+    }
+
+    fn execute_external_instruction(
         &mut self,
         instruction: Instruction,
         seeds: Vec<Vec<u8>>,

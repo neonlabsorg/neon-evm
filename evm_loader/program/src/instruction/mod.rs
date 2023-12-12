@@ -172,6 +172,56 @@ pub enum EvmInstruction {
     ///  20..28 - chain id in little endian
     AccountCreateBalance,
 
+    /// Execute Transaction from Instruction in single iteration with call to Solana programs
+    ///
+    /// Accounts:
+    ///  `[WRITE,SIGNER]` Operator
+    ///  `[WRITE]` Treasury
+    ///  `[WRITE]` Operator Balance
+    ///  `[]` System program
+    ///  `[WRITE?]` Other accounts
+    /// Instruction data:
+    ///  0..4 - treasury index in little endian
+    ///  4..  - transaction data
+    TransactionExecuteFromInstructionWithSolanaCall,
+
+    /// Execute Transaction from Account in single iteration
+    ///
+    /// Accounts:
+    ///  `[]` Holder
+    ///  `[WRITE,SIGNER]` Operator
+    ///  `[WRITE]` Treasury
+    ///  `[WRITE]` Operator Balance
+    ///  `[]` System program
+    ///  `[WRITE?]` Other accounts
+    /// Instruction data:
+    ///  0..4 - treasury index in little endian
+    TransactionExecuteFromAccountWithSolanaCall,
+
+    /// Execute Iterative Transaction from Account
+    ///
+    /// Accounts:
+    ///  `[WRITE]` Holder/State
+    ///  `[WRITE,SIGNER]` Operator
+    ///  `[WRITE]` Treasury
+    ///  `[WRITE]` Operator Balance
+    ///  `[]` System program
+    ///  `[WRITE]`  Other accounts
+    /// Instruction data:
+    ///  0..4 - treasury index in little endian
+    ///  4..8 - step count in little endian
+    TransactionStepFromAccountSolanaCall,
+
+    /// Cancel Transaction
+    ///
+    /// Accounts:
+    ///  `[WRITE]` State
+    ///  `[SIGNER]` Operator
+    ///  `[WRITE]` Operator Balance
+    /// Instruction data:
+    ///   0..32 - transaction hash
+    CancelSolanaCall,
+
     ConfigGetChainCount,
     ConfigGetChainInfo,
     ConfigGetEnvironment,
@@ -204,6 +254,10 @@ impl EvmInstruction {
             0x35 => Self::TransactionStepFromAccount,        // 53
             0x36 => Self::TransactionStepFromAccountNoChainId, // 54
             0x37 => Self::Cancel,                            // 55
+            0x38 => Self::TransactionExecuteFromInstructionWithSolanaCall, // 56
+            0x39 => Self::TransactionExecuteFromAccountWithSolanaCall, // 57
+            0x3A => Self::TransactionStepFromAccountSolanaCall, // 58
+            0x3B => Self::CancelSolanaCall, // 59
 
             0xA0 => Self::ConfigGetChainCount, // 160
             0xA1 => Self::ConfigGetChainInfo,
@@ -242,3 +296,5 @@ pub mod transaction_step;
 pub mod transaction_step_from_account;
 pub mod transaction_step_from_account_no_chainid;
 pub mod transaction_step_from_instruction;
+pub mod transaction_execute_from_instruction_solana_call;
+pub mod transaction_execute_from_account_solana_call;

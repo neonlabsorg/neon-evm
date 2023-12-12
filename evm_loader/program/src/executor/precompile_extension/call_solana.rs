@@ -83,7 +83,7 @@ pub async fn call_solana<State: Database>(
         
             let instruction = Instruction::new_with_bytes(program_id, data, accounts);
             // TODO: this instruction can create accounts inside, so we need to specify correct fee. How we can get it?
-            state.queue_external_instruction(instruction, seeds, 0)?;
+            state.execute_external_instruction(instruction, seeds, 0)?;
 
             Ok(vec![])
         }

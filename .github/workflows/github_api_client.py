@@ -4,7 +4,6 @@ import os
 
 
 class GithubClient():
-    PROXY_ENDPOINT = os.environ.get("PROXY_ENDPOINT")
 
     def __init__(self, token):
         self.headers = {"Authorization": f"Bearer {token}",
@@ -37,9 +36,9 @@ class GithubClient():
         if response.status_code != 204:
             raise RuntimeError("proxy-model.py action is not triggered")
 
-    def get_proxy_branches(self):
+    def get_branches_list(self, endpoint):
         proxy_branches_obj = requests.get(
-            f"{self.PROXY_ENDPOINT}/branches?per_page=100").json()
+            f"{endpoint}/branches?per_page=100").json()
         return [item["name"] for item in proxy_branches_obj]
 
     def get_proxy_run_info(self, id):

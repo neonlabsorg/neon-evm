@@ -53,7 +53,7 @@ services:
       - SOLANA_URL=http://solana:8899
       - NEON_CORE_API_URL=http://neon_api:8085/api
     hostname: tests
-    command: tail -f /dev/null
+    command: sleep infinity
     networks:
       - net
 

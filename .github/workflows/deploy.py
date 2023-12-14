@@ -41,7 +41,6 @@ NEON_TEST_IMAGE_NAME = f"{DOCKERHUB_ORG_NAME.lower()}/neon_tests"
 
 PROXY_ENDPOINT = os.environ.get("PROXY_ENDPOINT")
 NEON_TESTS_ENDPOINT = os.environ.get("NEON_TESTS_ENDPOINT")
-NEON_TESTS_ENDPOINT = "https://api.github.com/repos/neonlabsorg/neon-tests" #TODO
 
 @click.group()
 def cli():

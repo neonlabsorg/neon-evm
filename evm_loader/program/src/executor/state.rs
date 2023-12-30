@@ -35,8 +35,6 @@ pub struct ExecuteStatus {
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
 pub struct ExecutorState<'a, B: AccountStorage> {
     pub backend: &'a B,
-    // #[cfg(not(target_os = "solana"))]
-    // pub solana_emulator: &'a E,
 
     cache: RefCell<Cache>,
     actions: Vec<Action>,

@@ -15,6 +15,7 @@ use maybe_async::maybe_async;
 // "154d4aa5": "getNeonAddress(address)"
 // "59e4ad63": "getResourceAddress(bytes32)"
 // "4a890f31": "getSolanaPDA(bytes32,bytes)"
+// "09c5eabe": "execute(bytes)"
 
 
 #[maybe_async]
@@ -39,9 +40,31 @@ pub async fn call_solana<State: Database>(
     let (selector, input) = input.split_at(4);
     let selector: [u8; 4] = selector.try_into()?;
 
-    println!("Call arguments: {}", hex::encode(input));
+    #[cfg(not(target_os = "solana"))]
+    log::info!("Call arguments: {}", hex::encode(input));
 
     match selector {
+        [0x09, 0xc5, 0xea, 0xbe] => { // execute(bytes)
+            let instruction: Instruction = bincode::deserialize(input)
+                .map_err(|_| Error::OutOfBounds)?;
+
+            #[cfg(not(target_os = "solana"))]
+            log::info!("instruction: {:?}", instruction);
+
+            let signer = context.caller;
+            let (_signer_pubkey, bump_seed) = state.contract_pubkey(signer);
+
+            let seeds = vec![
+                vec![ACCOUNT_SEED_VERSION],
+                signer.as_bytes().to_vec(),
+                vec![bump_seed],
+            ];
+
+            // TODO: this instruction can create accounts inside, so we need to specify correct fee. How we can get it?
+            state.queue_external_instruction(instruction, seeds, 0, false)?;
+
+            Ok(vec![])
+        }
         [0x91, 0x18, 0x3f, 0x5a] => {
             // Call solana program
             const FLAG_WRITABLE: u8 = 0x01;
@@ -49,13 +72,13 @@ pub async fn call_solana<State: Database>(
 
             let signer = context.caller;
             let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-        
+
             let seeds = vec![
                 vec![ACCOUNT_SEED_VERSION],
                 signer.as_bytes().to_vec(),
                 vec![bump_seed],
             ];
-        
+
             let program_id = read_pubkey(&input[0..])?;
             let accounts_offset = read_usize(&input[32..])?;
             let data_offset = read_usize(&input[64..])?;
@@ -82,8 +105,9 @@ pub async fn call_solana<State: Database>(
             let data = &input[data_offset+32..data_offset+32+data_length];
         
             let instruction = Instruction::new_with_bytes(program_id, data, accounts);
+
             // TODO: this instruction can create accounts inside, so we need to specify correct fee. How we can get it?
-            state.execute_external_instruction(instruction, seeds, 0)?;
+            state.queue_external_instruction(instruction, seeds, 0, false)?;
 
             Ok(vec![])
         }

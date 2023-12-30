@@ -117,7 +117,7 @@ async fn withdraw<State: Database>(
 
         let rent = Rent::get()?;
         let fee = rent.minimum_balance(spl_token::state::Account::LEN);
-        state.queue_external_instruction(create_associated, vec![], fee)?;
+        state.queue_external_instruction(create_associated, vec![], fee, true)?;
     }
 
     let (authority, bump_seed) =
@@ -135,7 +135,7 @@ async fn withdraw<State: Database>(
         mint_data.decimals,
     )?;
     let transfer_seeds = vec![b"Deposit".to_vec(), vec![bump_seed]];
-    state.queue_external_instruction(transfer, transfer_seeds, 0)?;
+    state.queue_external_instruction(transfer, transfer_seeds, 0, true)?;
 
     state.burn(source, chain_id, value).await?;
 

@@ -17,14 +17,34 @@ use super::cache::{cache_get_or_insert_account, Cache};
 use super::OwnedAccountInfo;
 use super::precompile_extension::PrecompiledContracts;
 
+#[cfg(not(target_os = "solana"))]
+#[derive(Default, Clone)]
+pub struct ExecuteStatus {
+    pub external_solana_calls: bool,
+    pub reverts_before_solana_calls: bool,
+    pub reverts_after_solana_calls: bool,
+}
+
+// pub trait SolanaEmulator {
+//     /// Emulate solana call
+//     async fn emulate_solana_call(&self, program_id: &Pubkey, data: &[u8], meta: &[AccountMeta],
+//         accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>, seeds: &Vec<Vec<u8>>) -> Result<()>;
+// }
+
 /// Represents the state of executor abstracted away from a self.backend.
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
 pub struct ExecutorState<'a, B: AccountStorage> {
     pub backend: &'a B,
+    // #[cfg(not(target_os = "solana"))]
+    // pub solana_emulator: &'a E,
+
     cache: RefCell<Cache>,
     actions: Vec<Action>,
     stack: Vec<usize>,
     exit_status: Option<ExitStatus>,
+
+    #[cfg(not(target_os = "solana"))]
+    pub execute_status: ExecuteStatus,
 }
 
 impl<'a, B: AccountStorage> ExecutorState<'a, B> {
@@ -45,6 +65,8 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
             actions,
             stack,
             exit_status,
+            #[cfg(not(target_os = "solana"))]
+            execute_status: ExecuteStatus::default(),
         })
     }
 
@@ -62,6 +84,8 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
             actions: Vec::with_capacity(64),
             stack: Vec::with_capacity(16),
             exit_status: None,
+            #[cfg(not(target_os = "solana"))]
+            execute_status: ExecuteStatus::default(),
         }
     }
 
@@ -367,9 +391,19 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
                 program_id,
                 data,
                 accounts: meta,
+                #[cfg(not(target_os = "solana"))] emulated_internally,
+                #[cfg(not(target_os = "solana"))] seeds,
                 ..
             } = action
             {
+                #[cfg(not(target_os = "solana"))]
+                if !emulated_internally {
+                    let result = self.backend.emulate_solana_call(program_id, data, meta, &mut accounts, seeds).await;
+                    log::info!("Emulated internally: {:?}", result);
+                    result?;
+                    continue;
+                }
+
                 match program_id {
                     program_id if solana_program::system_program::check_id(program_id) => {
                         crate::external_programs::system::emulate(data, meta, &mut accounts)?;
@@ -412,6 +446,13 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     fn revert_snapshot(&mut self) {
+        #[cfg(not(target_os = "solana"))]
+        if self.execute_status.external_solana_calls {
+            self.execute_status.reverts_after_solana_calls = true;
+        } else {
+            self.execute_status.reverts_before_solana_calls = true;
+        }
+
         let actions_len = self
             .stack
             .pop()
@@ -441,8 +482,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     ) -> Option<Result<Vec<u8>>> {
         PrecompiledContracts::call_precompile_extension(self, context, address, data, is_static)
             .await
-        // self.call_precompile_extension(context, address, data, is_static)
-        //     .await
     }
 
     fn default_chain_id(&self) -> u64 {
@@ -473,27 +512,27 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         instruction: Instruction,
         seeds: Vec<Vec<u8>>,
         fee: u64,
+        emulated_internally: bool,
     ) -> Result<()> {
+        #[cfg(target_os = "solana")]
+        if !emulated_internally {
+            return Err(Error::UnavalableExternalSolanaCall);
+        }
+
+        #[cfg(not(target_os = "solana"))] {
+            self.execute_status.external_solana_calls = true;
+        }
+
         let action = Action::ExternalInstruction {
             program_id: instruction.program_id,
             data: instruction.data,
             accounts: instruction.accounts,
             seeds,
             fee,
+            emulated_internally,
         };
 
         self.actions.push(action);
         Ok(())
     }
-
-    fn execute_external_instruction(
-        &mut self,
-        _instruction: Instruction,
-        _seeds: Vec<Vec<u8>>,
-        _fee: u64,
-    ) -> Result<()> {
-        assert!(false, "execute_external_instruction not implemented for ExecutorState");
-        Ok(())
-    }
-
 }

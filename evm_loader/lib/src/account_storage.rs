@@ -6,12 +6,14 @@ use evm_loader::account::legacy::{
 use evm_loader::account::{TAG_ACCOUNT_CONTRACT, TAG_STORAGE_CELL};
 use evm_loader::account_storage::find_slot_hash;
 use evm_loader::types::Address;
+use solana_sdk::account::AccountSharedData;
 use solana_sdk::rent::Rent;
-use solana_sdk::system_program;
+use solana_sdk::{system_program, bpf_loader_upgradeable};
 use solana_sdk::sysvar::{slot_hashes, Sysvar};
-use std::collections::HashSet;
+use std::collections::{HashSet, BTreeMap};
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
+use crate::syscall_stubs;
 use crate::{rpc::Rpc, NeonError};
 use ethnum::U256;
 use evm_loader::{
@@ -23,13 +25,15 @@ use evm_loader::{
 use log::{debug, info, trace};
 use serde::{Deserialize, Serialize};
 use solana_client::client_error;
-use solana_sdk::{account::Account, account_info::AccountInfo, pubkey, pubkey::Pubkey};
+use solana_sdk::{account::Account, account_info::AccountInfo, pubkey, pubkey::Pubkey, instruction::{AccountMeta, Instruction}};
+use solana_program_test::{processor, ProgramTest, ProgramTestContext};
 
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
 use crate::tracing::{AccountOverride, AccountOverrides, BlockOverrides};
 use serde_with::{serde_as, DisplayFromStr};
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
+const SEEDS_PUBKEY: Pubkey = pubkey!("Seeds11111111111111111111111111111111111111");
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +56,53 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     block_number: u64,
     block_timestamp: i64,
     state_overrides: Option<AccountOverrides>,
+    solana_emulator: RefCell<ProgramTestContext>,
+}
+
+macro_rules! processor_with_original_stubs {
+    ($process_instruction:expr) => {
+        processor!(|program_id, accounts, instruction_data| {
+            let use_original_stubs_saved = syscall_stubs::use_original_stubs_for_thread(true);
+            let result = $process_instruction(program_id, accounts, instruction_data);
+            syscall_stubs::use_original_stubs_for_thread(use_original_stubs_saved);
+            result
+        })
+    };
+}
+
+// evm_loader stub to call solana programs like from original program
+// Pass signer seeds through the special account's data.
+fn process_emulator_instruction(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> solana_sdk::entrypoint::ProgramResult {
+    use solana_sdk::program_error::ProgramError;
+
+    let seeds: Vec<Vec<u8>> = bincode::deserialize(&accounts[0].data.borrow())
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    let seeds = seeds.iter()
+        .map(|v| v.as_slice())
+        .collect::<Vec<&[u8]>>();
+    let signer = Pubkey::create_program_address(&seeds, program_id)
+        .map_err(|_| ProgramError::InvalidSeeds)?;
+
+    let instruction = Instruction::new_with_bytes(
+        *accounts[1].key,
+        instruction_data,
+        accounts[2..].iter().map(|a| {
+            AccountMeta {
+                pubkey: *a.key, 
+                is_signer: if *a.key == signer {true} else {a.is_signer}, 
+                is_writable: a.is_writable
+            }
+        }).collect::<Vec<_>>(),
+    );
+
+    solana_sdk::program::invoke_signed_unchecked(
+        &instruction, 
+        accounts, 
+        &[&seeds])
 }
 
 impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
@@ -79,6 +130,17 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             Some(chains) => chains,
         };
 
+        let mut program_test = ProgramTest::default();
+        program_test.prefer_bpf(false);
+        program_test.add_program(
+            "evm_loader",
+            program_id,
+            processor_with_original_stubs!(process_emulator_instruction),
+        );
+
+        // TODO: disable features (get known feature list and disable by actual value)
+        let solana_emulator = program_test.start_with_context().await;
+
         Ok(Self {
             accounts: RefCell::new(HashMap::new()),
             program_id,
@@ -88,6 +150,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             block_number,
             block_timestamp,
             state_overrides,
+            solana_emulator: RefCell::new(solana_emulator),
         })
     }
 
@@ -745,6 +808,157 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         let info = account_info(address, &mut account);
         action(&info)
     }
+
+    async fn emulate_solana_call(
+        &self,
+        program_id: &Pubkey,
+        instruction_data: &[u8],
+        meta: &[AccountMeta],
+        accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+        seeds: &Vec<Vec<u8>>,
+    ) -> evm_loader::error::Result<()> {
+        use solana_sdk::signature::Signer;
+        //use std::collections::btree_map::Entry;
+        use bpf_loader_upgradeable::UpgradeableLoaderState;
+
+        let mut solana_emulator = self.solana_emulator.borrow_mut();
+
+        // async fn get_cached_or_create_account(
+        //     key: &Pubkey,
+        //     accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+        //     storage: &EmulatorAccountStorage<'_>,
+        // ) -> OwnedAccountInfo {
+        //     let entry = accounts.entry(*key);
+        //     match entry {
+        //         Entry::Occupied(entry) => {
+        //             entry.get().clone()
+        //         }
+        //         Entry::Vacant(entry) => {
+        //             let account = storage.clone_solana_account(entry.key()).await;
+        //             entry.insert(account).clone()
+        //         }
+        //     }
+        // }
+
+        let mut append_account_to_emulator = |account: &OwnedAccountInfo| {
+            use solana_sdk::account::WritableAccount;
+            let mut shared_account = AccountSharedData::new(account.lamports, account.data.len(), &account.owner);
+            shared_account.set_data_from_slice(&account.data);
+            shared_account.set_executable(account.executable);
+            solana_emulator.set_account(&account.key, &shared_account);
+        };
+
+        for (index, m) in meta.iter().enumerate() {
+            //let account = get_cached_or_create_account(&m.pubkey, accounts, self).await;
+            let account = accounts.get(&m.pubkey).expect("Missing pubkey in accounts map");
+            append_account_to_emulator(account);
+            log::debug!("{} {}: {:?}", index, m.pubkey, to_account(&account));
+        }
+
+        //let program = get_cached_or_create_account(&program_id, accounts, self).await;
+        let program = match accounts.get(&program_id) {
+            Some(&ref account) => account.clone(),
+            None => self.clone_solana_account(&program_id).await,
+        };
+        append_account_to_emulator(&program);
+        log::debug!("program {}: {:?}", program_id, to_account(&program));
+
+        if bpf_loader_upgradeable::check_id(&program.owner) {
+            if let UpgradeableLoaderState::Program{programdata_address} = bincode::deserialize(program.data.as_slice()).unwrap() {
+                //let program_data = get_cached_or_create_account(&programdata_address, accounts, self).await;
+                let program_data = match accounts.get(&programdata_address) {
+                    Some(&ref account) => account.clone(),
+                    None => self.clone_solana_account(&programdata_address).await,
+                };
+                append_account_to_emulator(&program_data);
+                log::debug!("programData {}: {:?}", programdata_address, to_account(&program_data));
+            };
+        }
+
+        let seed = seeds.iter().map(|s| s.as_ref()).collect::<Vec<&[u8]>>();
+        let seeds_data = bincode::serialize(&seeds).expect("Serialize seeds");
+        append_account_to_emulator(&OwnedAccountInfo {
+            key: SEEDS_PUBKEY,
+            is_signer: false,
+            is_writable: false,
+            lamports: Rent::default().minimum_balance(seeds_data.len()),
+            data: seeds_data,
+            owner: *program_id,
+            executable: false,
+            rent_epoch: 0,
+        });
+
+        let mut meta_changed = vec!(
+            AccountMeta {pubkey: SEEDS_PUBKEY, is_signer: false, is_writable: false,},
+            AccountMeta {pubkey: *program_id, is_signer: false, is_writable: false,},
+        );
+        let invoke_signer = Pubkey::create_program_address(&seed, &self.program_id)
+            .expect("Create invoke_signer from seeds");
+        meta_changed.extend(meta.iter().map(|m| {
+            AccountMeta {
+                pubkey: m.pubkey,
+                is_signer: if m.pubkey == invoke_signer { false } else { m.is_signer },
+                is_writable: m.is_writable,
+            }
+        }));
+
+        // Prepare transaction to execute on emulator
+        let mut trx = solana_sdk::transaction::Transaction::new_unsigned(
+            solana_sdk::message::Message::new(
+                &[
+                    solana_sdk::instruction::Instruction::new_with_bytes(
+                        self.program_id,
+                        instruction_data,
+                        meta_changed,
+                    ),
+                ],
+                Some(&solana_emulator.payer.pubkey()),
+            ),
+        );
+        trx.try_sign(&[&solana_emulator.payer], solana_emulator.last_blockhash)
+            .map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?;
+
+        let result = solana_emulator.banks_client.process_transaction(trx).await;
+        log::info!("Emulation result: {:?}", result);
+        result.map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?;
+        let next_slot = solana_emulator.banks_client.get_root_slot().await.unwrap() + 1;
+        solana_emulator.warp_to_slot(next_slot).expect("Warp to next slot");
+
+        // Update writable accounts
+        for (index, m) in meta.iter().enumerate() {
+            if m.is_writable {
+                let account = solana_emulator
+                    .banks_client
+                    .get_account(m.pubkey)
+                    .await
+                    .unwrap()
+                    .unwrap_or_default();
+
+                accounts.entry(m.pubkey).and_modify(|a| {
+                    log::debug!("{} {}: Modify {:?}", index, m.pubkey, account);
+                    a.lamports = account.lamports;
+                    a.data = account.data.to_vec();
+                    a.owner = account.owner;
+                    a.executable = account.executable;
+                    a.rent_epoch = account.rent_epoch;
+                }).or_insert_with(|| {
+                    log::debug!("{} {}: Insert {:?}", index, m.pubkey, account);
+                    OwnedAccountInfo {
+                        key: m.pubkey,
+                        is_signer: false,
+                        is_writable: false,
+                        lamports: account.lamports,
+                        data: account.data.to_vec(),
+                        owner: account.owner,
+                        executable: account.executable,
+                        rent_epoch: account.rent_epoch,
+                    }
+                });
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// Creates new instance of `AccountInfo` from `Account`.
@@ -758,5 +972,35 @@ pub fn account_info<'a>(key: &'a Pubkey, account: &'a mut Account) -> AccountInf
         owner: &account.owner,
         executable: account.executable,
         rent_epoch: account.rent_epoch,
+    }
+}
+
+/// Creates new instance of `Account` from `OwnedAccountInfo`
+fn to_account(account: &OwnedAccountInfo) -> Account {
+    Account {
+        lamports: account.lamports,
+        data: account.data.clone(),
+        owner: account.owner,
+        executable: account.executable,
+        rent_epoch: account.rent_epoch,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use solana_sdk::instruction::{AccountMeta, Instruction};
+
+    #[test]
+    fn test_serialize_instruction() {
+        let data = [0x00u8, 0x01, 0x02, 0x03, 0x04, 0x05].to_vec();
+        let program_id = pubkey!(SEEDS_PUBKEY);
+        let accounts = vec!(
+            AccountMeta {pubkey: FAKE_OPERATOR, is_signer: true, is_writable: true},
+        );
+        let instruction = Instruction::new_with_bytes(program_id, &data, accounts);
+
+        let encoded = bincode::serialize(&instruction).expect("Serialize");
+        println!("Encoded: {:?}", encoded);
     }
 }

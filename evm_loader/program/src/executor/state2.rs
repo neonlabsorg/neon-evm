@@ -257,16 +257,7 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         instruction: Instruction,
         seeds: Vec<Vec<u8>>,
         fee: u64,
-    ) -> Result<()> {
-        self.backend.execute_external_instruction(instruction, seeds, fee)?;
-        Ok(())
-    }
-
-    fn execute_external_instruction(
-        &mut self,
-        instruction: Instruction,
-        seeds: Vec<Vec<u8>>,
-        fee: u64,
+        emulated_internally: bool,
     ) -> Result<()> {
         self.backend.execute_external_instruction(instruction, seeds, fee)?;
         Ok(())

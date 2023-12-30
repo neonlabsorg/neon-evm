@@ -7,7 +7,7 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use crate::account_storage::AccountStorage;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct OwnedAccountInfo {
     pub key: Pubkey,
     pub is_signer: bool,
@@ -22,18 +22,26 @@ pub struct OwnedAccountInfo {
 
 impl OwnedAccountInfo {
     #[must_use]
+    #[allow(unused)]
     pub fn from_account_info(program_id: &Pubkey, info: &AccountInfo) -> Self {
         Self {
             key: *info.key,
             is_signer: info.is_signer,
             is_writable: info.is_writable,
             lamports: info.lamports(),
-            data: if info.executable || (info.owner == program_id) {
-                // This is only used to emulate external programs
-                // They don't use data in our accounts
-                vec![]
-            } else {
-                info.data.borrow().to_vec()
+            data: {
+                #[cfg(not(target_os = "solana"))]
+                {
+                    info.data.borrow().to_vec()
+                }
+                #[cfg(target_os = "solana")]
+                if info.executable || (info.owner == program_id) {
+                    // This is only used to emulate external programs
+                    // They don't use data in our accounts
+                    vec![]
+                } else {
+                    info.data.borrow().to_vec()
+                }
             },
             owner: *info.owner,
             executable: info.executable,

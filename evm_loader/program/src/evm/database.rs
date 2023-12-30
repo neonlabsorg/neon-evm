@@ -55,15 +55,7 @@ pub trait Database {
         instruction: Instruction,
         seeds: Vec<Vec<u8>>,
         fee: u64,
-    ) -> Result<()>;
-
-    /// Unlike a `queue_external_instruction` method, this method requires execution of the instruction
-    /// immediately, rather than placing it in a queue
-    fn execute_external_instruction(
-        &mut self,
-        instruction: Instruction,
-        seeds: Vec<Vec<u8>>,
-        fee: u64,
+        emulated_internally: bool,
     ) -> Result<()>;
 
     async fn precompile_extension(

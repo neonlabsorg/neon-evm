@@ -87,14 +87,14 @@ pub fn create_account<State: Database>(
     if required_lamports > 0 {
         let transfer =
             system_instruction::transfer(&state.operator(), &account.key, required_lamports);
-        state.queue_external_instruction(transfer, vec![], required_lamports)?;
+        state.queue_external_instruction(transfer, vec![], required_lamports, true)?;
     }
 
     let allocate = system_instruction::allocate(&account.key, space.try_into().unwrap());
-    state.queue_external_instruction(allocate, seeds.clone(), 0)?;
+    state.queue_external_instruction(allocate, seeds.clone(), 0, true)?;
 
     let assign = system_instruction::assign(&account.key, owner);
-    state.queue_external_instruction(assign, seeds, 0)?;
+    state.queue_external_instruction(assign, seeds, 0, true)?;
 
     Ok(())
 }

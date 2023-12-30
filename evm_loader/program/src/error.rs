@@ -178,6 +178,9 @@ pub enum Error {
 
     #[error("Invalid account for call {0}")]
     InvalidAccountForCall(Pubkey),
+
+    #[error("Call for external Solana programs not available in this mode")]
+    UnavalableExternalSolanaCall,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -13,6 +13,7 @@ pub enum Action {
         data: Vec<u8>,
         seeds: Vec<Vec<u8>>,
         fee: u64,
+        emulated_internally: bool,
     },
     Transfer {
         source: Address,

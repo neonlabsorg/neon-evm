@@ -3,7 +3,7 @@ use crate::{
     types::Address,
     error::{Error, Result}, config::ACCOUNT_SEED_VERSION, evm::database::Database,
 };
-use solana_program::{instruction::{AccountMeta, Instruction}, pubkey::Pubkey};
+use solana_program::{instruction::Instruction, pubkey::Pubkey};
 use arrayref::array_ref;
 use ethnum::U256;
 use maybe_async::maybe_async;
@@ -11,12 +11,14 @@ use maybe_async::maybe_async;
 
 // "91183f5a": "call(bytes32,(bytes32,uint8)[],bytes,uint64)"
 // "cfd51d32": "createResource(bytes32,uint64,uint64,bytes32)"
-// "cdf4e40f": "getExtResourceAddress(bytes32)"
 // "154d4aa5": "getNeonAddress(address)"
 // "59e4ad63": "getResourceAddress(bytes32)"
 // "4a890f31": "getSolanaPDA(bytes32,bytes)"
-// "09c5eabe": "execute(bytes)"
+// "cd2d1a3a": "getExtAuthority(bytes32)"
+// "30aa81c6": "getPayer()",
 
+// "c549a7af": "execute(uint64,bytes)",
+// "32607450": "executeWithSeed(uint64,bytes32,bytes)",
 
 #[maybe_async]
 #[allow(clippy::too_many_lines)]
@@ -44,8 +46,10 @@ pub async fn call_solana<State: Database>(
     log::info!("Call arguments: {}", hex::encode(input));
 
     match selector {
-        [0x09, 0xc5, 0xea, 0xbe] => { // execute(bytes)
-            let instruction: Instruction = bincode::deserialize(input)
+        [0xc5, 0x49, 0xa7, 0xaf] => { // execute(uint64,bytes)
+            let required_lamports = read_u64(&input[0..])?;
+            let offset = read_usize(&input[32..])?;
+            let instruction: Instruction = bincode::deserialize(&input[offset+32..])
                 .map_err(|_| Error::OutOfBounds)?;
 
             #[cfg(not(target_os = "solana"))]
@@ -61,53 +65,37 @@ pub async fn call_solana<State: Database>(
             ];
 
             // TODO: this instruction can create accounts inside, so we need to specify correct fee. How we can get it?
-            state.queue_external_instruction(instruction, seeds, 0, false)?;
+            state.queue_external_instruction(instruction, seeds, required_lamports, false)?;
 
             Ok(vec![])
         }
-        [0x91, 0x18, 0x3f, 0x5a] => {
-            // Call solana program
-            const FLAG_WRITABLE: u8 = 0x01;
-            const FLAG_SIGNER: u8 = 0x02;
+        [0x32, 0x60, 0x74, 0x50] => { // executeWithSeed(uint64,bytes32,bytes)
+            let required_lamports = read_u64(&input[0..])?;
+            let salt = read_salt(&input[32..])?;
+            let offset = read_usize(&input[64..])?;
+            let instruction: Instruction = bincode::deserialize(&input[offset+32..])
+                .map_err(|_| Error::OutOfBounds)?;
 
-            let signer = context.caller;
-            let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
+            #[cfg(not(target_os = "solana"))]
+            log::info!("instruction: {:?}", instruction);
 
+            let seeds: &[&[u8]] = &[
+                &[ACCOUNT_SEED_VERSION],
+                b"AUTH",
+                context.caller.as_bytes(),
+                salt,
+            ];
+            let (_, signer_seed) = Pubkey::find_program_address(seeds, state.program_id());
             let seeds = vec![
                 vec![ACCOUNT_SEED_VERSION],
-                signer.as_bytes().to_vec(),
-                vec![bump_seed],
+                b"AUTH".to_vec(),
+                context.caller.as_bytes().to_vec(),
+                salt.to_vec(),
+                vec![signer_seed],
             ];
 
-            let program_id = read_pubkey(&input[0..])?;
-            let accounts_offset = read_usize(&input[32..])?;
-            let data_offset = read_usize(&input[64..])?;
-            let _lamports = read_u64(&input[96..])?;
-
-            let accounts_length = read_usize(&input[accounts_offset..])?;
-            let mut accounts = Vec::with_capacity(accounts_length);
-            for i in 0..accounts_length {
-                let pubkey = read_pubkey(&input[accounts_offset+32+i*64..])?;
-                let flags = read_u8(&input[accounts_offset+32+i*64+32..])?;
-                if (flags & FLAG_SIGNER != 0 && pubkey != signer_pubkey) ||
-                   (pubkey == state.operator())
-                {
-                    return Err(Error::InvalidAccountForCall(pubkey));
-                }
-                accounts.push(AccountMeta {
-                    pubkey,
-                    is_writable: flags & FLAG_WRITABLE != 0,
-                    is_signer: flags & FLAG_SIGNER != 0,
-                })
-            }
-
-            let data_length = read_usize(&input[data_offset..])?;
-            let data = &input[data_offset+32..data_offset+32+data_length];
-        
-            let instruction = Instruction::new_with_bytes(program_id, data, accounts);
-
             // TODO: this instruction can create accounts inside, so we need to specify correct fee. How we can get it?
-            state.queue_external_instruction(instruction, seeds, 0, false)?;
+            state.queue_external_instruction(instruction, seeds, required_lamports, false)?;
 
             Ok(vec![])
         }
@@ -132,8 +120,8 @@ pub async fn call_solana<State: Database>(
             Ok(sol_address.to_bytes().to_vec())
         }
 
-        // "cdf4e40f": "getExtResourceAddress(bytes32)"
-        [0xcd, 0xf4, 0xe4, 0x0f] => {
+        // "cd2d1a3a": "getExtAuthority(bytes32)"
+        [0xcd, 0x2d, 0x1a, 0x3a] => {
             let salt = read_salt(input)?;
             let seeds: &[&[u8]] = &[
                 &[ACCOUNT_SEED_VERSION],
@@ -158,6 +146,18 @@ pub async fn call_solana<State: Database>(
                 seeds.push(&input[offset+32+length-length%32..offset+32+length]);
             }
             let (sol_address, _) = Pubkey::find_program_address(&seeds, &program_id);
+            Ok(sol_address.to_bytes().to_vec())
+        }
+
+        // "30aa81c6": "getPayer()"
+        [0x30, 0xaa, 0x81, 0xc6] => {
+            let seeds: &[&[u8]] = &[
+                &[ACCOUNT_SEED_VERSION],
+                b"PAYER",
+                context.caller.as_bytes(),
+            ];
+            let (sol_address, _bump_seed) = Pubkey::find_program_address(seeds, state.program_id());
+
             Ok(sol_address.to_bytes().to_vec())
         }
 
@@ -194,12 +194,12 @@ pub async fn call_solana<State: Database>(
     }
 }
 
-#[inline]
-fn read_u8(input: &[u8]) -> Result<u8> {
-    U256::from_be_bytes(*arrayref::array_ref![input, 0, 32])
-        .try_into()
-        .map_err(Into::into)
-}
+// #[inline]
+// fn read_u8(input: &[u8]) -> Result<u8> {
+//     U256::from_be_bytes(*arrayref::array_ref![input, 0, 32])
+//         .try_into()
+//         .map_err(Into::into)
+// }
 
 #[inline]
 fn read_u64(input: &[u8]) -> Result<u64> {

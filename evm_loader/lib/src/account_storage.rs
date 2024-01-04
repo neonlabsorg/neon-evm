@@ -12,6 +12,7 @@ use solana_sdk::sysvar::{slot_hashes, Sysvar};
 use std::collections::{HashSet, BTreeMap};
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
+use crate::solana_emulator::get_solana_emulator;
 use crate::{rpc::Rpc, NeonError};
 use ethnum::U256;
 use evm_loader::{
@@ -27,7 +28,6 @@ use solana_sdk::{account::Account, account_info::AccountInfo, pubkey, pubkey::Pu
 
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
 use crate::tracing::{AccountOverride, AccountOverrides, BlockOverrides};
-use crate::solana_emulator::SolanaEmulator;
 use serde_with::{serde_as, DisplayFromStr};
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
@@ -53,8 +53,6 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     block_number: u64,
     block_timestamp: i64,
     state_overrides: Option<AccountOverrides>,
-    //solana_emulator: RefCell<ProgramTestContext>,
-    solana_emulator: SolanaEmulator,
 }
 
 impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
@@ -82,8 +80,6 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             Some(chains) => chains,
         };
 
-        let solana_emulator = SolanaEmulator::new(program_id).await?;
-
         Ok(Self {
             accounts: RefCell::new(HashMap::new()),
             program_id,
@@ -93,7 +89,6 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             block_number,
             block_timestamp,
             state_overrides,
-            solana_emulator,
         })
     }
 
@@ -765,7 +760,9 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
             instruction_data,
             meta.to_vec(),
         );
-        self.solana_emulator.emulate_solana_call(self, &instruction, accounts, seeds).await
+        let solana_emulator = get_solana_emulator().await;
+        //let solana_emulator = self.solana_emulator.lock().expect("Lock solana_emulator");
+        solana_emulator.emulate_solana_call(self, &instruction, accounts, seeds).await
     }
 }
 

@@ -13,7 +13,7 @@ use neon_lib::{
         get_neon_elf, get_storage_at, init_environment, trace,
     },
     types::{BalanceAddress, EmulateRequest},
-    Config,
+    Config, solana_emulator::init_solana_emulator,
 };
 
 use clap::ArgMatches;
@@ -161,7 +161,7 @@ async fn build_rpc(options: &ArgMatches<'_>, config: &Config) -> Result<RpcEnum,
         .value_of("slot")
         .map(|slot_str| slot_str.parse().expect("slot parse error"));
 
-    Ok(if let Some(slot) = slot {
+    let rpc_client = if let Some(slot) = slot {
         RpcEnum::CallDbClient(
             CallDbClient::new(
                 TracerDb::new(config.db_config.as_ref().expect("db-config not found")),
@@ -172,7 +172,9 @@ async fn build_rpc(options: &ArgMatches<'_>, config: &Config) -> Result<RpcEnum,
         )
     } else {
         RpcEnum::CloneRpcClient(config.build_clone_solana_rpc_client())
-    })
+    };
+    init_solana_emulator(config.evm_loader, &rpc_client).await;
+    Ok(rpc_client)
 }
 
 fn print_result(result: &NeonCliResult) {

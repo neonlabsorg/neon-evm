@@ -3,7 +3,9 @@ use solana_sdk::rent::Rent;
 use solana_sdk::bpf_loader_upgradeable;
 use std::collections::BTreeMap;
 use std::cell::RefCell;
+use tokio::sync::{Mutex, MutexGuard, OnceCell};
 
+use crate::rpc::Rpc;
 use crate::syscall_stubs;
 use crate::NeonError;
 use evm_loader::{
@@ -13,12 +15,17 @@ use evm_loader::{
 use solana_sdk::{account::Account, account_info::AccountInfo, pubkey, pubkey::Pubkey, instruction::{AccountMeta, Instruction}};
 use solana_program_test::{processor, ProgramTest, ProgramTestContext};
 
-const SEEDS_PUBKEY: Pubkey = pubkey!("Seeds11111111111111111111111111111111111111");
-
+/// SolanaEmulator
+/// Note:
+/// 1. Use global program_stubs variable (new() function changes it inside ProgramTest::start_with_context)
+/// 2. Get list of activated features from solana cluster (this list can't be changed after initialization)
 pub struct SolanaEmulator {
     program_id: Pubkey,
     emulator_context: RefCell<ProgramTestContext>,
 }
+
+static SOLANA_EMULATOR: OnceCell<Mutex<SolanaEmulator>> = OnceCell::const_new();
+const SEEDS_PUBKEY: Pubkey = pubkey!("Seeds11111111111111111111111111111111111111");
 
 macro_rules! processor_with_original_stubs {
     ($process_instruction:expr) => {
@@ -29,6 +36,26 @@ macro_rules! processor_with_original_stubs {
             result
         })
     };
+}
+
+pub async fn get_solana_emulator() -> MutexGuard<'static, SolanaEmulator> {
+    SOLANA_EMULATOR.get().expect("SolanaEmulator is not initialized")
+        .lock().await
+}
+
+pub async fn init_solana_emulator(
+    program_id: Pubkey,
+    rpc_client: &impl Rpc,
+) -> &'static Mutex<SolanaEmulator> {
+
+    SOLANA_EMULATOR.get_or_init(|| async {
+        let emulator = SolanaEmulator::new(program_id, rpc_client)
+            .await
+            .expect("Initialize SolanaEmulator");
+        syscall_stubs::setup_emulator_syscall_stubs(rpc_client).await
+            .expect("Setup emulator syscall stubs");
+        Mutex::new(emulator)
+    }).await
 }
 
 // evm_loader stub to call solana programs like from original program
@@ -70,6 +97,7 @@ fn process_emulator_instruction(
 impl SolanaEmulator {
     pub async fn new(
         program_id: Pubkey,
+        rpc_client: &impl Rpc,
     ) -> Result<SolanaEmulator, NeonError> {
         let mut program_test = ProgramTest::default();
         program_test.prefer_bpf(false);
@@ -79,7 +107,27 @@ impl SolanaEmulator {
             processor_with_original_stubs!(process_emulator_instruction),
         );
 
-        // TODO: disable features (get known feature list and disable by actual value)
+        // Disable features (get known feature list and disable by actual value)
+        let feature_list = solana_sdk::feature_set::FEATURE_NAMES.iter()
+            .map(|feature| feature.0)
+            .cloned()
+            .collect::<Vec<_>>();
+        let features = rpc_client.get_multiple_accounts(&feature_list).await?;
+
+        feature_list.into_iter().zip(features)
+            .filter_map(|(pubkey, account)| {
+                let activated = account
+                    .and_then(|ref acc| solana_sdk::feature::from_account(acc))
+                    .and_then(|v| v.activated_at);
+                match activated {
+                    Some(_) => None,
+                    None => Some(pubkey),
+                }
+            })
+            .for_each(|feature_id| 
+                program_test.deactivate_feature(feature_id)
+            );
+
         let emulator_context = program_test.start_with_context().await;
 
         Ok(Self {

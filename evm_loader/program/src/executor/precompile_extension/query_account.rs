@@ -7,7 +7,8 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use crate::{
     error::{Error, Result},
-    types::Address, evm::database::Database,
+    evm::database::Database,
+    types::Address,
 };
 
 // QueryAccount method DEPRECATED ids:
@@ -101,10 +102,7 @@ pub async fn query_account<State: Database>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_owner<State: Database>(
-    state: &mut State,
-    address: &Pubkey,
-) -> Result<Vec<u8>> {
+async fn account_owner<State: Database>(state: &mut State, address: &Pubkey) -> Result<Vec<u8>> {
     let owner = state
         .map_solana_account(address, |info| info.owner.to_bytes())
         .await;
@@ -114,10 +112,7 @@ async fn account_owner<State: Database>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_lamports<State: Database>(
-    state: &mut State,
-    address: &Pubkey,
-) -> Result<Vec<u8>> {
+async fn account_lamports<State: Database>(state: &mut State, address: &Pubkey) -> Result<Vec<u8>> {
     let lamports: U256 = state
         .map_solana_account(address, |info| **info.lamports.borrow())
         .await
@@ -203,10 +198,7 @@ async fn account_data<State: Database>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_info<State: Database>(
-    state: &mut State,
-    address: &Pubkey,
-) -> Result<Vec<u8>> {
+async fn account_info<State: Database>(state: &mut State, address: &Pubkey) -> Result<Vec<u8>> {
     fn to_solidity_account_value(info: &AccountInfo) -> Vec<u8> {
         let mut buffer = [0_u8; 5 * 32];
         let (key, _, lamports, owner, _, executable, _, rent_epoch) =

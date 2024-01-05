@@ -1,13 +1,14 @@
 use crate::{
+    config::ACCOUNT_SEED_VERSION,
+    error::{Error, Result},
+    evm::database::Database,
     //account::ACCOUNT_SEED_VERSION,
     types::Address,
-    error::{Error, Result}, config::ACCOUNT_SEED_VERSION, evm::database::Database,
 };
-use solana_program::{instruction::Instruction, pubkey::Pubkey};
 use arrayref::array_ref;
 use ethnum::U256;
 use maybe_async::maybe_async;
-
+use solana_program::{instruction::Instruction, pubkey::Pubkey};
 
 // "91183f5a": "call(bytes32,(bytes32,uint8)[],bytes,uint64)"
 // "cfd51d32": "createResource(bytes32,uint64,uint64,bytes32)"
@@ -46,11 +47,12 @@ pub async fn call_solana<State: Database>(
     log::info!("Call arguments: {}", hex::encode(input));
 
     match selector {
-        [0xc5, 0x49, 0xa7, 0xaf] => { // execute(uint64,bytes)
+        [0xc5, 0x49, 0xa7, 0xaf] => {
+            // execute(uint64,bytes)
             let required_lamports = read_u64(&input[0..])?;
             let offset = read_usize(&input[32..])?;
-            let instruction: Instruction = bincode::deserialize(&input[offset+32..])
-                .map_err(|_| Error::OutOfBounds)?;
+            let instruction: Instruction =
+                bincode::deserialize(&input[offset + 32..]).map_err(|_| Error::OutOfBounds)?;
 
             #[cfg(not(target_os = "solana"))]
             log::info!("instruction: {:?}", instruction);
@@ -69,12 +71,13 @@ pub async fn call_solana<State: Database>(
 
             Ok(vec![])
         }
-        [0x32, 0x60, 0x74, 0x50] => { // executeWithSeed(uint64,bytes32,bytes)
+        [0x32, 0x60, 0x74, 0x50] => {
+            // executeWithSeed(uint64,bytes32,bytes)
             let required_lamports = read_u64(&input[0..])?;
             let salt = read_salt(&input[32..])?;
             let offset = read_usize(&input[64..])?;
-            let instruction: Instruction = bincode::deserialize(&input[offset+32..])
-                .map_err(|_| Error::OutOfBounds)?;
+            let instruction: Instruction =
+                bincode::deserialize(&input[offset + 32..]).map_err(|_| Error::OutOfBounds)?;
 
             #[cfg(not(target_os = "solana"))]
             log::info!("instruction: {:?}", instruction);
@@ -138,12 +141,12 @@ pub async fn call_solana<State: Database>(
             let program_id = read_pubkey(&input[0..])?;
             let offset = read_usize(&input[32..])?;
             let length = read_usize(&input[offset..])?;
-            let mut seeds = Vec::with_capacity((length+31)/32);
-            for i in 0..length/32 {
-                seeds.push(&input[offset+32+i*32..offset+32+(i+1)*32]);
+            let mut seeds = Vec::with_capacity((length + 31) / 32);
+            for i in 0..length / 32 {
+                seeds.push(&input[offset + 32 + i * 32..offset + 32 + (i + 1) * 32]);
             }
-            if length%32 != 0 {
-                seeds.push(&input[offset+32+length-length%32..offset+32+length]);
+            if length % 32 != 0 {
+                seeds.push(&input[offset + 32 + length - length % 32..offset + 32 + length]);
             }
             let (sol_address, _) = Pubkey::find_program_address(&seeds, &program_id);
             Ok(sol_address.to_bytes().to_vec())
@@ -151,11 +154,7 @@ pub async fn call_solana<State: Database>(
 
         // "30aa81c6": "getPayer()"
         [0x30, 0xaa, 0x81, 0xc6] => {
-            let seeds: &[&[u8]] = &[
-                &[ACCOUNT_SEED_VERSION],
-                b"PAYER",
-                context.caller.as_bytes(),
-            ];
+            let seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], b"PAYER", context.caller.as_bytes()];
             let (sol_address, _bump_seed) = Pubkey::find_program_address(seeds, state.program_id());
 
             Ok(sol_address.to_bytes().to_vec())
@@ -185,7 +184,7 @@ pub async fn call_solana<State: Database>(
                 salt.to_vec(),
                 vec![bump_seed],
             ];
-        
+
             super::create_account(state, &account, space, &owner, seeds)?;
             Ok(sol_address.to_bytes().to_vec())
         }
@@ -234,14 +233,14 @@ fn read_salt(input: &[u8]) -> Result<&[u8; 32]> {
 #[allow(warnings)]
 #[cfg(test)]
 mod tests {
-    use solana_program_test::{processor, ProgramTest};
-    use solana_program::pubkey::Pubkey;
+    use hex::FromHex;
     use solana_program::account_info::AccountInfo;
     use solana_program::entrypoint::ProgramResult;
-    use solana_sdk::account::Account;
+    use solana_program::pubkey::Pubkey;
     use solana_program::rent::Rent;
+    use solana_program_test::{processor, ProgramTest};
+    use solana_sdk::account::Account;
     use std::str::FromStr;
-    use hex::FromHex;
     // use crate::account::Packable;
 
     // fn process_instruction<'a,'b>(
@@ -260,12 +259,11 @@ mod tests {
         let mut program_test = ProgramTest::new(
             "evm_loader",
             program_id,
-            None
- //           processor!(process_instruction)
+            None, //           processor!(process_instruction)
         );
 
-
-        let address = crate::types::Address::from_hex("0x102030405060708090a0102030405060708090a0").unwrap();
+        let address =
+            crate::types::Address::from_hex("0x102030405060708090a0102030405060708090a0").unwrap();
         let (solana_address, bump_seed) = address.find_solana_address(&program_id);
         //program_test.add_program("evm_loader", program_id, None);
         // let contract = crate::account::ether_account::Data {
@@ -296,6 +294,5 @@ mod tests {
         //         ..Default::default()
         //     }
         // );
-
     }
 }

@@ -19,8 +19,8 @@ use crate::types::Address;
 
 use super::action::Action;
 use super::cache::{cache_get_or_insert_account, Cache};
-use super::OwnedAccountInfo;
 use super::precompile_extension::PrecompiledContracts;
+use super::OwnedAccountInfo;
 
 pub struct SyncedExecutorState<'a, B: AccountStorage> {
     pub backend: &'a mut B,
@@ -123,7 +123,6 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         Ok(())
     }
 
-
     async fn code_size(&self, from_address: Address) -> Result<usize> {
         // TODO: Move precompile_extension into Database trait
         // if self.is_precompile_extension(&from_address) {
@@ -222,11 +221,16 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
 
     fn revert_snapshot(&mut self) {
         // TODO: revert snapshot not implemented for SyncedExecutorState
-        assert!(false, "revert snapshot not implemented for SyncedExecutorState");
+        assert!(
+            false,
+            "revert snapshot not implemented for SyncedExecutorState"
+        );
     }
 
     fn commit_snapshot(&mut self) {
-        self.depth.checked_sub(1).expect("Fatal Error: Inconsistent EVM Call Stack");
+        self.depth
+            .checked_sub(1)
+            .expect("Fatal Error: Inconsistent EVM Call Stack");
     }
 
     async fn precompile_extension(
@@ -259,7 +263,8 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         fee: u64,
         emulated_internally: bool,
     ) -> Result<()> {
-        self.backend.execute_external_instruction(instruction, seeds, fee)?;
+        self.backend
+            .execute_external_instruction(instruction, seeds, fee)?;
         Ok(())
     }
 }

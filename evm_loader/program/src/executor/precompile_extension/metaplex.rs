@@ -12,7 +12,8 @@ use solana_program::{pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
 use crate::{
     account::ACCOUNT_SEED_VERSION,
     error::{Error, Result},
-    types::Address, evm::database::Database,
+    evm::database::Database,
+    types::Address,
 };
 
 // "[0xc5, 0x73, 0x50, 0xc6]": "createMetadata(bytes32,string,string,string)"
@@ -350,4 +351,3 @@ fn to_solidity_string(s: &str) -> Vec<u8> {
 
     result
 }
-

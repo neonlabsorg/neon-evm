@@ -5,10 +5,10 @@ use crate::executor::OwnedAccountInfo;
 use crate::types::Address;
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
-use solana_program::{pubkey::Pubkey, sysvar::slot_hashes};
 use solana_program::instruction::AccountMeta;
-use std::convert::TryInto;
+use solana_program::{pubkey::Pubkey, sysvar::slot_hashes};
 use std::collections::BTreeMap;
+use std::convert::TryInto;
 
 impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     fn program_id(&self) -> &Pubkey {
@@ -143,7 +143,6 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         let info = self.accounts.get(address);
         action(info)
     }
-
 
     fn emulate_solana_call(
         &self,

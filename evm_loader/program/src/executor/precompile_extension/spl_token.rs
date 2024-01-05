@@ -3,16 +3,16 @@ use std::convert::{Into, TryInto};
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::{
-    program_error::ProgramError, program_pack::Pack, pubkey::Pubkey,
-    system_program,
+    program_error::ProgramError, program_pack::Pack, pubkey::Pubkey, system_program,
 };
 
+use super::create_account;
 use crate::{
     account::ACCOUNT_SEED_VERSION,
     error::{Error, Result},
-    types::Address, evm::database::Database,
+    evm::database::Database,
+    types::Address,
 };
-use super::create_account;
 
 // [0xa9, 0xc1, 0x58, 0x06] : "approve(bytes32,bytes32,uint64)",
 // [0xc0, 0x67, 0xee, 0xbb] : "burn(bytes32,bytes32,uint64)",
@@ -292,7 +292,13 @@ async fn initialize_mint<State: Database>(
         vec![bump_seed],
     ];
 
-    create_account(state, &account, spl_token::state::Mint::LEN, &spl_token::ID, seeds)?;
+    create_account(
+        state,
+        &account,
+        spl_token::state::Mint::LEN,
+        &spl_token::ID,
+        seeds,
+    )?;
 
     let initialize_mint = spl_token::instruction::initialize_mint(
         &spl_token::ID,
@@ -340,7 +346,13 @@ async fn initialize_account<State: Database>(
         vec![bump_seed],
     ];
 
-    create_account(state, &account, spl_token::state::Account::LEN, &spl_token::ID, seeds)?;
+    create_account(
+        state,
+        &account,
+        spl_token::state::Account::LEN,
+        &spl_token::ID,
+        seeds,
+    )?;
 
     let initialize_mint = spl_token::instruction::initialize_account2(
         &spl_token::ID,
@@ -471,8 +483,7 @@ fn transfer_with_seed<State: Database>(
         context.caller.as_bytes(),
         seed,
     ];
-    let (signer_pubkey, signer_seed) =
-        Pubkey::find_program_address(seeds, state.program_id());
+    let (signer_pubkey, signer_seed) = Pubkey::find_program_address(seeds, state.program_id());
 
     let seeds = vec![
         vec![ACCOUNT_SEED_VERSION],
@@ -717,4 +728,3 @@ async fn get_mint<State: Database>(
 
     Ok(result.to_vec())
 }
-

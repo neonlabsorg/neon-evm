@@ -14,8 +14,8 @@ use crate::types::Address;
 
 use super::action::Action;
 use super::cache::{cache_get_or_insert_account, Cache};
-use super::OwnedAccountInfo;
 use super::precompile_extension::PrecompiledContracts;
+use super::OwnedAccountInfo;
 
 #[cfg(not(target_os = "solana"))]
 #[derive(Default, Clone)]
@@ -389,14 +389,19 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
                 program_id,
                 data,
                 accounts: meta,
-                #[cfg(not(target_os = "solana"))] emulated_internally,
-                #[cfg(not(target_os = "solana"))] seeds,
+                #[cfg(not(target_os = "solana"))]
+                emulated_internally,
+                #[cfg(not(target_os = "solana"))]
+                seeds,
                 ..
             } = action
             {
                 #[cfg(not(target_os = "solana"))]
                 if !emulated_internally {
-                    let result = self.backend.emulate_solana_call(program_id, data, meta, &mut accounts, seeds).await;
+                    let result = self
+                        .backend
+                        .emulate_solana_call(program_id, data, meta, &mut accounts, seeds)
+                        .await;
                     log::info!("Emulated internally: {:?}", result);
                     result?;
                     continue;
@@ -430,7 +435,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
         Ok(accounts[&address].clone())
     }
-
 
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
@@ -517,7 +521,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             return Err(Error::UnavalableExternalSolanaCall);
         }
 
-        #[cfg(not(target_os = "solana"))] {
+        #[cfg(not(target_os = "solana"))]
+        {
             self.execute_status.external_solana_calls = true;
         }
 

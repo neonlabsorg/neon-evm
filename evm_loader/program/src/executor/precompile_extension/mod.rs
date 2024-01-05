@@ -1,17 +1,20 @@
-use solana_program::{pubkey::Pubkey, rent::Rent, system_instruction, sysvar::Sysvar};
-use crate::{error::Result, evm::{Context, database::Database}, types::Address};
+use crate::{
+    error::Result,
+    evm::{database::Database, Context},
+    types::Address,
+};
 use maybe_async::maybe_async;
+use solana_program::{pubkey::Pubkey, rent::Rent, system_instruction, sysvar::Sysvar};
 
 use super::OwnedAccountInfo;
 
+mod call_solana;
 mod metaplex;
 mod neon_token;
 mod query_account;
 mod spl_token;
-mod call_solana;
 
-pub struct PrecompiledContracts {
-}
+pub struct PrecompiledContracts {}
 
 impl PrecompiledContracts {
     #[deprecated]
@@ -98,4 +101,3 @@ pub fn create_account<State: Database>(
 
     Ok(())
 }
-

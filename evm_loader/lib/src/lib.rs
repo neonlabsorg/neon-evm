@@ -1,11 +1,11 @@
 pub mod account_storage;
-pub mod solana_emulator;
 pub mod build_info;
 pub mod build_info_common;
 pub mod commands;
 pub mod config;
 pub mod errors;
 pub mod rpc;
+pub mod solana_emulator;
 pub mod syscall_stubs;
 pub mod tracing;
 pub mod types;

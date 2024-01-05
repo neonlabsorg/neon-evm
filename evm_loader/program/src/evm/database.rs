@@ -1,8 +1,8 @@
 use super::{Buffer, Context};
-use crate::{error::Result, types::Address, executor::OwnedAccountInfo};
+use crate::{error::Result, executor::OwnedAccountInfo, types::Address};
 use ethnum::U256;
 use maybe_async::maybe_async;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey, instruction::Instruction};
+use solana_program::{account_info::AccountInfo, instruction::Instruction, pubkey::Pubkey};
 
 #[maybe_async(?Send)]
 pub trait Database {

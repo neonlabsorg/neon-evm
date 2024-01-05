@@ -12,8 +12,9 @@ use neon_lib::{
         cancel_trx, collect_treasury, emulate, get_balance, get_config, get_contract, get_holder,
         get_neon_elf, get_storage_at, init_environment, trace,
     },
+    solana_emulator::init_solana_emulator,
     types::{BalanceAddress, EmulateRequest},
-    Config, solana_emulator::init_solana_emulator,
+    Config,
 };
 
 use clap::ArgMatches;

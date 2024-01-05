@@ -11,7 +11,8 @@ use spl_associated_token_account::get_associated_token_address;
 use crate::{
     account::token,
     error::{Error, Result},
-    types::Address, evm::database::Database,
+    evm::database::Database,
+    types::Address,
 };
 
 // Neon token method ids:
@@ -120,8 +121,7 @@ async fn withdraw<State: Database>(
         state.queue_external_instruction(create_associated, vec![], fee, true)?;
     }
 
-    let (authority, bump_seed) =
-        Pubkey::find_program_address(&[b"Deposit"], state.program_id());
+    let (authority, bump_seed) = Pubkey::find_program_address(&[b"Deposit"], state.program_id());
     let pool = get_associated_token_address(&authority, &mint_address);
 
     let transfer = spl_token::instruction::transfer_checked(

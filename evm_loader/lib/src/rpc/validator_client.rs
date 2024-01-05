@@ -4,8 +4,8 @@ use solana_client::{
     client_error::Result as ClientResult,
     nonblocking::rpc_client::RpcClient,
     rpc_config::{RpcLargestAccountsConfig, RpcSimulateTransactionConfig},
-    rpc_response::{RpcResult, RpcSimulateTransactionResult},
     rpc_request::MAX_MULTIPLE_ACCOUNTS,
+    rpc_response::{RpcResult, RpcSimulateTransactionResult},
 };
 use solana_sdk::{
     account::Account,

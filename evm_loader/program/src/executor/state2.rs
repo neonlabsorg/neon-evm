@@ -221,10 +221,7 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
 
     fn revert_snapshot(&mut self) {
         // TODO: revert snapshot not implemented for SyncedExecutorState
-        assert!(
-            false,
-            "revert snapshot not implemented for SyncedExecutorState"
-        );
+        panic!("revert snapshot not implemented for SyncedExecutorState");
     }
 
     fn commit_snapshot(&mut self) {

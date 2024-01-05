@@ -84,7 +84,7 @@ pub trait AccountStorage {
         data: &[u8],
         meta: &[AccountMeta],
         accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
-        seeds: &Vec<Vec<u8>>,
+        seeds: &[Vec<u8>],
     ) -> Result<()>;
 }
 

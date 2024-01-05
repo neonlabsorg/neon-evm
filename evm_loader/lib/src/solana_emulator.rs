@@ -144,34 +144,13 @@ impl SolanaEmulator {
         &self,
         backend: &B,
         instruction: &Instruction,
-        // program_id: &Pubkey,
-        // instruction_data: &[u8],
-        // meta: &[AccountMeta],
         accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
-        seeds: &Vec<Vec<u8>>,
+        seeds: &[Vec<u8>],
     ) -> evm_loader::error::Result<()> {
         use solana_sdk::signature::Signer;
-        //use std::collections::btree_map::Entry;
         use bpf_loader_upgradeable::UpgradeableLoaderState;
 
         let mut emulator_context = self.emulator_context.borrow_mut();
-
-        // async fn get_cached_or_create_account(
-        //     key: &Pubkey,
-        //     accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
-        //     storage: &EmulatorAccountStorage<'_>,
-        // ) -> OwnedAccountInfo {
-        //     let entry = accounts.entry(*key);
-        //     match entry {
-        //         Entry::Occupied(entry) => {
-        //             entry.get().clone()
-        //         }
-        //         Entry::Vacant(entry) => {
-        //             let account = storage.clone_solana_account(entry.key()).await;
-        //             entry.insert(account).clone()
-        //         }
-        //     }
-        // }
 
         let mut append_account_to_emulator = |account: &OwnedAccountInfo| {
             use solana_sdk::account::WritableAccount;
@@ -183,17 +162,15 @@ impl SolanaEmulator {
         };
 
         for (index, m) in instruction.accounts.iter().enumerate() {
-            //let account = get_cached_or_create_account(&m.pubkey, accounts, self).await;
             let account = accounts
                 .get(&m.pubkey)
                 .expect("Missing pubkey in accounts map");
             append_account_to_emulator(account);
-            log::debug!("{} {}: {:?}", index, m.pubkey, to_account(&account));
+            log::debug!("{} {}: {:?}", index, m.pubkey, to_account(account));
         }
 
-        //let program = get_cached_or_create_account(&program_id, accounts, self).await;
         let program = match accounts.get(&instruction.program_id) {
-            Some(&ref account) => account.clone(),
+            Some(account) => account.clone(),
             None => backend.clone_solana_account(&instruction.program_id).await,
         };
         append_account_to_emulator(&program);
@@ -208,9 +185,8 @@ impl SolanaEmulator {
                 programdata_address,
             } = bincode::deserialize(program.data.as_slice()).unwrap()
             {
-                //let program_data = get_cached_or_create_account(&programdata_address, accounts, self).await;
                 let program_data = match accounts.get(&programdata_address) {
-                    Some(&ref account) => account.clone(),
+                    Some(account) => account.clone(),
                     None => backend.clone_solana_account(&programdata_address).await,
                 };
                 append_account_to_emulator(&program_data);
@@ -298,19 +274,6 @@ impl SolanaEmulator {
                     a.executable = account.executable;
                     a.rent_epoch = account.rent_epoch;
                 });
-                // }).or_insert_with(|| {
-                //     log::debug!("{} {}: Insert {:?}", index, m.pubkey, account);
-                //     OwnedAccountInfo {
-                //         key: m.pubkey,
-                //         is_signer: false,
-                //         is_writable: false,
-                //         lamports: account.lamports,
-                //         data: account.data.to_vec(),
-                //         owner: account.owner,
-                //         executable: account.executable,
-                //         rent_epoch: account.rent_epoch,
-                //     }
-                //});
             }
         }
 

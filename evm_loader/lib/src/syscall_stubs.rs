@@ -58,7 +58,7 @@ impl SyscallStubs for EmulatorStubs {
     }
 
     fn sol_log(&self, message: &str) {
-        if false && is_original_stubs_for_thread() {
+        if is_original_stubs_for_thread() {
             self.original_stubs.sol_log(message)
         } else {
             info!("{}", message);

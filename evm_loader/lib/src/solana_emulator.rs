@@ -147,8 +147,8 @@ impl SolanaEmulator {
         accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
         seeds: &[Vec<u8>],
     ) -> evm_loader::error::Result<()> {
-        use solana_sdk::signature::Signer;
         use bpf_loader_upgradeable::UpgradeableLoaderState;
+        use solana_sdk::signature::Signer;
 
         let mut emulator_context = self.emulator_context.borrow_mut();
 

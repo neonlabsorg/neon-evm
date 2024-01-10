@@ -52,7 +52,10 @@ pub struct TxParams {
 }
 
 impl TxParams {
-    pub async fn into_transaction(self, backend: &impl AccountStorage) -> (Address, Transaction) {
+    pub async fn into_transaction(
+        self,
+        backend: &mut impl AccountStorage,
+    ) -> (Address, Transaction) {
         let chain_id = self.chain_id.unwrap_or_else(|| backend.default_chain_id());
 
         let origin_nonce = backend.nonce(self.from, chain_id).await;

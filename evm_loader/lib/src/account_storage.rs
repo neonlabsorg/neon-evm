@@ -537,7 +537,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         }
     }
 
-    async fn nonce(&self, address: Address, chain_id: u64) -> u64 {
+    async fn nonce(&mut self, address: Address, chain_id: u64) -> u64 {
         info!("nonce {address}  {chain_id}");
 
         let nonce_override = self.account_override(address, |a| a.nonce);
@@ -555,7 +555,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         .await
     }
 
-    async fn balance(&self, address: Address, chain_id: u64) -> U256 {
+    async fn balance(&mut self, address: Address, chain_id: u64) -> U256 {
         info!("balance {address} {chain_id}");
 
         let balance_override = self.account_override(address, |a| a.balance);
@@ -603,7 +603,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         unreachable!();
     }
 
-    async fn contract_chain_id(&self, address: Address) -> evm_loader::error::Result<u64> {
+    async fn contract_chain_id(&mut self, address: Address) -> evm_loader::error::Result<u64> {
         use evm_loader::error::Error;
 
         let default_value = Err(Error::Custom(std::format!(
@@ -619,11 +619,11 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         .await
     }
 
-    fn contract_pubkey(&self, address: Address) -> (Pubkey, u8) {
+    fn contract_pubkey(&mut self, address: Address) -> (Pubkey, u8) {
         address.find_solana_address(self.program_id())
     }
 
-    async fn code_hash(&self, address: Address, chain_id: u64) -> [u8; 32] {
+    async fn code_hash(&mut self, address: Address, chain_id: u64) -> [u8; 32] {
         use solana_sdk::keccak::hash;
 
         info!("code_hash {address} {chain_id}");
@@ -644,13 +644,13 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         hash(&[]).to_bytes()
     }
 
-    async fn code_size(&self, address: Address) -> usize {
+    async fn code_size(&mut self, address: Address) -> usize {
         info!("code_size {address}");
 
         self.code(address).await.len()
     }
 
-    async fn code(&self, address: Address) -> evm_loader::evm::Buffer {
+    async fn code(&mut self, address: Address) -> evm_loader::evm::Buffer {
         use evm_loader::evm::Buffer;
 
         info!("code {address}");
@@ -672,7 +672,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         Buffer::from_vec(code)
     }
 
-    async fn storage(&self, address: Address, index: U256) -> [u8; 32] {
+    async fn storage(&mut self, address: Address, index: U256) -> [u8; 32] {
         let storage_override = self.account_override(address, |a| a.storage(index));
         if let Some(storage_override) = storage_override {
             return storage_override;

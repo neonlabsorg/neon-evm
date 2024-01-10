@@ -19,17 +19,22 @@ pub fn do_begin<'a>(
 ) -> Result<()> {
     debug_print!("do_begin");
 
-    let accounts = ProgramAccountStorage::new(accounts)?;
+    let mut accounts = ProgramAccountStorage::new(accounts)?;
 
-    let mut backend = ExecutorState::new(&accounts);
+    let mut backend = ExecutorState::new(&mut accounts);
     let evm = Machine::new(trx, origin, &mut backend)?;
+
+    // Serialized was moved before the token burn to accomodate the ownership rules. The serialized
+    // data of `backend` and `evm` is not affected by the `&mut accounts` they hold. I am not sure
+    // updating `storage` before the burn is okay though. There is nothing preventing anyone from
+    // changing the serialization implementation and invalidating these assumptions though.
+    serialize_evm_state(&mut storage, &backend, &evm)?;
 
     // Burn `gas_limit` tokens from the origin account
     // Later we will mint them to the operator
     let mut origin_balance = accounts.create_balance_account(origin, storage.trx_chain_id())?;
     origin_balance.burn(storage.gas_limit_in_tokens()?)?;
 
-    serialize_evm_state(&mut storage, &backend, &evm)?;
     finalize(0, storage, accounts, None, gasometer)
 }
 
@@ -47,8 +52,8 @@ pub fn do_continue<'a>(
         )));
     }
 
-    let account_storage = ProgramAccountStorage::new(accounts)?;
-    let (mut backend, mut evm) = deserialize_evm_state(&storage, &account_storage)?;
+    let mut account_storage = ProgramAccountStorage::new(accounts)?;
+    let (mut backend, mut evm) = deserialize_evm_state(&storage, &mut account_storage)?;
 
     let (result, steps_executed) = {
         match backend.exit_status() {
@@ -163,7 +168,7 @@ fn serialize_evm_state(
 
 fn deserialize_evm_state<'a, 'r>(
     state: &StateAccount<'a>,
-    account_storage: &'r ProgramAccountStorage<'a>,
+    account_storage: &'r mut ProgramAccountStorage<'a>,
 ) -> Result<(EvmBackend<'a, 'r>, Evm<'a, 'r>)> {
     let (evm_state_len, evm_machine_len) = state.buffer_variables();
     let buffer = state.buffer();

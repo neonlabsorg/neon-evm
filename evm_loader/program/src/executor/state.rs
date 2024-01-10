@@ -19,7 +19,7 @@ use super::OwnedAccountInfo;
 /// Represents the state of executor abstracted away from a self.backend.
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
 pub struct ExecutorState<'a, B: AccountStorage> {
-    pub backend: &'a B,
+    pub backend: &'a mut B,
     cache: RefCell<Cache>,
     actions: Vec<Action>,
     stack: Vec<usize>,
@@ -36,7 +36,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         cursor.position().try_into().map_err(Error::from)
     }
 
-    pub fn deserialize_from(buffer: &[u8], backend: &'a B) -> Result<Self> {
+    pub fn deserialize_from(buffer: &[u8], backend: &'a mut B) -> Result<Self> {
         let (cache, actions, stack, exit_status) = bincode::deserialize(buffer)?;
         Ok(Self {
             backend,
@@ -48,7 +48,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     }
 
     #[must_use]
-    pub fn new(backend: &'a B) -> Self {
+    pub fn new(backend: &'a mut B) -> Self {
         let cache = Cache {
             solana_accounts: BTreeMap::new(),
             block_number: backend.block_number(),
@@ -175,7 +175,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 
 #[maybe_async(?Send)]
 impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
-    async fn nonce(&self, from_address: Address, from_chain_id: u64) -> Result<u64> {
+    async fn nonce(&mut self, from_address: Address, from_chain_id: u64) -> Result<u64> {
         let mut nonce = self.backend.nonce(from_address, from_chain_id).await;
         let mut increment = 0_u64;
 
@@ -199,7 +199,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
-    async fn balance(&self, from_address: Address, from_chain_id: u64) -> Result<U256> {
+    async fn balance(&mut self, from_address: Address, from_chain_id: u64) -> Result<U256> {
         let mut balance = self.backend.balance(from_address, from_chain_id).await;
 
         for action in &self.actions {
@@ -268,7 +268,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
-    async fn code_size(&self, from_address: Address) -> Result<usize> {
+    async fn code_size(&mut self, from_address: Address) -> Result<usize> {
         if self.is_precompile_extension(&from_address) {
             return Ok(1); // This is required in order to make a normal call to an extension contract
         }
@@ -284,7 +284,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(self.backend.code_size(from_address).await)
     }
 
-    async fn code_hash(&self, from_address: Address, chain_id: u64) -> Result<[u8; 32]> {
+    async fn code_hash(&mut self, from_address: Address, chain_id: u64) -> Result<[u8; 32]> {
         use solana_program::keccak::hash;
 
         for action in &self.actions {
@@ -298,7 +298,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(self.backend.code_hash(from_address, chain_id).await)
     }
 
-    async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
+    async fn code(&mut self, from_address: Address) -> Result<crate::evm::Buffer> {
         for action in &self.actions {
             if let Action::EvmSetCode { address, code, .. } = action {
                 if &from_address == address {
@@ -338,7 +338,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
-    async fn storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
+    async fn storage(&mut self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
         for action in self.actions.iter().rev() {
             if let Action::EvmSetStorage {
                 address,
@@ -452,7 +452,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         self.backend.is_valid_chain_id(chain_id)
     }
 
-    async fn contract_chain_id(&self, contract: Address) -> Result<u64> {
+    async fn contract_chain_id(&mut self, contract: Address) -> Result<u64> {
         for action in self.actions.iter().rev() {
             if let Action::EvmSetCode {
                 address, chain_id, ..

@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-
 use crate::account::{
     AccountsDB, BalanceAccount, ContractAccount, Operator, StorageCell, Treasury,
 };
@@ -19,9 +17,7 @@ impl<'a> ProgramAccountStorage<'a> {
         Ok(Self {
             clock: Clock::get()?,
             accounts,
-            // We may be able to remove the `RefCell` here, it was added to make the change in
-            // NDEV-2511 not too large.
-            keys: RefCell::new(KeysCache::new()),
+            keys: KeysCache::new(),
         })
     }
 
@@ -41,11 +37,8 @@ impl<'a> ProgramAccountStorage<'a> {
         &self.accounts
     }
 
-    pub fn storage_cell(&self, address: Address, index: U256) -> Result<StorageCell<'a>> {
-        let pubkey = self
-            .keys
-            .borrow_mut()
-            .storage_cell(&crate::ID, address, index);
+    pub fn storage_cell(&mut self, address: Address, index: U256) -> Result<StorageCell<'a>> {
+        let pubkey = self.keys.storage_cell(&crate::ID, address, index);
 
         let account = self.accounts.get(&pubkey);
         let result = StorageCell::from_account(&crate::ID, account.clone());
@@ -59,8 +52,8 @@ impl<'a> ProgramAccountStorage<'a> {
         result
     }
 
-    pub fn contract_account(&self, address: Address) -> Result<ContractAccount<'a>> {
-        let pubkey = self.keys.borrow_mut().contract(&crate::ID, address);
+    pub fn contract_account(&mut self, address: Address) -> Result<ContractAccount<'a>> {
+        let pubkey = self.keys.contract(&crate::ID, address);
 
         let account = self.accounts.get(&pubkey);
         let result = ContractAccount::from_account(&crate::ID, account.clone());
@@ -73,17 +66,18 @@ impl<'a> ProgramAccountStorage<'a> {
         result
     }
 
-    pub fn balance_account(&self, address: Address, chain_id: u64) -> Result<BalanceAccount<'a>> {
-        let pubkey = self
-            .keys
-            .borrow_mut()
-            .balance(&crate::ID, address, chain_id);
+    pub fn balance_account(
+        &mut self,
+        address: Address,
+        chain_id: u64,
+    ) -> Result<BalanceAccount<'a>> {
+        let pubkey = self.keys.balance(&crate::ID, address, chain_id);
 
         let account = self.accounts.get(&pubkey);
         let result = BalanceAccount::from_account(&crate::ID, account.clone());
 
         if result.is_err() && (chain_id == DEFAULT_CHAIN_ID) {
-            let contract_pubkey = self.keys.borrow_mut().contract(&crate::ID, address);
+            let contract_pubkey = self.keys.contract(&crate::ID, address);
             let contract = self.accounts.get(&contract_pubkey);
 
             let legacy_tag = crate::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED;
@@ -94,15 +88,10 @@ impl<'a> ProgramAccountStorage<'a> {
     }
 
     pub fn create_balance_account(
-        &self,
+        &mut self,
         address: Address,
         chain_id: u64,
     ) -> Result<BalanceAccount<'a>> {
-        BalanceAccount::create(
-            address,
-            chain_id,
-            &self.accounts,
-            Some(&mut self.keys.borrow_mut()),
-        )
+        BalanceAccount::create(address, chain_id, &self.accounts, Some(&mut self.keys))
     }
 }

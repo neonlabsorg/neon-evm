@@ -25,7 +25,7 @@ pub use keys_cache::KeysCache;
 pub struct ProgramAccountStorage<'a> {
     clock: Clock,
     accounts: AccountsDB<'a>,
-    keys: core::cell::RefCell<keys_cache::KeysCache>,
+    keys: keys_cache::KeysCache,
 }
 
 /// Account storage
@@ -45,28 +45,28 @@ pub trait AccountStorage {
     async fn block_hash(&self, number: u64) -> [u8; 32];
 
     /// Get account nonce
-    async fn nonce(&self, address: Address, chain_id: u64) -> u64;
+    async fn nonce(&mut self, address: Address, chain_id: u64) -> u64;
     /// Get account balance
-    async fn balance(&self, address: Address, chain_id: u64) -> U256;
+    async fn balance(&mut self, address: Address, chain_id: u64) -> U256;
 
     fn is_valid_chain_id(&self, chain_id: u64) -> bool;
     fn chain_id_to_token(&self, chain_id: u64) -> Pubkey;
     fn default_chain_id(&self) -> u64;
 
     /// Get contract chain_id
-    async fn contract_chain_id(&self, address: Address) -> Result<u64>;
+    async fn contract_chain_id(&mut self, address: Address) -> Result<u64>;
     /// Get contract solana address
-    fn contract_pubkey(&self, address: Address) -> (Pubkey, u8);
+    fn contract_pubkey(&mut self, address: Address) -> (Pubkey, u8);
 
     /// Get code hash
-    async fn code_hash(&self, address: Address, chain_id: u64) -> [u8; 32];
+    async fn code_hash(&mut self, address: Address, chain_id: u64) -> [u8; 32];
     /// Get code size
-    async fn code_size(&self, address: Address) -> usize;
+    async fn code_size(&mut self, address: Address) -> usize;
     /// Get code data
-    async fn code(&self, address: Address) -> crate::evm::Buffer;
+    async fn code(&mut self, address: Address) -> crate::evm::Buffer;
 
     /// Get data from storage
-    async fn storage(&self, address: Address, index: U256) -> [u8; 32];
+    async fn storage(&mut self, address: Address, index: U256) -> [u8; 32];
 
     /// Clone existing solana account
     async fn clone_solana_account(&self, address: &Pubkey) -> OwnedAccountInfo;

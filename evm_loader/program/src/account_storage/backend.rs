@@ -35,12 +35,12 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         super::block_hash::find_slot_hash(slot, &slot_hashes_data[..])
     }
 
-    fn nonce(&self, address: Address, chain_id: u64) -> u64 {
+    fn nonce(&mut self, address: Address, chain_id: u64) -> u64 {
         self.balance_account(address, chain_id)
             .map_or(0_u64, |a| a.nonce())
     }
 
-    fn balance(&self, address: Address, chain_id: u64) -> U256 {
+    fn balance(&mut self, address: Address, chain_id: u64) -> U256 {
         self.balance_account(address, chain_id)
             .map_or(U256::ZERO, |a| a.balance())
     }
@@ -63,18 +63,17 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         crate::config::DEFAULT_CHAIN_ID
     }
 
-    fn contract_chain_id(&self, address: Address) -> Result<u64> {
+    fn contract_chain_id(&mut self, address: Address) -> Result<u64> {
         let contract = self.contract_account(address)?;
         Ok(contract.chain_id())
     }
 
-    fn contract_pubkey(&self, address: Address) -> (Pubkey, u8) {
-        self.keys
-            .borrow_mut()
-            .contract_with_bump_seed(self.program_id(), address)
+    fn contract_pubkey(&mut self, address: Address) -> (Pubkey, u8) {
+        let program_id = *self.program_id();
+        self.keys.contract_with_bump_seed(&program_id, address)
     }
 
-    fn code_hash(&self, address: Address, chain_id: u64) -> [u8; 32] {
+    fn code_hash(&mut self, address: Address, chain_id: u64) -> [u8; 32] {
         use solana_program::keccak;
 
         if let Ok(contract) = self.contract_account(address) {
@@ -97,16 +96,16 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         }
     }
 
-    fn code_size(&self, address: Address) -> usize {
+    fn code_size(&mut self, address: Address) -> usize {
         self.contract_account(address).map_or(0, |a| a.code_len())
     }
 
-    fn code(&self, address: Address) -> crate::evm::Buffer {
+    fn code(&mut self, address: Address) -> crate::evm::Buffer {
         self.contract_account(address)
             .map_or_else(|_| crate::evm::Buffer::empty(), |a| a.code_buffer())
     }
 
-    fn storage(&self, address: Address, index: U256) -> [u8; 32] {
+    fn storage(&mut self, address: Address, index: U256) -> [u8; 32] {
         if index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u64) {
             let index: usize = index.as_usize();
             return self

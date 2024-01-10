@@ -2,10 +2,9 @@ use async_trait::async_trait;
 use base64::Engine;
 use enum_dispatch::enum_dispatch;
 use std::collections::BTreeMap;
-use tokio::sync::{Mutex, MutexGuard, OnceCell};
+use tokio::sync::MutexGuard;
 
 use serde::{Deserialize, Serialize};
-use solana_program_test::{ProgramTest, ProgramTestContext};
 use solana_sdk::{
     account::{Account, AccountSharedData},
     account_utils::StateMut,
@@ -21,6 +20,7 @@ use solana_sdk::{
 use crate::{rpc::Rpc, NeonError, NeonResult};
 
 use crate::rpc::{CallDbClient, CloneRpcClient, SolanaRpc};
+use crate::solana_emulator::{get_solana_emulator, SolanaEmulator};
 use serde_with::{serde_as, DisplayFromStr};
 use solana_client::nonblocking::rpc_client::RpcClient;
 
@@ -50,8 +50,6 @@ pub struct GetConfigResponse {
     pub chains: Vec<ChainInfo>,
     pub config: BTreeMap<String, String>,
 }
-
-static PROGRAM_TEST: OnceCell<Mutex<ProgramTestContext>> = OnceCell::const_new();
 
 async fn read_program_data_from_account(
     rpc: &CallDbClient,
@@ -86,39 +84,9 @@ async fn read_program_data_from_account(
     }
 }
 
-async fn lock_program_test(
-    program_id: Pubkey,
-    program_data: Vec<u8>,
-) -> MutexGuard<'static, ProgramTestContext> {
-    async fn init_program_test() -> Mutex<ProgramTestContext> {
-        let program_test = ProgramTest::default();
-        let context = program_test.start_with_context().await;
-        Mutex::new(context)
-    }
-
-    let mut context = PROGRAM_TEST
-        .get_or_init(init_program_test)
-        .await
-        .lock()
-        .await;
-
-    context.set_account(
-        &program_id,
-        &AccountSharedData::from(Account {
-            lamports: Rent::default().minimum_balance(program_data.len()).max(1),
-            data: program_data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        }),
-    );
-
-    context
-}
-
 pub enum ConfigSimulator<'r> {
     Rpc(Pubkey, &'r RpcClient),
-    ProgramTest(MutexGuard<'static, ProgramTestContext>),
+    ProgramTest(MutexGuard<'static, SolanaEmulator>),
 }
 
 #[async_trait(?Send)]
@@ -141,10 +109,24 @@ impl BuildConfigSimulator for CloneRpcClient {
 impl BuildConfigSimulator for CallDbClient {
     async fn build_config_simulator(&self, program_id: Pubkey) -> NeonResult<ConfigSimulator> {
         let program_data = read_program_data_from_account(self, program_id).await?;
-        let mut program_test = lock_program_test(program_id, program_data).await;
-        program_test.get_new_latest_blockhash().await?;
+        let mut emulator = get_solana_emulator().await;
+        let context = emulator.emulator_context.get_mut();
+        context.set_account(
+            &program_id,
+            &AccountSharedData::from(Account {
+                lamports: Rent::default().minimum_balance(program_data.len()).max(1),
+                data: program_data,
+                owner: bpf_loader::id(),
+                executable: true,
+                rent_epoch: 0,
+            }),
+        );
+        Ok(ConfigSimulator::ProgramTest(emulator))
 
-        Ok(ConfigSimulator::ProgramTest(program_test))
+        // let mut program_test = lock_program_test(program_id, program_data).await;
+        // program_test.get_new_latest_blockhash().await?;
+
+        // Ok(ConfigSimulator::ProgramTest(program_test))
     }
 }
 
@@ -176,7 +158,8 @@ impl ConfigSimulator<'_> {
                 }
                 result.logs.unwrap()
             }
-            ConfigSimulator::ProgramTest(context) => {
+            ConfigSimulator::ProgramTest(emulator) => {
+                let context = emulator.emulator_context.get_mut();
                 let payer_pubkey = context.payer.pubkey();
                 let tx = Transaction::new_signed_with_payer(
                     &[Instruction::new_with_bytes(program_id, &input, vec![])],

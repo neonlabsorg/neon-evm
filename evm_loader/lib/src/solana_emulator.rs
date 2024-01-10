@@ -23,8 +23,9 @@ use solana_sdk::{
 /// 1. Use global program_stubs variable (new() function changes it inside ProgramTest::start_with_context)
 /// 2. Get list of activated features from solana cluster (this list can't be changed after initialization)
 pub struct SolanaEmulator {
-    program_id: Pubkey,
-    emulator_context: RefCell<ProgramTestContext>,
+    pub program_id: Pubkey,
+    pub emulator_context: RefCell<ProgramTestContext>,
+    pub evm_loader_program: Account,
 }
 
 static SOLANA_EMULATOR: OnceCell<Mutex<SolanaEmulator>> = OnceCell::const_new();
@@ -132,11 +133,18 @@ impl SolanaEmulator {
             })
             .for_each(|feature_id| program_test.deactivate_feature(feature_id));
 
-        let emulator_context = program_test.start_with_context().await;
+        let mut emulator_context = program_test.start_with_context().await;
+        let evm_loader_program = emulator_context
+            .banks_client
+            .get_account(program_id)
+            .await
+            .expect("Can't get evm_loader program account")
+            .expect("evm_loader program account not found");
 
         Ok(Self {
             program_id,
             emulator_context: RefCell::new(emulator_context),
+            evm_loader_program,
         })
     }
 
@@ -160,6 +168,17 @@ impl SolanaEmulator {
             shared_account.set_executable(account.executable);
             emulator_context.set_account(&account.key, &shared_account);
         };
+
+        append_account_to_emulator(&OwnedAccountInfo {
+            is_signer: false,
+            is_writable: false,
+            lamports: self.evm_loader_program.lamports,
+            data: self.evm_loader_program.data.clone(),
+            owner: self.evm_loader_program.owner,
+            executable: true,
+            rent_epoch: self.evm_loader_program.rent_epoch,
+            key: self.program_id,
+        });
 
         for (index, m) in instruction.accounts.iter().enumerate() {
             let account = accounts

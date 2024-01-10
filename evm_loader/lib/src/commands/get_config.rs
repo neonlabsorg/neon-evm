@@ -24,7 +24,6 @@ use crate::rpc::{CallDbClient, CloneRpcClient};
 use serde_with::{serde_as, DisplayFromStr};
 use solana_client::client_error::Result as ClientResult;
 use solana_client::rpc_config::{RpcLargestAccountsConfig, RpcSimulateTransactionConfig};
-use tokio::sync::{Mutex, MutexGuard, OnceCell};
 
 #[derive(Debug, Serialize)]
 pub enum Status {
@@ -85,18 +84,8 @@ impl CallDbClient {
     }
 }
 
-async fn program_test_context() -> MutexGuard<'static, ProgramTestContext> {
-    static PROGRAM_TEST_CONTEXT: OnceCell<Mutex<ProgramTestContext>> = OnceCell::const_new();
-
-    async fn init_program_test_context() -> Mutex<ProgramTestContext> {
-        Mutex::new(ProgramTest::default().start_with_context().await)
-    }
-
-    PROGRAM_TEST_CONTEXT
-        .get_or_init(init_program_test_context)
-        .await
-        .lock()
-        .await
+async fn program_test_context() -> ProgramTestContext {
+    ProgramTest::default().start_with_context().await
 }
 
 fn set_program_account(
@@ -118,7 +107,7 @@ fn set_program_account(
 
 pub enum ConfigSimulator<'r> {
     CloneRpcClient(Pubkey, &'r CloneRpcClient),
-    ProgramTestContext(Pubkey, MutexGuard<'static, ProgramTestContext>),
+    ProgramTestContext(Pubkey, ProgramTestContext),
 }
 
 #[async_trait(?Send)]

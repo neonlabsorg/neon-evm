@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap};
+use std::collections::HashMap;
 
 use ethnum::U256;
 use solana_program::pubkey::Pubkey;
@@ -9,81 +9,97 @@ type ContractKey = Address;
 type BalanceKey = (Address, u64);
 type StorageKey = (Address, U256);
 
+type ContractMap = HashMap<ContractKey, (Pubkey, u8)>;
+type BalanceMap = HashMap<BalanceKey, (Pubkey, u8)>;
+type StorageMap = HashMap<StorageKey, StorageCellAddress>;
+
 pub struct KeysCache {
-    contracts: RefCell<HashMap<ContractKey, (Pubkey, u8)>>,
-    balances: RefCell<HashMap<BalanceKey, (Pubkey, u8)>>,
-    storage_cells: RefCell<HashMap<StorageKey, StorageCellAddress>>,
+    contracts: ContractMap,
+    balances: BalanceMap,
+    storage_cells: StorageMap,
+}
+
+fn contract_with_bump_seed_mut<'a>(
+    contracts: &'a mut ContractMap,
+    program_id: &Pubkey,
+    address: Address,
+) -> &'a mut (Pubkey, u8) {
+    contracts
+        .entry(address)
+        .or_insert_with_key(|address| address.find_solana_address(program_id))
+}
+
+fn balance_with_bump_seed<'a>(
+    balances: &'a mut BalanceMap,
+    program_id: &Pubkey,
+    address: Address,
+    chain_id: u64,
+) -> &'a mut (Pubkey, u8) {
+    balances
+        .entry((address, chain_id))
+        .or_insert_with_key(|(address, chain_id)| {
+            address.find_balance_address(program_id, *chain_id)
+        })
 }
 
 impl KeysCache {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            contracts: RefCell::new(HashMap::with_capacity(8)),
-            balances: RefCell::new(HashMap::with_capacity(8)),
-            storage_cells: RefCell::new(HashMap::with_capacity(32)),
+            contracts: HashMap::with_capacity(8),
+            balances: HashMap::with_capacity(8),
+            storage_cells: HashMap::with_capacity(32),
         }
     }
 
     #[must_use]
-    pub fn contract_with_bump_seed(&self, program_id: &Pubkey, address: Address) -> (Pubkey, u8) {
-        *self
-            .contracts
-            .borrow_mut()
-            .entry(address)
-            .or_insert_with_key(|a| a.find_solana_address(program_id))
+    pub fn contract_with_bump_seed(
+        &mut self,
+        program_id: &Pubkey,
+        address: Address,
+    ) -> (Pubkey, u8) {
+        *contract_with_bump_seed_mut(&mut self.contracts, program_id, address)
     }
 
     #[must_use]
-    pub fn contract(&self, program_id: &Pubkey, address: Address) -> Pubkey {
+    pub fn contract(&mut self, program_id: &Pubkey, address: Address) -> Pubkey {
         self.contract_with_bump_seed(program_id, address).0
     }
 
     #[must_use]
     pub fn balance_with_bump_seed(
-        &self,
+        &mut self,
         program_id: &Pubkey,
         address: Address,
         chain_id: u64,
     ) -> (Pubkey, u8) {
-        *self
-            .balances
-            .borrow_mut()
-            .entry((address, chain_id))
-            .or_insert_with_key(|(a, chain_id)| a.find_balance_address(program_id, *chain_id))
+        *balance_with_bump_seed(&mut self.balances, program_id, address, chain_id)
     }
 
     #[must_use]
-    pub fn balance(&self, program_id: &Pubkey, address: Address, chain_id: u64) -> Pubkey {
+    pub fn balance(&mut self, program_id: &Pubkey, address: Address, chain_id: u64) -> Pubkey {
         self.balance_with_bump_seed(program_id, address, chain_id).0
     }
 
     #[must_use]
-    pub fn storage_cell(&self, program_id: &Pubkey, address: Address, index: U256) -> Pubkey {
+    pub fn storage_cell(&mut self, program_id: &Pubkey, address: Address, index: U256) -> Pubkey {
         *self
-            .storage_cells
-            .borrow_mut()
-            .entry((address, index))
-            .or_insert_with(|| {
-                let base = self.contract(program_id, address);
-                StorageCellAddress::new(program_id, &base, &index)
-            })
+            .storage_cell_address(program_id, address, index)
             .pubkey()
     }
 
     #[must_use]
     pub fn storage_cell_address(
-        &self,
+        &mut self,
         program_id: &Pubkey,
         address: Address,
         index: U256,
     ) -> StorageCellAddress {
         *self
             .storage_cells
-            .borrow_mut()
             .entry((address, index))
             .or_insert_with(|| {
-                let base = self.contract(program_id, address);
+                let base = contract_with_bump_seed_mut(&mut self.contracts, program_id, address).0;
                 StorageCellAddress::new(program_id, &base, &index)
             })
     }

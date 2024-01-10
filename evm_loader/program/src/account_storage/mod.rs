@@ -25,7 +25,7 @@ pub use keys_cache::KeysCache;
 pub struct ProgramAccountStorage<'a> {
     clock: Clock,
     accounts: AccountsDB<'a>,
-    keys: keys_cache::KeysCache,
+    keys: core::cell::RefCell<keys_cache::KeysCache>,
 }
 
 /// Account storage

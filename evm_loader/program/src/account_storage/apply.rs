@@ -57,7 +57,7 @@ impl<'a> ProgramAccountStorage<'a> {
                     code,
                     &rent,
                     &self.accounts,
-                    Some(&self.keys),
+                    Some(&mut self.keys.borrow_mut()),
                 )?;
 
                 if result == AllocateResult::NeedMore {
@@ -119,7 +119,7 @@ impl<'a> ProgramAccountStorage<'a> {
                         0,
                         &code,
                         &self.accounts,
-                        Some(&self.keys),
+                        Some(&mut self.keys.borrow_mut()),
                     )?;
                 }
                 Action::EvmSelfDestruct { address: _ } => {
@@ -200,11 +200,17 @@ impl<'a> ProgramAccountStorage<'a> {
             }
 
             for (index, values) in infinite_values {
-                let cell_address = self.keys.storage_cell_address(&crate::ID, address, index);
+                let cell_address =
+                    self.keys
+                        .borrow_mut()
+                        .storage_cell_address(&crate::ID, address, index);
 
                 let account = self.accounts.get(cell_address.pubkey());
                 if system_program::check_id(account.owner) {
-                    let (_, bump) = self.keys.contract_with_bump_seed(&crate::ID, address);
+                    let (_, bump) = self
+                        .keys
+                        .borrow_mut()
+                        .contract_with_bump_seed(&crate::ID, address);
                     let sign: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], address.as_bytes(), &[bump]];
 
                     let len = values.len();

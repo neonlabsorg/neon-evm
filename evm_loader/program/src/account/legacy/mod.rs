@@ -58,7 +58,7 @@ fn kill_account(account: &AccountInfo) -> Result<u64> {
 fn update_ether_account(
     legacy_data: &LegacyEtherData,
     db: &AccountsDB,
-    keys: &KeysCache,
+    keys: &mut KeysCache,
 ) -> Result<u64> {
     let pubkey = keys.contract(&crate::ID, legacy_data.address);
     let account = db.get(&pubkey);
@@ -116,7 +116,7 @@ fn update_ether_account(
 fn update_storage_account(
     legacy_data: &LegacyStorageData,
     db: &AccountsDB,
-    keys: &KeysCache,
+    keys: &mut KeysCache,
 ) -> Result<u64> {
     let mut lamports_collected = 0_u64;
 
@@ -185,7 +185,7 @@ pub fn update_holder_account(account: &AccountInfo) -> Result<u8> {
 }
 
 pub fn update_legacy_accounts(accounts: &AccountsDB) -> Result<u64> {
-    let keys = KeysCache::new();
+    let mut keys = KeysCache::new();
 
     let mut lamports_collected = 0_u64;
     let mut legacy_storage = Vec::with_capacity(accounts.accounts_len());
@@ -203,7 +203,7 @@ pub fn update_legacy_accounts(accounts: &AccountsDB) -> Result<u64> {
         match tag {
             LegacyEtherData::TAG => {
                 let legacy_data = LegacyEtherData::from_account(&crate::ID, account)?;
-                lamports_collected += update_ether_account(&legacy_data, accounts, &keys)?;
+                lamports_collected += update_ether_account(&legacy_data, accounts, &mut keys)?;
             }
             LegacyStorageData::TAG => {
                 let legacy_data = LegacyStorageData::from_account(&crate::ID, account)?;
@@ -214,7 +214,7 @@ pub fn update_legacy_accounts(accounts: &AccountsDB) -> Result<u64> {
     }
 
     for data in legacy_storage {
-        lamports_collected += update_storage_account(&data, accounts, &keys)?;
+        lamports_collected += update_storage_account(&data, accounts, &mut keys)?;
     }
 
     Ok(lamports_collected)

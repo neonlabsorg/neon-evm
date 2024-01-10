@@ -45,9 +45,9 @@ impl<'a> BalanceAccount<'a> {
         address: Address,
         chain_id: u64,
         accounts: &AccountsDB<'a>,
-        keys: Option<&KeysCache>,
+        mut keys: Option<&mut KeysCache>,
     ) -> Result<Self> {
-        let (pubkey, bump_seed) = keys.map_or_else(
+        let (pubkey, bump_seed) = keys.as_mut().map_or_else(
             || address.find_balance_address(&crate::ID, chain_id),
             |keys| keys.balance_with_bump_seed(&crate::ID, address, chain_id),
         );

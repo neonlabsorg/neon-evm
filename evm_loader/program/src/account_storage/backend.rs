@@ -70,6 +70,7 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
 
     fn contract_pubkey(&self, address: Address) -> (Pubkey, u8) {
         self.keys
+            .borrow_mut()
             .contract_with_bump_seed(self.program_id(), address)
     }
 

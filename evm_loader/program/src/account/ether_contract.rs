@@ -58,7 +58,7 @@ impl<'a> ContractAccount<'a> {
         code: &[u8],
         rent: &Rent,
         accounts: &AccountsDB,
-        keys: Option<&KeysCache>,
+        keys: Option<&mut KeysCache>,
     ) -> Result<AllocateResult> {
         let (pubkey, bump_seed) = keys.map_or_else(
             || address.find_solana_address(&crate::ID),
@@ -108,7 +108,7 @@ impl<'a> ContractAccount<'a> {
         generation: u32,
         code: &[u8],
         accounts: &AccountsDB<'a>,
-        keys: Option<&KeysCache>,
+        keys: Option<&mut KeysCache>,
     ) -> Result<Self> {
         let (pubkey, _) = keys.map_or_else(
             || address.find_solana_address(&crate::ID),

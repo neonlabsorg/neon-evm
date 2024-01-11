@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use ethnum::{AsU256, U256};
 use maybe_async::maybe_async;
 use solana_program::instruction::Instruction;
+use solana_program::keccak;
 use solana_program::pubkey::Pubkey;
 
 use crate::account_storage::AccountStorage;
@@ -290,22 +291,17 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
         let code = self.code(address).await?;
 
-        let bytes_to_hash: Option<&[u8]> = if !code.is_empty() {
-            // A program account exists at the address.
-            Some(&code)
-        } else if self.nonce(address, chain_id).await? > 0
-            || self.balance(address, chain_id).await? > 0
-        {
-            // A data account exists at the address.
-            Some(&[])
-        } else {
-            // No account exists at the address.
-            None
-        };
+        if !code.is_empty() {
+            return Ok(keccak::hash(&code).to_bytes());
+        }
 
-        Ok(bytes_to_hash
-            .map(|bytes| solana_program::keccak::hash(bytes).to_bytes())
-            .unwrap_or_default())
+        if self.nonce(address, chain_id).await? == 0 && self.balance(address, chain_id).await? == 0
+        {
+            return Ok(<[u8; 32]>::default());
+        }
+
+        // equal to "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        return Ok(keccak::hash(&[]).to_bytes());
     }
 
     async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
@@ -480,13 +476,14 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use hex::FromHex;
 
     // https://eips.ethereum.org/EIPS/eip-1052
     #[test]
     fn test_keccak_hash_empty_slice() {
         assert_eq!(
-            solana_program::keccak::hash(&[]).to_bytes(),
+            keccak::hash(&[]).to_bytes(),
             <[u8; 32]>::from_hex(
                 "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
             )

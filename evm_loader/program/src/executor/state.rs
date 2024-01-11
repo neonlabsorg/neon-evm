@@ -284,7 +284,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(self.backend.code_size(from_address).await)
     }
 
-    async fn code_hash(&self, from_address: Address, chain_id: u64) -> Result<[u8; 32]> {
+    async fn code_hash(&self, address: Address, chain_id: u64) -> Result<[u8; 32]> {
         // https://eips.ethereum.org/EIPS/eip-1052
         // https://eips.ethereum.org/EIPS/eip-161
 
@@ -303,11 +303,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         // FIXME: Because buffer is returned by value, we need to store buffer in order to store a
         // reference to the bytes. I could use Option<Buffer> instead, but that is storing a more
         // powerful type than I need. I just need a byte slice.
-        let buffer = self.code(from_address).await?;
+        let buffer = self.code(address).await?;
         let bytes_to_hash: Option<&[u8]> = if !buffer.is_empty() {
             // A program account exists at the address.
             Some(&buffer)
-        } else if data_account_exists(self, from_address, chain_id).await? {
+        } else if data_account_exists(self, address, chain_id).await? {
             // A data account exists at the address.
             Some(&[])
         } else {

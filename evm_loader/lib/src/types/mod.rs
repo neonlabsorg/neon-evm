@@ -55,7 +55,7 @@ impl TxParams {
     pub async fn into_transaction(self, backend: &impl AccountStorage) -> (Address, Transaction) {
         let chain_id = self.chain_id.unwrap_or_else(|| backend.default_chain_id());
 
-        let origin_nonce = backend.nonce(self.from, chain_id).await;
+        let origin_nonce = backend.nonce(self.from, chain_id).await.unwrap_or_default();
         let nonce = self.nonce.unwrap_or(origin_nonce);
 
         let payload = if let Some(access_list) = self.access_list {

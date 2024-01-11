@@ -19,14 +19,17 @@ use super::OwnedAccountInfo;
 /// Represents the state of executor abstracted away from a self.backend.
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
 pub struct ExecutorState<'a, B: AccountStorage> {
+    /// Used for retrieving initial account states before Neon transaction execution (read-only access)
     pub backend: &'a B,
     cache: RefCell<Cache>,
+    /// Used for storing actions which mutate account states during Neon transaction execution
     actions: Vec<Action>,
     stack: Vec<usize>,
     exit_status: Option<ExitStatus>,
 }
 
 impl<'a, B: AccountStorage> ExecutorState<'a, B> {
+    #[cfg(target_os = "solana")]
     pub fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize> {
         let mut cursor = std::io::Cursor::new(buffer);
 
@@ -36,6 +39,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         cursor.position().try_into().map_err(Error::from)
     }
 
+    #[cfg(target_os = "solana")]
     pub fn deserialize_from(buffer: &[u8], backend: &'a B) -> Result<Self> {
         let (cache, actions, stack, exit_status) = bincode::deserialize(buffer)?;
         Ok(Self {
@@ -176,7 +180,11 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 #[maybe_async(?Send)]
 impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     async fn nonce(&self, from_address: Address, from_chain_id: u64) -> Result<u64> {
-        let mut nonce = self.backend.nonce(from_address, from_chain_id).await;
+        let mut nonce = self
+            .backend
+            .nonce(from_address, from_chain_id)
+            .await
+            .unwrap_or_default();
         let mut increment = 0_u64;
 
         for action in &self.actions {
@@ -200,7 +208,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn balance(&self, from_address: Address, from_chain_id: u64) -> Result<U256> {
-        let mut balance = self.backend.balance(from_address, from_chain_id).await;
+        let mut balance = self
+            .backend
+            .balance(from_address, from_chain_id)
+            .await
+            .unwrap_or_default();
 
         for action in &self.actions {
             match action {

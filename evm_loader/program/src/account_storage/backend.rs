@@ -35,14 +35,16 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         super::block_hash::find_slot_hash(slot, &slot_hashes_data[..])
     }
 
-    fn nonce(&self, address: Address, chain_id: u64) -> u64 {
+    fn nonce(&self, address: Address, chain_id: u64) -> Option<u64> {
         self.balance_account(address, chain_id)
-            .map_or(0_u64, |a| a.nonce())
+            .map(|a| a.nonce())
+            .ok()
     }
 
-    fn balance(&self, address: Address, chain_id: u64) -> U256 {
+    fn balance(&self, address: Address, chain_id: u64) -> Option<U256> {
         self.balance_account(address, chain_id)
-            .map_or(U256::ZERO, |a| a.balance())
+            .map(|a| a.balance())
+            .ok()
     }
 
     fn is_valid_chain_id(&self, chain_id: u64) -> bool {

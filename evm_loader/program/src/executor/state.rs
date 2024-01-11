@@ -303,10 +303,10 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         // FIXME: Because buffer is returned by value, we need to store buffer in order to store a
         // reference to the bytes. I could use Option<Buffer> instead, but that is storing a more
         // powerful type than I need. I just need a byte slice.
-        let buffer = self.code(address).await?;
-        let bytes_to_hash: Option<&[u8]> = if !buffer.is_empty() {
+        let code = self.code(address).await?;
+        let bytes_to_hash: Option<&[u8]> = if !code.is_empty() {
             // A program account exists at the address.
-            Some(&buffer)
+            Some(&code)
         } else if data_account_exists(self, address, chain_id).await? {
             // A data account exists at the address.
             Some(&[])

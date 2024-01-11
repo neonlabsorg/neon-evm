@@ -289,6 +289,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         // https://eips.ethereum.org/EIPS/eip-161
 
         let code = self.code(address).await?;
+
         let bytes_to_hash: Option<&[u8]> = if !code.is_empty() {
             // A program account exists at the address.
             Some(&code)

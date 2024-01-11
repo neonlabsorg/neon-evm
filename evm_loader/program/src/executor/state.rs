@@ -477,3 +477,20 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         self.backend.contract_chain_id(contract).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use hex::FromHex;
+
+    // https://eips.ethereum.org/EIPS/eip-1052
+    #[test]
+    fn test_keccak_hash_empty_slice() {
+        assert_eq!(
+            solana_program::keccak::hash(&[]).to_bytes(),
+            <[u8; 32]>::from_hex(
+                "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+            )
+            .unwrap()
+        );
+    }
+}

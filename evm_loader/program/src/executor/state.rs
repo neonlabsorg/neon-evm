@@ -285,17 +285,39 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn code_hash(&self, from_address: Address, chain_id: u64) -> Result<[u8; 32]> {
-        use solana_program::keccak::hash;
+        // https://eips.ethereum.org/EIPS/eip-1052
+        // https://eips.ethereum.org/EIPS/eip-161
 
-        for action in &self.actions {
-            if let Action::EvmSetCode { address, code, .. } = action {
-                if &from_address == address {
-                    return Ok(hash(code).to_bytes());
-                }
-            }
+        #[maybe_async]
+        async fn data_account_exists<B: AccountStorage>(
+            state: &ExecutorState<'_, B>,
+            address: Address,
+            chain_id: u64,
+        ) -> Result<bool> {
+            Ok(state.nonce(address, chain_id).await? > 0
+                || state.balance(address, chain_id).await? > 0)
         }
 
-        Ok(self.backend.code_hash(from_address, chain_id).await)
+        // FIXME: Can we modify self.code to return Option<Buffer> or Option<&[u8]>?
+
+        // FIXME: Because buffer is returned by value, we need to store buffer in order to store a
+        // reference to the bytes. I could use Option<Buffer> instead, but that is storing a more
+        // powerful type than I need. I just need a byte slice.
+        let buffer = self.code(from_address).await?;
+        let bytes_to_hash: Option<&[u8]> = if !buffer.buffer_is_empty() {
+            // A program account exists at the address.
+            Some(&buffer)
+        } else if data_account_exists(self, from_address, chain_id).await? {
+            // A data account exists at the address.
+            Some(&[])
+        } else {
+            // No account exists at the address.
+            None
+        };
+
+        Ok(bytes_to_hash
+            .map(|bytes| solana_program::keccak::hash(bytes).to_bytes())
+            .unwrap_or_default())
     }
 
     async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {

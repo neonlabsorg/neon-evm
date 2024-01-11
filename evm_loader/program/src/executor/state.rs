@@ -304,7 +304,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         // reference to the bytes. I could use Option<Buffer> instead, but that is storing a more
         // powerful type than I need. I just need a byte slice.
         let buffer = self.code(from_address).await?;
-        let bytes_to_hash: Option<&[u8]> = if !buffer.buffer_is_empty() {
+        let bytes_to_hash: Option<&[u8]> = if !buffer.is_empty() {
             // A program account exists at the address.
             Some(&buffer)
         } else if data_account_exists(self, from_address, chain_id).await? {

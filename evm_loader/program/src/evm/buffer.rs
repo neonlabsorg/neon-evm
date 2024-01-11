@@ -84,11 +84,6 @@ impl Buffer {
     }
 
     #[must_use]
-    pub fn buffer_is_empty(&self) -> bool {
-        matches!(self.inner, Inner::Empty)
-    }
-
-    #[must_use]
     pub fn is_initialized(&self) -> bool {
         !matches!(self.inner, Inner::AccountUninit { .. })
     }

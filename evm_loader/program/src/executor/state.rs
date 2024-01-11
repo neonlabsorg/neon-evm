@@ -288,16 +288,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         // https://eips.ethereum.org/EIPS/eip-1052
         // https://eips.ethereum.org/EIPS/eip-161
 
-        #[maybe_async]
-        async fn data_account_exists<B: AccountStorage>(
-            state: &ExecutorState<'_, B>,
-            address: Address,
-            chain_id: u64,
-        ) -> Result<bool> {
-            Ok(state.nonce(address, chain_id).await? > 0
-                || state.balance(address, chain_id).await? > 0)
-        }
-
         // FIXME: Can we modify self.code to return Option<Buffer> or Option<&[u8]>?
 
         // FIXME: Because buffer is returned by value, we need to store buffer in order to store a
@@ -307,7 +297,9 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         let bytes_to_hash: Option<&[u8]> = if !code.is_empty() {
             // A program account exists at the address.
             Some(&code)
-        } else if data_account_exists(self, address, chain_id).await? {
+        } else if self.nonce(address, chain_id).await? > 0
+            || self.balance(address, chain_id).await? > 0
+        {
             // A data account exists at the address.
             Some(&[])
         } else {

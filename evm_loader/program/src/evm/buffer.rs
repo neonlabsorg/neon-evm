@@ -1,102 +1,79 @@
 use std::{
     ops::{Deref, Range},
-    ptr::NonNull,
+    rc::Rc, cell::RefCell,
 };
 
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-enum Inner {
-    Empty,
-    Owned {
-        data: Vec<u8>,
-    },
+#[derive(Clone)]
+enum BufferInner<'a> {
+    Owned(Vec<u8>),
+    Borrowed(&'a [u8]),
     Account {
         key: Pubkey,
         range: Range<usize>,
-        data: *const u8,
-    },
-    AccountUninit {
-        key: Pubkey,
-        range: Range<usize>,
+        // None when the account is uninitialized.
+        account: Option<Rc<RefCell<&'a mut [u8]>>>,
     },
 }
 
-pub struct Buffer {
-    ptr: *const u8,
-    len: usize,
-    inner: Inner,
-}
+impl<'a> Deref for BufferInner<'a> {
+    type Target = [u8];
 
-impl Buffer {
-    fn new(inner: Inner) -> Self {
-        let (ptr, len) = match &inner {
-            Inner::Empty => (NonNull::dangling().as_ptr() as *const _, 0),
-            Inner::Owned { data } => (data.as_ptr(), data.len()),
-            Inner::Account { data, range, .. } => {
-                let ptr = unsafe { data.add(range.start) };
-                (ptr, range.len())
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        match *self {
+            BufferInner::Owned(ref data) => data,
+            BufferInner::Borrowed(data) => data,
+            BufferInner::Account { key, range, account } => {
+                &*account.unwrap().borrow()
             }
-            Inner::AccountUninit { .. } => (std::ptr::null(), 0),
-        };
-
-        Buffer { ptr, len, inner }
+        }
     }
+}
 
-    /// # Safety
-    ///
-    /// This function was marked as unsafe until correct lifetimes will be set.
-    /// At the moment, `Buffer` may outlive `account`, since no lifetimes has been set,
-    /// so they are not checked by the compiler and it's the user's responsibility to take
-    /// care of them.
+#[derive(Clone)]
+pub struct Buffer<'a>(Option<BufferInner<'a>>);
+
+impl<'a> Buffer<'a> {
     #[must_use]
-    pub unsafe fn from_account(account: &AccountInfo, range: Range<usize>) -> Self {
-        let data = unsafe {
-            // todo cell_leak #69099
-            let ptr = account.data.as_ptr();
-            (*ptr).as_ptr()
-        };
-
-        Buffer::new(Inner::Account {
+    pub fn from_account(account: &AccountInfo, range: Range<usize>) -> Self {
+        Self(Some(BufferInner::Account {
             key: *account.key,
-            data,
             range,
-        })
+            account: Some(Rc::clone(&account.data)),
+        }))
     }
 
     #[must_use]
     pub fn from_vec(v: Vec<u8>) -> Self {
-        if v.is_empty() {
-            return Self::empty();
-        }
-
-        let inner = Inner::Owned { data: v };
-        Self::new(inner)
+        Self((!v.is_empty()).then_some(BufferInner::Owned(v)))
     }
 
     #[must_use]
     pub fn from_slice(v: &[u8]) -> Self {
-        Self::from_vec(v.to_vec())
+        Self((!v.is_empty()).then_some(BufferInner::Borrowed(v)))
     }
 
     #[must_use]
     pub fn empty() -> Self {
-        Buffer::new(Inner::Empty)
+        Self(None)
     }
 
     #[must_use]
     pub fn buffer_is_empty(&self) -> bool {
-        matches!(self.inner, Inner::Empty)
+        self.0.is_none()
     }
 
     #[must_use]
     pub fn is_initialized(&self) -> bool {
-        !matches!(self.inner, Inner::AccountUninit { .. })
+        self.0.map(|inner| !matches!(inner, BufferInner::Account { account: None, .. })).unwrap_or_default()
     }
 
     #[must_use]
     pub fn uninit_data(&self) -> Option<(Pubkey, Range<usize>)> {
-        if let Inner::AccountUninit { key, range } = &self.inner {
-            Some((*key, range.clone()))
+        if let Some(BufferInner::Account { key, range, account: None }) = self.0 {
+            Some((key, range))
         } else {
             None
         }
@@ -105,79 +82,54 @@ impl Buffer {
     #[inline]
     #[must_use]
     pub fn get_or_default(&self, index: usize) -> u8 {
-        debug_assert!(!self.ptr.is_null());
-
-        if index < self.len {
-            unsafe { self.ptr.add(index).read() }
-        } else {
-            0
-        }
+        self.0.as_deref().unwrap().get(0).copied().unwrap_or_default()
     }
 }
 
-impl Deref for Buffer {
+impl<'a> Deref for Buffer<'a> {
     type Target = [u8];
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        debug_assert!(!self.ptr.is_null());
-
-        unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
+        self.0.as_deref().unwrap()
     }
 }
 
-impl Clone for Buffer {
-    #[inline]
-    fn clone(&self) -> Self {
-        match &self.inner {
-            Inner::Empty => Self::empty(),
-            Inner::Owned { .. } => Self::from_slice(self),
-            Inner::Account { key, data, range } => Self::new(Inner::Account {
-                key: *key,
-                range: range.clone(),
-                data: *data,
-            }),
-            Inner::AccountUninit { key, range } => Self::new(Inner::AccountUninit {
-                key: *key,
-                range: range.clone(),
-            }),
-        }
-    }
-}
-
-impl Default for Buffer {
+impl<'a> Default for Buffer<'a> {
     fn default() -> Self {
         Self::empty()
     }
 }
 
-impl serde::Serialize for Buffer {
+impl<'a> serde::Serialize for Buffer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         use serde::ser::SerializeStructVariant;
 
-        match &self.inner {
-            Inner::Empty => serializer.serialize_unit_variant("evm_buffer", 0, "empty"),
-            Inner::Owned { data } => {
+        match &self.0 {
+            None => serializer.serialize_unit_variant("evm_buffer", 0, "empty"),
+            Some(BufferInner::Owned(data)) => {
                 let bytes = serde_bytes::Bytes::new(data);
                 serializer.serialize_newtype_variant("evm_buffer", 1, "owned", bytes)
             }
-            Inner::Account { key, range, .. } => {
-                let mut sv = serializer.serialize_struct_variant("evm_buffer", 2, "account", 2)?;
-                sv.serialize_field("key", key)?;
-                sv.serialize_field("range", range)?;
-                sv.end()
+            Some(BufferInner::Borrowed(data)) => {
+                let bytes = serde_bytes::Bytes::new(data);
+                serializer.serialize_newtype_variant("evm_buffer", 1, "owned", bytes)
             }
-            Inner::AccountUninit { .. } => {
-                unreachable!()
+            Some(BufferInner::Account { key, range, account }) => {
+                account.unwrap_or_else(|| unreachable!());
+                let mut sv = serializer.serialize_struct_variant("evm_buffer", 2, "account", 2)?;
+                sv.serialize_field("key", &key)?;
+                sv.serialize_field("range", &range)?;
+                sv.end()
             }
         }
     }
 }
 
-impl<'de> serde::Deserialize<'de> for Buffer {
+impl<'de> serde::Deserialize<'de> for Buffer<'static> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -185,7 +137,7 @@ impl<'de> serde::Deserialize<'de> for Buffer {
         struct BufferVisitor;
 
         impl<'de> serde::de::Visitor<'de> for BufferVisitor {
-            type Value = Buffer;
+            type Value = Buffer<'static>;
 
             fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 f.write_str("EVM Buffer")
@@ -215,7 +167,7 @@ impl<'de> serde::Deserialize<'de> for Buffer {
                 let range = seq
                     .next_element()?
                     .ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;
-                Ok(Buffer::new(Inner::AccountUninit { key, range }))
+                Ok(Buffer(Some(BufferInner::Account { key, range, account: None })))
             }
 
             fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>

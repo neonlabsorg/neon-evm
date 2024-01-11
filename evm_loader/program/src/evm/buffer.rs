@@ -235,3 +235,47 @@ impl<'de> serde::Deserialize<'de> for Buffer {
         deserializer.deserialize_enum("evm_buffer", &["empty", "owned", "account"], BufferVisitor)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[test]
+    fn test_empty_buffer_is_empty() {
+        assert!(Buffer::empty().is_empty());
+    }
+
+    #[test]
+    fn test_owned_buffer_is_empty() {
+        assert!(!Buffer::from_vec(vec![0]).is_empty());
+    }
+
+    #[test]
+    fn test_account_buffer_is_empty() {
+        let mut lamports = 0;
+        let mut data = [0];
+        let account_info = AccountInfo {
+            key: &Default::default(),
+            lamports: Rc::new(RefCell::new(&mut lamports)),
+            data: Rc::new(RefCell::new(&mut data)),
+            owner: &Default::default(),
+            rent_epoch: 0,
+            is_signer: false,
+            is_writable: false,
+            executable: false,
+        };
+        assert!(!(unsafe { Buffer::from_account(&account_info, 0..1) }).is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "assertion failed: !self.ptr.is_null()")]
+    fn test_account_uninit_buffer_is_empty() {
+        assert!(!Buffer::new(Inner::AccountUninit {
+            key: Default::default(),
+            range: Default::default(),
+        })
+        .is_empty());
+    }
+}

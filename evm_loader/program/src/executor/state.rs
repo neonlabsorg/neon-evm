@@ -288,11 +288,14 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         // https://eips.ethereum.org/EIPS/eip-1052
         // https://eips.ethereum.org/EIPS/eip-161
 
-        macro_rules! data_account_exists {
-            ($self:ident, $address:ident, $chain_id:ident) => {
-                $self.nonce($address, $chain_id).await? > 0
-                    || $self.balance($address, $chain_id).await? > 0
-            };
+        #[maybe_async]
+        async fn data_account_exists<B: AccountStorage>(
+            state: &ExecutorState<'_, B>,
+            address: Address,
+            chain_id: u64,
+        ) -> Result<bool> {
+            Ok(state.nonce(address, chain_id).await? > 0
+                || state.balance(address, chain_id).await? > 0)
         }
 
         // FIXME: Can we modify self.code to return Option<Buffer> or Option<&[u8]>?
@@ -304,7 +307,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         let bytes_to_hash: Option<&[u8]> = if !buffer.buffer_is_empty() {
             // A program account exists at the address.
             Some(&buffer)
-        } else if data_account_exists!(self, from_address, chain_id) {
+        } else if data_account_exists(self, from_address, chain_id).await? {
             // A data account exists at the address.
             Some(&[])
         } else {

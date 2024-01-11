@@ -288,11 +288,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         // https://eips.ethereum.org/EIPS/eip-1052
         // https://eips.ethereum.org/EIPS/eip-161
 
-        // FIXME: Can we modify self.code to return Option<Buffer> or Option<&[u8]>?
-
-        // FIXME: Because buffer is returned by value, we need to store buffer in order to store a
-        // reference to the bytes. I could use Option<Buffer> instead, but that is storing a more
-        // powerful type than I need. I just need a byte slice.
         let code = self.code(address).await?;
         let bytes_to_hash: Option<&[u8]> = if !code.is_empty() {
             // A program account exists at the address.

@@ -9,7 +9,7 @@ use solana_program::pubkey::Pubkey;
 use crate::account_storage::AccountStorage;
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
-use crate::evm::{Context, ExitStatus};
+use crate::evm::{Buffer, Context, ExitStatus};
 use crate::types::Address;
 
 use super::action::Action;
@@ -298,11 +298,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(self.backend.code_hash(from_address, chain_id).await)
     }
 
-    async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
+    async fn code(&self, from_address: Address) -> Result<Option<Buffer>> {
         for action in &self.actions {
             if let Action::EvmSetCode { address, code, .. } = action {
                 if &from_address == address {
-                    return Ok(crate::evm::Buffer::from_slice(code));
+                    return Ok(Buffer::from_slice(code));
                 }
             }
         }

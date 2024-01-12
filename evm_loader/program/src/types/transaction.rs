@@ -1,7 +1,7 @@
 use ethnum::U256;
 use std::convert::TryInto;
 
-use crate::error::Error;
+use crate::{error::Error, evm::Buffer};
 
 use super::Address;
 
@@ -516,11 +516,11 @@ impl Transaction {
     }
 
     #[must_use]
-    pub fn into_call_data(self) -> crate::evm::Buffer {
+    pub fn into_call_data(self) -> Option<Buffer> {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { call_data, .. })
             | TransactionPayload::AccessList(AccessListTx { call_data, .. }) => {
-                crate::evm::Buffer::from_vec(call_data)
+                Buffer::from_vec(call_data)
             }
         }
     }

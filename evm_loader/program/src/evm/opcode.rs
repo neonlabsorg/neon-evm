@@ -612,8 +612,12 @@ impl<B: Database> Machine<B> {
 
         let code = backend.code(address).await?;
 
-        self.memory
-            .write_buffer(memory_offset, length, &code, data_offset)?;
+        self.memory.write_buffer(
+            memory_offset,
+            length,
+            code.as_deref().unwrap_or_default(),
+            data_offset,
+        )?;
 
         Ok(Action::Continue)
     }
@@ -1055,7 +1059,7 @@ impl<B: Database> Machine<B> {
 
         backend.increment_nonce(self.context.contract, chain_id)?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = None.into();
         self.return_range = 0..0;
 
         let init_code = self.memory.read_buffer(offset, length)?;
@@ -1072,18 +1076,14 @@ impl<B: Database> Machine<B> {
             self,
             super::tracing::Event::BeginVM {
                 context,
-                code: init_code.to_vec()
+                code: init_code
+                    .as_ref()
+                    .map(|buffer| buffer.to_vec())
+                    .unwrap_or_default(),
             }
         );
 
-        self.fork(
-            Reason::Create,
-            chain_id,
-            context,
-            init_code,
-            Buffer::empty(),
-            None,
-        );
+        self.fork(Reason::Create, chain_id, context, init_code, None, None);
         backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"CREATE", address.as_bytes()]);
@@ -1113,7 +1113,7 @@ impl<B: Database> Machine<B> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = None.into();
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
@@ -1132,7 +1132,10 @@ impl<B: Database> Machine<B> {
             self,
             super::tracing::Event::BeginVM {
                 context,
-                code: code.to_vec()
+                code: code
+                    .as_deref()
+                    .map(|code| code.to_vec())
+                    .unwrap_or_default(),
             }
         );
 
@@ -1170,7 +1173,7 @@ impl<B: Database> Machine<B> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = None.into();
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
@@ -1187,7 +1190,10 @@ impl<B: Database> Machine<B> {
             self,
             super::tracing::Event::BeginVM {
                 context,
-                code: code.to_vec()
+                code: code
+                    .as_deref()
+                    .map(|code| code.to_vec())
+                    .unwrap_or_default(),
             }
         );
 
@@ -1225,7 +1231,7 @@ impl<B: Database> Machine<B> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = None.into();
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
@@ -1240,7 +1246,10 @@ impl<B: Database> Machine<B> {
             self,
             super::tracing::Event::BeginVM {
                 context,
-                code: code.to_vec()
+                code: code
+                    .as_deref()
+                    .map(|code| code.to_vec())
+                    .unwrap_or_default(),
             }
         );
 
@@ -1270,7 +1279,7 @@ impl<B: Database> Machine<B> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = None.into();
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
@@ -1289,7 +1298,10 @@ impl<B: Database> Machine<B> {
             self,
             super::tracing::Event::BeginVM {
                 context,
-                code: code.to_vec()
+                code: code
+                    .as_deref()
+                    .map(|code| code.to_vec())
+                    .unwrap_or_default(),
             }
         );
 
@@ -1378,7 +1390,7 @@ impl<B: Database> Machine<B> {
                 self.memory.write_range(&self.return_range, &return_data)?;
                 self.stack.push_bool(true)?; // success
 
-                self.return_data = Buffer::from_vec(return_data);
+                self.return_data = Buffer::from_vec(return_data).into();
             }
             Reason::Create => {
                 let address = returned.context.contract;
@@ -1432,7 +1444,7 @@ impl<B: Database> Machine<B> {
             }
         }
 
-        self.return_data = Buffer::from_vec(return_data);
+        self.return_data = Buffer::from_vec(return_data).into();
 
         Ok(Action::Continue)
     }

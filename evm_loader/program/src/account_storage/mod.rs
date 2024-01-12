@@ -1,6 +1,6 @@
-use crate::error::Result;
 use crate::executor::OwnedAccountInfo;
 use crate::types::Address;
+use crate::{error::Result, evm::Buffer};
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::account_info::AccountInfo;
@@ -63,7 +63,7 @@ pub trait AccountStorage {
     /// Get code size
     async fn code_size(&self, address: Address) -> usize;
     /// Get code data
-    async fn code(&self, address: Address) -> crate::evm::Buffer;
+    async fn code(&self, address: Address) -> Option<Buffer>;
 
     /// Get data from storage
     async fn storage(&self, address: Address, index: U256) -> [u8; 32];

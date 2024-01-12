@@ -1,6 +1,7 @@
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 use crate::error::Result;
+use crate::evm::Buffer;
 use crate::executor::OwnedAccountInfo;
 use crate::types::Address;
 use ethnum::U256;
@@ -100,9 +101,8 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         self.contract_account(address).map_or(0, |a| a.code_len())
     }
 
-    fn code(&self, address: Address) -> crate::evm::Buffer {
-        self.contract_account(address)
-            .map_or_else(|_| crate::evm::Buffer::empty(), |a| a.code_buffer())
+    fn code(&self, address: Address) -> Option<Buffer> {
+        self.contract_account(address).map(|a| a.code_buffer()).ok()
     }
 
     fn storage(&self, address: Address, index: U256) -> [u8; 32] {

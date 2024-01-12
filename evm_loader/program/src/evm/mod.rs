@@ -19,7 +19,7 @@ use crate::{
     types::{Address, Transaction},
 };
 
-use self::{database::Database, memory::Memory, stack::Stack};
+use self::{buffer::OptionBuffer, database::Database, memory::Memory, stack::Stack};
 
 mod buffer;
 pub mod database;
@@ -144,9 +144,9 @@ pub struct Machine<B: Database> {
     #[serde(with = "ethnum::serde::bytes::le")]
     gas_limit: U256,
 
-    execution_code: Buffer,
-    call_data: Buffer,
-    return_data: Buffer,
+    execution_code: OptionBuffer,
+    call_data: OptionBuffer,
+    return_data: OptionBuffer,
     return_range: Range<usize>,
 
     stack: Stack,
@@ -177,10 +177,15 @@ impl<B: Database> Machine<B> {
 
     #[cfg(target_os = "solana")]
     pub fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
-        fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &B) {
-            if let Some((key, range)) = buffer.uninit_data() {
-                *buffer =
-                    backend.map_solana_account(&key, |i| unsafe { Buffer::from_account(i, range) });
+        fn reinit_buffer<B: Database>(option_buffer: &mut OptionBuffer, backend: &B) {
+            if let Some(buffer) = option_buffer.as_ref() {
+                if let Some((key, range)) = buffer.uninit_data() {
+                    *option_buffer =
+                        Some(backend.map_solana_account(&key, |i| unsafe {
+                            Buffer::from_account(i, range)
+                        }))
+                        .into();
+                }
             }
         }
 
@@ -297,9 +302,9 @@ impl<B: Database> Machine<B> {
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
-            execution_code,
-            call_data: trx.into_call_data(),
-            return_data: Buffer::empty(),
+            execution_code: execution_code.into(),
+            call_data: trx.into_call_data().into(),
+            return_data: None.into(),
             return_range: 0..0,
             stack: Stack::new(),
             memory: Memory::new(),
@@ -351,15 +356,15 @@ impl<B: Database> Machine<B> {
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
-            return_data: Buffer::empty(),
+            return_data: None.into(),
             return_range: 0..0,
             stack: Stack::new(),
             memory: Memory::new(),
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,
-            execution_code: trx.into_call_data(),
-            call_data: Buffer::empty(),
+            execution_code: trx.into_call_data().into(),
+            call_data: None.into(),
             parent: None,
             phantom: PhantomData,
             #[cfg(not(target_os = "solana"))]
@@ -369,9 +374,22 @@ impl<B: Database> Machine<B> {
 
     #[maybe_async]
     pub async fn execute(&mut self, step_limit: u64, backend: &mut B) -> Result<(ExitStatus, u64)> {
-        assert!(self.execution_code.is_initialized());
-        assert!(self.call_data.is_initialized());
-        assert!(self.return_data.is_initialized());
+        // TODO: Can the buffers be empty/none?
+        assert!(self
+            .execution_code
+            .as_ref()
+            .map(|buffer| buffer.is_initialized())
+            .unwrap_or(true));
+        assert!(self
+            .call_data
+            .as_ref()
+            .map(|buffer| buffer.is_initialized())
+            .unwrap_or(true));
+        assert!(self
+            .return_data
+            .as_ref()
+            .map(|buffer| buffer.is_initialized())
+            .unwrap_or(true));
 
         let mut step = 0_u64;
 
@@ -390,12 +408,19 @@ impl<B: Database> Machine<B> {
             ExitStatus::Return(value)
         } else {
             loop {
+                // TODO: Are these defined anywhere?
+                const OPCODE_STOP: u8 = 0x00;
+
                 step += 1;
                 if step > step_limit {
                     break ExitStatus::StepLimit;
                 }
 
-                let opcode = self.execution_code.get_or_default(self.pc);
+                let opcode = self
+                    .execution_code
+                    .get(self.pc)
+                    .copied()
+                    .unwrap_or(OPCODE_STOP);
 
                 tracing_event!(
                     self,
@@ -447,8 +472,8 @@ impl<B: Database> Machine<B> {
         reason: Reason,
         chain_id: u64,
         context: Context,
-        execution_code: Buffer,
-        call_data: Buffer,
+        execution_code: Option<Buffer>,
+        call_data: Option<Buffer>,
         gas_limit: Option<U256>,
     ) {
         let mut other = Self {
@@ -457,9 +482,9 @@ impl<B: Database> Machine<B> {
             context,
             gas_price: self.gas_price,
             gas_limit: gas_limit.unwrap_or(self.gas_limit),
-            execution_code,
-            call_data,
-            return_data: Buffer::empty(),
+            execution_code: execution_code.into(),
+            call_data: call_data.into(),
+            return_data: None.into(),
             return_range: 0..0,
             stack: Stack::new(),
             memory: Memory::new(),

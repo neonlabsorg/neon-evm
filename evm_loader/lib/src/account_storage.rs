@@ -5,6 +5,7 @@ use evm_loader::account::legacy::{
 };
 use evm_loader::account::{TAG_ACCOUNT_CONTRACT, TAG_STORAGE_CELL};
 use evm_loader::account_storage::find_slot_hash;
+use evm_loader::evm::Buffer;
 use evm_loader::types::Address;
 use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
@@ -628,8 +629,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
 
         info!("code_hash {address} {chain_id}");
 
-        let code = self.code(address).await.to_vec();
-        if !code.is_empty() {
+        if let Some(code) = self.code(address).await.as_deref() {
             return hash(&code).to_bytes();
         }
 
@@ -647,29 +647,29 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     async fn code_size(&self, address: Address) -> usize {
         info!("code_size {address}");
 
-        self.code(address).await.len()
+        self.code(address)
+            .await
+            .as_deref()
+            .map(|code| code.len())
+            .unwrap_or_default()
     }
 
-    async fn code(&self, address: Address) -> evm_loader::evm::Buffer {
-        use evm_loader::evm::Buffer;
-
+    async fn code(&self, address: Address) -> Option<Buffer> {
         info!("code {address}");
 
-        let code_override = self.account_override(address, |a| a.code.clone());
-        if let Some(code_override) = code_override {
-            return Buffer::from_vec(code_override.0);
-        }
-
-        let code = self
-            .ethereum_contract_map_or(
-                address,
-                Vec::default(),
-                |legacy, info| legacy.read_code(info),
-                |c| c.code().to_vec(),
-            )
-            .await;
-
-        Buffer::from_vec(code)
+        Buffer::from_vec(
+            if let Some(code_override) = self.account_override(address, |a| a.code.clone()) {
+                code_override.0
+            } else {
+                self.ethereum_contract_map_or(
+                    address,
+                    Vec::default(),
+                    |legacy, info| legacy.read_code(info),
+                    |c| c.code().to_vec(),
+                )
+                .await
+            },
+        )
     }
 
     async fn storage(&self, address: Address, index: U256) -> [u8; 32] {

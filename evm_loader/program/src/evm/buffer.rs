@@ -3,7 +3,7 @@ use std::ops::{Deref, Range};
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 #[derive(Clone)]
-enum Inner {
+pub enum Buffer {
     Owned(Vec<u8>),
     Account {
         key: Pubkey,
@@ -16,25 +16,22 @@ enum Inner {
     },
 }
 
-impl Deref for Inner {
+impl Deref for Buffer {
     type Target = [u8];
 
     #[inline]
     fn deref(&self) -> &Self::Target {
         match self {
-            Inner::Owned(data) => data,
-            Inner::Account { range, data, .. } => unsafe {
+            Buffer::Owned(data) => data,
+            Buffer::Account { range, data, .. } => unsafe {
                 std::slice::from_raw_parts(data.add(range.start), range.len())
             },
-            Inner::AccountUninit { .. } => {
+            Buffer::AccountUninit { .. } => {
                 panic!("attempted to dereference uninitialized account data")
             }
         }
     }
 }
-
-#[derive(Clone)]
-pub struct Buffer(Option<Inner>);
 
 impl Buffer {
     /// # Safety
@@ -51,112 +48,136 @@ impl Buffer {
             (*ptr).as_ptr()
         };
 
-        Buffer(Some(Inner::Account {
+        Buffer::Account {
             key: *account.key,
             data,
             range,
-        }))
+        }
     }
 
     #[must_use]
-    pub fn from_vec(v: Vec<u8>) -> Self {
-        Buffer((!v.is_empty()).then_some(Inner::Owned(v)))
+    pub fn from_vec(v: Vec<u8>) -> Option<Self> {
+        (!v.is_empty()).then_some(Buffer::Owned(v))
     }
 
     #[must_use]
-    pub fn from_slice(v: &[u8]) -> Self {
+    pub fn from_slice(v: &[u8]) -> Option<Self> {
         Self::from_vec(v.to_vec())
     }
 
     #[must_use]
-    pub fn empty() -> Self {
-        Buffer(None)
+    pub fn empty() -> Option<Self> {
+        None
     }
 
     #[must_use]
     pub fn is_initialized(&self) -> bool {
-        self.0
-            .as_ref()
-            .map(|inner| !matches!(inner, Inner::AccountUninit { .. }))
-            .unwrap_or_default()
+        !matches!(self, Buffer::AccountUninit { .. })
     }
 
     #[must_use]
     pub fn uninit_data(&self) -> Option<(Pubkey, Range<usize>)> {
-        if let Some(Inner::AccountUninit { key, range }) = self.0.as_ref() {
+        if let Buffer::AccountUninit { key, range } = self {
             Some((*key, range.clone()))
         } else {
             None
         }
     }
+}
 
-    #[inline]
-    #[must_use]
-    pub fn get_or_default(&self, index: usize) -> u8 {
-        self.0
-            .as_deref()
-            .expect("attempted to index uninitialized account data")
-            .get(index)
-            .copied()
-            .unwrap_or_default()
+#[derive(Clone)]
+pub struct OptionBuffer {
+    // Sacrifice memory to store slice creation components to save discriminating the inner `Buffer`.
+    ptr: *const u8,
+    len: usize,
+    inner: Option<Buffer>,
+}
+
+impl From<OptionBuffer> for Option<Buffer> {
+    fn from(value: OptionBuffer) -> Self {
+        value.inner
     }
 }
 
-impl Deref for Buffer {
+impl From<Option<Buffer>> for OptionBuffer {
+    fn from(inner: Option<Buffer>) -> Self {
+        let (ptr, len) = match &inner {
+            Some(Buffer::AccountUninit { .. }) => (core::ptr::null(), 0),
+            Some(buffer) => (buffer.as_ptr(), buffer.len()),
+            None => {
+                let slice: &[u8] = Default::default();
+                (slice.as_ptr(), slice.len())
+            }
+        };
+
+        Self { ptr, len, inner }
+    }
+}
+
+impl Default for OptionBuffer {
+    fn default() -> Self {
+        None.into()
+    }
+}
+
+impl Deref for OptionBuffer {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
-        self.0
-            .as_deref()
-            .expect("attempted to dereference None buffer")
+        // We can not avoid this check because it is possible to create uninitialized account data,
+        // but we should never read from it. Without this check, dereferencing `Option<Buffer>`
+        // (with `buffer.as_deref().unwrap_or_default()`) and `OptionBuffer` will give different
+        // results.
+        //
+        // TODO: It seems `OptionBuffer` is only used in `Machine`, if those buffers can't have
+        // uninitialized account data, we may be able to create a different type that statically
+        // guarantees that which would also allow us to remove this check (and the check in the
+        // deserialization impls).
+        assert!(
+            !self.ptr.is_null(),
+            "attempted to dereference uninitialized account data"
+        );
+        unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
     }
 }
 
-impl From<Buffer> for Option<Inner> {
-    fn from(value: Buffer) -> Self {
-        value.0
+impl OptionBuffer {
+    pub const fn as_ref(&self) -> Option<&Buffer> {
+        self.inner.as_ref()
+    }
+
+    pub fn as_deref(&self) -> Option<&[u8]> {
+        self.inner.as_deref()
     }
 }
 
-impl From<Option<Inner>> for Buffer {
-    fn from(value: Option<Inner>) -> Self {
-        Buffer(value)
-    }
-}
-
-impl Default for Buffer {
-    fn default() -> Self {
-        Self::empty()
-    }
-}
-
-impl serde::Serialize for Buffer {
+impl serde::Serialize for OptionBuffer {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         use serde::ser::SerializeStructVariant;
 
-        match self.0.as_ref() {
+        match self.inner.as_ref() {
             None => serializer.serialize_unit_variant("evm_buffer", 0, "empty"),
-            Some(Inner::Owned(data)) => {
+            Some(Buffer::Owned(data)) => {
                 let bytes = serde_bytes::Bytes::new(data);
                 serializer.serialize_newtype_variant("evm_buffer", 1, "owned", bytes)
             }
-            Some(Inner::Account { key, range, .. }) => {
+            Some(Buffer::Account { key, range, .. }) => {
                 let mut sv = serializer.serialize_struct_variant("evm_buffer", 2, "account", 2)?;
                 sv.serialize_field("key", key)?;
                 sv.serialize_field("range", range)?;
                 sv.end()
             }
-            Some(Inner::AccountUninit { .. }) => {
+            Some(Buffer::AccountUninit { .. }) => {
                 panic!("attempted to serialize uninitialized account data");
             }
         }
     }
 }
 
-impl<'de> serde::Deserialize<'de> for Buffer {
+impl<'de> serde::Deserialize<'de> for OptionBuffer {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -164,7 +185,7 @@ impl<'de> serde::Deserialize<'de> for Buffer {
         struct BufferVisitor;
 
         impl<'de> serde::de::Visitor<'de> for BufferVisitor {
-            type Value = Buffer;
+            type Value = OptionBuffer;
 
             fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 f.write_str("EVM Buffer")
@@ -174,14 +195,14 @@ impl<'de> serde::Deserialize<'de> for Buffer {
             where
                 E: serde::de::Error,
             {
-                Ok(Buffer::empty())
+                Ok(Buffer::empty().into())
             }
 
             fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                Ok(Buffer::from_slice(v))
+                Ok(Buffer::from_slice(v).into())
             }
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
@@ -194,7 +215,7 @@ impl<'de> serde::Deserialize<'de> for Buffer {
                 let range = seq
                     .next_element()?
                     .ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;
-                Ok(Buffer(Some(Inner::AccountUninit { key, range })))
+                Ok(Some(Buffer::AccountUninit { key, range }).into())
             }
 
             fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
@@ -205,8 +226,11 @@ impl<'de> serde::Deserialize<'de> for Buffer {
 
                 let (index, variant) = data.variant::<u32>()?;
                 match index {
-                    0 => variant.unit_variant().map(|_| Buffer::empty()),
-                    1 => variant.newtype_variant().map(Buffer::from_slice),
+                    0 => variant.unit_variant().map(|_| Buffer::empty().into()),
+                    1 => variant
+                        .newtype_variant()
+                        .map(Buffer::from_slice)
+                        .map(Into::into),
                     2 => variant.struct_variant(&["key", "range"], self),
                     _ => Err(serde::de::Error::unknown_variant(
                         "_",

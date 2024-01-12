@@ -24,7 +24,7 @@ pub trait Database {
 
     async fn code_hash(&self, address: Address, chain_id: u64) -> Result<[u8; 32]>;
     async fn code_size(&self, address: Address) -> Result<usize>;
-    async fn code(&self, address: Address) -> Result<Buffer>;
+    async fn code(&self, address: Address) -> Result<Option<Buffer>>;
     fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()>;
     fn selfdestruct(&mut self, address: Address) -> Result<()>;
 

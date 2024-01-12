@@ -2,6 +2,7 @@ use crate::{
     account::TAG_EMPTY,
     account_storage::KeysCache,
     error::{Error, Result},
+    evm::Buffer,
     types::Address,
 };
 use solana_program::{
@@ -176,11 +177,11 @@ impl<'a> ContractAccount<'a> {
     }
 
     #[must_use]
-    pub fn code_buffer(&self) -> crate::evm::Buffer {
+    pub fn code_buffer(&self) -> Buffer {
         let begin = CODE_OFFSET;
         let end = begin + self.code_len();
 
-        unsafe { crate::evm::Buffer::from_account(&self.account, begin..end) }
+        unsafe { Buffer::from_account(&self.account, begin..end) }
     }
 
     #[must_use]

@@ -378,18 +378,12 @@ impl<B: Database> Machine<B> {
         assert!(self
             .execution_code
             .as_ref()
-            .map(|buffer| buffer.is_initialized())
-            .unwrap_or(true));
-        assert!(self
-            .call_data
-            .as_ref()
-            .map(|buffer| buffer.is_initialized())
-            .unwrap_or(true));
+            .map_or(true, Buffer::is_initialized));
+        assert!(self.call_data.as_ref().map_or(true, Buffer::is_initialized));
         assert!(self
             .return_data
             .as_ref()
-            .map(|buffer| buffer.is_initialized())
-            .unwrap_or(true));
+            .map_or(true, Buffer::is_initialized));
 
         let mut step = 0_u64;
 

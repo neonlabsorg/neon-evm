@@ -66,11 +66,6 @@ impl Buffer {
     }
 
     #[must_use]
-    pub fn empty() -> Option<Self> {
-        None
-    }
-
-    #[must_use]
     pub fn is_initialized(&self) -> bool {
         !matches!(self, Buffer::AccountUninit { .. })
     }
@@ -195,7 +190,7 @@ impl<'de> serde::Deserialize<'de> for OptionBuffer {
             where
                 E: serde::de::Error,
             {
-                Ok(Buffer::empty().into())
+                Ok(None.into())
             }
 
             fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
@@ -226,7 +221,7 @@ impl<'de> serde::Deserialize<'de> for OptionBuffer {
 
                 let (index, variant) = data.variant::<u32>()?;
                 match index {
-                    0 => variant.unit_variant().map(|_| Buffer::empty().into()),
+                    0 => variant.unit_variant().map(|_| None.into()),
                     1 => variant
                         .newtype_variant()
                         .map(Buffer::from_slice)

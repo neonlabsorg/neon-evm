@@ -1132,10 +1132,7 @@ impl<B: Database> Machine<B> {
             self,
             super::tracing::Event::BeginVM {
                 context,
-                code: code
-                    .as_deref()
-                    .map(|code| code.to_vec())
-                    .unwrap_or_default(),
+                code: code.as_deref().map(<[u8]>::to_vec).unwrap_or_default(),
             }
         );
 
@@ -1190,10 +1187,7 @@ impl<B: Database> Machine<B> {
             self,
             super::tracing::Event::BeginVM {
                 context,
-                code: code
-                    .as_deref()
-                    .map(|code| code.to_vec())
-                    .unwrap_or_default(),
+                code: code.as_deref().map(<[u8]>::to_vec).unwrap_or_default(),
             }
         );
 
@@ -1246,10 +1240,7 @@ impl<B: Database> Machine<B> {
             self,
             super::tracing::Event::BeginVM {
                 context,
-                code: code
-                    .as_deref()
-                    .map(|code| code.to_vec())
-                    .unwrap_or_default(),
+                code: code.as_deref().map(<[u8]>::to_vec).unwrap_or_default(),
             }
         );
 
@@ -1298,10 +1289,7 @@ impl<B: Database> Machine<B> {
             self,
             super::tracing::Event::BeginVM {
                 context,
-                code: code
-                    .as_deref()
-                    .map(|code| code.to_vec())
-                    .unwrap_or_default(),
+                code: code.as_deref().map(<[u8]>::to_vec).unwrap_or_default(),
             }
         );
 

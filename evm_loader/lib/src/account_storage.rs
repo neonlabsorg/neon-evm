@@ -630,7 +630,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         info!("code_hash {address} {chain_id}");
 
         if let Some(code) = self.code(address).await.as_deref() {
-            return hash(&code).to_bytes();
+            return hash(code).to_bytes();
         }
 
         // https://eips.ethereum.org/EIPS/eip-1052

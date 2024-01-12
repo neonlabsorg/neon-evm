@@ -235,22 +235,27 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    macro_rules! assert_slice_ptr_eq {
+        ($actual:expr, $expected:expr) => {{
+            let actual: &[_] = $actual;
+            let (expected_ptr, expected_len): (*const _, usize) = $expected;
+            assert_eq!(actual.as_ptr(), expected_ptr);
+            assert_eq!(actual.len(), expected_len);
+        }};
+    }
+
     #[test]
     fn test_deref_owned_empty() {
         let data = Vec::default();
-        let (ptr, len) = (data.as_ptr(), data.len());
-        let slice = &*Buffer::default();
-        assert_eq!(slice.as_ptr(), ptr);
-        assert_eq!(slice.len(), len);
+        let expected = (data.as_ptr(), data.len());
+        assert_slice_ptr_eq!(&*Buffer::default(), expected);
     }
 
     #[test]
     fn test_deref_owned_non_empty() {
         let data = vec![1];
-        let (ptr, len) = (data.as_ptr(), data.len());
-        let slice = &*Buffer::from_vec(data);
-        assert_eq!(slice.as_ptr(), ptr);
-        assert_eq!(slice.len(), len);
+        let expected = (data.as_ptr(), data.len());
+        assert_slice_ptr_eq!(&*Buffer::from_vec(data), expected);
     }
 
     struct OwnedAccountInfo {
@@ -295,21 +300,23 @@ mod tests {
     #[test]
     fn test_deref_account_empty() {
         let data = Vec::default();
-        let (ptr, len) = (data.as_ptr(), data.len());
+        let expected = (data.as_ptr(), data.len());
         let mut account_info = OwnedAccountInfo::with_data(data);
-        let slice = &*unsafe { Buffer::from_account(&account_info.as_mut(), 0..len) };
-        assert_eq!(slice.as_ptr(), ptr);
-        assert_eq!(slice.len(), len);
+        assert_slice_ptr_eq!(
+            &*unsafe { Buffer::from_account(&account_info.as_mut(), 0..expected.1) },
+            expected
+        );
     }
 
     #[test]
     fn test_deref_account_non_empty() {
         let data = vec![1];
-        let (ptr, len) = (data.as_ptr(), data.len());
+        let expected = (data.as_ptr(), data.len());
         let mut account_info = OwnedAccountInfo::with_data(data);
-        let slice = &*unsafe { Buffer::from_account(&account_info.as_mut(), 0..len) };
-        assert_eq!(slice.as_ptr(), ptr);
-        assert_eq!(slice.len(), len);
+        assert_slice_ptr_eq!(
+            &*unsafe { Buffer::from_account(&account_info.as_mut(), 0..expected.1) },
+            expected
+        );
     }
 
     #[test]

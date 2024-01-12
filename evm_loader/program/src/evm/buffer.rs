@@ -144,13 +144,8 @@ impl serde::Serialize for Buffer {
 
         match &self.inner {
             Inner::Owned(data) => {
-                // For backwards compatibility we need to serialize empty and non-empty vecs differently.
-                if data.is_empty() {
-                    serializer.serialize_unit_variant("evm_buffer", 0, "empty")
-                } else {
-                    let bytes = serde_bytes::Bytes::new(data);
-                    serializer.serialize_newtype_variant("evm_buffer", 1, "owned", bytes)
-                }
+                let bytes = serde_bytes::Bytes::new(data);
+                serializer.serialize_newtype_variant("evm_buffer", 1, "owned", bytes)
             }
             Inner::Account { key, range, .. } => {
                 let mut sv = serializer.serialize_struct_variant("evm_buffer", 2, "account", 2)?;
@@ -214,18 +209,17 @@ impl<'de> serde::Deserialize<'de> for Buffer {
 
                 let (index, variant) = data.variant::<u32>()?;
                 match index {
-                    0 => variant.unit_variant().map(|_| Buffer::empty()),
                     1 => variant.newtype_variant().map(Buffer::from_slice),
                     2 => variant.struct_variant(&["key", "range"], self),
                     _ => Err(serde::de::Error::unknown_variant(
                         "_",
-                        &["empty", "owned", "account"],
+                        &["owned", "account"],
                     )),
                 }
             }
         }
 
-        deserializer.deserialize_enum("evm_buffer", &["empty", "owned", "account"], BufferVisitor)
+        deserializer.deserialize_enum("evm_buffer", &["owned", "account"], BufferVisitor)
     }
 }
 

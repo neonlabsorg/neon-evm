@@ -1,6 +1,7 @@
 /// <https://ethereum.github.io/yellowpaper/paper.pdf>
 use ethnum::{I256, U256};
 use maybe_async::maybe_async;
+use solana_program::keccak;
 use solana_program::log::sol_log_data;
 
 use super::{database::Database, tracing_event, Context, Machine, Reason};
@@ -648,7 +649,19 @@ impl<B: Database> Machine<B> {
     pub async fn opcode_extcodehash(&mut self, backend: &mut B) -> Result<Action> {
         let code_hash = {
             let address = self.stack.pop_address()?;
-            backend.code_hash(address, self.chain_id).await?
+
+            // https://eips.ethereum.org/EIPS/eip-1052
+            // https://eips.ethereum.org/EIPS/eip-161
+
+            // An account with code has non-zero nonce
+            if backend.nonce(address, self.chain_id).await? == 0
+                && backend.balance(address, self.chain_id).await? == 0
+            {
+                <[u8; 32]>::default()
+            } else {
+                let code = backend.code(address).await?;
+                keccak::hash(&code).to_bytes()
+            }
         };
 
         self.stack.push_array(&code_hash)?;
@@ -1521,5 +1534,22 @@ impl<B: Database> Machine<B> {
         }
 
         Ok(Action::Continue)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use hex::FromHex;
+
+    // https://eips.ethereum.org/EIPS/eip-1052
+    #[test]
+    fn test_keccak_hash_empty_slice() {
+        assert_eq!(
+            solana_program::keccak::hash(&[]).to_bytes(),
+            <[u8; 32]>::from_hex(
+                "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+            )
+            .unwrap()
+        );
     }
 }

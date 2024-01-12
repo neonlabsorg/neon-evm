@@ -22,7 +22,6 @@ pub trait Database {
         value: U256,
     ) -> Result<()>;
 
-    async fn code_hash(&self, address: Address, chain_id: u64) -> Result<[u8; 32]>;
     async fn code_size(&self, address: Address) -> Result<usize>;
     async fn code(&self, address: Address) -> Result<Buffer>;
     fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()>;

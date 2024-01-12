@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use ethnum::{AsU256, U256};
 use maybe_async::maybe_async;
 use solana_program::instruction::Instruction;
-use solana_program::keccak;
 use solana_program::pubkey::Pubkey;
 
 use crate::account_storage::AccountStorage;
@@ -285,19 +284,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(self.backend.code_size(from_address).await)
     }
 
-    async fn code_hash(&self, address: Address, chain_id: u64) -> Result<[u8; 32]> {
-        // https://eips.ethereum.org/EIPS/eip-1052
-        // https://eips.ethereum.org/EIPS/eip-161
-
-        if self.nonce(address, chain_id).await? == 0 && self.balance(address, chain_id).await? == 0
-        {
-            return Ok(<[u8; 32]>::default());
-        }
-
-        let code = self.code(address).await?;
-        return Ok(keccak::hash(&code).to_bytes());
-    }
-
     async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
         for action in &self.actions {
             if let Action::EvmSetCode { address, code, .. } = action {
@@ -465,23 +451,5 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         }
 
         self.backend.contract_chain_id(contract).await
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use hex::FromHex;
-
-    // https://eips.ethereum.org/EIPS/eip-1052
-    #[test]
-    fn test_keccak_hash_empty_slice() {
-        assert_eq!(
-            keccak::hash(&[]).to_bytes(),
-            <[u8; 32]>::from_hex(
-                "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
-            )
-            .unwrap()
-        );
     }
 }

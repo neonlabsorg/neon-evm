@@ -228,3 +228,96 @@ impl<'de> serde::Deserialize<'de> for Buffer {
         deserializer.deserialize_enum("evm_buffer", &["empty", "owned", "account"], BufferVisitor)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[test]
+    fn test_deref_owned_empty() {
+        let data = Vec::default();
+        let (ptr, len) = (data.as_ptr(), data.len());
+        let slice = &*Buffer::default();
+        assert_eq!(slice.as_ptr(), ptr);
+        assert_eq!(slice.len(), len);
+    }
+
+    #[test]
+    fn test_deref_owned_non_empty() {
+        let data = vec![1];
+        let (ptr, len) = (data.as_ptr(), data.len());
+        let slice = &*Buffer::from_vec(data);
+        assert_eq!(slice.as_ptr(), ptr);
+        assert_eq!(slice.len(), len);
+    }
+
+    struct OwnedAccountInfo {
+        key: Pubkey,
+        lamports: u64,
+        data: Vec<u8>,
+        owner: Pubkey,
+        rent_epoch: u64,
+        is_signer: bool,
+        is_writable: bool,
+        executable: bool,
+    }
+
+    impl OwnedAccountInfo {
+        fn with_data(data: Vec<u8>) -> Self {
+            OwnedAccountInfo {
+                key: Pubkey::default(),
+                lamports: 0,
+                data,
+                owner: Pubkey::default(),
+                rent_epoch: 0,
+                is_signer: false,
+                is_writable: false,
+                executable: false,
+            }
+        }
+
+        fn as_mut(&mut self) -> AccountInfo<'_> {
+            AccountInfo {
+                key: &self.key,
+                lamports: Rc::new(RefCell::new(&mut self.lamports)),
+                data: Rc::new(RefCell::new(&mut self.data)),
+                owner: &self.owner,
+                rent_epoch: self.rent_epoch,
+                is_signer: self.is_signer,
+                is_writable: self.is_writable,
+                executable: self.executable,
+            }
+        }
+    }
+
+    #[test]
+    fn test_deref_account_empty() {
+        let data = Vec::default();
+        let (ptr, len) = (data.as_ptr(), data.len());
+        let mut account_info = OwnedAccountInfo::with_data(data);
+        let slice = &*unsafe { Buffer::from_account(&account_info.as_mut(), 0..len) };
+        assert_eq!(slice.as_ptr(), ptr);
+        assert_eq!(slice.len(), len);
+    }
+
+    #[test]
+    fn test_deref_account_non_empty() {
+        let data = vec![1];
+        let (ptr, len) = (data.as_ptr(), data.len());
+        let mut account_info = OwnedAccountInfo::with_data(data);
+        let slice = &*unsafe { Buffer::from_account(&account_info.as_mut(), 0..len) };
+        assert_eq!(slice.as_ptr(), ptr);
+        assert_eq!(slice.len(), len);
+    }
+
+    #[test]
+    #[should_panic(expected = "assertion failed: !self.ptr.is_null()")]
+    fn test_deref_account_uninit() {
+        let _: &[u8] = &Buffer::new(Inner::AccountUninit {
+            key: Pubkey::default(),
+            range: 0..0,
+        });
+    }
+}

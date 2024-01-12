@@ -145,10 +145,10 @@ impl serde::Serialize for Buffer {
         match &self.inner {
             Inner::Owned(data) => {
                 let bytes = serde_bytes::Bytes::new(data);
-                serializer.serialize_newtype_variant("evm_buffer", 1, "owned", bytes)
+                serializer.serialize_newtype_variant("evm_buffer", 0, "owned", bytes)
             }
             Inner::Account { key, range, .. } => {
-                let mut sv = serializer.serialize_struct_variant("evm_buffer", 2, "account", 2)?;
+                let mut sv = serializer.serialize_struct_variant("evm_buffer", 1, "account", 2)?;
                 sv.serialize_field("key", key)?;
                 sv.serialize_field("range", range)?;
                 sv.end()
@@ -209,8 +209,8 @@ impl<'de> serde::Deserialize<'de> for Buffer {
 
                 let (index, variant) = data.variant::<u32>()?;
                 match index {
-                    1 => variant.newtype_variant().map(Buffer::from_slice),
-                    2 => variant.struct_variant(&["key", "range"], self),
+                    0 => variant.newtype_variant().map(Buffer::from_slice),
+                    1 => variant.struct_variant(&["key", "range"], self),
                     _ => Err(serde::de::Error::unknown_variant(
                         "_",
                         &["owned", "account"],

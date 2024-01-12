@@ -1,15 +1,10 @@
-use std::{
-    ops::{Deref, Range},
-    ptr::NonNull,
-};
+use std::ops::{Deref, Range};
 
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
+#[derive(Clone)]
 enum Inner {
-    Empty,
-    Owned {
-        data: Vec<u8>,
-    },
+    Owned(Vec<u8>),
     Account {
         key: Pubkey,
         range: Range<usize>,
@@ -21,27 +16,27 @@ enum Inner {
     },
 }
 
-pub struct Buffer {
-    ptr: *const u8,
-    len: usize,
-    inner: Inner,
+impl Deref for Inner {
+    type Target = [u8];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Inner::Owned(data) => data,
+            Inner::Account { range, data, .. } => unsafe {
+                std::slice::from_raw_parts(data.add(range.start), range.len())
+            },
+            Inner::AccountUninit { .. } => {
+                panic!("attempted to dereference uninitialized account data")
+            }
+        }
+    }
 }
 
+#[derive(Clone)]
+pub struct Buffer(Option<Inner>);
+
 impl Buffer {
-    fn new(inner: Inner) -> Self {
-        let (ptr, len) = match &inner {
-            Inner::Empty => (NonNull::dangling().as_ptr() as *const _, 0),
-            Inner::Owned { data } => (data.as_ptr(), data.len()),
-            Inner::Account { data, range, .. } => {
-                let ptr = unsafe { data.add(range.start) };
-                (ptr, range.len())
-            }
-            Inner::AccountUninit { .. } => (std::ptr::null(), 0),
-        };
-
-        Buffer { ptr, len, inner }
-    }
-
     /// # Safety
     ///
     /// This function was marked as unsafe until correct lifetimes will be set.
@@ -56,21 +51,16 @@ impl Buffer {
             (*ptr).as_ptr()
         };
 
-        Buffer::new(Inner::Account {
+        Buffer(Some(Inner::Account {
             key: *account.key,
             data,
             range,
-        })
+        }))
     }
 
     #[must_use]
     pub fn from_vec(v: Vec<u8>) -> Self {
-        if v.is_empty() {
-            return Self::empty();
-        }
-
-        let inner = Inner::Owned { data: v };
-        Self::new(inner)
+        Buffer((!v.is_empty()).then_some(Inner::Owned(v)))
     }
 
     #[must_use]
@@ -80,17 +70,20 @@ impl Buffer {
 
     #[must_use]
     pub fn empty() -> Self {
-        Buffer::new(Inner::Empty)
+        Buffer(None)
     }
 
     #[must_use]
     pub fn is_initialized(&self) -> bool {
-        !matches!(self.inner, Inner::AccountUninit { .. })
+        self.0
+            .as_ref()
+            .map(|inner| !matches!(inner, Inner::AccountUninit { .. }))
+            .unwrap_or_default()
     }
 
     #[must_use]
     pub fn uninit_data(&self) -> Option<(Pubkey, Range<usize>)> {
-        if let Inner::AccountUninit { key, range } = &self.inner {
+        if let Some(Inner::AccountUninit { key, range }) = self.0.as_ref() {
             Some((*key, range.clone()))
         } else {
             None
@@ -100,43 +93,34 @@ impl Buffer {
     #[inline]
     #[must_use]
     pub fn get_or_default(&self, index: usize) -> u8 {
-        debug_assert!(!self.ptr.is_null());
-
-        if index < self.len {
-            unsafe { self.ptr.add(index).read() }
-        } else {
-            0
-        }
+        self.0
+            .as_deref()
+            .expect("attempted to index uninitialized account data")
+            .get(index)
+            .copied()
+            .unwrap_or_default()
     }
 }
 
 impl Deref for Buffer {
     type Target = [u8];
 
-    #[inline]
     fn deref(&self) -> &Self::Target {
-        debug_assert!(!self.ptr.is_null());
-
-        unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
+        self.0
+            .as_deref()
+            .expect("attempted to dereference None buffer")
     }
 }
 
-impl Clone for Buffer {
-    #[inline]
-    fn clone(&self) -> Self {
-        match &self.inner {
-            Inner::Empty => Self::empty(),
-            Inner::Owned { .. } => Self::from_slice(self),
-            Inner::Account { key, data, range } => Self::new(Inner::Account {
-                key: *key,
-                range: range.clone(),
-                data: *data,
-            }),
-            Inner::AccountUninit { key, range } => Self::new(Inner::AccountUninit {
-                key: *key,
-                range: range.clone(),
-            }),
-        }
+impl From<Buffer> for Option<Inner> {
+    fn from(value: Buffer) -> Self {
+        value.0
+    }
+}
+
+impl From<Option<Inner>> for Buffer {
+    fn from(value: Option<Inner>) -> Self {
+        Buffer(value)
     }
 }
 
@@ -153,20 +137,20 @@ impl serde::Serialize for Buffer {
     {
         use serde::ser::SerializeStructVariant;
 
-        match &self.inner {
-            Inner::Empty => serializer.serialize_unit_variant("evm_buffer", 0, "empty"),
-            Inner::Owned { data } => {
+        match self.0.as_ref() {
+            None => serializer.serialize_unit_variant("evm_buffer", 0, "empty"),
+            Some(Inner::Owned(data)) => {
                 let bytes = serde_bytes::Bytes::new(data);
                 serializer.serialize_newtype_variant("evm_buffer", 1, "owned", bytes)
             }
-            Inner::Account { key, range, .. } => {
+            Some(Inner::Account { key, range, .. }) => {
                 let mut sv = serializer.serialize_struct_variant("evm_buffer", 2, "account", 2)?;
                 sv.serialize_field("key", key)?;
                 sv.serialize_field("range", range)?;
                 sv.end()
             }
-            Inner::AccountUninit { .. } => {
-                unreachable!()
+            Some(Inner::AccountUninit { .. }) => {
+                panic!("attempted to serialize uninitialized account data");
             }
         }
     }
@@ -210,7 +194,7 @@ impl<'de> serde::Deserialize<'de> for Buffer {
                 let range = seq
                     .next_element()?
                     .ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;
-                Ok(Buffer::new(Inner::AccountUninit { key, range }))
+                Ok(Buffer(Some(Inner::AccountUninit { key, range })))
             }
 
             fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>

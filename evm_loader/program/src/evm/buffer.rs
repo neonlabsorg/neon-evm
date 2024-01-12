@@ -2,6 +2,7 @@ use std::ops::{Deref, Range};
 
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
+#[cfg_attr(test, derive(Debug, PartialEq))]
 enum Inner {
     Owned(Vec<u8>),
     Account {
@@ -15,12 +16,20 @@ enum Inner {
     },
 }
 
+#[cfg_attr(test, derive(Debug))]
 pub struct Buffer {
     // We maintain a ptr and len to be able to construct a slice without having to discriminate
     // inner. This means we should not allow mutation of inner after the construction of a buffer.
     ptr: *const u8,
     len: usize,
     inner: Inner,
+}
+
+#[cfg(test)]
+impl core::cmp::PartialEq for Buffer {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
 }
 
 impl Buffer {
@@ -320,5 +329,57 @@ mod tests {
             key: Pubkey::default(),
             range: 0..0,
         });
+    }
+
+    #[test]
+    fn test_serialization_round_trip_owned_empty() {
+        let expected = Buffer::default();
+        let actual: Buffer = bincode::deserialize(&bincode::serialize(&expected).unwrap()).unwrap();
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_serialization_round_trip_owned_non_empty() {
+        let expected = Buffer::from_vec(vec![1]);
+        let actual: Buffer = bincode::deserialize(&bincode::serialize(&expected).unwrap()).unwrap();
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_serialization_account_empty_becomes_account_uninit() {
+        let data = Vec::default();
+        let range = 0..data.len();
+        let mut account_info = OwnedAccountInfo::with_data(data);
+        let input = unsafe { Buffer::from_account(&account_info.as_mut(), range.clone()) };
+        let expected = Buffer::new(Inner::AccountUninit {
+            key: Pubkey::default(),
+            range,
+        });
+        let actual: Buffer = bincode::deserialize(&bincode::serialize(&input).unwrap()).unwrap();
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_serialization_account_non_empty_becomes_account_uninit() {
+        let data = vec![1];
+        let range = 0..data.len();
+        let mut account_info = OwnedAccountInfo::with_data(data);
+        let input = unsafe { Buffer::from_account(&account_info.as_mut(), range.clone()) };
+        let expected = Buffer::new(Inner::AccountUninit {
+            key: Pubkey::default(),
+            range,
+        });
+        let actual: Buffer = bincode::deserialize(&bincode::serialize(&input).unwrap()).unwrap();
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    #[should_panic(expected = "unreachable")]
+    fn test_serialization_account_uninit_fails() {
+        let _: Vec<u8> = bincode::serialize(&Buffer::new(Inner::AccountUninit {
+            key: Pubkey::default(),
+            range: 0..0,
+        }))
+        .unwrap();
     }
 }

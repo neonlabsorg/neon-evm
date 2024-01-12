@@ -8,7 +8,6 @@ use crate::error::{Error, Result};
 use crate::evm::{ExitStatus, Machine};
 use crate::executor::{Action, ExecutorState};
 use crate::gasometer::Gasometer;
-use crate::state_account::Deposit;
 use crate::types::{Address, Transaction};
 
 type EvmBackend<'a, 'r> = ExecutorState<'r, ProgramAccountStorage<'a>>;
@@ -170,7 +169,7 @@ fn finalize<'a>(
         log_return_value(&exit_reason);
 
         account_storage.block_accounts(false);
-        storage.finalize(Deposit::ReturnToOperator(accounts.operator))?;
+        storage.finalize()?;
     }
 
     Ok(())

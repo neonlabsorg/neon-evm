@@ -1,18 +1,16 @@
 #[cfg(target_os = "solana")]
 use {
-    crate::account::program,
     crate::types::{Address, Transaction},
     ethnum::U256,
+    solana_program::clock::Clock,
+    solana_program::sysvar::Sysvar,
 };
 
 use {
     crate::account::EthereumAccount,
     crate::account::Holder,
-    crate::config::OPERATOR_PRIORITY_SLOTS,
     crate::error::Error,
     solana_program::account_info::AccountInfo,
-    solana_program::clock::Clock,
-    solana_program::sysvar::Sysvar,
     std::cell::{Ref, RefMut},
 };
 
@@ -89,7 +87,6 @@ impl<'a> State<'a> {
         info.data.borrow_mut()[0] = 0_u8;
         let mut storage = State::init(program_id, info, data)?;
 
-        storage.make_deposit(&accounts.system_program, &accounts.operator)?;
         storage.write_blocked_accounts(program_id, accounts.remaining_accounts)?;
         Ok(storage)
     }
@@ -113,28 +110,12 @@ impl<'a> State<'a> {
         let blocked_accounts =
             storage.check_blocked_accounts(program_id, remaining_accounts, is_cancelling)?;
 
-        let clock = Clock::get()?;
-        if (*operator.key != storage.operator)
-            && ((clock.slot - storage.slot) <= OPERATOR_PRIORITY_SLOTS)
-        {
-            return Err!(ProgramError::InvalidAccountData; "operator.key != storage.operator");
-        }
-
-        if storage.operator != *operator.key {
-            storage.operator = *operator.key;
-            storage.slot = clock.slot;
-        }
-
+        storage.operator = *operator.key;
         Ok((storage, blocked_accounts))
     }
 
-    pub fn finalize(self, deposit: Deposit<'a>) -> Result<FinalizedState<'a>, ProgramError> {
+    pub fn finalize(self) -> Result<FinalizedState<'a>, ProgramError> {
         debug_print!("Finalize Storage {}", self.info.key);
-
-        match deposit {
-            Deposit::ReturnToOperator(operator) => self.withdraw_deposit(&operator),
-            Deposit::Burn(incinerator) => self.withdraw_deposit(&incinerator),
-        }?;
 
         let finalized_data = crate::account::state::FinalizedData {
             owner: self.owner,
@@ -143,35 +124,6 @@ impl<'a> State<'a> {
 
         let finalized = unsafe { self.replace(finalized_data) }?;
         Ok(finalized)
-    }
-
-    #[cfg(target_os = "solana")]
-    fn make_deposit(
-        &self,
-        system_program: &program::System<'a>,
-        source: &Operator<'a>,
-    ) -> Result<(), ProgramError> {
-        system_program.transfer(source, self.info, crate::config::PAYMENT_TO_DEPOSIT)
-    }
-
-    fn withdraw_deposit(&self, target: &AccountInfo<'a>) -> Result<(), ProgramError> {
-        let source_lamports = self
-            .info
-            .lamports()
-            .checked_sub(crate::config::PAYMENT_TO_DEPOSIT)
-            .ok_or_else(
-                || E!(ProgramError::InvalidArgument; "Deposit source lamports underflow"),
-            )?;
-
-        let target_lamports = target
-            .lamports()
-            .checked_add(crate::config::PAYMENT_TO_DEPOSIT)
-            .ok_or_else(|| E!(ProgramError::InvalidArgument; "Deposit target lamports overflow"))?;
-
-        **self.info.lamports.borrow_mut() = source_lamports;
-        **target.lamports.borrow_mut() = target_lamports;
-
-        Ok(())
     }
 
     pub fn read_blocked_accounts(&self) -> Result<BlockedAccounts, ProgramError> {

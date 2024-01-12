@@ -1,15 +1,9 @@
-use std::{
-    ops::{Deref, Range},
-    ptr::NonNull,
-};
+use std::ops::{Deref, Range};
 
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 enum Inner {
-    Empty,
-    Owned {
-        data: Vec<u8>,
-    },
+    Owned(Vec<u8>),
     Account {
         key: Pubkey,
         range: Range<usize>,
@@ -22,6 +16,8 @@ enum Inner {
 }
 
 pub struct Buffer {
+    // We maintain a ptr and len to be able to construct a slice without having to discriminate
+    // inner. This means we should not allow mutation of inner after the construction of a buffer.
     ptr: *const u8,
     len: usize,
     inner: Inner,
@@ -30,8 +26,7 @@ pub struct Buffer {
 impl Buffer {
     fn new(inner: Inner) -> Self {
         let (ptr, len) = match &inner {
-            Inner::Empty => (NonNull::dangling().as_ptr() as *const _, 0),
-            Inner::Owned { data } => (data.as_ptr(), data.len()),
+            Inner::Owned(data) => (data.as_ptr(), data.len()),
             Inner::Account { data, range, .. } => {
                 let ptr = unsafe { data.add(range.start) };
                 (ptr, range.len())
@@ -65,12 +60,7 @@ impl Buffer {
 
     #[must_use]
     pub fn from_vec(v: Vec<u8>) -> Self {
-        if v.is_empty() {
-            return Self::empty();
-        }
-
-        let inner = Inner::Owned { data: v };
-        Self::new(inner)
+        Self::new(Inner::Owned(v))
     }
 
     #[must_use]
@@ -80,7 +70,7 @@ impl Buffer {
 
     #[must_use]
     pub fn empty() -> Self {
-        Buffer::new(Inner::Empty)
+        Buffer::new(Inner::Owned(Vec::default()))
     }
 
     #[must_use]
@@ -125,7 +115,6 @@ impl Clone for Buffer {
     #[inline]
     fn clone(&self) -> Self {
         match &self.inner {
-            Inner::Empty => Self::empty(),
             Inner::Owned { .. } => Self::from_slice(self),
             Inner::Account { key, data, range } => Self::new(Inner::Account {
                 key: *key,
@@ -154,10 +143,14 @@ impl serde::Serialize for Buffer {
         use serde::ser::SerializeStructVariant;
 
         match &self.inner {
-            Inner::Empty => serializer.serialize_unit_variant("evm_buffer", 0, "empty"),
-            Inner::Owned { data } => {
-                let bytes = serde_bytes::Bytes::new(data);
-                serializer.serialize_newtype_variant("evm_buffer", 1, "owned", bytes)
+            Inner::Owned(data) => {
+                // For backwards compatibility we need to serialize empty and non-empty vecs differently.
+                if data.is_empty() {
+                    serializer.serialize_unit_variant("evm_buffer", 0, "empty")
+                } else {
+                    let bytes = serde_bytes::Bytes::new(data);
+                    serializer.serialize_newtype_variant("evm_buffer", 1, "owned", bytes)
+                }
             }
             Inner::Account { key, range, .. } => {
                 let mut sv = serializer.serialize_struct_variant("evm_buffer", 2, "account", 2)?;

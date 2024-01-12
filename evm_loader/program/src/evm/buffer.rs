@@ -1,12 +1,8 @@
-use std::{
-    ops::{Deref, Range},
-    ptr::NonNull,
-};
+use std::ops::{Deref, Range};
 
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 enum Inner {
-    Empty,
     Owned {
         data: Vec<u8>,
     },
@@ -30,7 +26,6 @@ pub struct Buffer {
 impl Buffer {
     fn new(inner: Inner) -> Self {
         let (ptr, len) = match &inner {
-            Inner::Empty => (NonNull::dangling().as_ptr() as *const _, 0),
             Inner::Owned { data } => (data.as_ptr(), data.len()),
             Inner::Account { data, range, .. } => {
                 let ptr = unsafe { data.add(range.start) };
@@ -65,12 +60,7 @@ impl Buffer {
 
     #[must_use]
     pub fn from_vec(v: Vec<u8>) -> Self {
-        if v.is_empty() {
-            return Self::empty();
-        }
-
-        let inner = Inner::Owned { data: v };
-        Self::new(inner)
+        Self::new(Inner::Owned { data: v })
     }
 
     #[must_use]
@@ -80,7 +70,7 @@ impl Buffer {
 
     #[must_use]
     pub fn empty() -> Self {
-        Buffer::new(Inner::Empty)
+        Buffer::from_vec(vec![])
     }
 
     #[must_use]
@@ -125,7 +115,6 @@ impl Clone for Buffer {
     #[inline]
     fn clone(&self) -> Self {
         match &self.inner {
-            Inner::Empty => Self::empty(),
             Inner::Owned { .. } => Self::from_slice(self),
             Inner::Account { key, data, range } => Self::new(Inner::Account {
                 key: *key,
@@ -154,13 +143,12 @@ impl serde::Serialize for Buffer {
         use serde::ser::SerializeStructVariant;
 
         match &self.inner {
-            Inner::Empty => serializer.serialize_unit_variant("evm_buffer", 0, "empty"),
             Inner::Owned { data } => {
                 let bytes = serde_bytes::Bytes::new(data);
-                serializer.serialize_newtype_variant("evm_buffer", 1, "owned", bytes)
+                serializer.serialize_newtype_variant("evm_buffer", 0, "owned", bytes)
             }
             Inner::Account { key, range, .. } => {
-                let mut sv = serializer.serialize_struct_variant("evm_buffer", 2, "account", 2)?;
+                let mut sv = serializer.serialize_struct_variant("evm_buffer", 1, "account", 2)?;
                 sv.serialize_field("key", key)?;
                 sv.serialize_field("range", range)?;
                 sv.end()
@@ -221,9 +209,8 @@ impl<'de> serde::Deserialize<'de> for Buffer {
 
                 let (index, variant) = data.variant::<u32>()?;
                 match index {
-                    0 => variant.unit_variant().map(|_| Buffer::empty()),
-                    1 => variant.newtype_variant().map(Buffer::from_slice),
-                    2 => variant.struct_variant(&["key", "range"], self),
+                    0 => variant.newtype_variant().map(Buffer::from_slice),
+                    1 => variant.struct_variant(&["key", "range"], self),
                     _ => Err(serde::de::Error::unknown_variant(
                         "_",
                         &["empty", "owned", "account"],

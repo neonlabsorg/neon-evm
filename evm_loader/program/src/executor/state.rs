@@ -289,19 +289,13 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         // https://eips.ethereum.org/EIPS/eip-1052
         // https://eips.ethereum.org/EIPS/eip-161
 
-        let code = self.code(address).await?;
-
-        if !code.is_empty() {
-            return Ok(keccak::hash(&code).to_bytes());
-        }
-
         if self.nonce(address, chain_id).await? == 0 && self.balance(address, chain_id).await? == 0
         {
             return Ok(<[u8; 32]>::default());
         }
 
-        // equal to "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
-        return Ok(keccak::hash(&[]).to_bytes());
+        let code = self.code(address).await?;
+        return Ok(keccak::hash(&code).to_bytes());
     }
 
     async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {

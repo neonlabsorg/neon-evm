@@ -1,5 +1,5 @@
-use crate::account::{EthereumAccount, Incinerator, Operator, State};
-use crate::state_account::{BlockedAccounts, Deposit};
+use crate::account::{EthereumAccount, Operator, State};
+use crate::state_account::BlockedAccounts;
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{
@@ -9,7 +9,6 @@ use solana_program::{
 
 struct Accounts<'a> {
     storage: State<'a>,
-    incinerator: Incinerator<'a>,
     remaining_accounts: &'a [AccountInfo<'a>],
 }
 
@@ -22,7 +21,7 @@ pub fn process<'a>(
 
     let storage_info = &accounts[0];
     let operator = Operator::from_account(&accounts[1])?;
-    let incinerator = Incinerator::from_account(&accounts[2])?;
+    // let incinerator = Incinerator::from_account(&accounts[2])?;
     let remaining_accounts = &accounts[3..];
 
     let (storage, blocked_accounts) = State::restore(
@@ -35,7 +34,6 @@ pub fn process<'a>(
 
     let accounts = Accounts {
         storage,
-        incinerator,
         remaining_accounts,
     };
     let transaction_hash = array_ref![instruction, 0, 32];
@@ -82,9 +80,7 @@ fn execute<'a>(
         }
     }
 
-    accounts
-        .storage
-        .finalize(Deposit::Burn(accounts.incinerator))?;
+    accounts.storage.finalize()?;
 
     Ok(())
 }

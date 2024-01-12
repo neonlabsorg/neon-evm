@@ -86,18 +86,6 @@ impl Buffer {
             None
         }
     }
-
-    #[inline]
-    #[must_use]
-    pub fn get_or_default(&self, index: usize) -> u8 {
-        debug_assert!(!self.ptr.is_null());
-
-        if index < self.len {
-            unsafe { self.ptr.add(index).read() }
-        } else {
-            0
-        }
-    }
 }
 
 impl Deref for Buffer {

@@ -45,6 +45,9 @@ macro_rules! opcode_table {
     }
 }
 
+// TODO: Where should this go?
+pub const OPCODE_STOP: u8 = 0x00;
+
 opcode_table![
         0x00, "STOP", Self::opcode_stop;
         0x01, "ADD", Self::opcode_add;

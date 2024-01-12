@@ -21,8 +21,6 @@ pub trait Database {
         chain_id: u64,
         value: U256,
     ) -> Result<()>;
-
-    async fn code_hash(&self, address: Address, chain_id: u64) -> Result<[u8; 32]>;
     async fn code_size(&self, address: Address) -> Result<usize>;
     async fn code(&self, address: Address) -> Result<Buffer>;
     fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()>;
@@ -50,4 +48,45 @@ pub trait Database {
         data: &[u8],
         is_static: bool,
     ) -> Option<Result<Vec<u8>>>;
+}
+
+/// Provides convenience methods that can be implemented in terms of `Database`.
+#[maybe_async(?Send)]
+pub trait DatabaseExt {
+    /// Returns whether an account exists, which is also referred to as the account being non-empty,
+    /// in accordance with https://eips.ethereum.org/EIPS/eip-161.
+    async fn account_exists(&self, address: Address, chain_id: u64) -> Result<bool>;
+
+    /// Returns the code has for an address in accordance with https://eips.ethereum.org/EIPS/eip-1052.
+    async fn code_hash(&self, address: Address, chain_id: u64) -> Result<[u8; 32]>;
+}
+
+#[maybe_async(?Send)]
+impl<T: Database> DatabaseExt for T {
+    async fn account_exists(&self, address: Address, chain_id: u64) -> Result<bool> {
+        Ok(self.nonce(address, chain_id).await? > 0 || self.balance(address, chain_id).await? > 0)
+    }
+
+    async fn code_hash(&self, address: Address, chain_id: u64) -> Result<[u8; 32]> {
+        // `self.code` will return an empty buffer when the account does not exist, and when the
+        // account exists but does not have any code. For that reason we also have to check if the
+        // account exists if the buffer is empty since we must return [0u8; 32] if it does not. We
+        // could check if the account exists first, but that would lead to more computations in the
+        // common case where the account exists and contains code.
+        let buffer = self.code(address).await?;
+        let bytes_to_hash = if !buffer.is_empty() {
+            // A program account exists at the address.
+            Some(&*buffer)
+        } else if self.account_exists(address, chain_id).await? {
+            // A data account exists at the address.
+            Some(<&[u8]>::default())
+        } else {
+            // No account exists at the address.
+            None
+        };
+
+        Ok(bytes_to_hash
+            .map(|bytes| solana_program::keccak::hash(bytes).to_bytes())
+            .unwrap_or_default())
+    }
 }

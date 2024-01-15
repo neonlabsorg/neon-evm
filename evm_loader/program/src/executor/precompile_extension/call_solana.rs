@@ -10,7 +10,6 @@ use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::{instruction::Instruction, pubkey::Pubkey};
 
-// "91183f5a": "call(bytes32,(bytes32,uint8)[],bytes,uint64)"
 // "cfd51d32": "createResource(bytes32,uint64,uint64,bytes32)"
 // "154d4aa5": "getNeonAddress(address)"
 // "59e4ad63": "getResourceAddress(bytes32)"
@@ -57,6 +56,12 @@ pub async fn call_solana<State: Database>(
             #[cfg(not(target_os = "solana"))]
             log::info!("instruction: {:?}", instruction);
 
+            for meta in &instruction.accounts {
+                if meta.pubkey == state.operator() {
+                    return Err(Error::InvalidAccountForCall(state.operator()));
+                }
+            }
+
             let signer = context.caller;
             let (_signer_pubkey, bump_seed) = state.contract_pubkey(signer);
 
@@ -81,6 +86,12 @@ pub async fn call_solana<State: Database>(
 
             #[cfg(not(target_os = "solana"))]
             log::info!("instruction: {:?}", instruction);
+
+            for meta in &instruction.accounts {
+                if meta.pubkey == state.operator() {
+                    return Err(Error::InvalidAccountForCall(state.operator()));
+                }
+            }
 
             let seeds: &[&[u8]] = &[
                 &[ACCOUNT_SEED_VERSION],

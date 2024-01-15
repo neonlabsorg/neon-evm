@@ -88,7 +88,7 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
     }
 
     fn burn(&mut self, address: Address, chain_id: u64, value: U256) -> Result<()> {
-        let mut account = self.create_balance_account(address, chain_id)?;
+        let mut account = self.balance_account(address, chain_id)?;
         account.burn(value)
     }
 
@@ -107,7 +107,6 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
 
         for meta in &instruction.accounts {
             let account: AccountInfo<'a> =
-                // TODO: Protect operator account from external calls
                 if meta.pubkey == self.accounts.operator_key() {
                     self.accounts.operator_info().clone()
                 } else {

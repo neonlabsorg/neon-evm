@@ -696,7 +696,7 @@ impl<B: Database> Machine<B> {
     /// current block's number
     #[maybe_async]
     pub async fn opcode_number(&mut self, backend: &mut B) -> Result<Action> {
-        let block_number = backend.block_number()?;
+        let block_number = backend.block_number();
 
         self.stack.push_u256(block_number)?;
 

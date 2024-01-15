@@ -30,7 +30,7 @@ pub trait Database {
     fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]);
 
     async fn block_hash(&self, number: U256) -> [u8; 32];
-    fn block_number(&self) -> Result<U256>;
+    fn block_number(&self) -> U256;
     fn block_timestamp(&self) -> Result<U256>;
 
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
@@ -215,7 +215,7 @@ mod tests {
             unimplemented!();
         }
 
-        fn block_number(&self) -> Result<U256> {
+        fn block_number(&self) -> U256 {
             unimplemented!();
         }
 

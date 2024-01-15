@@ -373,9 +373,9 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         self.backend.block_hash(number).await
     }
 
-    fn block_number(&self) -> Result<U256> {
+    fn block_number(&self) -> U256 {
         let cache = self.cache.borrow();
-        Ok(cache.block_number)
+        cache.block_number
     }
 
     fn block_timestamp(&self) -> Result<U256> {

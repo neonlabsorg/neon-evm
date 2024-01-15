@@ -29,7 +29,7 @@ pub trait Database {
     async fn storage(&self, address: Address, index: U256) -> Result<[u8; 32]>;
     fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
 
-    async fn block_hash(&self, number: U256) -> Result<[u8; 32]>;
+    async fn block_hash(&self, number: U256) -> [u8; 32];
     fn block_number(&self) -> Result<U256>;
     fn block_timestamp(&self) -> Result<U256>;
 
@@ -212,7 +212,7 @@ mod tests {
             unimplemented!();
         }
 
-        async fn block_hash(&self, number: U256) -> Result<[u8; 32]> {
+        async fn block_hash(&self, number: U256) -> [u8; 32] {
             unimplemented!();
         }
 

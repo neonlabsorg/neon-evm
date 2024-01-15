@@ -352,14 +352,14 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
-    async fn block_hash(&self, number: U256) -> Result<[u8; 32]> {
+    async fn block_hash(&self, number: U256) -> [u8; 32] {
         // geth:
         //  - checks the overflow
         //  - converts to u64
         //  - checks on last 256 blocks
 
         if number >= u64::MAX.as_u256() {
-            return Ok(<[u8; 32]>::default());
+            return <[u8; 32]>::default();
         }
 
         let number = number.as_u64();
@@ -371,10 +371,10 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         };
 
         if number >= block_slot || lower_block_slot > number {
-            return Ok(<[u8; 32]>::default());
+            return <[u8; 32]>::default();
         }
 
-        Ok(self.backend.block_hash(number).await)
+        self.backend.block_hash(number).await
     }
 
     fn block_number(&self) -> Result<U256> {

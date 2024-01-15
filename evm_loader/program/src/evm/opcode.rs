@@ -666,7 +666,7 @@ impl<B: Database> Machine<B> {
         let block_hash = {
             let block_number = self.stack.pop_u256()?;
 
-            backend.block_hash(block_number).await?
+            backend.block_hash(block_number).await
         };
 
         self.stack.push_array(&block_hash)?;

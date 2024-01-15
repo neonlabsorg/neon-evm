@@ -1462,7 +1462,7 @@ impl<B: Database> Machine<B> {
         backend
             .transfer(self.context.contract, address, chain_id, value)
             .await?;
-        backend.selfdestruct(self.context.contract)?;
+        backend.selfdestruct(self.context.contract);
 
         backend.commit_snapshot();
         sol_log_data(&[b"EXIT", b"SELFDESTRUCT"]);

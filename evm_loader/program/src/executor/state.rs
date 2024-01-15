@@ -317,11 +317,9 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
-    fn selfdestruct(&mut self, address: Address) -> Result<()> {
+    fn selfdestruct(&mut self, address: Address) {
         let suicide = Action::EvmSelfDestruct { address };
         self.actions.push(suicide);
-
-        Ok(())
     }
 
     async fn storage(&self, from_address: Address, from_index: U256) -> [u8; 32] {

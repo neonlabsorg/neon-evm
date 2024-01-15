@@ -24,7 +24,7 @@ pub trait Database {
     async fn code_size(&self, address: Address) -> usize;
     async fn code(&self, address: Address) -> Buffer;
     fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()>;
-    fn selfdestruct(&mut self, address: Address) -> Result<()>;
+    fn selfdestruct(&mut self, address: Address);
 
     async fn storage(&self, address: Address, index: U256) -> [u8; 32];
     fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
@@ -199,7 +199,7 @@ mod tests {
             unimplemented!();
         }
 
-        fn selfdestruct(&mut self, address: Address) -> Result<()> {
+        fn selfdestruct(&mut self, address: Address) {
             unimplemented!();
         }
 

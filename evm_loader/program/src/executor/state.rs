@@ -324,7 +324,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
-    async fn storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
+    async fn storage(&self, from_address: Address, from_index: U256) -> [u8; 32] {
         for action in self.actions.iter().rev() {
             if let Action::EvmSetStorage {
                 address,
@@ -333,12 +333,12 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             } = action
             {
                 if (&from_address == address) && (&from_index == index) {
-                    return Ok(*value);
+                    return *value;
                 }
             }
         }
 
-        Ok(self.backend.storage(from_address, from_index).await)
+        self.backend.storage(from_address, from_index).await
     }
 
     fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {

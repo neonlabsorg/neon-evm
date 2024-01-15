@@ -797,7 +797,7 @@ impl<B: Database> Machine<B> {
     #[maybe_async]
     pub async fn opcode_sload(&mut self, backend: &mut B) -> Result<Action> {
         let index = self.stack.pop_u256()?;
-        let value = backend.storage(self.context.contract, index).await?;
+        let value = backend.storage(self.context.contract, index).await;
 
         tracing_event!(self, super::tracing::Event::StorageAccess { index, value });
 

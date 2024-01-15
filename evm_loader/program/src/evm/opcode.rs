@@ -818,7 +818,7 @@ impl<B: Database> Machine<B> {
 
         tracing_event!(self, super::tracing::Event::StorageAccess { index, value });
 
-        backend.set_storage(self.context.contract, index, value)?;
+        backend.set_storage(self.context.contract, index, value);
 
         Ok(Action::Continue)
     }

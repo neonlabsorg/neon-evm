@@ -339,15 +339,13 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         self.backend.storage(from_address, from_index).await
     }
 
-    fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
+    fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) {
         let set_storage = Action::EvmSetStorage {
             address,
             index,
             value,
         };
         self.actions.push(set_storage);
-
-        Ok(())
     }
 
     async fn block_hash(&self, number: U256) -> [u8; 32] {

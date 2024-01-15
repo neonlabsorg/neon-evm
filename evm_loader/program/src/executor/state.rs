@@ -245,7 +245,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
         let target_chain_id = self.contract_chain_id(target).await.unwrap_or(chain_id);
 
-        if (self.code_size(target).await? > 0) && (target_chain_id != chain_id) {
+        if (self.code_size(target).await > 0) && (target_chain_id != chain_id) {
             return Err(Error::InvalidTransferToken(source, chain_id));
         }
 
@@ -268,20 +268,20 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
-    async fn code_size(&self, from_address: Address) -> Result<usize> {
+    async fn code_size(&self, from_address: Address) -> usize {
         if self.is_precompile_extension(&from_address) {
-            return Ok(1); // This is required in order to make a normal call to an extension contract
+            return 1; // This is required in order to make a normal call to an extension contract
         }
 
         for action in &self.actions {
             if let Action::EvmSetCode { address, code, .. } = action {
                 if &from_address == address {
-                    return Ok(code.len());
+                    return code.len();
                 }
             }
         }
 
-        Ok(self.backend.code_size(from_address).await)
+        self.backend.code_size(from_address).await
     }
 
     async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {

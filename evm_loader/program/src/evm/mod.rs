@@ -326,8 +326,7 @@ impl<B: Database> Machine<B> {
         let target = Address::from_create(&origin, trx.nonce());
         sol_log_data(&[b"ENTER", b"CREATE", target.as_bytes()]);
 
-        if (backend.nonce(target, chain_id).await? != 0) || (backend.code_size(target).await? != 0)
-        {
+        if (backend.nonce(target, chain_id).await? != 0) || (backend.code_size(target).await != 0) {
             return Err(Error::DeployToExistingAccount(target, origin));
         }
 

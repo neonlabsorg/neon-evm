@@ -597,7 +597,7 @@ impl<B: Database> Machine<B> {
     pub async fn opcode_extcodesize(&mut self, backend: &mut B) -> Result<Action> {
         let code_size = {
             let address = self.stack.pop_address()?;
-            backend.code_size(address).await?
+            backend.code_size(address).await
         };
 
         self.stack.push_usize(code_size)?;
@@ -1091,8 +1091,7 @@ impl<B: Database> Machine<B> {
 
         sol_log_data(&[b"ENTER", b"CREATE", address.as_bytes()]);
 
-        if (backend.nonce(address, chain_id).await? != 0)
-            || (backend.code_size(address).await? != 0)
+        if (backend.nonce(address, chain_id).await? != 0) || (backend.code_size(address).await != 0)
         {
             return Err(Error::DeployToExistingAccount(address, self.context.caller));
         }

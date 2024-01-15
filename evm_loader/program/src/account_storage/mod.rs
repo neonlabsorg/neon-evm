@@ -16,6 +16,9 @@ mod apply;
 mod backend;
 #[cfg(target_os = "solana")]
 mod base;
+#[cfg(target_os = "solana")]
+mod synced;
+
 mod block_hash;
 pub use block_hash::find_slot_hash;
 

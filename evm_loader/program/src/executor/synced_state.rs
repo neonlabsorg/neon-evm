@@ -1,61 +1,29 @@
-#![allow(unused_imports)]
-#![allow(unused_variables)]
-#![allow(dead_code)]
-
-use std::cell::RefCell;
-use std::collections::BTreeMap;
-
 use ethnum::{AsU256, U256};
 use maybe_async::maybe_async;
-use solana_program::account_info::Account;
 use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 
 use crate::account_storage::{AccountStorage, SyncedAccountStorage};
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
-use crate::evm::{Context, ExitStatus};
+use crate::evm::Context;
 use crate::types::Address;
 
-use super::action::Action;
-use super::cache::{cache_get_or_insert_account, Cache};
 use super::precompile_extension::PrecompiledContracts;
 use super::OwnedAccountInfo;
 
 pub struct SyncedExecutorState<'a, B: AccountStorage> {
     pub backend: &'a mut B,
-    cache: RefCell<Cache>,
     depth: usize,
-    exit_status: Option<ExitStatus>,
 }
 
 impl<'a, B: AccountStorage + SyncedAccountStorage> SyncedExecutorState<'a, B> {
     #[must_use]
     pub fn new(backend: &'a mut B) -> Self {
-        let cache = Cache {
-            solana_accounts: BTreeMap::new(),
-            block_number: backend.block_number(),
-            block_timestamp: backend.block_timestamp(),
-        };
-
         Self {
             backend,
-            cache: RefCell::new(cache),
             depth: 0,
-            exit_status: None,
         }
-    }
-
-    pub fn exit_status(&self) -> Option<&ExitStatus> {
-        self.exit_status.as_ref()
-    }
-
-    pub fn set_exit_status(&mut self, status: ExitStatus) {
-        self.exit_status = Some(status);
-    }
-
-    pub fn call_depth(&self) -> usize {
-        self.depth
     }
 }
 
@@ -124,10 +92,9 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
     }
 
     async fn code_size(&self, from_address: Address) -> Result<usize> {
-        // TODO: Move precompile_extension into Database trait
-        // if self.is_precompile_extension(&from_address) {
-        //     return Ok(1); // This is required in order to make a normal call to an extension contract
-        // }
+        if PrecompiledContracts::is_precompile_extension(&from_address) {
+            return Ok(1); // This is required in order to make a normal call to an extension contract
+        }
 
         Ok(self.backend.code_size(from_address).await)
     }
@@ -155,7 +122,7 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         Ok(())
     }
 
-    fn selfdestruct(&mut self, address: Address) -> Result<()> {
+    fn selfdestruct(&mut self, _address: Address) -> Result<()> {
         Err(Error::Custom("Selfdestruct is not supported".to_string()))
     }
 
@@ -179,7 +146,7 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         }
 
         let number = number.as_u64();
-        let block_slot = self.cache.borrow().block_number.as_u64();
+        let block_slot = self.backend.block_number().as_u64();
         let lower_block_slot = if block_slot < 257 {
             0
         } else {
@@ -194,17 +161,15 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
     }
 
     fn block_number(&self) -> Result<U256> {
-        let cache = self.cache.borrow();
-        Ok(cache.block_number)
+        Ok(self.backend.block_number())
     }
 
     fn block_timestamp(&self) -> Result<U256> {
-        let cache = self.cache.borrow();
-        Ok(cache.block_timestamp)
+        Ok(self.backend.block_timestamp())
     }
 
     async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
-        let account = cache_get_or_insert_account(&self.cache, address, self.backend).await;
+        let account = self.backend.clone_solana_account(&address).await;
         return Ok(account);
     }
 
@@ -220,7 +185,6 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
     }
 
     fn revert_snapshot(&mut self) {
-        // TODO: revert snapshot not implemented for SyncedExecutorState
         panic!("revert snapshot not implemented for SyncedExecutorState");
     }
 
@@ -258,7 +222,7 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         instruction: Instruction,
         seeds: Vec<Vec<u8>>,
         fee: u64,
-        emulated_internally: bool,
+        _emulated_internally: bool,
     ) -> Result<()> {
         self.backend
             .execute_external_instruction(instruction, seeds, fee)?;

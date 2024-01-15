@@ -25,12 +25,6 @@ pub struct ExecuteStatus {
     pub reverts_after_solana_calls: bool,
 }
 
-// pub trait SolanaEmulator {
-//     /// Emulate solana call
-//     async fn emulate_solana_call(&self, program_id: &Pubkey, data: &[u8], meta: &[AccountMeta],
-//         accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>, seeds: &Vec<Vec<u8>>) -> Result<()>;
-// }
-
 /// Represents the state of executor abstracted away from a self.backend.
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
 pub struct ExecutorState<'a, B: AccountStorage> {

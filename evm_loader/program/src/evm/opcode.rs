@@ -1056,7 +1056,7 @@ impl<B: Database> Machine<B> {
             return Err(Error::NonceOverflow(self.context.contract));
         }
 
-        backend.increment_nonce(self.context.contract, chain_id)?;
+        backend.increment_nonce(self.context.contract, chain_id);
 
         self.return_data = Buffer::empty();
         self.return_range = 0..0;
@@ -1096,7 +1096,7 @@ impl<B: Database> Machine<B> {
             return Err(Error::DeployToExistingAccount(address, self.context.caller));
         }
 
-        backend.increment_nonce(address, chain_id)?;
+        backend.increment_nonce(address, chain_id);
         backend
             .transfer(self.context.caller, address, chain_id, value)
             .await?;

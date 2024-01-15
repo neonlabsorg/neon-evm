@@ -276,7 +276,7 @@ impl<B: Database> Machine<B> {
         let target = trx.target().unwrap();
         sol_log_data(&[b"ENTER", b"CALL", target.as_bytes()]);
 
-        backend.increment_nonce(origin, chain_id)?;
+        backend.increment_nonce(origin, chain_id);
         backend.snapshot();
 
         backend
@@ -330,10 +330,10 @@ impl<B: Database> Machine<B> {
             return Err(Error::DeployToExistingAccount(target, origin));
         }
 
-        backend.increment_nonce(origin, chain_id)?;
+        backend.increment_nonce(origin, chain_id);
         backend.snapshot();
 
-        backend.increment_nonce(target, chain_id)?;
+        backend.increment_nonce(target, chain_id);
         backend
             .transfer(origin, target, chain_id, trx.value())
             .await?;

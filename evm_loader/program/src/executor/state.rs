@@ -192,11 +192,9 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(nonce)
     }
 
-    fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
+    fn increment_nonce(&mut self, address: Address, chain_id: u64) {
         let increment = Action::EvmIncrementNonce { address, chain_id };
         self.actions.push(increment);
-
-        Ok(())
     }
 
     async fn balance(&self, from_address: Address, from_chain_id: u64) -> Result<U256> {

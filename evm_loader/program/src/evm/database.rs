@@ -11,7 +11,7 @@ pub trait Database {
     async fn contract_chain_id(&self, address: Address) -> Result<u64>;
 
     async fn nonce(&self, address: Address, chain_id: u64) -> Result<u64>;
-    fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()>;
+    fn increment_nonce(&mut self, address: Address, chain_id: u64);
 
     async fn balance(&self, address: Address, chain_id: u64) -> Result<U256>;
     async fn transfer(
@@ -162,7 +162,7 @@ mod tests {
                 .unwrap_or_default())
         }
 
-        fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
+        fn increment_nonce(&mut self, address: Address, chain_id: u64) {
             unimplemented!();
         }
 

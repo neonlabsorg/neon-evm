@@ -283,7 +283,7 @@ impl<B: Database> Machine<B> {
             .transfer(origin, target, chain_id, trx.value())
             .await?;
 
-        let execution_code = backend.code(target).await?;
+        let execution_code = backend.code(target).await;
 
         Ok(Self {
             origin,

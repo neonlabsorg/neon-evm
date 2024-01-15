@@ -613,7 +613,7 @@ impl<B: Database> Machine<B> {
         let data_offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let code = backend.code(address).await?;
+        let code = backend.code(address).await;
 
         self.memory
             .write_buffer(memory_offset, length, &code, data_offset)?;
@@ -1119,7 +1119,7 @@ impl<B: Database> Machine<B> {
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
-        let code = backend.code(address).await?;
+        let code = backend.code(address).await;
 
         let chain_id = self.context.contract_chain_id;
         let context = Context {
@@ -1176,7 +1176,7 @@ impl<B: Database> Machine<B> {
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
-        let code = backend.code(address).await?;
+        let code = backend.code(address).await;
 
         let chain_id = self.context.contract_chain_id;
         let context = Context {
@@ -1231,7 +1231,7 @@ impl<B: Database> Machine<B> {
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
-        let code = backend.code(address).await?;
+        let code = backend.code(address).await;
 
         let context = Context {
             code_address: Some(address),
@@ -1276,7 +1276,7 @@ impl<B: Database> Machine<B> {
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read_buffer(args_offset, args_length)?;
-        let code = backend.code(address).await?;
+        let code = backend.code(address).await;
 
         let chain_id = self.context.contract_chain_id;
         let context = Context {

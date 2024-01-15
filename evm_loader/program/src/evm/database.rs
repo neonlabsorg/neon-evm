@@ -22,7 +22,7 @@ pub trait Database {
         value: U256,
     ) -> Result<()>;
     async fn code_size(&self, address: Address) -> usize;
-    async fn code(&self, address: Address) -> Result<Buffer>;
+    async fn code(&self, address: Address) -> Buffer;
     fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()>;
     fn selfdestruct(&mut self, address: Address) -> Result<()>;
 
@@ -76,7 +76,7 @@ impl<T: Database> DatabaseExt for T {
         // We could simplify the implementation by checking if the account exists first, but that
         // would lead to more computation in what we think is the common case where the account
         // exists and contains code.
-        let code = self.code(address).await?;
+        let code = self.code(address).await;
         let bytes_to_hash: Option<&[u8]> = if !code.is_empty() {
             Some(&*code)
         } else if self.account_exists(address, chain_id).await? {
@@ -188,12 +188,11 @@ mod tests {
             unimplemented!();
         }
 
-        async fn code(&self, address: Address) -> Result<Buffer> {
-            Ok(self
-                .0
+        async fn code(&self, address: Address) -> Buffer {
+            self.0
                 .get(&address)
                 .map(|entry| Buffer::from_slice(&entry.code))
-                .unwrap_or_default())
+                .unwrap_or_default()
         }
 
         fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {

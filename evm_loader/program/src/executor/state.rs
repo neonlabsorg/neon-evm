@@ -284,16 +284,16 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         self.backend.code_size(from_address).await
     }
 
-    async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
+    async fn code(&self, from_address: Address) -> crate::evm::Buffer {
         for action in &self.actions {
             if let Action::EvmSetCode { address, code, .. } = action {
                 if &from_address == address {
-                    return Ok(crate::evm::Buffer::from_slice(code));
+                    return crate::evm::Buffer::from_slice(code);
                 }
             }
         }
 
-        Ok(self.backend.code(from_address).await)
+        self.backend.code(from_address).await
     }
 
     fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {

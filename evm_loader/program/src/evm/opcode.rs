@@ -10,6 +10,8 @@ use crate::{
     types::Address,
 };
 
+pub use super::opcode_table::constants::*;
+
 #[derive(Eq, PartialEq)]
 pub enum Action {
     Continue,

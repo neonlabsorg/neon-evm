@@ -76,17 +76,17 @@ impl<T: Database> DatabaseExt for T {
         // would lead to more computation in what we think is the common case where the account
         // exists and contains code.
         let code = self.code(address).await?;
-        let bytes_to_hash = if !code.is_empty() {
+        let bytes_to_hash: Option<&[u8]> = if !code.is_empty() {
             Some(&*code)
         } else if self.account_exists(address, chain_id).await? {
-            Some(<&[u8]>::default())
+            Some(&[])
         } else {
             None
         };
 
-        Ok(bytes_to_hash
-            .map(|bytes| solana_program::keccak::hash(bytes).to_bytes())
-            .unwrap_or_default())
+        Ok(bytes_to_hash.map_or([0; 32], |bytes| {
+            solana_program::keccak::hash(bytes).to_bytes()
+        }))
     }
 }
 

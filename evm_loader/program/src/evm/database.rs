@@ -68,20 +68,19 @@ impl<T: Database> DatabaseExt for T {
     }
 
     async fn code_hash(&self, address: Address, chain_id: u64) -> Result<[u8; 32]> {
-        // `self.code` will return an empty buffer when the account does not exist, and when the
-        // account exists but does not have any code. For that reason we also have to check if the
-        // account exists if the buffer is empty since we must return [0u8; 32] if it does not. We
-        // could check if the account exists first, but that would lead to more computations in the
-        // common case where the account exists and contains code.
-        let buffer = self.code(address).await?;
-        let bytes_to_hash = if !buffer.is_empty() {
-            // A program account exists at the address.
-            Some(&*buffer)
+        // The function `Database::code` returns a zero-length buffer if the account exists with
+        // zero-length code, but also when the account does not exist. This makes it necessary to
+        // also check if the account exists when the returned buffer is empty.
+        //
+        // We could simplify the implementation by checking if the account exists first, but that
+        // would lead to more computation in what we think is the common case where the account
+        // exists and contains code.
+        let code = self.code(address).await?;
+        let bytes_to_hash = if !code.is_empty() {
+            Some(&*code)
         } else if self.account_exists(address, chain_id).await? {
-            // A data account exists at the address.
             Some(<&[u8]>::default())
         } else {
-            // No account exists at the address.
             None
         };
 

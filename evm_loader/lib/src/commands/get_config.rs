@@ -364,7 +364,7 @@ impl CloneRpcClient {
                 commitment: Some(self.commitment()),
                 filter: None,
             })
-            .await?; // TODO: This is very inefficient and needs to be removed
+            .await?; // TODO https://neonlabs.atlassian.net/browse/NDEV-2462 replace with more efficient RPC call
 
         Ok(Pubkey::from_str(&r.value[0].address).unwrap())
     }

@@ -20,10 +20,7 @@ pub struct SyncedExecutorState<'a, B: AccountStorage> {
 impl<'a, B: AccountStorage + SyncedAccountStorage> SyncedExecutorState<'a, B> {
     #[must_use]
     pub fn new(backend: &'a mut B) -> Self {
-        Self {
-            backend,
-            depth: 0,
-        }
+        Self { backend, depth: 0 }
     }
 }
 

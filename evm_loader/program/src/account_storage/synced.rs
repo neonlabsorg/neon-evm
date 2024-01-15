@@ -8,9 +8,7 @@ use solana_program::sysvar::Sysvar;
 
 use crate::account::{AllocateResult, ContractAccount, StorageCell};
 use crate::account_storage::SyncedAccountStorage;
-use crate::config::{
-    ACCOUNT_SEED_VERSION, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
-};
+use crate::config::{ACCOUNT_SEED_VERSION, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT};
 use crate::error::Result;
 use crate::types::Address;
 
@@ -106,12 +104,11 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
         accounts_info.push(program);
 
         for meta in &instruction.accounts {
-            let account: AccountInfo<'a> =
-                if meta.pubkey == self.accounts.operator_key() {
-                    self.accounts.operator_info().clone()
-                } else {
-                    self.accounts.get(&meta.pubkey).clone()
-                };
+            let account: AccountInfo<'a> = if meta.pubkey == self.accounts.operator_key() {
+                self.accounts.operator_info().clone()
+            } else {
+                self.accounts.get(&meta.pubkey).clone()
+            };
             accounts_info.push(account);
         }
 

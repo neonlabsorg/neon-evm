@@ -31,7 +31,7 @@ pub trait Database {
 
     async fn block_hash(&self, number: U256) -> [u8; 32];
     fn block_number(&self) -> U256;
-    fn block_timestamp(&self) -> Result<U256>;
+    fn block_timestamp(&self) -> U256;
 
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
@@ -219,7 +219,7 @@ mod tests {
             unimplemented!();
         }
 
-        fn block_timestamp(&self) -> Result<U256> {
+        fn block_timestamp(&self) -> U256 {
             unimplemented!();
         }
 

@@ -686,7 +686,7 @@ impl<B: Database> Machine<B> {
     /// current block's Unix timestamp in seconds
     #[maybe_async]
     pub async fn opcode_timestamp(&mut self, backend: &mut B) -> Result<Action> {
-        let timestamp = backend.block_timestamp()?;
+        let timestamp = backend.block_timestamp();
 
         self.stack.push_u256(timestamp)?;
 

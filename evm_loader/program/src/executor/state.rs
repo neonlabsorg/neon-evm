@@ -378,9 +378,9 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         cache.block_number
     }
 
-    fn block_timestamp(&self) -> Result<U256> {
+    fn block_timestamp(&self) -> U256 {
         let cache = self.cache.borrow();
-        Ok(cache.block_timestamp)
+        cache.block_timestamp
     }
 
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R

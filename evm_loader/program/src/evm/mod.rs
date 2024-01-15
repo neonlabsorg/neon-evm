@@ -15,7 +15,7 @@ pub use buffer::Buffer;
 use crate::evm::tracing::TracerTypeOpt;
 use crate::{
     error::{build_revert_message, Error, Result},
-    evm::{opcode::Action, opcode_table::STOP, precompile::is_precompile_address},
+    evm::{opcode::Action, opcode_table::opcodes, precompile::is_precompile_address},
     types::{Address, Transaction},
 };
 
@@ -395,7 +395,11 @@ impl<B: Database> Machine<B> {
                     break ExitStatus::StepLimit;
                 }
 
-                let opcode = self.execution_code.get(self.pc).copied().unwrap_or(STOP);
+                let opcode = self
+                    .execution_code
+                    .get(self.pc)
+                    .copied()
+                    .unwrap_or(opcodes::STOP);
 
                 tracing_event!(
                     self,

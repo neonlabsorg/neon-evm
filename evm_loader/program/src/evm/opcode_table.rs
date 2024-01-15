@@ -4,7 +4,9 @@ use super::{database::Database, opcode::Action, Machine};
 
 macro_rules! opcode_table {
     ($( $opcode:literal, $opname:ident, $op:path;)*) => {
-        $(pub const $opname: u8 = $opcode;)*
+        pub mod opcodes {
+            $(pub const $opname: u8 = $opcode;)*
+        }
 
         #[cfg(target_os = "solana")]
         type OpCode<B> = fn(&mut Machine<B>, &mut B) -> Result<Action>;

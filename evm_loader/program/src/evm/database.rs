@@ -89,3 +89,204 @@ impl<T: Database> DatabaseExt for T {
             .unwrap_or_default())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+
+    struct TestDatabaseEntry {
+        balance: U256,
+        nonce: u64,
+        code: Vec<u8>,
+    }
+
+    #[allow(dead_code)]
+    struct TestDatabase(HashMap<Address, TestDatabaseEntry>);
+
+    const NON_EXISTENT_ADDRESS: Address = Address([0xaa; 20]);
+    const EMPTY_CODE_ADDRESS: Address = Address([0xbb; 20]);
+    const NON_EMPTY_CODE_ADDRESS: Address = Address([0xcc; 20]);
+
+    impl Default for TestDatabase {
+        fn default() -> Self {
+            Self(
+                [
+                    (
+                        EMPTY_CODE_ADDRESS,
+                        TestDatabaseEntry {
+                            balance: U256::from_words(0, 1),
+                            nonce: 1,
+                            code: Vec::default(),
+                        },
+                    ),
+                    (
+                        NON_EMPTY_CODE_ADDRESS,
+                        TestDatabaseEntry {
+                            balance: U256::from_words(0, 1),
+                            nonce: 1,
+                            code: vec![0; 10],
+                        },
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+            )
+        }
+    }
+
+    #[maybe_async(?Send)]
+    #[allow(unused_variables)]
+    impl Database for TestDatabase {
+        fn default_chain_id(&self) -> u64 {
+            unimplemented!();
+        }
+
+        fn is_valid_chain_id(&self, chain_id: u64) -> bool {
+            unimplemented!();
+        }
+
+        async fn contract_chain_id(&self, address: Address) -> Result<u64> {
+            unimplemented!();
+        }
+
+        async fn nonce(&self, address: Address, chain_id: u64) -> Result<u64> {
+            Ok(self
+                .0
+                .get(&address)
+                .map(|entry| entry.nonce)
+                .unwrap_or_default())
+        }
+
+        fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
+            unimplemented!();
+        }
+
+        async fn balance(&self, address: Address, chain_id: u64) -> Result<U256> {
+            Ok(self
+                .0
+                .get(&address)
+                .map(|entry| entry.balance)
+                .unwrap_or_default())
+        }
+
+        async fn transfer(
+            &mut self,
+            source: Address,
+            target: Address,
+            chain_id: u64,
+            value: U256,
+        ) -> Result<()> {
+            unimplemented!();
+        }
+
+        async fn code_size(&self, address: Address) -> Result<usize> {
+            unimplemented!();
+        }
+
+        async fn code(&self, address: Address) -> Result<Buffer> {
+            Ok(self
+                .0
+                .get(&address)
+                .map(|entry| Buffer::from_slice(&entry.code))
+                .unwrap_or_default())
+        }
+
+        fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
+            unimplemented!();
+        }
+
+        fn selfdestruct(&mut self, address: Address) -> Result<()> {
+            unimplemented!();
+        }
+
+        async fn storage(&self, address: Address, index: U256) -> Result<[u8; 32]> {
+            unimplemented!();
+        }
+
+        fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
+            unimplemented!();
+        }
+
+        async fn block_hash(&self, number: U256) -> Result<[u8; 32]> {
+            unimplemented!();
+        }
+
+        fn block_number(&self) -> Result<U256> {
+            unimplemented!();
+        }
+
+        fn block_timestamp(&self) -> Result<U256> {
+            unimplemented!();
+        }
+
+        async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
+        where
+            F: FnOnce(&AccountInfo) -> R,
+        {
+            unimplemented!();
+        }
+
+        fn snapshot(&mut self) {
+            unimplemented!();
+        }
+
+        fn revert_snapshot(&mut self) {
+            unimplemented!();
+        }
+
+        fn commit_snapshot(&mut self) {
+            unimplemented!();
+        }
+
+        async fn precompile_extension(
+            &mut self,
+            context: &Context,
+            address: &Address,
+            data: &[u8],
+            is_static: bool,
+        ) -> Option<Result<Vec<u8>>> {
+            unimplemented!();
+        }
+    }
+
+    macro_rules! code_hash_test {
+        ($fn_name:ident, $address:expr, $expected:expr) => {
+            #[maybe_async::test(feature = "is_sync", async(not(feature = "is_sync"), tokio::test))]
+            async fn $fn_name() {
+                let database = TestDatabase::default();
+
+                let actual = database
+                    .code_hash($address, crate::config::DEFAULT_CHAIN_ID)
+                    .await
+                    .unwrap();
+                assert_eq!(actual, $expected);
+            }
+        };
+    }
+
+    code_hash_test!(
+        code_hash_of_non_existing_address,
+        NON_EXISTENT_ADDRESS,
+        [0; 32]
+    );
+
+    code_hash_test!(
+        code_hash_of_empty_contract_address,
+        EMPTY_CODE_ADDRESS,
+        [
+            197, 210, 70, 1, 134, 247, 35, 60, 146, 126, 125, 178, 220, 199, 3, 192, 229, 0, 182,
+            83, 202, 130, 39, 59, 123, 250, 216, 4, 93, 133, 164, 112
+        ]
+    );
+
+    code_hash_test!(
+        code_hash_of_non_empty_contract_address,
+        NON_EMPTY_CODE_ADDRESS,
+        [
+            107, 210, 221, 107, 212, 8, 203, 238, 51, 66, 147, 88, 191, 36, 253, 198, 70, 18, 251,
+            248, 177, 180, 219, 96, 69, 24, 244, 15, 253, 52, 182, 7
+        ]
+    );
+}

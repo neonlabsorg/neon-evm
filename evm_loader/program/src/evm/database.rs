@@ -53,11 +53,12 @@ pub trait Database {
 /// Provides convenience methods that can be implemented in terms of `Database`.
 #[maybe_async(?Send)]
 pub trait DatabaseExt {
-    /// Returns whether an account exists, which is also referred to as the account being non-empty,
-    /// in accordance with https://eips.ethereum.org/EIPS/eip-161.
+    /// Returns whether an account exists and is non-empty as specified in
+    /// https://eips.ethereum.org/EIPS/eip-161.
     async fn account_exists(&self, address: Address, chain_id: u64) -> Result<bool>;
 
-    /// Returns the code has for an address in accordance with https://eips.ethereum.org/EIPS/eip-1052.
+    /// Returns the code hash for an address as specified in
+    /// https://eips.ethereum.org/EIPS/eip-1052.
     async fn code_hash(&self, address: Address, chain_id: u64) -> Result<[u8; 32]>;
 }
 

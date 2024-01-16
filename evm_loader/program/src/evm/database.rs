@@ -266,19 +266,19 @@ mod tests {
             .unwrap()
     }
 
-    #[maybe_async::test(feature = "is_sync", async(not(feature = "is_sync"), tokio::test))]
+    #[tokio::test]
     async fn code_hash_of_non_existing_account() {
         let actual = code_hash(None).await;
         assert_eq!(actual, [0; 32]);
     }
 
-    #[maybe_async::test(feature = "is_sync", async(not(feature = "is_sync"), tokio::test))]
+    #[tokio::test]
     async fn code_hash_of_empty_account() {
         let actual = code_hash(Some(TestDatabaseEntry::empty())).await;
         assert_eq!(actual, [0; 32]);
     }
 
-    #[maybe_async::test(feature = "is_sync", async(not(feature = "is_sync"), tokio::test))]
+    #[tokio::test]
     async fn code_hash_of_existing_account_without_code() {
         let actual = code_hash(Some(TestDatabaseEntry::without_code())).await;
         assert_eq!(
@@ -290,7 +290,7 @@ mod tests {
         );
     }
 
-    #[maybe_async::test(feature = "is_sync", async(not(feature = "is_sync"), tokio::test))]
+    #[tokio::test]
     async fn code_hash_of_existing_account_with_code() {
         let actual = code_hash(Some(TestDatabaseEntry::with_code(vec![0; 10]))).await;
         assert_eq!(

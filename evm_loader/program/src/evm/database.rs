@@ -102,37 +102,39 @@ mod tests {
         code: Vec<u8>,
     }
 
-    #[allow(dead_code)]
+    impl TestDatabaseEntry {
+        fn empty() -> Self {
+            Self {
+                balance: U256::from(0u8),
+                nonce: 0,
+                code: Vec::default(),
+            }
+        }
+
+        fn without_code() -> Self {
+            Self {
+                balance: U256::from(1u8),
+                nonce: 1,
+                code: Vec::default(),
+            }
+        }
+
+        fn with_code(code: Vec<u8>) -> Self {
+            assert!(!code.is_empty());
+            Self {
+                balance: U256::from_words(0, 1),
+                nonce: 1,
+                code,
+            }
+        }
+    }
+
+    #[derive(Default)]
     struct TestDatabase(HashMap<Address, TestDatabaseEntry>);
 
-    const NON_EXISTENT_ADDRESS: Address = Address([0xaa; 20]);
-    const EMPTY_CODE_ADDRESS: Address = Address([0xbb; 20]);
-    const NON_EMPTY_CODE_ADDRESS: Address = Address([0xcc; 20]);
-
-    impl Default for TestDatabase {
-        fn default() -> Self {
-            Self(
-                [
-                    (
-                        EMPTY_CODE_ADDRESS,
-                        TestDatabaseEntry {
-                            balance: U256::from_words(0, 1),
-                            nonce: 1,
-                            code: Vec::default(),
-                        },
-                    ),
-                    (
-                        NON_EMPTY_CODE_ADDRESS,
-                        TestDatabaseEntry {
-                            balance: U256::from_words(0, 1),
-                            nonce: 1,
-                            code: vec![0; 10],
-                        },
-                    ),
-                ]
-                .into_iter()
-                .collect(),
-            )
+    impl FromIterator<(Address, TestDatabaseEntry)> for TestDatabase {
+        fn from_iter<T: IntoIterator<Item = (Address, TestDatabaseEntry)>>(iter: T) -> Self {
+            Self(iter.into_iter().collect())
         }
     }
 
@@ -251,42 +253,52 @@ mod tests {
         }
     }
 
-    macro_rules! code_hash_test {
-        ($fn_name:ident, $address:expr, $expected:expr) => {
-            #[maybe_async::test(feature = "is_sync", async(not(feature = "is_sync"), tokio::test))]
-            async fn $fn_name() {
-                let database = TestDatabase::default();
-
-                let actual = database
-                    .code_hash($address, crate::config::DEFAULT_CHAIN_ID)
-                    .await
-                    .unwrap();
-                assert_eq!(actual, $expected);
-            }
-        };
+    #[maybe_async]
+    async fn code_hash(database_entry: Option<TestDatabaseEntry>) -> [u8; 32] {
+        let address = Address::default();
+        let database: TestDatabase = database_entry
+            .map(|entry| (address, entry))
+            .into_iter()
+            .collect();
+        database
+            .code_hash(address, crate::config::DEFAULT_CHAIN_ID)
+            .await
+            .unwrap()
     }
 
-    code_hash_test!(
-        code_hash_of_non_existing_address,
-        NON_EXISTENT_ADDRESS,
-        [0; 32]
-    );
+    #[maybe_async::test(feature = "is_sync", async(not(feature = "is_sync"), tokio::test))]
+    async fn code_hash_of_non_existing_account() {
+        let actual = code_hash(None).await;
+        assert_eq!(actual, [0; 32]);
+    }
 
-    code_hash_test!(
-        code_hash_of_empty_contract_address,
-        EMPTY_CODE_ADDRESS,
-        [
-            197, 210, 70, 1, 134, 247, 35, 60, 146, 126, 125, 178, 220, 199, 3, 192, 229, 0, 182,
-            83, 202, 130, 39, 59, 123, 250, 216, 4, 93, 133, 164, 112
-        ]
-    );
+    #[maybe_async::test(feature = "is_sync", async(not(feature = "is_sync"), tokio::test))]
+    async fn code_hash_of_empty_account() {
+        let actual = code_hash(Some(TestDatabaseEntry::empty())).await;
+        assert_eq!(actual, [0; 32]);
+    }
 
-    code_hash_test!(
-        code_hash_of_non_empty_contract_address,
-        NON_EMPTY_CODE_ADDRESS,
-        [
-            107, 210, 221, 107, 212, 8, 203, 238, 51, 66, 147, 88, 191, 36, 253, 198, 70, 18, 251,
-            248, 177, 180, 219, 96, 69, 24, 244, 15, 253, 52, 182, 7
-        ]
-    );
+    #[maybe_async::test(feature = "is_sync", async(not(feature = "is_sync"), tokio::test))]
+    async fn code_hash_of_existing_account_without_code() {
+        let actual = code_hash(Some(TestDatabaseEntry::without_code())).await;
+        assert_eq!(
+            actual,
+            [
+                197, 210, 70, 1, 134, 247, 35, 60, 146, 126, 125, 178, 220, 199, 3, 192, 229, 0,
+                182, 83, 202, 130, 39, 59, 123, 250, 216, 4, 93, 133, 164, 112,
+            ]
+        );
+    }
+
+    #[maybe_async::test(feature = "is_sync", async(not(feature = "is_sync"), tokio::test))]
+    async fn code_hash_of_existing_account_with_code() {
+        let actual = code_hash(Some(TestDatabaseEntry::with_code(vec![0; 10]))).await;
+        assert_eq!(
+            actual,
+            [
+                107, 210, 221, 107, 212, 8, 203, 238, 51, 66, 147, 88, 191, 36, 253, 198, 70, 18,
+                251, 248, 177, 180, 219, 96, 69, 24, 244, 15, 253, 52, 182, 7
+            ]
+        );
+    }
 }

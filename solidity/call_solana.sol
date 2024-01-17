@@ -8,52 +8,60 @@ interface CallSolana {
     // Returns Solana address for Neon address.
     // Calculates as PDA([ACCOUNT_SEED_VERSION, Neon-address], evm_loader_id)
     function getNeonAddress(address) external returns (bytes32);
-
+    
+    
     // Returns Solana address of resource for contracts.
     // Calculates as PDA([ACCONT_SEED_VERSION, "ContractData", msg.sender, salt], evm_loader_id)
     function getResourceAddress(bytes32 salt) external returns (bytes32);
-
+    
+    
     // Creates resource with specified salt.
-    // Return the Solana address of created resource (see `getResourceAddress`)
+    // Return the Solana address of the created resource (see `getResourceAddress`)
     function createResource(bytes32 salt, uint64 space, uint64 lamports, bytes32 owner) external returns (bytes32);
-
+    
+    
     // Returns Solana PDA generated from specified program_id and seeds
     function getSolanaPDA(bytes32 program_id, bytes memory seeds) external returns (bytes32);
-
-    // Returns Solana address of external authority.
+    
+    
+    // Returns Solana address of the external authority.
     // Calculates as PDA([ACCOUNT_SEED_VERSION, "AUTH", msg.sender, salt], evm_loader_id)
     function getExtAuthority(bytes32 salt) external returns (bytes32);
-
+    
+    
     // Return Solana address for payer account (if instruction required some account to funding new created accounts)
     // Calculates as PDA([ACCOUNT_SEED_VERSION, "PAYER", msg.sender], evm_loader_id)
     function getPayer() external returns (bytes32);
-
+    
+    
     // Perform call to the Solana program with `program_id`.
     // Pass a list of accounts and data
-    // Garantees success execution of call after return.
-    // Note: If call was unsucessful, the transaction fails (due to Solana behaviour).
+    //Guarantees successful execution of call after a return.
+    // Note: If the call was unsuccessful, the transaction fails (due to Solana's behaviour).
     //function call(bytes32 program_id, AccountInfo[] memory accounts, bytes memory data, uint64 lamports) external;
     //function call2(bytes32 program_id, AccountInfo[2] memory accounts, bytes memory data, uint64 lamports) external;
-
-    // Execute the instruction with call to the Solana program.
-    // - `lamports` specifes amount of lamports that can be required to create new accounts during execution.
+    
+    
+    // Execute the instruction with a call to the Solana program.
+    // The `lamports` parameter specifies the amount of lamports that can be required to create new accounts during execution.
     //   This lamports transferred to `payer`-account (see `getPayer()` function) before the call.
     // - `instruction` - serialized instruction which should be executed
     // This method uses PDA for sender to authorize the operation (`getNeonAddress(msg.sender)`)
     function execute(uint64 lamports, bytes memory instruction) external;
-
+    
+    
     // Execute the instruction with call to the Solana program.
-    // - `lamports` specifes amount of lamports that can be required to create new accounts during execution.
+    // The `lamports` parameter specifies the amount of lamports that can be required to create new accounts during execution.
     //   This lamports transferred to `payer`-account (see `getPayer()` function) before the call.
-    // - `salt` - the salt to generate address of external authority (see `getExtAuthority()` function)
+    // - `salt` - the salt to generate an address of external authority (see `getExtAuthority()` function)
     // - `instruction` - serialized instruction which should be executed
     // This method uses external authority to authorize the operation (`getExtAuthority(salt)`)
     function executeWithSeed(uint64 lamports, bytes32 salt, bytes memory instruction) external;
-}
-
-/* Note:
-Instruction should be serialized according to Solana bincode serialize rules. It requires
-serialized data in next form:
+    }
+    
+    
+    /* Note:
+    The instruction should be serialized according to Solana bincode serialize rules. It requires serialized data in the following form:
     program_id as bytes32
     len(accounts) as uint64le
         account as bytes32

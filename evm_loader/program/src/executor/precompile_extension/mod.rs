@@ -94,10 +94,10 @@ pub fn create_account<State: Database>(
     }
 
     let allocate = system_instruction::allocate(&account.key, space.try_into().unwrap());
-    state.queue_external_instruction(allocate, seeds.clone(), 0, true)?;
+    state.queue_external_instruction(allocate, vec![seeds.clone()], 0, true)?;
 
     let assign = system_instruction::assign(&account.key, owner);
-    state.queue_external_instruction(assign, seeds, 0, true)?;
+    state.queue_external_instruction(assign, vec![seeds], 0, true)?;
 
     Ok(())
 }

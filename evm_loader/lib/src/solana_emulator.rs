@@ -76,11 +76,20 @@ fn process_emulator_instruction(
 ) -> solana_sdk::entrypoint::ProgramResult {
     use solana_sdk::program_error::ProgramError;
 
-    let seeds: Vec<Vec<u8>> = bincode::deserialize(&accounts[0].data.borrow())
+    let seeds: Vec<Vec<Vec<u8>>> = bincode::deserialize(&accounts[0].data.borrow())
         .map_err(|_| ProgramError::InvalidAccountData)?;
-    let seeds = seeds.iter().map(|v| v.as_slice()).collect::<Vec<&[u8]>>();
-    let signer = Pubkey::create_program_address(&seeds, program_id)
-        .map_err(|_| ProgramError::InvalidSeeds)?;
+    let seeds = seeds
+        .iter()
+        .map(|s| s.iter().map(|s| s.as_slice()).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let seeds = seeds.iter().map(|s| s.as_slice()).collect::<Vec<_>>();
+
+    let signers = seeds
+        .iter()
+        .map(|s| {
+            Pubkey::create_program_address(s, program_id).map_err(|_| ProgramError::InvalidSeeds)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     let instruction = Instruction::new_with_bytes(
         *accounts[1].key,
@@ -89,13 +98,17 @@ fn process_emulator_instruction(
             .iter()
             .map(|a| AccountMeta {
                 pubkey: *a.key,
-                is_signer: if *a.key == signer { true } else { a.is_signer },
+                is_signer: if signers.contains(a.key) {
+                    true
+                } else {
+                    a.is_signer
+                },
                 is_writable: a.is_writable,
             })
             .collect::<Vec<_>>(),
     );
 
-    solana_sdk::program::invoke_signed_unchecked(&instruction, accounts, &[&seeds])
+    solana_sdk::program::invoke_signed_unchecked(&instruction, accounts, &seeds)
 }
 
 impl SolanaEmulator {
@@ -153,7 +166,7 @@ impl SolanaEmulator {
         backend: &B,
         instruction: &Instruction,
         accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
-        seeds: &[Vec<u8>],
+        seeds: &[Vec<Vec<u8>>],
     ) -> evm_loader::error::Result<()> {
         use bpf_loader_upgradeable::UpgradeableLoaderState;
         use solana_sdk::signature::Signer;
@@ -217,8 +230,16 @@ impl SolanaEmulator {
             };
         }
 
-        let seed = seeds.iter().map(|s| s.as_ref()).collect::<Vec<&[u8]>>();
-        let seeds_data = bincode::serialize(&seeds).expect("Serialize seeds");
+        let signers = seeds
+            .iter()
+            .map(|s| {
+                let seed = s.iter().map(|s| s.as_slice()).collect::<Vec<&[u8]>>();
+                Pubkey::create_program_address(&seed, &self.program_id)
+                    .expect("Create signer from seeds")
+            })
+            .collect::<Vec<_>>();
+
+        let seeds_data = bincode::serialize(seeds).expect("Serialize seeds");
         append_account_to_emulator(&OwnedAccountInfo {
             key: SEEDS_PUBKEY,
             is_signer: false,
@@ -242,11 +263,9 @@ impl SolanaEmulator {
                 is_writable: false,
             },
         ];
-        let invoke_signer = Pubkey::create_program_address(&seed, &self.program_id)
-            .expect("Create invoke_signer from seeds");
         accounts_meta.extend(instruction.accounts.iter().map(|m| AccountMeta {
             pubkey: m.pubkey,
-            is_signer: if m.pubkey == invoke_signer {
+            is_signer: if signers.contains(&m.pubkey) {
                 false
             } else {
                 m.is_signer

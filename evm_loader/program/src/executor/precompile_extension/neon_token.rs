@@ -135,7 +135,7 @@ async fn withdraw<State: Database>(
         mint_data.decimals,
     )?;
     let transfer_seeds = vec![b"Deposit".to_vec(), vec![bump_seed]];
-    state.queue_external_instruction(transfer, transfer_seeds, 0, true)?;
+    state.queue_external_instruction(transfer, vec![transfer_seeds], 0, true)?;
 
     state.burn(source, chain_id, value).await?;
 

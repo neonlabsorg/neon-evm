@@ -53,7 +53,7 @@ pub trait Database {
     fn queue_external_instruction(
         &mut self,
         instruction: Instruction,
-        seeds: Vec<Vec<u8>>,
+        seeds: Vec<Vec<Vec<u8>>>,
         fee: u64,
         emulated_internally: bool,
     ) -> Result<()>;

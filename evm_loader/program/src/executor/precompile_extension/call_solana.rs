@@ -53,28 +53,23 @@ pub async fn call_solana<State: Database>(
             let instruction: Instruction =
                 bincode::deserialize(&input[offset + 32..]).map_err(|_| Error::OutOfBounds)?;
 
-            #[cfg(not(target_os = "solana"))]
-            log::info!("instruction: {:?}", instruction);
-
-            for meta in &instruction.accounts {
-                if meta.pubkey == state.operator() {
-                    return Err(Error::InvalidAccountForCall(state.operator()));
-                }
-            }
-
             let signer = context.caller;
             let (_signer_pubkey, bump_seed) = state.contract_pubkey(signer);
 
-            let seeds = vec![
+            let signer_seeds = vec![
                 vec![ACCOUNT_SEED_VERSION],
                 signer.as_bytes().to_vec(),
                 vec![bump_seed],
             ];
 
-            // TODO: this instruction can create accounts inside, so we need to specify correct fee. How we can get it?
-            state.queue_external_instruction(instruction, seeds, required_lamports, false)?;
-
-            Ok(vec![])
+            execute_external_instruction(
+                state,
+                context,
+                instruction,
+                signer_seeds,
+                required_lamports,
+            )
+            .await
         }
         [0x32, 0x60, 0x74, 0x50] => {
             // executeWithSeed(uint64,bytes32,bytes)
@@ -83,15 +78,6 @@ pub async fn call_solana<State: Database>(
             let offset = read_usize(&input[64..])?;
             let instruction: Instruction =
                 bincode::deserialize(&input[offset + 32..]).map_err(|_| Error::OutOfBounds)?;
-
-            #[cfg(not(target_os = "solana"))]
-            log::info!("instruction: {:?}", instruction);
-
-            for meta in &instruction.accounts {
-                if meta.pubkey == state.operator() {
-                    return Err(Error::InvalidAccountForCall(state.operator()));
-                }
-            }
 
             let seeds: &[&[u8]] = &[
                 &[ACCOUNT_SEED_VERSION],
@@ -108,10 +94,8 @@ pub async fn call_solana<State: Database>(
                 vec![signer_seed],
             ];
 
-            // TODO: this instruction can create accounts inside, so we need to specify correct fee. How we can get it?
-            state.queue_external_instruction(instruction, seeds, required_lamports, false)?;
-
-            Ok(vec![])
+            execute_external_instruction(state, context, instruction, seeds, required_lamports)
+                .await
         }
 
         // "154d4aa5": "getNeonAddress(address)"
@@ -202,6 +186,77 @@ pub async fn call_solana<State: Database>(
 
         _ => Err(Error::UnknownPrecompileMethodSelector(*address, selector)),
     }
+}
+
+#[maybe_async]
+async fn execute_external_instruction<State: Database>(
+    state: &mut State,
+    context: &crate::evm::Context,
+    instruction: Instruction,
+    signer_seeds: Vec<Vec<u8>>,
+    required_lamports: u64,
+) -> Result<Vec<u8>> {
+    #[cfg(not(target_os = "solana"))]
+    log::info!("instruction: {:?}", instruction);
+
+    for meta in &instruction.accounts {
+        if meta.pubkey == state.operator() {
+            return Err(Error::InvalidAccountForCall(state.operator()));
+        }
+    }
+
+    let payer_seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], b"PAYER", context.caller.as_bytes()];
+    let (payer_pubkey, payer_bump_seed) =
+        Pubkey::find_program_address(payer_seeds, state.program_id());
+    let required_payer = instruction
+        .accounts
+        .iter()
+        .any(|meta| meta.pubkey == payer_pubkey);
+
+    if required_payer {
+        let payer_seeds = vec![
+            vec![ACCOUNT_SEED_VERSION],
+            b"PAYER".to_vec(),
+            context.caller.as_bytes().to_vec(),
+            vec![payer_bump_seed],
+        ];
+
+        let payer = state.external_account(payer_pubkey).await?;
+        if payer.lamports < required_lamports {
+            let transfer_instruction = solana_program::system_instruction::transfer(
+                &state.operator(),
+                &payer_pubkey,
+                required_lamports - payer.lamports,
+            );
+            state.queue_external_instruction(transfer_instruction, vec![], 0, false)?;
+        }
+
+        state.queue_external_instruction(
+            instruction,
+            vec![signer_seeds, payer_seeds.clone()],
+            required_lamports,
+            false,
+        )?;
+
+        let payer = state.external_account(payer_pubkey).await?;
+        if payer.lamports > 0 {
+            let transfer_instruction = solana_program::system_instruction::transfer(
+                &payer_pubkey,
+                &state.operator(),
+                payer.lamports,
+            );
+            state.queue_external_instruction(transfer_instruction, vec![payer_seeds], 0, false)?;
+        }
+    } else {
+        state.queue_external_instruction(
+            instruction,
+            vec![signer_seeds],
+            required_lamports,
+            false,
+        )?;
+    }
+
+    Ok(vec![])
 }
 
 // #[inline]

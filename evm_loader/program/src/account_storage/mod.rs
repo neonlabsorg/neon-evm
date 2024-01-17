@@ -87,7 +87,7 @@ pub trait AccountStorage {
         data: &[u8],
         meta: &[AccountMeta],
         accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
-        seeds: &[Vec<u8>],
+        seeds: &[Vec<Vec<u8>>],
     ) -> Result<()>;
 }
 
@@ -106,7 +106,7 @@ pub trait SyncedAccountStorage {
     fn execute_external_instruction(
         &mut self,
         instruction: Instruction,
-        seeds: Vec<Vec<u8>>,
+        seeds: Vec<Vec<Vec<u8>>>,
         fee: u64,
     ) -> Result<()>;
 }

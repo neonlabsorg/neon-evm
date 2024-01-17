@@ -194,7 +194,7 @@ fn create_metadata<State: Database>(
     let rent = Rent::get()?;
     let fee = rent.minimum_balance(MAX_METADATA_LEN) + CREATE_FEE;
 
-    state.queue_external_instruction(instruction, seeds, fee, true)?;
+    state.queue_external_instruction(instruction, vec![seeds], fee, true)?;
 
     Ok(metadata_pubkey.to_bytes().to_vec())
 }
@@ -231,7 +231,7 @@ fn create_master_edition<State: Database>(
     let rent = Rent::get()?;
     let fee = rent.minimum_balance(MAX_MASTER_EDITION_LEN) + CREATE_FEE;
 
-    state.queue_external_instruction(instruction, seeds, fee, true)?;
+    state.queue_external_instruction(instruction, vec![seeds], fee, true)?;
 
     Ok(edition_pubkey.to_bytes().to_vec())
 }

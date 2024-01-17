@@ -1406,8 +1406,8 @@ impl<B: Database> Machine<B> {
         return_data: Vec<u8>,
         backend: &mut B,
     ) -> Result<Action> {
-        backend.revert_snapshot();
         sol_log_data(&[b"EXIT", b"REVERT", &return_data]);
+        backend.revert_snapshot();
 
         if self.parent.is_none() {
             return Ok(Action::Revert(return_data));

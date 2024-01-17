@@ -386,7 +386,7 @@ fn close_account<State: Database>(
         &signer_pubkey,
         &[],
     )?;
-    state.queue_external_instruction(close_account, seeds, 0, true)?;
+    state.queue_external_instruction(close_account, vec![seeds], 0, true)?;
 
     Ok(vec![])
 }
@@ -415,7 +415,7 @@ fn approve<State: Database>(
         &[],
         amount,
     )?;
-    state.queue_external_instruction(approve, seeds, 0, true)?;
+    state.queue_external_instruction(approve, vec![seeds], 0, true)?;
 
     Ok(vec![])
 }
@@ -435,7 +435,7 @@ fn revoke<State: Database>(
     ];
 
     let revoke = spl_token::instruction::revoke(&spl_token::ID, &account, &signer_pubkey, &[])?;
-    state.queue_external_instruction(revoke, seeds, 0, true)?;
+    state.queue_external_instruction(revoke, vec![seeds], 0, true)?;
 
     Ok(vec![])
 }
@@ -464,7 +464,7 @@ fn transfer<State: Database>(
         &[],
         amount,
     )?;
-    state.queue_external_instruction(transfer, seeds, 0, true)?;
+    state.queue_external_instruction(transfer, vec![seeds], 0, true)?;
 
     Ok(vec![])
 }
@@ -501,7 +501,7 @@ fn transfer_with_seed<State: Database>(
         &[],
         amount,
     )?;
-    state.queue_external_instruction(transfer, seeds, 0, true)?;
+    state.queue_external_instruction(transfer, vec![seeds], 0, true)?;
 
     Ok(vec![])
 }
@@ -530,7 +530,7 @@ fn mint_to<State: Database>(
         &[],
         amount,
     )?;
-    state.queue_external_instruction(mint_to, seeds, 0, true)?;
+    state.queue_external_instruction(mint_to, vec![seeds], 0, true)?;
 
     Ok(vec![])
 }
@@ -560,7 +560,7 @@ fn burn<State: Database>(
         &[],
         amount
     )?;
-    state.queue_external_instruction(burn, seeds, 0, true)?;
+    state.queue_external_instruction(burn, vec![seeds], 0, true)?;
 
     Ok(vec![])
 }
@@ -587,7 +587,7 @@ fn freeze<State: Database>(
         &signer_pubkey,
         &[],
     )?;
-    state.queue_external_instruction(freeze, seeds, 0, true)?;
+    state.queue_external_instruction(freeze, vec![seeds], 0, true)?;
 
     Ok(vec![])
 }
@@ -615,7 +615,7 @@ fn thaw<State: Database>(
         &signer_pubkey,
         &[]
     )?;
-    state.queue_external_instruction(thaw, seeds, 0, true)?;
+    state.queue_external_instruction(thaw, vec![seeds], 0, true)?;
 
     Ok(vec![])
 }

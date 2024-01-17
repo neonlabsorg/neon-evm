@@ -759,7 +759,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         instruction_data: &[u8],
         meta: &[AccountMeta],
         accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
-        seeds: &[Vec<u8>],
+        seeds: &[Vec<Vec<u8>>],
     ) -> evm_loader::error::Result<()> {
         let instruction = Instruction::new_with_bytes(*program_id, instruction_data, meta.to_vec());
         let solana_emulator = get_solana_emulator().await;

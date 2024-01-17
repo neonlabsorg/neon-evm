@@ -150,7 +150,7 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         _data: &[u8],
         _meta: &[AccountMeta],
         _accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
-        _seeds: &[Vec<u8>],
+        _seeds: &[Vec<Vec<u8>>],
     ) -> Result<()> {
         Err(Error::Custom(
             "emulate_solana_call not implemented".to_string(),

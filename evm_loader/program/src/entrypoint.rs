@@ -145,25 +145,6 @@ fn process_instruction<'a>(
                 instruction,
             )
         }
-        EvmInstruction::TransactionStepFromAccountSolanaCall => {
-            // We use transaction processing from normal mode.
-            // This is enough to record trx and cancel it.
-            // If someone get this holder and continue to process transaction,
-            // he will get an error because SolanaCall can't be processed in
-            // normal mode.
-            // NOTE: there're possible to execute transaction in different modes.
-            instruction::transaction_step_from_account::process(program_id, accounts, instruction)
-        }
-        EvmInstruction::CancelSolanaCall => {
-            // We use transaction processing from normal mode.
-            // This is enough to record trx and cancel it.
-            // If someone get this holder and continue to process transaction,
-            // he will get an error because SolanaCall can't be processed in
-            // normal mode.
-            // NOTE: there're possible to execute transaction in different modes.
-
-            instruction::transaction_cancel::process(program_id, accounts, instruction)
-        }
         EvmInstruction::ConfigGetChainCount => {
             instruction::config_get_chain_count::process(program_id, accounts, instruction)
         }

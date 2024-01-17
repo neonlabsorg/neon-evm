@@ -17,14 +17,6 @@ use super::cache::{cache_get_or_insert_account, Cache};
 use super::precompile_extension::PrecompiledContracts;
 use super::OwnedAccountInfo;
 
-#[cfg(not(target_os = "solana"))]
-#[derive(Default, Clone)]
-pub struct ExecuteStatus {
-    pub external_solana_calls: bool,
-    pub reverts_before_solana_calls: bool,
-    pub reverts_after_solana_calls: bool,
-}
-
 /// Represents the state of executor abstracted away from a self.backend.
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
 pub struct ExecutorState<'a, B: AccountStorage> {
@@ -34,9 +26,6 @@ pub struct ExecutorState<'a, B: AccountStorage> {
     actions: Vec<Action>,
     stack: Vec<usize>,
     exit_status: Option<ExitStatus>,
-
-    #[cfg(not(target_os = "solana"))]
-    pub execute_status: ExecuteStatus,
 }
 
 impl<'a, B: AccountStorage> ExecutorState<'a, B> {
@@ -57,8 +46,6 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
             actions,
             stack,
             exit_status,
-            #[cfg(not(target_os = "solana"))]
-            execute_status: ExecuteStatus::default(),
         })
     }
 
@@ -76,8 +63,6 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
             actions: Vec::with_capacity(64),
             stack: Vec::with_capacity(16),
             exit_status: None,
-            #[cfg(not(target_os = "solana"))]
-            execute_status: ExecuteStatus::default(),
         }
     }
 
@@ -369,22 +354,15 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
                 program_id,
                 data,
                 accounts: meta,
-                #[cfg(not(target_os = "solana"))]
                 emulated_internally,
-                #[cfg(not(target_os = "solana"))]
                 seeds,
                 ..
             } = action
             {
-                #[cfg(not(target_os = "solana"))]
                 if !emulated_internally {
-                    let result = self
-                        .backend
+                    self.backend
                         .emulate_solana_call(program_id, data, meta, &mut accounts, seeds)
-                        .await;
-                    log::info!("Emulated internally: {:?}", result);
-                    result?;
-                    continue;
+                        .await?;
                 }
 
                 match program_id {
@@ -428,13 +406,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     fn revert_snapshot(&mut self) {
-        #[cfg(not(target_os = "solana"))]
-        if self.execute_status.external_solana_calls {
-            self.execute_status.reverts_after_solana_calls = true;
-        } else {
-            self.execute_status.reverts_before_solana_calls = true;
-        }
-
         let actions_len = self
             .stack
             .pop()
@@ -499,11 +470,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         #[cfg(target_os = "solana")]
         if !emulated_internally {
             return Err(Error::UnavalableExternalSolanaCall);
-        }
-
-        #[cfg(not(target_os = "solana"))]
-        {
-            self.execute_status.external_solana_calls = true;
         }
 
         let action = Action::ExternalInstruction {

@@ -10,6 +10,7 @@ use crate::rpc::Rpc;
 use crate::types::{EmulateRequest, TxParams};
 use crate::{
     account_storage::{EmulatorAccountStorage, SolanaAccount},
+    emulator_state::EmulatorState,
     errors::NeonError,
     NeonResult,
 };
@@ -17,7 +18,7 @@ use evm_loader::evm::tracing::TracerType;
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
-    executor::{Action, ExecutorState},
+    executor::Action,
     gasometer::LAMPORTS_PER_SIGNATURE,
 };
 use serde_with::{hex::Hex, serde_as};
@@ -99,7 +100,7 @@ async fn emulate_trx(
     info!("tx: {:?}", tx);
 
     let (exit_status, actions, steps_executed, execute_status) = {
-        let mut backend = ExecutorState::new(storage);
+        let mut backend = EmulatorState::new(storage);
         let mut evm = match Machine::new(tx, origin, &mut backend, tracer).await {
             Ok(evm) => evm,
             Err(e) => return Ok(EmulateResponse::revert(e)),

@@ -182,6 +182,40 @@ mod tests {
             unimplemented!();
         }
 
+        fn program_id(&self) -> &Pubkey {
+            unimplemented!();
+        }
+
+        fn operator(&self) -> Pubkey {
+            unimplemented!();
+        }
+
+        fn chain_id_to_token(&self, chain_id: u64) -> Pubkey {
+            unimplemented!();
+        }
+
+        fn contract_pubkey(&self, address: Address) -> (Pubkey, u8) {
+            unimplemented!();
+        }
+
+        async fn burn(&mut self, address: Address, chain_id: u64, value: U256) -> Result<()> {
+            unimplemented!();
+        }
+
+        async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
+            unimplemented!();
+        }
+
+        fn queue_external_instruction(
+            &mut self,
+            instruction: Instruction,
+            seeds: Vec<Vec<Vec<u8>>>,
+            fee: u64,
+            emulated_internally: bool,
+        ) -> Result<()> {
+            unimplemented!();
+        }
+
         async fn balance(&self, address: Address, chain_id: u64) -> Result<U256> {
             Ok(self
                 .0

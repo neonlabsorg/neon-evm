@@ -172,7 +172,7 @@ pub enum EvmInstruction {
     ///  20..28 - chain id in little endian
     AccountCreateBalance,
 
-    /// Execute Transaction from Instruction in single iteration with call to Solana programs
+    /// Execute Transaction from Instruction in a single iteration with a call to Solana programs
     ///
     /// Accounts:
     ///  `[WRITE,SIGNER]` Operator
@@ -181,11 +181,12 @@ pub enum EvmInstruction {
     ///  `[]` System program
     ///  `[WRITE?]` Other accounts
     /// Instruction data:
-    ///  0..4 - treasury index in little endian
+    ///  0..4 - treasury index in little-endian
     ///  4..  - transaction data
     TransactionExecuteFromInstructionWithSolanaCall,
 
-    /// Execute Transaction from Account in single iteration
+
+    /// Execute Transaction from Account in a single iteration
     ///
     /// Accounts:
     ///  `[]` Holder
@@ -195,8 +196,9 @@ pub enum EvmInstruction {
     ///  `[]` System program
     ///  `[WRITE?]` Other accounts
     /// Instruction data:
-    ///  0..4 - treasury index in little endian
+    ///  0..4 - treasury index in little-endian
     TransactionExecuteFromAccountWithSolanaCall,
+
 
     /// Execute Iterative Transaction from Account
     ///
@@ -208,9 +210,10 @@ pub enum EvmInstruction {
     ///  `[]` System program
     ///  `[WRITE]`  Other accounts
     /// Instruction data:
-    ///  0..4 - treasury index in little endian
-    ///  4..8 - step count in little endian
+    ///  0..4 - treasury index in little-endian
+    ///  4..8 - step count in little-endian
     TransactionStepFromAccountSolanaCall,
+
 
     /// Cancel Transaction
     ///

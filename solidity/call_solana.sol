@@ -5,6 +5,18 @@ pragma abicoder v2;
 
 interface CallSolana {
 
+    struct Instruction {
+        bytes32 program_id;
+        AccountMeta[] accounts;
+        bytes instruction_data;
+    }
+
+    struct AccountMeta {
+        bytes32 account;
+        bool is_signer;
+        bool is_writable;
+    }
+
     // Returns Solana address for Neon address.
     // Calculates as PDA([ACCOUNT_SEED_VERSION, Neon-address], evm_loader_id)
     function getNeonAddress(address) external returns (bytes32);
@@ -32,36 +44,56 @@ interface CallSolana {
     // Return Solana address for payer account (if instruction required some account to funding new created accounts)
     // Calculates as PDA([ACCOUNT_SEED_VERSION, "PAYER", msg.sender], evm_loader_id)
     function getPayer() external returns (bytes32);
-    
-    
-    // Perform call to the Solana program with `program_id`.
-    // Pass a list of accounts and data
-    //Guarantees successful execution of call after a return.
+
+
+    // Execute the instruction with a call to the Solana program.
+    // Guarantees successful execution of call after a success return.
     // Note: If the call was unsuccessful, the transaction fails (due to Solana's behaviour).
-    //function call(bytes32 program_id, AccountInfo[] memory accounts, bytes memory data, uint64 lamports) external;
-    //function call2(bytes32 program_id, AccountInfo[2] memory accounts, bytes memory data, uint64 lamports) external;
+    // The `lamports` parameter specifies the amount of lamports that can be required to create new accounts during execution.
+    //   This lamports transferred to `payer`-account (see `getPayer()` function) before the call.
+    // - `instruction` - instruction which should be executed
+    // This method uses PDA for sender to authorize the operation (`getNeonAddress(msg.sender)`)
+    function execute(uint64 lamports, Instruction memory instruction) external;
+
+
+    // Execute the instruction with call to the Solana program.
+    // Guarantees successful execution of call after a success return.
+    // Note: If the call was unsuccessful, the transaction fails (due to Solana's behaviour).
+    // The `lamports` parameter specifies the amount of lamports that can be required to create new accounts during execution.
+    //   This lamports transferred to `payer`-account (see `getPayer()` function) before the call.
+    // - `salt` - the salt to generate an address of external authority (see `getExtAuthority()` function)
+    // - `instruction` - instruction which should be executed
+    // This method uses external authority to authorize the operation (`getExtAuthority(salt)`)
+    function executeWithSeed(uint64 lamports, bytes32 salt, Instruction memory instruction) external;
     
     
     // Execute the instruction with a call to the Solana program.
+    // Guarantees successful execution of call after a success return.
+    // Note: If the call was unsuccessful, the transaction fails (due to Solana's behaviour).
     // The `lamports` parameter specifies the amount of lamports that can be required to create new accounts during execution.
     //   This lamports transferred to `payer`-account (see `getPayer()` function) before the call.
-    // - `instruction` - serialized instruction which should be executed
+    // - `instruction` - bincode serialized instruction which should be executed
     // This method uses PDA for sender to authorize the operation (`getNeonAddress(msg.sender)`)
     function execute(uint64 lamports, bytes memory instruction) external;
     
     
     // Execute the instruction with call to the Solana program.
+    // Guarantees successful execution of call after a success return.
+    // Note: If the call was unsuccessful, the transaction fails (due to Solana's behaviour).
     // The `lamports` parameter specifies the amount of lamports that can be required to create new accounts during execution.
     //   This lamports transferred to `payer`-account (see `getPayer()` function) before the call.
     // - `salt` - the salt to generate an address of external authority (see `getExtAuthority()` function)
-    // - `instruction` - serialized instruction which should be executed
+    // - `instruction` - bincode serialized instruction which should be executed
     // This method uses external authority to authorize the operation (`getExtAuthority(salt)`)
     function executeWithSeed(uint64 lamports, bytes32 salt, bytes memory instruction) external;
-    }
+}
     
     
-    /* Note:
-    The instruction should be serialized according to Solana bincode serialize rules. It requires serialized data in the following form:
+/* Note:
+    For `execute`/`executeWithSeed` methods which gets instruction in bincode serialized format
+    the instruction should be serialized according to Solana bincode serialize rules. It requires
+    serialized data in the following form:
+
     program_id as bytes32
     len(accounts) as uint64le
         account as bytes32
@@ -132,7 +164,7 @@ To perform a call to `execute()` and `executeWithSeed()` methods the next code-s
             mstore(0x40, buff)                // restore head of heap
         }
         if (success == false) {
-            revert("Can't initailize resource");
+            revert("Can't execute instruction");
         }
     }
 ```

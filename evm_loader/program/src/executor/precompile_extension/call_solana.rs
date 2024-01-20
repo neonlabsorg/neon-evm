@@ -24,6 +24,7 @@ use solana_program::{
 // "32607450": "executeWithSeed(uint64,bytes32,bytes)",
 // "aeed7f1e": "execute(uint64,(bytes32,(bytes32,bool,bool)[],bytes))",
 // "add378af": "executeWithSeed(uint64,bytes32,(bytes32,(bytes32,bool,bool)[],bytes))",
+// "cff5c1a5": "getReturnData()",
 
 #[maybe_async]
 #[allow(clippy::too_many_lines)]
@@ -241,6 +242,43 @@ pub async fn call_solana<State: Database>(
             Ok(sol_address.to_bytes().to_vec())
         }
 
+        // "cff5c1a5": "getReturnData()",
+        [0xcf, 0xf5, 0xc1, 0xa5] => {
+            let return_value = match solana_program::program::get_return_data() {
+                Some((program, data)) => {
+                    let data_len = (data.len() + 31) & (!31);
+                    let mut result = vec![0_u8; 32 + 32 + 32 + data_len];
+
+                    result[0..32].copy_from_slice(&program.to_bytes());
+                    result[63] = 0x40; // offset - 64 bytes
+
+                    let length = U256::new(data.len() as u128);
+                    result[64..96].copy_from_slice(&length.to_be_bytes());
+                    result[96..96 + data.len()].copy_from_slice(&data);
+
+                    result
+                }
+                None => {
+                    vec![
+                        // program_id
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                        // offset of data
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40,
+                        // length of data
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    ]
+                }
+            };
+
+            Ok(return_value)
+        }
+
         _ => Err(Error::UnknownPrecompileMethodSelector(*address, selector)),
     }
 }
@@ -255,6 +293,9 @@ async fn execute_external_instruction<State: Database>(
 ) -> Result<Vec<u8>> {
     #[cfg(not(target_os = "solana"))]
     log::info!("instruction: {:?}", instruction);
+
+    let called_program = instruction.program_id;
+    solana_program::program::set_return_data(&[]);
 
     for meta in &instruction.accounts {
         if meta.pubkey == state.operator() {
@@ -313,7 +354,16 @@ async fn execute_external_instruction<State: Database>(
         )?;
     }
 
-    Ok(vec![])
+    let return_data = solana_program::program::get_return_data()
+        .and_then(|(program, data)| {
+            if program == called_program {
+                Some(data)
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default();
+    Ok(to_solidity_bytes(&return_data))
 }
 
 #[inline]
@@ -380,4 +430,22 @@ fn read_salt(input: &[u8]) -> Result<&[u8; 32]> {
         return Err(Error::OutOfBounds);
     }
     Ok(arrayref::array_ref![input, 0, 32])
+}
+
+fn to_solidity_bytes(b: &[u8]) -> Vec<u8> {
+    // Bytes encoding
+    // 32 bytes - offset
+    // 32 bytes - length
+    // length + padding bytes - data
+
+    let data_len = (b.len() + 31) & (!31);
+    let mut result = vec![0_u8; 32 + 32 + data_len];
+
+    result[31] = 0x20; // offset - 32 bytes
+
+    let length = U256::new(b.len() as u128);
+    result[32..64].copy_from_slice(&length.to_be_bytes());
+    result[64..64 + b.len()].copy_from_slice(b);
+
+    result
 }

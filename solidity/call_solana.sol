@@ -53,7 +53,8 @@ interface CallSolana {
     //   This lamports transferred to `payer`-account (see `getPayer()` function) before the call.
     // - `instruction` - instruction which should be executed
     // This method uses PDA for sender to authorize the operation (`getNeonAddress(msg.sender)`)
-    function execute(uint64 lamports, Instruction memory instruction) external;
+    // Returns the returned data of the executed instruction (if program returned the data is equal to the program_id of the instruction)
+    function execute(uint64 lamports, Instruction memory instruction) external returns (bytes memory);
 
 
     // Execute the instruction with call to the Solana program.
@@ -64,7 +65,8 @@ interface CallSolana {
     // - `salt` - the salt to generate an address of external authority (see `getExtAuthority()` function)
     // - `instruction` - instruction which should be executed
     // This method uses external authority to authorize the operation (`getExtAuthority(salt)`)
-    function executeWithSeed(uint64 lamports, bytes32 salt, Instruction memory instruction) external;
+    // Returns the returned data of the executed instruction (if program returned the data is equal to the program_id of the instruction)
+    function executeWithSeed(uint64 lamports, bytes32 salt, Instruction memory instruction) external returns (bytes memory);
     
     
     // Execute the instruction with a call to the Solana program.
@@ -74,7 +76,8 @@ interface CallSolana {
     //   This lamports transferred to `payer`-account (see `getPayer()` function) before the call.
     // - `instruction` - bincode serialized instruction which should be executed
     // This method uses PDA for sender to authorize the operation (`getNeonAddress(msg.sender)`)
-    function execute(uint64 lamports, bytes memory instruction) external;
+    // Returns the returned data of the executed instruction (if program returned the data is equal to the program_id of the instruction)
+    function execute(uint64 lamports, bytes memory instruction) external returns (bytes memory);
     
     
     // Execute the instruction with call to the Solana program.
@@ -85,7 +88,14 @@ interface CallSolana {
     // - `salt` - the salt to generate an address of external authority (see `getExtAuthority()` function)
     // - `instruction` - bincode serialized instruction which should be executed
     // This method uses external authority to authorize the operation (`getExtAuthority(salt)`)
-    function executeWithSeed(uint64 lamports, bytes32 salt, bytes memory instruction) external;
+    // Returns the returned data of the executed instruction (if program returned the data is equal to the program_id of the instruction)
+    function executeWithSeed(uint64 lamports, bytes32 salt, bytes memory instruction) external returns (bytes memory);
+
+
+    // Returns the program_id and returned data of the last executed instruction (if no return data was set returns zeroed bytes)
+    // For more information see: https://docs.rs/solana-program/latest/solana_program/program/fn.get_return_data.html
+    // Note: This method should be called after a call to `execute`/`executeWithSeed` methods
+    function getReturnData() external returns (bytes32, bytes memory);
 }
     
     

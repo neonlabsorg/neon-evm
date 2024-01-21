@@ -1,6 +1,6 @@
 mod action;
 mod cache;
-mod precompile_extension;
+pub mod precompile_extension;
 mod state;
 mod synced_state;
 

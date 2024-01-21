@@ -6,7 +6,7 @@ use evm_loader::error::Result;
 use evm_loader::evm::database::Database;
 use evm_loader::evm::Buffer as EvmBuffer;
 use evm_loader::evm::{Context, ExitStatus};
-use evm_loader::executor::{Action, ExecutorState, OwnedAccountInfo};
+use evm_loader::executor::{Action, ExecutorState, OwnedAccountInfo, precompile_extension::PrecompiledContracts};
 use evm_loader::types::Address;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
@@ -166,8 +166,7 @@ impl<'a, B: AccountStorage> Database for EmulatorState<'a, B> {
         data: &[u8],
         is_static: bool,
     ) -> Option<Result<Vec<u8>>> {
-        self.inner_state
-            .precompile_extension(context, address, data, is_static)
+        PrecompiledContracts::call_precompile_extension(self, context, address, data, is_static)
             .await
     }
 
@@ -190,7 +189,9 @@ impl<'a, B: AccountStorage> Database for EmulatorState<'a, B> {
         fee: u64,
         emulated_internally: bool,
     ) -> Result<()> {
-        self.execute_status.external_solana_calls = true;
+        if !emulated_internally {
+            self.execute_status.external_solana_calls = true;
+        }
 
         self.inner_state
             .queue_external_instruction(instruction, seeds, fee, emulated_internally)

@@ -6,7 +6,9 @@ use evm_loader::error::Result;
 use evm_loader::evm::database::Database;
 use evm_loader::evm::Buffer as EvmBuffer;
 use evm_loader::evm::{Context, ExitStatus};
-use evm_loader::executor::{Action, ExecutorState, OwnedAccountInfo, precompile_extension::PrecompiledContracts};
+use evm_loader::executor::{
+    precompile_extension::PrecompiledContracts, Action, ExecutorState, OwnedAccountInfo,
+};
 use evm_loader::types::Address;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;

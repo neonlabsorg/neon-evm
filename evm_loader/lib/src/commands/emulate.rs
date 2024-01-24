@@ -7,10 +7,10 @@ use solana_sdk::pubkey::Pubkey;
 
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::rpc::Rpc;
-use crate::syscall_stubs::setup_emulator_syscall_stubs;
 use crate::types::{EmulateRequest, TxParams};
 use crate::{
     account_storage::{EmulatorAccountStorage, SolanaAccount},
+    emulator_state::EmulatorState,
     errors::NeonError,
     NeonResult,
 };
@@ -18,7 +18,7 @@ use evm_loader::evm::tracing::TracerType;
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
-    executor::{Action, ExecutorState},
+    executor::Action,
     gasometer::LAMPORTS_PER_SIGNATURE,
 };
 use serde_with::{hex::Hex, serde_as};
@@ -27,6 +27,9 @@ use serde_with::{hex::Hex, serde_as};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulateResponse {
     pub exit_status: String,
+    pub external_solana_calls: bool,
+    pub reverts_before_solana_calls: bool,
+    pub reverts_after_solana_calls: bool,
     #[serde_as(as = "Hex")]
     pub result: Vec<u8>,
     pub steps_executed: u64,
@@ -41,6 +44,9 @@ impl EmulateResponse {
         let exit_status = ExitStatus::Revert(revert_message);
         Self {
             exit_status: exit_status.to_string(),
+            external_solana_calls: false,
+            reverts_before_solana_calls: false,
+            reverts_after_solana_calls: false,
             result: exit_status.into_result().unwrap_or_default(),
             steps_executed: 0,
             used_gas: 0,
@@ -77,7 +83,6 @@ pub async fn execute(
 
     let step_limit = emulate_request.step_limit.unwrap_or(100000);
 
-    setup_emulator_syscall_stubs(rpc).await?;
     emulate_trx(emulate_request.tx, &mut storage, step_limit, tracer).await
 }
 
@@ -94,8 +99,8 @@ async fn emulate_trx(
     info!("origin: {:?}", origin);
     info!("tx: {:?}", tx);
 
-    let (exit_status, actions, steps_executed) = {
-        let mut backend = ExecutorState::new(storage);
+    let (exit_status, actions, steps_executed, execute_status) = {
+        let mut backend = EmulatorState::new(storage);
         let mut evm = match Machine::new(tx, origin, &mut backend, tracer).await {
             Ok(evm) => evm,
             Err(e) => return Ok(EmulateResponse::revert(e)),
@@ -106,8 +111,10 @@ async fn emulate_trx(
             return Err(NeonError::TooManySteps);
         }
 
+        let execute_status = backend.execute_status.clone();
         let actions = backend.into_actions();
-        (result, actions, steps_executed)
+
+        (result, actions, steps_executed, execute_status)
     };
 
     storage.apply_actions(actions.clone()).await?;
@@ -130,6 +137,9 @@ async fn emulate_trx(
 
     Ok(EmulateResponse {
         exit_status: exit_status.to_string(),
+        external_solana_calls: execute_status.external_solana_calls,
+        reverts_before_solana_calls: execute_status.reverts_before_solana_calls,
+        reverts_after_solana_calls: execute_status.reverts_after_solana_calls,
         steps_executed,
         used_gas,
         solana_accounts,

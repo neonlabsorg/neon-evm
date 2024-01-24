@@ -2,7 +2,7 @@ use super::Rpc;
 use async_trait::async_trait;
 use solana_client::{
     client_error::Result as ClientResult, nonblocking::rpc_client::RpcClient,
-    rpc_response::RpcResult,
+    rpc_request::MAX_MULTIPLE_ACCOUNTS, rpc_response::RpcResult,
 };
 use solana_sdk::{
     account::Account,
@@ -51,7 +51,7 @@ impl Rpc for CloneRpcClient {
         pubkeys: &[Pubkey],
     ) -> ClientResult<Vec<Option<Account>>> {
         let mut result: Vec<Option<Account>> = Vec::new();
-        for chunk in pubkeys.chunks(100) {
+        for chunk in pubkeys.chunks(MAX_MULTIPLE_ACCOUNTS) {
             let mut accounts = self.0.get_multiple_accounts(chunk).await?;
             result.append(&mut accounts);
         }

@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
 use solana_program::instruction::Instruction;
@@ -7,6 +5,7 @@ use solana_program::program::{invoke_signed_unchecked, invoke_unchecked};
 use solana_program::rent::Rent;
 use solana_program::system_program;
 use solana_program::sysvar::Sysvar;
+use std::collections::HashMap;
 
 use crate::account::BalanceAccount;
 use crate::account::{AllocateResult, ContractAccount, StorageCell};
@@ -133,7 +132,11 @@ impl<'a> ProgramAccountStorage<'a> {
                     seeds,
                     ..
                 } => {
-                    let seeds: Vec<&[u8]> = seeds.iter().map(|seed| &seed[..]).collect();
+                    let seeds = seeds
+                        .iter()
+                        .map(|s| s.iter().map(|s| s.as_slice()).collect::<Vec<_>>())
+                        .collect::<Vec<_>>();
+                    let seeds = seeds.iter().map(|s| s.as_slice()).collect::<Vec<_>>();
 
                     let mut accounts_info = Vec::with_capacity(accounts.len() + 1);
 
@@ -157,7 +160,7 @@ impl<'a> ProgramAccountStorage<'a> {
                     };
 
                     if !seeds.is_empty() {
-                        invoke_signed_unchecked(&instruction, &accounts_info, &[&seeds])?;
+                        invoke_signed_unchecked(&instruction, &accounts_info, &seeds)?;
                     } else {
                         invoke_unchecked(&instruction, &accounts_info)?;
                     }

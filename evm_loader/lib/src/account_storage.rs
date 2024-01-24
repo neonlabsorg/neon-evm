@@ -9,9 +9,10 @@ use evm_loader::types::Address;
 use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
 use solana_sdk::sysvar::{slot_hashes, Sysvar};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
+use crate::solana_emulator::get_solana_emulator;
 use crate::{rpc::Rpc, NeonError};
 use ethnum::U256;
 use evm_loader::{
@@ -23,7 +24,13 @@ use evm_loader::{
 use log::{debug, info, trace};
 use serde::{Deserialize, Serialize};
 use solana_client::client_error;
-use solana_sdk::{account::Account, account_info::AccountInfo, pubkey, pubkey::Pubkey};
+use solana_sdk::{
+    account::Account,
+    account_info::AccountInfo,
+    instruction::{AccountMeta, Instruction},
+    pubkey,
+    pubkey::Pubkey,
+};
 
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
 use crate::tracing::{AccountOverride, AccountOverrides, BlockOverrides};
@@ -723,6 +730,22 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
 
         let info = account_info(address, &mut account);
         action(&info)
+    }
+
+    async fn emulate_solana_call(
+        &self,
+        program_id: &Pubkey,
+        instruction_data: &[u8],
+        meta: &[AccountMeta],
+        accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+        seeds: &[Vec<Vec<u8>>],
+    ) -> evm_loader::error::Result<()> {
+        let instruction = Instruction::new_with_bytes(*program_id, instruction_data, meta.to_vec());
+        let solana_emulator = get_solana_emulator().await;
+        //let solana_emulator = self.solana_emulator.lock().expect("Lock solana_emulator");
+        solana_emulator
+            .emulate_solana_call(self, &instruction, accounts, seeds)
+            .await
     }
 }
 

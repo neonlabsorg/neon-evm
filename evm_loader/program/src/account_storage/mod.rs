@@ -3,11 +3,12 @@ use crate::executor::OwnedAccountInfo;
 use crate::types::Address;
 use ethnum::U256;
 use maybe_async::maybe_async;
-use solana_program::account_info::AccountInfo;
+use solana_program::{
+    account_info::AccountInfo, instruction::AccountMeta, instruction::Instruction, pubkey::Pubkey,
+};
+use std::collections::BTreeMap;
 #[cfg(target_os = "solana")]
 use {crate::account::AccountsDB, solana_program::clock::Clock};
-
-use solana_program::pubkey::Pubkey;
 
 #[cfg(target_os = "solana")]
 mod apply;
@@ -15,6 +16,9 @@ mod apply;
 mod backend;
 #[cfg(target_os = "solana")]
 mod base;
+#[cfg(target_os = "solana")]
+mod synced;
+
 mod block_hash;
 pub use block_hash::find_slot_hash;
 
@@ -73,4 +77,34 @@ pub trait AccountStorage {
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
         F: FnOnce(&AccountInfo) -> R;
+
+    /// Emulate solana call
+    async fn emulate_solana_call(
+        &self,
+        program_id: &Pubkey,
+        data: &[u8],
+        meta: &[AccountMeta],
+        accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+        seeds: &[Vec<Vec<u8>>],
+    ) -> Result<()>;
+}
+
+pub trait SyncedAccountStorage {
+    fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()>;
+    fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
+    fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()>;
+    fn transfer(
+        &mut self,
+        from_address: Address,
+        to_address: Address,
+        chain_id: u64,
+        value: U256,
+    ) -> Result<()>;
+    fn burn(&mut self, address: Address, chain_id: u64, value: U256) -> Result<()>;
+    fn execute_external_instruction(
+        &mut self,
+        instruction: Instruction,
+        seeds: Vec<Vec<Vec<u8>>>,
+        fee: u64,
+    ) -> Result<()>;
 }

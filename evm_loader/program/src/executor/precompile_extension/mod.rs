@@ -1,14 +1,22 @@
-use crate::{account_storage::AccountStorage, error::Result, evm::Context, types::Address};
+use crate::{
+    error::Result,
+    evm::{database::Database, Context},
+    types::Address,
+};
 use maybe_async::maybe_async;
+use solana_program::{pubkey::Pubkey, rent::Rent, system_instruction, sysvar::Sysvar};
 
-use super::ExecutorState;
+use super::OwnedAccountInfo;
 
+mod call_solana;
 mod metaplex;
 mod neon_token;
 mod query_account;
 mod spl_token;
 
-impl<B: AccountStorage> ExecutorState<'_, B> {
+pub struct PrecompiledContracts {}
+
+impl PrecompiledContracts {
     #[deprecated]
     const _SYSTEM_ACCOUNT_ERC20_WRAPPER: Address = Address([
         0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01,
@@ -25,19 +33,22 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
     const SYSTEM_ACCOUNT_METAPLEX: Address = Address([
         0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x05,
     ]);
+    const SYSTEM_ACCOUNT_CALL_SOLANA: Address = Address([
+        0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x06,
+    ]);
 
     #[must_use]
-    #[allow(clippy::unused_self)]
-    pub fn is_precompile_extension(&self, address: &Address) -> bool {
+    pub fn is_precompile_extension(address: &Address) -> bool {
         *address == Self::SYSTEM_ACCOUNT_QUERY
             || *address == Self::SYSTEM_ACCOUNT_NEON_TOKEN
             || *address == Self::SYSTEM_ACCOUNT_SPL_TOKEN
             || *address == Self::SYSTEM_ACCOUNT_METAPLEX
+            || *address == Self::SYSTEM_ACCOUNT_CALL_SOLANA
     }
 
     #[maybe_async]
-    pub async fn call_precompile_extension(
-        &mut self,
+    pub async fn call_precompile_extension<State: Database>(
+        state: &mut State,
         context: &Context,
         address: &Address,
         input: &[u8],
@@ -45,18 +56,48 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
     ) -> Option<Result<Vec<u8>>> {
         match *address {
             Self::SYSTEM_ACCOUNT_QUERY => {
-                Some(self.query_account(address, input, context, is_static).await)
+                Some(query_account::query_account(state, address, input, context, is_static).await)
             }
             Self::SYSTEM_ACCOUNT_NEON_TOKEN => {
-                Some(self.neon_token(address, input, context, is_static).await)
+                Some(neon_token::neon_token(state, address, input, context, is_static).await)
             }
             Self::SYSTEM_ACCOUNT_SPL_TOKEN => {
-                Some(self.spl_token(address, input, context, is_static).await)
+                Some(spl_token::spl_token(state, address, input, context, is_static).await)
             }
             Self::SYSTEM_ACCOUNT_METAPLEX => {
-                Some(self.metaplex(address, input, context, is_static).await)
+                Some(metaplex::metaplex(state, address, input, context, is_static).await)
+            }
+            Self::SYSTEM_ACCOUNT_CALL_SOLANA => {
+                Some(call_solana::call_solana(state, address, input, context, is_static).await)
             }
             _ => None,
         }
     }
+}
+
+pub fn create_account<State: Database>(
+    state: &mut State,
+    account: &OwnedAccountInfo,
+    space: usize,
+    owner: &Pubkey,
+    seeds: Vec<Vec<u8>>,
+) -> Result<()> {
+    let rent = Rent::get()?;
+    let minimum_balance = rent.minimum_balance(space);
+
+    let required_lamports = minimum_balance.saturating_sub(account.lamports);
+
+    if required_lamports > 0 {
+        let transfer =
+            system_instruction::transfer(&state.operator(), &account.key, required_lamports);
+        state.queue_external_instruction(transfer, vec![], required_lamports, true)?;
+    }
+
+    let allocate = system_instruction::allocate(&account.key, space.try_into().unwrap());
+    state.queue_external_instruction(allocate, vec![seeds.clone()], 0, true)?;
+
+    let assign = system_instruction::assign(&account.key, owner);
+    state.queue_external_instruction(assign, vec![seeds], 0, true)?;
+
+    Ok(())
 }

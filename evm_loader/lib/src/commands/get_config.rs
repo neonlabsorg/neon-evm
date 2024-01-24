@@ -3,9 +3,9 @@ use base64::Engine;
 use enum_dispatch::enum_dispatch;
 use std::collections::BTreeMap;
 use std::str::FromStr;
+use tokio::sync::MutexGuard;
 
 use serde::{Deserialize, Serialize};
-use solana_program_test::{ProgramTest, ProgramTestContext};
 use solana_sdk::{
     account::{Account, AccountSharedData},
     account_utils::StateMut,
@@ -21,10 +21,11 @@ use solana_sdk::{
 use crate::{rpc::Rpc, NeonError, NeonResult};
 
 use crate::rpc::{CallDbClient, CloneRpcClient};
+use crate::solana_emulator::{get_solana_emulator, SolanaEmulator};
 use serde_with::{serde_as, DisplayFromStr};
 use solana_client::client_error::Result as ClientResult;
 use solana_client::rpc_config::{RpcLargestAccountsConfig, RpcSimulateTransactionConfig};
-use tokio::sync::{Mutex, MutexGuard, OnceCell};
+use solana_program_test::ProgramTestContext;
 
 #[derive(Debug, Serialize)]
 pub enum Status {
@@ -85,20 +86,6 @@ impl CallDbClient {
     }
 }
 
-async fn program_test_context() -> MutexGuard<'static, ProgramTestContext> {
-    static PROGRAM_TEST_CONTEXT: OnceCell<Mutex<ProgramTestContext>> = OnceCell::const_new();
-
-    async fn init_program_test_context() -> Mutex<ProgramTestContext> {
-        Mutex::new(ProgramTest::default().start_with_context().await)
-    }
-
-    PROGRAM_TEST_CONTEXT
-        .get_or_init(init_program_test_context)
-        .await
-        .lock()
-        .await
-}
-
 fn set_program_account(
     program_test_context: &mut ProgramTestContext,
     program_id: Pubkey,
@@ -118,7 +105,7 @@ fn set_program_account(
 
 pub enum ConfigSimulator<'r> {
     CloneRpcClient(Pubkey, &'r CloneRpcClient),
-    ProgramTestContext(Pubkey, MutexGuard<'static, ProgramTestContext>),
+    ProgramTestContext(Pubkey, MutexGuard<'static, SolanaEmulator>),
 }
 
 #[async_trait(?Send)]
@@ -139,15 +126,13 @@ impl BuildConfigSimulator for CallDbClient {
     async fn build_config_simulator(&self, program_id: Pubkey) -> NeonResult<ConfigSimulator> {
         let program_data = self.read_program_data_from_account(program_id).await?;
 
-        let mut program_test_context = program_test_context().await;
+        let mut emulator = get_solana_emulator().await;
+        let program_test_context = emulator.emulator_context.get_mut();
+        set_program_account(program_test_context, program_id, program_data);
 
-        set_program_account(&mut program_test_context, program_id, program_data);
         program_test_context.get_new_latest_blockhash().await?;
 
-        Ok(ConfigSimulator::ProgramTestContext(
-            program_id,
-            program_test_context,
-        ))
+        Ok(ConfigSimulator::ProgramTestContext(program_id, emulator))
     }
 }
 
@@ -262,8 +247,10 @@ impl ConfigSimulator<'_> {
                     .simulate_solana_instruction(instruction)
                     .await
             }
-            ConfigSimulator::ProgramTestContext(_, program_test_context) => {
-                program_test_context
+            ConfigSimulator::ProgramTestContext(_, solana_emulator) => {
+                solana_emulator
+                    .emulator_context
+                    .get_mut()
                     .simulate_solana_instruction(instruction)
                     .await
             }

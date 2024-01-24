@@ -388,6 +388,9 @@ operators_whitelist = [
     "3MPCHydDHnpS3zQbfVAByi9rGQc4b1sJC5DXAguXtAZN",
     "7d1hPjCaHwd7JuUYap6NEc9gMayJapcuDd52nSYKgAFd",
     "E4sFXJ4p8CcxA2A5GsdjWRaSgPLvGNDdmFPyg65eoXrh",
+    "7P1VpfLJNo1rMJbHmz2P6U34ygkRM5UNogknFUXP2b1k",
+    "8HzCjhBNP3rs7SydUrZAiQGEoqXHNtpNPE475zzHmzba",
+    "CRJ7MFYvMjXysVDkifFmiS8jmpDMS5qZRwyu3EN3Rfav",
 ]
 
 [chain.neon]

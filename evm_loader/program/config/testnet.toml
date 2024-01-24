@@ -231,7 +231,7 @@ operators_whitelist = [
     "B5Gefd2yR3nBi4eFDtp3grmVsRq6sw4UYmGVZG6vrda3",
     "7P1VpfLJNo1rMJbHmz2P6U34ygkRM5UNogknFUXP2b1k",
     "8HzCjhBNP3rs7SydUrZAiQGEoqXHNtpNPE475zzHmzba",
-    "CRJ7MFYvMjXysVDkifFmiS8jmpDMS5qZRwyu3EN3Rfav"
+    "CRJ7MFYvMjXysVDkifFmiS8jmpDMS5qZRwyu3EN3Rfav",
 ]
 
 [chain.neon]

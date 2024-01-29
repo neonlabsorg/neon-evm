@@ -118,7 +118,7 @@ async fn emulate_trx<T: EventListener>(
         return Err(NeonError::TooManySteps);
     }
 
-    let actions = executor_state.actions();
+    let actions = executor_state.actions(); // todo recreate executor state from actions
 
     executor_state
         .backend

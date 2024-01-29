@@ -23,7 +23,7 @@ use super::OwnedAccountInfo;
 pub struct ExecutorState<'a, B: AccountStorage> {
     /// Used for collecting storage state changes for each Neon address during Neon transaction execution
     #[cfg(not(target_os = "solana"))]
-    pub storage_state_tracer: StorageStateTracer,
+    pub storage_state_tracer: StorageStateTracer, // todo replace this with incercepting storage set and get in tracer
     /// Used for retrieving initial account states before Neon transaction execution (read-only access)
     pub backend: &'a mut B,
     cache: RefCell<Cache>,

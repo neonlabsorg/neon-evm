@@ -47,7 +47,7 @@ pub struct SolanaAccount {
 pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     pub accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
     /// All Neon addresses used during transaction emulation
-    pub used_addresses: RefCell<BTreeSet<Address>>,
+    pub used_addresses: RefCell<BTreeSet<Address>>, // todo remove unnecessary usages
     pub gas: u64,
     rpc: &'rpc T,
     program_id: Pubkey,

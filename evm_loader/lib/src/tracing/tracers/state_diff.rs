@@ -2,14 +2,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use async_trait::async_trait;
 use ethnum::U256;
-use web3::types::Bytes;
+use web3::types::{Bytes, H256};
 
 use crate::account_storage::EmulatorAccountStorage;
 use crate::commands::get_config::BuildConfigSimulator;
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::evm::database::Database;
-use evm_loader::evm::tracing::{Account, State, States};
-use evm_loader::evm::Buffer;
+use evm_loader::evm::tracing::{Account, Event, State, States};
+use evm_loader::evm::{opcode_table, Buffer, Context};
 use evm_loader::executor::ExecutorState;
 use evm_loader::types::Address;
 
@@ -124,4 +124,47 @@ fn map_code(buffer: Buffer) -> Option<Bytes> {
 
 fn to_web3_u256(v: U256) -> web3::types::U256 {
     web3::types::U256::from(v.to_be_bytes())
+}
+
+#[derive(Default, Debug)]
+pub struct StateDiffTracer {
+    context: Option<Context>,
+    pre: State,
+    _post: State,
+}
+
+impl StateDiffTracer {
+    pub fn event(&mut self, event: Event) {
+        match event {
+            Event::BeginVM {
+                context,
+                code: _code,
+            } => {
+                self.context = Some(context);
+            }
+            Event::EndVM { .. } => {}
+            Event::BeginStep {
+                opcode,
+                pc: _pc,
+                stack,
+                memory: _memory,
+            } => match opcode {
+                opcode_table::SLOAD | opcode_table::SSTORE if stack.len() >= 1 => {
+                    let index = H256::from(&stack[stack.len() - 1]);
+                    let address = self.context.as_ref().unwrap().contract;
+
+                    self.pre
+                        .entry(address)
+                        .or_default()
+                        .storage
+                        .get_or_insert_with(BTreeMap::new)
+                        .entry(index);
+                    // .or_insert_with(|| );
+                }
+                _ => {}
+            },
+            Event::EndStep { .. } => {}
+            _ => {}
+        }
+    }
 }

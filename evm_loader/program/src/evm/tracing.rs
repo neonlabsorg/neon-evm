@@ -76,7 +76,7 @@ pub enum Event {
     },
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct StorageStateTracer {
     initial_storage: RefCell<BTreeMap<Address, BTreeMap<H256, H256>>>,
     final_storage: RefCell<BTreeMap<Address, BTreeMap<H256, H256>>>,

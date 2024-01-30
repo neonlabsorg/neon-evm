@@ -47,7 +47,7 @@ pub struct SolanaAccount {
 pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     pub accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
     /// All Neon addresses used during transaction emulation
-    pub used_addresses: RefCell<BTreeSet<Address>>, // todo remove unnecessary usages
+    pub used_addresses: RefCell<BTreeSet<Address>>,
     pub gas: u64,
     rpc: &'rpc T,
     program_id: Pubkey,
@@ -203,8 +203,6 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         index: U256,
         is_writable: bool,
     ) -> client_error::Result<(Pubkey, Option<Account>)> {
-        self.used_addresses.borrow_mut().insert(address);
-
         let (base, _) = address.find_solana_address(self.program_id());
         let cell_address = StorageCellAddress::new(self.program_id(), &base, &index);
 
@@ -632,7 +630,6 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     }
 
     fn contract_pubkey(&self, address: Address) -> (Pubkey, u8) {
-        self.used_addresses.borrow_mut().insert(address); // TODO not sure about this; might not be needed
         address.find_solana_address(self.program_id())
     }
 

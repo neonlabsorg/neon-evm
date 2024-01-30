@@ -16,7 +16,7 @@ use crate::{
 };
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::evm::tracing::EventListener;
-use evm_loader::evm::tracing::{States, TracerType};
+use evm_loader::evm::tracing::States;
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
@@ -80,16 +80,12 @@ pub async fn execute<T: EventListener>(
     .await?;
 
     let step_limit = emulate_request.step_limit.unwrap_or(100_000);
-    let mut backend = ExecutorState::new(&mut storage);
-    emulate_trx(emulate_request.tx, &mut backend, step_limit, tracer).await
+    emulate_trx(emulate_request.tx, &mut storage, step_limit, tracer).await
 }
 
-async fn emulate_trx<T: EventListener>(
+pub(crate) async fn emulate_trx<T: EventListener>(
     tx_params: TxParams,
-    executor_state: &mut ExecutorState<
-        '_,
-        EmulatorAccountStorage<'_, impl Rpc + BuildConfigSimulator>,
-    >,
+    account_storage: &mut EmulatorAccountStorage<'_, impl Rpc + BuildConfigSimulator>,
     step_limit: u64,
     tracer: Option<T>,
 ) -> NeonResult<(EmulateResponse, Option<T>)> {
@@ -101,30 +97,30 @@ async fn emulate_trx<T: EventListener>(
         .saturating_mul(tx_params.gas_price.unwrap_or_default());
     let chain_id = tx_params
         .chain_id
-        .unwrap_or_else(|| executor_state.backend.default_chain_id());
+        .unwrap_or_else(|| account_storage.default_chain_id());
 
-    let (origin, tx) = tx_params.into_transaction(executor_state.backend).await;
+    let (origin, tx) = tx_params.into_transaction(account_storage).await;
 
     info!("origin: {:?}", origin);
     info!("tx: {:?}", tx);
 
-    let mut evm = match Machine::new(tx, origin, executor_state, tracer).await {
+    let mut executor_state = ExecutorState::new(account_storage);
+
+    let mut evm = match Machine::new(tx, origin, &mut executor_state, tracer).await {
         Ok(evm) => evm,
-        Err(e) => return Ok(EmulateResponse::revert(e)),
+        Err(e) => return Ok((EmulateResponse::revert(e), None)),
     };
 
-    let (exit_status, steps_executed) = evm.execute(step_limit, executor_state).await?;
+    let (exit_status, steps_executed, tracer) =
+        evm.execute(step_limit, &mut executor_state).await?;
     if exit_status == ExitStatus::StepLimit {
         return Err(NeonError::TooManySteps);
     }
 
-    let actions = executor_state.actions(); // todo recreate executor state from actions
+    let actions = executor_state.into_actions(); // todo recreate executor state from actions
 
-    executor_state
-        .backend
-        .apply_actions(actions.clone())
-        .await?;
-    executor_state.backend.mark_legacy_accounts().await?;
+    account_storage.apply_actions(actions.clone()).await?;
+    account_storage.mark_legacy_accounts().await?;
 
     debug!("Execute done, result={exit_status:?}");
     debug!("{steps_executed} steps executed");
@@ -137,27 +133,29 @@ async fn emulate_trx<T: EventListener>(
     let iterations: u64 = steps_iterations + begin_end_iterations + realloc_iterations(&actions);
     let iterations_gas = iterations * LAMPORTS_PER_SIGNATURE;
 
-    let used_gas = executor_state.backend.gas + iterations_gas + treasury_gas + cancel_gas;
+    let used_gas = account_storage.gas + iterations_gas + treasury_gas + cancel_gas;
 
-    let solana_accounts = executor_state
-        .backend
+    let solana_accounts = account_storage
         .accounts
         .borrow()
         .values()
         .cloned()
         .collect();
 
-    Ok(EmulateResponse {
-        exit_status: exit_status.to_string(),
-        steps_executed,
-        used_gas,
-        solana_accounts,
-        result: exit_status.into_result().unwrap_or_default(),
-        iterations,
-        states: executor_state
-            .build_states(origin, tx_fee, chain_id)
-            .await?,
-    })
+    Ok((
+        EmulateResponse {
+            exit_status: exit_status.to_string(),
+            steps_executed,
+            used_gas,
+            solana_accounts,
+            result: exit_status.into_result().unwrap_or_default(),
+            iterations,
+            states: ExecutorState::new_with_actions(account_storage, actions)
+                .build_states(origin, tx_fee, chain_id)
+                .await?,
+        },
+        tracer,
+    ))
 }
 
 fn realloc_iterations(actions: &[Action]) -> u64 {

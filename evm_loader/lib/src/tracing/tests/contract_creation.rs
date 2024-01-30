@@ -1,9 +1,6 @@
-use std::rc::Rc;
-
 use ethnum::U256;
 use map_macro::hash_map;
 
-use evm_loader::executor::ExecutorState;
 use evm_loader::solana_program::pubkey::Pubkey;
 use evm_loader::types::Address;
 
@@ -78,11 +75,12 @@ async fn trace_contract_creation(trace_config: TraceConfig, expected_trace: &str
         ..TxParams::default()
     };
 
-    let mut backend = ExecutorState::new(&mut test_account_storage);
+    // let mut backend = ExecutorState::new(&mut test_account_storage);
 
-    let emulate_response = emulate_trx(tx_params, &mut backend, 1000, Some(Rc::clone(&tracer)))
-        .await
-        .unwrap();
+    let (emulate_response, tracer) =
+        emulate_trx(tx_params, &mut test_account_storage, 1000, Some(tracer))
+            .await
+            .unwrap();
 
     assert_eq!(emulate_response.exit_status, "succeed");
     assert_eq!(

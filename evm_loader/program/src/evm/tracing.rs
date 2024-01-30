@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use std::rc::Rc;
 
+use crate::evm::database::Database;
 use ethnum::U256;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -37,13 +37,11 @@ pub struct EmulationResult {
     pub states: States,
 }
 
-pub trait EventListener: Debug {
-    fn event(&mut self, event: Event);
-    fn into_traces(self: Box<Self>, emulation_result: EmulationResult) -> Value;
+#[enum_delegate::register]
+pub trait EventListener {
+    fn event(&mut self, executor_state: &mut impl Database, event: Event);
+    fn into_traces(self, emulation_result: EmulationResult) -> Value;
 }
-
-pub type TracerType = Rc<RefCell<Box<dyn EventListener>>>;
-pub type TracerTypeOpt = Option<TracerType>;
 
 /// Trace event
 pub enum Event {
@@ -76,7 +74,7 @@ pub enum Event {
     },
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct StorageStateTracer {
     initial_storage: RefCell<BTreeMap<Address, BTreeMap<H256, H256>>>,
     final_storage: RefCell<BTreeMap<Address, BTreeMap<H256, H256>>>,

@@ -1,7 +1,6 @@
 use evm_loader::evm::tracing::EventListener;
-use std::rc::Rc;
 
-use evm_loader::evm::tracing::{EmulationResult, TracerType};
+use evm_loader::evm::tracing::EmulationResult;
 use serde_json::Value;
 use solana_sdk::pubkey::Pubkey;
 
@@ -40,9 +39,11 @@ impl From<EmulateResponse> for EmulationResult {
     }
 }
 
-pub fn into_traces(tracer: TracerType, emulate_response: EmulateResponse) -> Value {
-    Rc::try_unwrap(tracer)
-        .expect("There is must be only one reference")
-        .into_inner()
+pub fn into_traces<T: EventListener>(
+    tracer: Option<T>,
+    emulate_response: EmulateResponse,
+) -> Value {
+    tracer
+        .expect("tracer should not be None")
         .into_traces(emulate_response.into())
 }

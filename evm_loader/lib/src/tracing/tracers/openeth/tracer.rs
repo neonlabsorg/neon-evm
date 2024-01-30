@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use evm_loader::evm::database::Database;
 use serde_json::Value;
 use web3::types::Bytes;
 
@@ -7,20 +8,23 @@ use evm_loader::evm::tracing::{EmulationResult, Event, EventListener};
 
 use crate::tracing::tracers::openeth::state_diff::StatesExt;
 use crate::tracing::tracers::openeth::types::{CallAnalytics, TraceResults};
+use crate::tracing::tracers::state_diff::StateDiffTracer;
 use crate::tracing::TraceConfig;
 
 #[derive(Debug)]
 pub struct OpenEthereumTracer {
     output: Option<Bytes>,
     call_analytics: CallAnalytics,
+    state_diff_tracer: StateDiffTracer,
 }
 
 impl OpenEthereumTracer {
     #[must_use]
-    pub fn new(trace_config: TraceConfig) -> OpenEthereumTracer {
+    pub fn new(trace_config: TraceConfig) -> Self {
         OpenEthereumTracer {
             output: None,
             call_analytics: trace_config.into(),
+            state_diff_tracer: StateDiffTracer::default(),
         }
     }
 }
@@ -35,17 +39,18 @@ impl From<TraceConfig> for CallAnalytics {
 }
 
 impl EventListener for OpenEthereumTracer {
-    fn event(&mut self, event: Event) {
+    fn event(&mut self, _executor_state: &mut impl Database, event: Event) {
         if let Event::EndStep {
             gas_used: _gas_used,
             return_data,
-        } = event
+        } = &event
         {
-            self.output = return_data.map(Into::into);
+            self.output = return_data.clone().map(Into::into);
         }
+        self.state_diff_tracer.event(event);
     }
 
-    fn into_traces(self: Box<Self>, emulation_result: EmulationResult) -> Value {
+    fn into_traces(self, emulation_result: EmulationResult) -> Value {
         serde_json::to_value(TraceResults {
             output: self.output.unwrap_or_default(),
             trace: vec![],

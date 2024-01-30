@@ -23,9 +23,11 @@ use super::OwnedAccountInfo;
 pub struct ExecutorState<'a, B: AccountStorage> {
     /// Used for collecting storage state changes for each Neon address during Neon transaction execution
     #[cfg(not(target_os = "solana"))]
-    pub storage_state_tracer: StorageStateTracer, // todo replace this with incercepting storage set and get in tracer
+    pub storage_state_tracer: StorageStateTracer,
+    // todo replace this with intercepting storage set and get in tracer
+    // todo fix storage state diff
     /// Used for retrieving initial account states before Neon transaction execution (read-only access)
-    pub backend: &'a mut B,
+    pub backend: &'a B,
     cache: RefCell<Cache>,
     /// Used for storing actions which mutate account states during Neon transaction execution
     actions: Vec<Action>,
@@ -57,7 +59,12 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     }
 
     #[must_use]
-    pub fn new(backend: &'a mut B) -> Self {
+    pub fn new(backend: &'a B) -> Self {
+        Self::new_with_actions(backend, Vec::with_capacity(64))
+    }
+
+    #[must_use]
+    pub fn new_with_actions(backend: &'a B, actions: Vec<Action>) -> Self {
         let cache = Cache {
             solana_accounts: BTreeMap::new(),
             block_number: backend.block_number(),
@@ -69,20 +76,12 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
             storage_state_tracer: StorageStateTracer::default(),
             backend,
             cache: RefCell::new(cache),
-            actions: Vec::with_capacity(64),
+            actions,
             stack: Vec::with_capacity(16),
             exit_status: None,
         }
     }
 
-    #[cfg(not(target_os = "solana"))]
-    pub fn actions(&self) -> Vec<Action> {
-        assert!(self.stack.is_empty());
-
-        crate::executor::action::filter_selfdestruct(self.actions.clone())
-    }
-
-    #[cfg(target_os = "solana")]
     pub fn into_actions(self) -> Vec<Action> {
         assert!(self.stack.is_empty());
 

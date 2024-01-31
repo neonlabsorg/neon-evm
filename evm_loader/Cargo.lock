@@ -1754,6 +1754,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "enum_delegate"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8ea75f31022cba043afe037940d73684327e915f88f62478e778c3de914cd0a"
+dependencies = [
+ "enum_delegate_lib",
+ "proc-macro2 1.0.66",
+ "quote 1.0.32",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "enum_delegate_lib"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e1f6c3800b304a6be0012039e2a45a322a093539c45ab818d9e6895a39c90fe"
+dependencies = [
+ "proc-macro2 1.0.66",
+ "quote 1.0.32",
+ "rand 0.8.5",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "enum_dispatch"
 version = "0.3.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1873,6 +1897,7 @@ dependencies = [
  "bincode",
  "borsh 0.9.3",
  "cfg-if",
+ "enum_delegate",
  "ethnum",
  "evm-loader-macro",
  "hex",
@@ -3159,6 +3184,7 @@ dependencies = [
  "build-info",
  "build-info-build",
  "clickhouse",
+ "enum_delegate",
  "enum_dispatch",
  "ethnum",
  "evm-loader",

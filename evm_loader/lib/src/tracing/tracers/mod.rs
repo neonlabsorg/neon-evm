@@ -7,25 +7,9 @@ use serde_json::Value;
 pub mod struct_logger;
 
 #[derive(Debug)]
+#[enum_delegate::implement(EventListener)] // cannot use enum_dispatch because of trait and enum in different crates
 pub enum TracerTypeEnum {
     StructLogger(StructLogger),
-}
-
-// enum_dispatch requires both trait and enum to be defined in the same crate
-impl EventListener for TracerTypeEnum {
-    fn event(&mut self, executor_state: &mut impl Database, event: Event) {
-        match self {
-            TracerTypeEnum::StructLogger(struct_logger) => {
-                struct_logger.event(executor_state, event)
-            }
-        }
-    }
-
-    fn into_traces(self) -> Value {
-        match self {
-            TracerTypeEnum::StructLogger(struct_logger) => struct_logger.into_traces(),
-        }
-    }
 }
 
 pub fn new_tracer(trace_config: &TraceConfig) -> evm_loader::error::Result<TracerTypeEnum> {

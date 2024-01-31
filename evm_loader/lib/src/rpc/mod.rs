@@ -34,7 +34,7 @@ pub trait Rpc {
     async fn get_slot(&self) -> ClientResult<Slot>;
 }
 
-#[enum_dispatch(BuildConfigSimulator, Rpc)]
+#[enum_dispatch(BuildConfigSimulator, Rpc)] // cannot use enum_delegate here because of multiple traits
 pub enum RpcEnum {
     CloneRpcClient,
     CallDbClient,

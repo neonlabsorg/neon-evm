@@ -1081,15 +1081,6 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             code_address: None,
         };
 
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::BeginVM {
-                context,
-                code: init_code.to_vec()
-            }
-        );
-
         self.fork(
             backend,
             Reason::Create,
@@ -1143,15 +1134,6 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             code_address: Some(address),
         };
 
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
-
         self.fork(
             backend,
             Reason::Call,
@@ -1200,15 +1182,6 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             ..self.context
         };
 
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
-
         self.fork(
             backend,
             Reason::Call,
@@ -1255,15 +1228,6 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             ..self.context
         };
 
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
-
         self.fork(
             backend,
             Reason::Call,
@@ -1305,15 +1269,6 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             value: U256::ZERO,
             code_address: Some(address),
         };
-
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
 
         self.fork(
             backend,

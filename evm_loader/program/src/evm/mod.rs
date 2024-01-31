@@ -11,6 +11,8 @@ use solana_program::log::sol_log_data;
 
 pub use buffer::Buffer;
 
+#[cfg(not(target_os = "solana"))]
+use crate::evm::tracing::{Event, EventListener};
 use crate::{
     error::{build_revert_message, Error, Result},
     evm::{opcode::Action, precompile::is_precompile_address},
@@ -68,8 +70,6 @@ macro_rules! trace_end_step {
     };
 }
 
-#[cfg(not(target_os = "solana"))]
-use crate::evm::tracing::EventListener;
 pub(crate) use trace_end_step;
 pub(crate) use tracing_event;
 
@@ -427,7 +427,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         tracing_event!(
             self,
             backend,
-            tracing::Event::BeginVM {
+            Event::BeginVM {
                 context: self.context,
                 code: self.execution_code.to_vec()
             }
@@ -450,7 +450,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
                 tracing_event!(
                     self,
                     backend,
-                    tracing::Event::BeginStep {
+                    Event::BeginStep {
                         opcode,
                         pc: self.pc,
                         stack: self.stack.to_vec(),
@@ -486,7 +486,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         tracing_event!(
             self,
             backend,
-            tracing::Event::EndVM {
+            Event::EndVM {
                 status: status.clone()
             }
         );
@@ -497,7 +497,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
     #[allow(clippy::too_many_arguments)]
     fn fork(
         &mut self,
-        _backend: &mut B,
+        backend: &mut B,
         reason: Reason,
         chain_id: u64,
         context: Context,
@@ -505,6 +505,15 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         call_data: Buffer,
         gas_limit: Option<U256>,
     ) {
+        tracing_event!(
+            self,
+            backend,
+            Event::BeginVM {
+                context,
+                code: execution_code.to_vec()
+            }
+        );
+
         let mut other = Self {
             origin: self.origin,
             chain_id,

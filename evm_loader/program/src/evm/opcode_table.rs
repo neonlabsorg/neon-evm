@@ -1,4 +1,6 @@
 use crate::error::Result;
+#[cfg(not(target_os = "solana"))]
+use crate::evm::tracing::EventListener;
 
 use super::{database::Database, opcode::Action, Machine};
 
@@ -25,7 +27,7 @@ macro_rules! opcode_table {
         }
 
         #[cfg(not(target_os = "solana"))]
-        impl<B: Database> Machine<B> {
+        impl<B: Database, T: EventListener> Machine<B, T> {
             pub async fn execute_opcode(&mut self, backend: &mut B, opcode: u8) -> Result<Action> {
                 match opcode {
                     $($opcode => $op(self, backend).await,)*

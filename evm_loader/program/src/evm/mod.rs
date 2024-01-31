@@ -11,8 +11,6 @@ use solana_program::log::sol_log_data;
 
 pub use buffer::Buffer;
 
-#[cfg(not(target_os = "solana"))]
-use crate::evm::tracing::TracerTypeOpt;
 use crate::{
     error::{build_revert_message, Error, Result},
     evm::{opcode::Action, precompile::is_precompile_address},
@@ -35,15 +33,15 @@ mod utils;
 macro_rules! tracing_event {
     ($self:ident, $x:expr) => {
         #[cfg(not(target_os = "solana"))]
-        if let Some(tracer) = &$self.tracer {
-            tracer.borrow_mut().event($x);
+        if let Some(tracer) = &mut $self.tracer {
+            tracer.event($x);
         }
     };
     ($self:ident, $condition:expr, $x:expr) => {
         #[cfg(not(target_os = "solana"))]
-        if let Some(tracer) = &$self.tracer {
+        if let Some(tracer) = &mut $self.tracer {
             if $condition {
-                tracer.borrow_mut().event($x);
+                tracer.event($x);
             }
         }
     };
@@ -52,13 +50,11 @@ macro_rules! tracing_event {
 macro_rules! trace_end_step {
     ($self:ident, $return_data:expr) => {
         #[cfg(not(target_os = "solana"))]
-        if let Some(tracer) = &$self.tracer {
-            tracer
-                .borrow_mut()
-                .event(crate::evm::tracing::Event::EndStep {
-                    gas_used: 0_u64,
-                    return_data: $return_data,
-                })
+        if let Some(tracer) = &mut $self.tracer {
+            tracer.event(crate::evm::tracing::Event::EndStep {
+                gas_used: 0_u64,
+                return_data: $return_data,
+            })
         }
     };
     ($self:ident, $condition:expr; $return_data_getter:expr) => {
@@ -69,6 +65,8 @@ macro_rules! trace_end_step {
     };
 }
 
+#[cfg(not(target_os = "solana"))]
+use crate::evm::tracing::EventListener;
 pub(crate) use trace_end_step;
 pub(crate) use tracing_event;
 
@@ -134,7 +132,7 @@ pub struct Context {
 
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "B: Database")]
-pub struct Machine<B: Database> {
+pub struct Machine<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> {
     origin: Address,
     chain_id: u64,
     context: Context,
@@ -163,10 +161,54 @@ pub struct Machine<B: Database> {
 
     #[cfg(not(target_os = "solana"))]
     #[serde(skip)]
-    tracer: TracerTypeOpt,
+    tracer: Option<T>,
 }
 
-impl<B: Database> Machine<B> {
+#[cfg(not(target_os = "solana"))]
+macro_rules! machine_type {
+    [$b:ident, $t:ident] => {
+        Machine<$b, $t>
+    }
+}
+
+#[cfg(target_os = "solana")]
+macro_rules! machine_type {
+    [$b:ident, $t:ident] => {
+        Machine<$b>
+    }
+}
+
+pub(crate) use machine_type;
+
+#[cfg(not(target_os = "solana"))]
+macro_rules! tuple_type {
+    ($a:ty, $b:ty, $c:ty) => {
+        ($a, $b, $c)
+    };
+}
+
+#[cfg(target_os = "solana")]
+macro_rules! tuple_type {
+    ($a:ty, $b:ty, $c:ty) => {
+        ($a, $b)
+    };
+}
+
+#[cfg(not(target_os = "solana"))]
+macro_rules! tuple_value {
+    ($a:expr, $b:expr, $c:expr) => {
+        ($a, $b, $c)
+    };
+}
+
+#[cfg(target_os = "solana")]
+macro_rules! tuple_value {
+    ($a:expr, $b:expr, $c:expr) => {
+        ($a, $b)
+    };
+}
+
+impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_type![B, T] {
     pub fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize> {
         let mut cursor = std::io::Cursor::new(buffer);
 
@@ -208,7 +250,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(not(target_os = "solana"))] tracer: TracerTypeOpt,
+        #[cfg(not(target_os = "solana"))] tracer: Option<T>,
     ) -> Result<Self> {
         let trx_chain_id = trx.chain_id().unwrap_or_else(|| backend.default_chain_id());
 
@@ -269,7 +311,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(not(target_os = "solana"))] tracer: TracerTypeOpt,
+        #[cfg(not(target_os = "solana"))] tracer: Option<T>,
     ) -> Result<Self> {
         assert!(trx.target().is_some());
 
@@ -319,7 +361,7 @@ impl<B: Database> Machine<B> {
         trx: Transaction,
         origin: Address,
         backend: &mut B,
-        #[cfg(not(target_os = "solana"))] tracer: TracerTypeOpt,
+        #[cfg(not(target_os = "solana"))] tracer: Option<T>,
     ) -> Result<Self> {
         assert!(trx.target().is_none());
 
@@ -368,7 +410,11 @@ impl<B: Database> Machine<B> {
     }
 
     #[maybe_async]
-    pub async fn execute(&mut self, step_limit: u64, backend: &mut B) -> Result<(ExitStatus, u64)> {
+    pub async fn execute(
+        &mut self,
+        step_limit: u64,
+        backend: &mut B,
+    ) -> Result<tuple_type!(ExitStatus, u64, Option<T>)> {
         assert!(self.execution_code.is_initialized());
         assert!(self.call_data.is_initialized());
         assert!(self.return_data.is_initialized());
@@ -439,7 +485,7 @@ impl<B: Database> Machine<B> {
             }
         );
 
-        Ok((status, step))
+        Ok(tuple_value!(status, step, self.tracer.take()))
     }
 
     fn fork(
@@ -469,7 +515,7 @@ impl<B: Database> Machine<B> {
             parent: None,
             phantom: PhantomData,
             #[cfg(not(target_os = "solana"))]
-            tracer: self.tracer.clone(),
+            tracer: self.tracer.take(),
         };
 
         core::mem::swap(self, &mut other);
@@ -481,6 +527,11 @@ impl<B: Database> Machine<B> {
 
         let mut other = *self.parent.take().unwrap();
         core::mem::swap(self, &mut other);
+
+        #[cfg(not(target_os = "solana"))]
+        {
+            self.tracer = other.tracer.take();
+        }
 
         other
     }

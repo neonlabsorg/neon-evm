@@ -1,4 +1,6 @@
-use crate::evm::{database::Database, Machine};
+#[cfg(not(target_os = "solana"))]
+use crate::evm::tracing::EventListener;
+use crate::evm::{database::Database, machine_type, Machine};
 use crate::types::Address;
 
 mod big_mod_exp;
@@ -56,7 +58,7 @@ pub fn is_precompile_address(address: &Address) -> bool {
         || *address == SYSTEM_ACCOUNT_BLAKE2F
 }
 
-impl<B: Database> Machine<B> {
+impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_type![B, T] {
     #[must_use]
     pub fn precompile(address: &Address, data: &[u8]) -> Option<Vec<u8>> {
         match *address {

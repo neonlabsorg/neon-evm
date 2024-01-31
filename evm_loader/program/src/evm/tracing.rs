@@ -1,6 +1,4 @@
-use std::cell::RefCell;
 use std::fmt::Debug;
-use std::rc::Rc;
 
 use ethnum::U256;
 use serde_json::Value;
@@ -9,11 +7,8 @@ use super::{Context, ExitStatus};
 
 pub trait EventListener: Debug {
     fn event(&mut self, event: Event);
-    fn into_traces(self: Box<Self>) -> Value;
+    fn into_traces(self) -> Value;
 }
-
-pub type TracerType = Rc<RefCell<Box<dyn EventListener>>>;
-pub type TracerTypeOpt = Option<TracerType>;
 
 /// Trace event
 pub enum Event {

@@ -1,5 +1,4 @@
-use std::rc::Rc;
-
+use evm_loader::evm::tracing::EventListener;
 use serde_json::Value;
 use solana_sdk::pubkey::Pubkey;
 
@@ -22,13 +21,10 @@ pub async fn trace_transaction(
 
     let tracer = new_tracer(&trace_config)?;
 
-    let emulation_tracer = Some(Rc::clone(&tracer));
-    let r = super::emulate::execute(rpc, program_id, emulate_request, emulation_tracer).await?;
+    let (r, tracer) =
+        super::emulate::execute(rpc, program_id, emulate_request, Some(tracer)).await?;
 
-    let mut traces = Rc::try_unwrap(tracer)
-        .expect("There is must be only one reference")
-        .into_inner()
-        .into_traces();
+    let mut traces = tracer.expect("tracer should not be None").into_traces();
     traces["gas"] = r.used_gas.into();
 
     Ok(traces)

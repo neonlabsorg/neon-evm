@@ -14,7 +14,7 @@ use crate::{
     errors::NeonError,
     NeonResult,
 };
-use evm_loader::evm::tracing::TracerType;
+use evm_loader::evm::tracing::EventListener;
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
@@ -50,12 +50,12 @@ impl EmulateResponse {
     }
 }
 
-pub async fn execute(
+pub async fn execute<T: EventListener>(
     rpc: &(impl Rpc + BuildConfigSimulator),
     program_id: Pubkey,
     emulate_request: EmulateRequest,
-    tracer: Option<TracerType>,
-) -> NeonResult<EmulateResponse> {
+    tracer: Option<T>,
+) -> NeonResult<(EmulateResponse, Option<T>)> {
     let block_overrides = emulate_request
         .trace_config
         .as_ref()
@@ -81,12 +81,12 @@ pub async fn execute(
     emulate_trx(emulate_request.tx, &mut storage, step_limit, tracer).await
 }
 
-async fn emulate_trx(
+async fn emulate_trx<T: EventListener>(
     tx_params: TxParams,
     storage: &mut EmulatorAccountStorage<'_, impl Rpc>,
     step_limit: u64,
-    tracer: Option<TracerType>,
-) -> NeonResult<EmulateResponse> {
+    tracer: Option<T>,
+) -> NeonResult<(EmulateResponse, Option<T>)> {
     info!("tx_params: {:?}", tx_params);
 
     let (origin, tx) = tx_params.into_transaction(storage).await;
@@ -94,20 +94,20 @@ async fn emulate_trx(
     info!("origin: {:?}", origin);
     info!("tx: {:?}", tx);
 
-    let (exit_status, actions, steps_executed) = {
+    let (exit_status, actions, steps_executed, tracer) = {
         let mut backend = ExecutorState::new(storage);
         let mut evm = match Machine::new(tx, origin, &mut backend, tracer).await {
             Ok(evm) => evm,
-            Err(e) => return Ok(EmulateResponse::revert(e)),
+            Err(e) => return Ok((EmulateResponse::revert(e), None)),
         };
 
-        let (result, steps_executed) = evm.execute(step_limit, &mut backend).await?;
+        let (result, steps_executed, tracer) = evm.execute(step_limit, &mut backend).await?;
         if result == ExitStatus::StepLimit {
             return Err(NeonError::TooManySteps);
         }
 
         let actions = backend.into_actions();
-        (result, actions, steps_executed)
+        (result, actions, steps_executed, tracer)
     };
 
     storage.apply_actions(actions.clone()).await?;
@@ -128,14 +128,17 @@ async fn emulate_trx(
 
     let solana_accounts = storage.accounts.borrow().values().cloned().collect();
 
-    Ok(EmulateResponse {
-        exit_status: exit_status.to_string(),
-        steps_executed,
-        used_gas,
-        solana_accounts,
-        result: exit_status.into_result().unwrap_or_default(),
-        iterations,
-    })
+    Ok((
+        EmulateResponse {
+            exit_status: exit_status.to_string(),
+            steps_executed,
+            used_gas,
+            solana_accounts,
+            result: exit_status.into_result().unwrap_or_default(),
+            iterations,
+        },
+        tracer,
+    ))
 }
 
 fn realloc_iterations(actions: &[Action]) -> u64 {

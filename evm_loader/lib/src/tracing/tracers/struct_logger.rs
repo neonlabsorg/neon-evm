@@ -204,7 +204,7 @@ impl EventListener for StructLogger {
         };
     }
 
-    fn into_traces(self: Box<Self>) -> Value {
+    fn into_traces(self) -> Value {
         let exit_status = self.exit_status.expect("Emulation is not completed");
         let result = StructLoggerResult {
             gas: 0,

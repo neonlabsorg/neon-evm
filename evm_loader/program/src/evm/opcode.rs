@@ -5,8 +5,10 @@ use solana_program::log::sol_log_data;
 
 use super::{
     database::{Database, DatabaseExt},
-    tracing_event, Context, Machine, Reason,
+    machine_type, tracing_event, Context, Machine, Reason,
 };
+#[cfg(not(target_os = "solana"))]
+use crate::evm::tracing::EventListener;
 use crate::{
     error::{Error, Result},
     evm::{trace_end_step, Buffer},
@@ -25,7 +27,7 @@ pub enum Action {
 }
 
 #[allow(clippy::unused_async)]
-impl<B: Database> Machine<B> {
+impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_type![B, T] {
     /// Unknown instruction
     #[maybe_async]
     pub async fn opcode_unknown(&mut self, _backend: &mut B) -> Result<Action> {

@@ -537,6 +537,8 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
 
         core::mem::swap(self, &mut other);
         self.parent = Some(Box::new(other));
+
+        backend.snapshot();
     }
 
     fn join(&mut self) -> Self {

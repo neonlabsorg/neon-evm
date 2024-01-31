@@ -1090,7 +1090,6 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             Buffer::empty(),
             None,
         );
-        backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"CREATE", address.as_bytes()]);
 
@@ -1143,7 +1142,6 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             call_data,
             Some(gas_limit),
         );
-        backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"CALL", address.as_bytes()]);
 
@@ -1191,7 +1189,6 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             call_data,
             Some(gas_limit),
         );
-        backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"CALLCODE", address.as_bytes()]);
 
@@ -1237,7 +1234,6 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             call_data,
             Some(gas_limit),
         );
-        backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"DELEGATECALL", address.as_bytes()]);
 
@@ -1280,8 +1276,6 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             Some(gas_limit),
         );
         self.is_static = true;
-
-        backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"STATICCALL", address.as_bytes()]);
 

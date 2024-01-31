@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use ethnum::U256;
+use evm_loader::evm::database::Database;
 use evm_loader::evm::ExitStatus;
 use serde::Serialize;
 use serde_json::Value;
@@ -138,7 +139,7 @@ impl StructLogger {
 }
 
 impl EventListener for StructLogger {
-    fn event(&mut self, event: Event) {
+    fn event(&mut self, _executor_state: &mut impl Database, event: Event) {
         match event {
             Event::BeginVM { .. } => {
                 self.depth += 1;

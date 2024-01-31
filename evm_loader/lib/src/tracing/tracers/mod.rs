@@ -1,5 +1,6 @@
 use crate::tracing::tracers::struct_logger::StructLogger;
 use crate::tracing::TraceConfig;
+use evm_loader::evm::database::Database;
 use evm_loader::evm::tracing::{Event, EventListener};
 use serde_json::Value;
 
@@ -12,9 +13,11 @@ pub enum TracerTypeEnum {
 
 // enum_dispatch requires both trait and enum to be defined in the same crate
 impl EventListener for TracerTypeEnum {
-    fn event(&mut self, event: Event) {
+    fn event(&mut self, executor_state: &mut impl Database, event: Event) {
         match self {
-            TracerTypeEnum::StructLogger(struct_logger) => struct_logger.event(event),
+            TracerTypeEnum::StructLogger(struct_logger) => {
+                struct_logger.event(executor_state, event)
+            }
         }
     }
 

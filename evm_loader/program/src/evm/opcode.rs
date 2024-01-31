@@ -801,7 +801,11 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         let index = self.stack.pop_u256()?;
         let value = backend.storage(self.context.contract, index).await?;
 
-        tracing_event!(self, super::tracing::Event::StorageAccess { index, value });
+        tracing_event!(
+            self,
+            backend,
+            super::tracing::Event::StorageAccess { index, value }
+        );
 
         self.stack.push_array(&value)?;
 
@@ -818,7 +822,11 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         let index = self.stack.pop_u256()?;
         let value = *self.stack.pop_array()?;
 
-        tracing_event!(self, super::tracing::Event::StorageAccess { index, value });
+        tracing_event!(
+            self,
+            backend,
+            super::tracing::Event::StorageAccess { index, value }
+        );
 
         backend.set_storage(self.context.contract, index, value)?;
 
@@ -1075,6 +1083,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
 
         tracing_event!(
             self,
+            backend,
             super::tracing::Event::BeginVM {
                 context,
                 code: init_code.to_vec()
@@ -1135,6 +1144,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
 
         tracing_event!(
             self,
+            backend,
             super::tracing::Event::BeginVM {
                 context,
                 code: code.to_vec()
@@ -1190,6 +1200,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
 
         tracing_event!(
             self,
+            backend,
             super::tracing::Event::BeginVM {
                 context,
                 code: code.to_vec()
@@ -1243,6 +1254,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
 
         tracing_event!(
             self,
+            backend,
             super::tracing::Event::BeginVM {
                 context,
                 code: code.to_vec()
@@ -1292,6 +1304,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
 
         tracing_event!(
             self,
+            backend,
             super::tracing::Event::BeginVM {
                 context,
                 code: code.to_vec()
@@ -1369,9 +1382,10 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             return Ok(Action::Return(return_data));
         }
 
-        trace_end_step!(self, Some(return_data.clone()));
+        trace_end_step!(self, backend, Some(return_data.clone()));
         tracing_event!(
             self,
+            backend,
             super::tracing::Event::EndVM {
                 status: super::ExitStatus::Return(return_data.clone())
             }
@@ -1418,9 +1432,10 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             return Ok(Action::Revert(return_data));
         }
 
-        trace_end_step!(self, Some(return_data.clone()));
+        trace_end_step!(self, backend, Some(return_data.clone()));
         tracing_event!(
             self,
+            backend,
             super::tracing::Event::EndVM {
                 status: super::ExitStatus::Revert(return_data.clone())
             }
@@ -1474,9 +1489,10 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             return Ok(Action::Suicide);
         }
 
-        trace_end_step!(self, None);
+        trace_end_step!(self, backend, None);
         tracing_event!(
             self,
+            backend,
             super::tracing::Event::EndVM {
                 status: super::ExitStatus::Suicide
             }
@@ -1506,9 +1522,10 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             return Ok(Action::Stop);
         }
 
-        trace_end_step!(self, None);
+        trace_end_step!(self, backend, None);
         tracing_event!(
             self,
+            backend,
             super::tracing::Event::EndVM {
                 status: super::ExitStatus::Stop
             }

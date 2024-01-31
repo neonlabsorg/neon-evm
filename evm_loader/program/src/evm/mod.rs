@@ -31,36 +31,39 @@ pub mod tracing;
 mod utils;
 
 macro_rules! tracing_event {
-    ($self:ident, $x:expr) => {
+    ($self:ident, $backend:ident, $x:expr) => {
         #[cfg(not(target_os = "solana"))]
         if let Some(tracer) = &mut $self.tracer {
-            tracer.event($x);
+            tracer.event($backend, $x);
         }
     };
-    ($self:ident, $condition:expr, $x:expr) => {
+    ($self:ident, $backend:ident, $condition:expr, $x:expr) => {
         #[cfg(not(target_os = "solana"))]
         if let Some(tracer) = &mut $self.tracer {
             if $condition {
-                tracer.event($x);
+                tracer.event($backend, $x);
             }
         }
     };
 }
 
 macro_rules! trace_end_step {
-    ($self:ident, $return_data:expr) => {
+    ($self:ident, $backend:ident, $return_data:expr) => {
         #[cfg(not(target_os = "solana"))]
         if let Some(tracer) = &mut $self.tracer {
-            tracer.event(crate::evm::tracing::Event::EndStep {
-                gas_used: 0_u64,
-                return_data: $return_data,
-            })
+            tracer.event(
+                $backend,
+                crate::evm::tracing::Event::EndStep {
+                    gas_used: 0_u64,
+                    return_data: $return_data,
+                },
+            )
         }
     };
-    ($self:ident, $condition:expr; $return_data_getter:expr) => {
+    ($self:ident, $backend:ident, $condition:expr; $return_data_getter:expr) => {
         #[cfg(not(target_os = "solana"))]
         if $condition {
-            trace_end_step!($self, $return_data_getter)
+            trace_end_step!($self, $backend, $return_data_getter)
         }
     };
 }
@@ -423,6 +426,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
 
         tracing_event!(
             self,
+            backend,
             tracing::Event::BeginVM {
                 context: self.context,
                 code: self.execution_code.to_vec()
@@ -445,6 +449,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
 
                 tracing_event!(
                     self,
+                    backend,
                     tracing::Event::BeginStep {
                         opcode,
                         pc: self.pc,
@@ -461,7 +466,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
                     }
                 };
 
-                trace_end_step!(self, opcode_result != Action::Noop; match &opcode_result {
+                trace_end_step!(self, backend, opcode_result != Action::Noop; match &opcode_result {
                     Action::Return(value) | Action::Revert(value) => Some(value.clone()),
                     _ => None,
                 });
@@ -480,6 +485,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
 
         tracing_event!(
             self,
+            backend,
             tracing::Event::EndVM {
                 status: status.clone()
             }

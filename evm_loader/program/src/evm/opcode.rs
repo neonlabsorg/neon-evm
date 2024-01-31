@@ -1080,7 +1080,6 @@ impl<B: Database> Machine<B> {
             Buffer::empty(),
             None,
         );
-        backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"CREATE", address.as_bytes()]);
 
@@ -1133,7 +1132,6 @@ impl<B: Database> Machine<B> {
             call_data,
             Some(gas_limit),
         );
-        backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"CALL", address.as_bytes()]);
 
@@ -1181,7 +1179,6 @@ impl<B: Database> Machine<B> {
             call_data,
             Some(gas_limit),
         );
-        backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"CALLCODE", address.as_bytes()]);
 
@@ -1227,7 +1224,6 @@ impl<B: Database> Machine<B> {
             call_data,
             Some(gas_limit),
         );
-        backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"DELEGATECALL", address.as_bytes()]);
 
@@ -1270,8 +1266,6 @@ impl<B: Database> Machine<B> {
             Some(gas_limit),
         );
         self.is_static = true;
-
-        backend.snapshot();
 
         sol_log_data(&[b"ENTER", b"STATICCALL", address.as_bytes()]);
 

@@ -484,6 +484,8 @@ impl<B: Database> Machine<B> {
 
         core::mem::swap(self, &mut other);
         self.parent = Some(Box::new(other));
+
+        backend.snapshot();
     }
 
     fn join(&mut self) -> Self {

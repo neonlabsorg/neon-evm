@@ -1080,6 +1080,7 @@ impl<B: Database> Machine<B> {
         );
 
         self.fork(
+            backend,
             Reason::Create,
             chain_id,
             context,
@@ -1140,6 +1141,7 @@ impl<B: Database> Machine<B> {
         );
 
         self.fork(
+            backend,
             Reason::Call,
             chain_id,
             context,
@@ -1195,6 +1197,7 @@ impl<B: Database> Machine<B> {
         );
 
         self.fork(
+            backend,
             Reason::Call,
             chain_id,
             context,
@@ -1248,6 +1251,7 @@ impl<B: Database> Machine<B> {
         );
 
         self.fork(
+            backend,
             Reason::Call,
             self.chain_id,
             context,
@@ -1297,6 +1301,7 @@ impl<B: Database> Machine<B> {
         );
 
         self.fork(
+            backend,
             Reason::Call,
             chain_id,
             context,

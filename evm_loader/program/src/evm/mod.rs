@@ -442,8 +442,10 @@ impl<B: Database> Machine<B> {
         Ok((status, step))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn fork(
         &mut self,
+        _backend: &mut B,
         reason: Reason,
         chain_id: u64,
         context: Context,

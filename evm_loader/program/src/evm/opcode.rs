@@ -1071,14 +1071,6 @@ impl<B: Database> Machine<B> {
             code_address: None,
         };
 
-        tracing_event!(
-            self,
-            super::tracing::Event::BeginVM {
-                context,
-                code: init_code.to_vec()
-            }
-        );
-
         self.fork(
             backend,
             Reason::Create,
@@ -1132,14 +1124,6 @@ impl<B: Database> Machine<B> {
             code_address: Some(address),
         };
 
-        tracing_event!(
-            self,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
-
         self.fork(
             backend,
             Reason::Call,
@@ -1188,14 +1172,6 @@ impl<B: Database> Machine<B> {
             ..self.context
         };
 
-        tracing_event!(
-            self,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
-
         self.fork(
             backend,
             Reason::Call,
@@ -1242,14 +1218,6 @@ impl<B: Database> Machine<B> {
             ..self.context
         };
 
-        tracing_event!(
-            self,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
-
         self.fork(
             backend,
             Reason::Call,
@@ -1291,14 +1259,6 @@ impl<B: Database> Machine<B> {
             value: U256::ZERO,
             code_address: Some(address),
         };
-
-        tracing_event!(
-            self,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
 
         self.fork(
             backend,

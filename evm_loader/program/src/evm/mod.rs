@@ -12,7 +12,7 @@ use solana_program::log::sol_log_data;
 pub use buffer::Buffer;
 
 #[cfg(not(target_os = "solana"))]
-use crate::evm::tracing::TracerTypeOpt;
+use crate::evm::tracing::{Event, TracerTypeOpt};
 use crate::{
     error::{build_revert_message, Error, Result},
     evm::{opcode::Action, precompile::is_precompile_address},
@@ -445,7 +445,7 @@ impl<B: Database> Machine<B> {
     #[allow(clippy::too_many_arguments)]
     fn fork(
         &mut self,
-        _backend: &mut B,
+        backend: &mut B,
         reason: Reason,
         chain_id: u64,
         context: Context,
@@ -453,6 +453,14 @@ impl<B: Database> Machine<B> {
         call_data: Buffer,
         gas_limit: Option<U256>,
     ) {
+        tracing_event!(
+            self,
+            Event::BeginVM {
+                context,
+                code: execution_code.to_vec()
+            }
+        );
+
         let mut other = Self {
             origin: self.origin,
             chain_id,

@@ -494,8 +494,10 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         Ok(tuple_value!(status, step, self.tracer.take()))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn fork(
         &mut self,
+        _backend: &mut B,
         reason: Reason,
         chain_id: u64,
         context: Context,

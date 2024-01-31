@@ -1091,6 +1091,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         );
 
         self.fork(
+            backend,
             Reason::Create,
             chain_id,
             context,
@@ -1152,6 +1153,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         );
 
         self.fork(
+            backend,
             Reason::Call,
             chain_id,
             context,
@@ -1208,6 +1210,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         );
 
         self.fork(
+            backend,
             Reason::Call,
             chain_id,
             context,
@@ -1262,6 +1265,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         );
 
         self.fork(
+            backend,
             Reason::Call,
             self.chain_id,
             context,
@@ -1312,6 +1316,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         );
 
         self.fork(
+            backend,
             Reason::Call,
             chain_id,
             context,

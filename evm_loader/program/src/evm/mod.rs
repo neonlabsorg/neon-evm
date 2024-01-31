@@ -36,14 +36,14 @@ macro_rules! tracing_event {
     ($self:ident, $backend:ident, $x:expr) => {
         #[cfg(not(target_os = "solana"))]
         if let Some(tracer) = &mut $self.tracer {
-            tracer.event($backend, $x);
+            tracer.event($backend, $x).await?;
         }
     };
     ($self:ident, $backend:ident, $condition:expr, $x:expr) => {
         #[cfg(not(target_os = "solana"))]
         if let Some(tracer) = &mut $self.tracer {
             if $condition {
-                tracer.event($backend, $x);
+                tracer.event($backend, $x).await?;
             }
         }
     };
@@ -53,13 +53,14 @@ macro_rules! trace_end_step {
     ($self:ident, $backend:ident, $return_data:expr) => {
         #[cfg(not(target_os = "solana"))]
         if let Some(tracer) = &mut $self.tracer {
-            tracer.event(
-                $backend,
-                crate::evm::tracing::Event::EndStep {
-                    gas_used: 0_u64,
-                    return_data: $return_data,
-                },
-            )
+            tracer
+                .event(
+                    $backend,
+                    crate::evm::tracing::Event::EndStep {
+                        return_data: $return_data,
+                    },
+                )
+                .await?
         }
     };
     ($self:ident, $backend:ident, $condition:expr; $return_data_getter:expr) => {
@@ -116,7 +117,7 @@ impl ExitStatus {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Reason {
     Call,
     Create,
@@ -347,9 +348,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         tracing_event!(
             self,
             backend,
-            tracing::Event::BeginVM {
+            crate::evm::tracing::Event::BeginVM {
                 context: self.context,
-                code: self.execution_code.to_vec()
+                chain_id: self.chain_id,
+                code: self.execution_code.to_vec(),
+                reason: self.reason
             }
         );
 
@@ -370,11 +373,13 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 tracing_event!(
                     self,
                     backend,
-                    tracing::Event::BeginStep {
+                    crate::evm::tracing::Event::BeginStep {
+                        context: self.context,
+                        chain_id: self.chain_id,
                         opcode,
                         pc: self.pc,
                         stack: self.stack.to_vec(),
-                        memory: self.memory.to_vec()
+                        memory: self.memory.to_vec(),
                     }
                 );
 
@@ -406,7 +411,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         tracing_event!(
             self,
             backend,
-            tracing::Event::EndVM {
+            crate::evm::tracing::Event::EndVM {
+                context: self.context,
+                chain_id: self.chain_id,
                 status: status.clone()
             }
         );

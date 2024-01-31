@@ -1,40 +1,43 @@
+use async_trait::async_trait;
 use std::collections::BTreeMap;
 
 use ethnum::U256;
 use evm_loader::evm::database::Database;
-use evm_loader::evm::ExitStatus;
 use serde::Serialize;
 use serde_json::Value;
 use web3::types::Bytes;
 
-use crate::tracing::tracers::Tracer;
-use crate::tracing::TraceConfig;
 use evm_loader::evm::opcode_table::OPNAMES;
 use evm_loader::evm::tracing::{Event, EventListener};
+use evm_loader::evm::{opcode_table, ExitStatus};
+use evm_loader::types::Address;
+
+use crate::tracing::tracers::Tracer;
+use crate::tracing::TraceConfig;
 
 /// `StructLoggerResult` groups all structured logs emitted by the EVM
 /// while replaying a transaction in debug mode as well as transaction
 /// execution status, the amount of gas used and the return value
 /// see <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/logger/logger.go#L404>
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StructLoggerResult {
+struct StructLoggerResult {
     /// Total used gas but include the refunded gas
-    pub gas: u64,
+    gas: u64,
     /// Is execution failed or not
-    pub failed: bool,
+    failed: bool,
     /// The data after execution or revert reason
-    pub return_value: String,
+    return_value: String,
     /// Logs emitted during execution
-    pub struct_logs: Vec<StructLog>,
+    struct_logs: Vec<StructLog>,
 }
 
 /// `StructLog` stores a structured log emitted by the EVM while replaying a
 /// transaction in debug mode
 /// see <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/logger/logger.go#L413>
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StructLog {
+struct StructLog {
     /// Program counter.
     pc: u64,
     /// Operation name
@@ -72,13 +75,14 @@ fn is_zero(num: &u64) -> bool {
 
 impl StructLog {
     #[must_use]
-    pub fn new(
+    fn new(
         opcode: u8,
         pc: u64,
         gas_cost: u64,
         depth: usize,
         memory: Option<Vec<String>>,
         stack: Option<Vec<U256>>,
+        storage: Option<BTreeMap<String, String>>,
     ) -> Self {
         let op = OPNAMES[opcode as usize];
         Self {
@@ -90,73 +94,100 @@ impl StructLog {
             memory,
             stack,
             return_data: None,
-            storage: None,
+            storage,
             error: None,
             refund: 0,
         }
     }
 }
 
-#[derive(Debug)]
-#[allow(clippy::struct_excessive_bools)]
-struct Config {
-    enable_memory: bool,
-    disable_storage: bool,
-    disable_stack: bool,
-    enable_return_data: bool,
-}
-
-impl From<&TraceConfig> for Config {
-    fn from(trace_config: &TraceConfig) -> Self {
-        Self {
-            enable_memory: trace_config.enable_memory,
-            disable_storage: trace_config.disable_storage,
-            disable_stack: trace_config.disable_stack,
-            enable_return_data: trace_config.enable_return_data,
-        }
-    }
-}
-
-#[derive(Debug)]
 pub struct StructLogger {
-    config: Config,
+    gas_used: Option<U256>,
+    config: TraceConfig,
     logs: Vec<StructLog>,
     depth: usize,
-    storage_access: Option<(U256, U256)>,
+    storage: BTreeMap<Address, BTreeMap<String, String>>,
     exit_status: Option<ExitStatus>,
 }
 
 impl StructLogger {
     #[must_use]
-    pub fn new(trace_config: &TraceConfig) -> Self {
+    pub fn new(gas_used: Option<U256>, config: TraceConfig) -> Self {
         StructLogger {
-            config: trace_config.into(),
+            gas_used,
+            config,
             logs: vec![],
             depth: 0,
-            storage_access: None,
+            storage: BTreeMap::new(),
             exit_status: None,
         }
     }
 }
 
+#[async_trait(?Send)]
 impl EventListener for StructLogger {
-    fn event(&mut self, _executor_state: &impl Database, event: Event) {
+    /// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/logger/logger.go#L151>
+    async fn event(
+        &mut self,
+        executor_state: &impl Database,
+        event: Event,
+    ) -> evm_loader::error::Result<()> {
         match event {
             Event::BeginVM { .. } => {
                 self.depth += 1;
             }
-            Event::EndVM { status } => {
+            Event::EndVM {
+                context: _context,
+                chain_id: _chain_id,
+                status,
+            } => {
                 if self.depth == 1 {
                     self.exit_status = Some(status);
                 }
                 self.depth -= 1;
             }
             Event::BeginStep {
+                context,
+                chain_id: _chain_id,
                 opcode,
                 pc,
                 stack,
                 memory,
             } => {
+                let storage = if !self.config.disable_storage {
+                    if opcode == opcode_table::SLOAD && !stack.is_empty() {
+                        let index = U256::from_be_bytes(stack[stack.len() - 1]);
+
+                        self.storage.entry(context.contract).or_default().insert(
+                            hex::encode(index.to_be_bytes()),
+                            hex::encode(executor_state.storage(context.contract, index).await?),
+                        );
+
+                        Some(
+                            self.storage
+                                .get(&context.contract)
+                                .cloned()
+                                .unwrap_or_default(),
+                        )
+                    } else if opcode == opcode_table::SSTORE && stack.len() >= 2 {
+                        self.storage.entry(context.contract).or_default().insert(
+                            hex::encode(stack[stack.len() - 1]),
+                            hex::encode(stack[stack.len() - 2]),
+                        );
+
+                        Some(
+                            self.storage
+                                .get(&context.contract)
+                                .cloned()
+                                .unwrap_or_default(),
+                        )
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
                 let stack = if self.config.disable_stack {
                     None
                 } else {
@@ -174,44 +205,28 @@ impl EventListener for StructLogger {
                     None
                 };
 
-                let log = StructLog::new(opcode, pc as u64, 0, self.depth, memory, stack);
-                self.logs.push(log);
+                self.logs.push(StructLog::new(
+                    opcode, pc as u64, 0, self.depth, memory, stack, storage,
+                ));
             }
-            Event::EndStep {
-                gas_used,
-                return_data,
-            } => {
-                let last = self
-                    .logs
-                    .last_mut()
-                    .expect("`EndStep` event before `BeginStep`");
-                last.gas = gas_used;
-                if !self.config.disable_storage {
-                    if let Some((index, value)) = self.storage_access.take() {
-                        last.storage.get_or_insert_with(Default::default).insert(
-                            hex::encode(index.to_be_bytes()),
-                            hex::encode(value.to_be_bytes()),
-                        );
-                    };
-                }
+            Event::EndStep { return_data } => {
                 if self.config.enable_return_data {
-                    last.return_data = return_data.map(Into::into);
-                }
-            }
-            Event::StorageAccess { index, value } => {
-                if !self.config.disable_storage {
-                    self.storage_access = Some((index, U256::from_be_bytes(value)));
+                    self.logs
+                        .last_mut()
+                        .expect("`EndStep` event before `BeginStep`")
+                        .return_data = return_data.map(Into::into);
                 }
             }
         };
+        Ok(())
     }
 }
 
 impl Tracer for StructLogger {
-    fn into_traces(self) -> Value {
-        let exit_status = self.exit_status.expect("Emulation is not completed");
+    fn into_traces(self, used_gas: u64) -> Value {
+        let exit_status = self.exit_status.expect("Exit status should be set");
         let result = StructLoggerResult {
-            gas: 0,
+            gas: self.gas_used.map_or(used_gas, U256::as_u64),
             failed: !exit_status
                 .is_succeed()
                 .expect("Emulation is not completed"),

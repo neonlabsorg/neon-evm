@@ -800,12 +800,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         let index = self.stack.pop_u256()?;
         let value = backend.storage(self.context.contract, index).await?;
 
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::StorageAccess { index, value }
-        );
-
         self.stack.push_array(&value)?;
 
         Ok(Action::Continue)
@@ -820,12 +814,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         let index = self.stack.pop_u256()?;
         let value = *self.stack.pop_array()?;
-
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::StorageAccess { index, value }
-        );
 
         backend.set_storage(self.context.contract, index, value)?;
 
@@ -1085,7 +1073,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             backend,
             super::tracing::Event::BeginVM {
                 context,
-                code: init_code.to_vec()
+                chain_id,
+                code: init_code.to_vec(),
+                reason: Reason::Create
             }
         );
 
@@ -1146,7 +1136,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             backend,
             super::tracing::Event::BeginVM {
                 context,
-                code: code.to_vec()
+                chain_id,
+                code: code.to_vec(),
+                reason: Reason::Call
             }
         );
 
@@ -1202,7 +1194,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             backend,
             super::tracing::Event::BeginVM {
                 context,
-                code: code.to_vec()
+                chain_id,
+                code: code.to_vec(),
+                reason: Reason::Call
             }
         );
 
@@ -1256,7 +1250,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             backend,
             super::tracing::Event::BeginVM {
                 context,
-                code: code.to_vec()
+                chain_id: self.chain_id,
+                code: code.to_vec(),
+                reason: Reason::Call
             }
         );
 
@@ -1306,7 +1302,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             backend,
             super::tracing::Event::BeginVM {
                 context,
-                code: code.to_vec()
+                chain_id,
+                code: code.to_vec(),
+                reason: Reason::Call
             }
         );
 
@@ -1366,11 +1364,17 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     #[maybe_async]
     pub async fn opcode_return_impl(
         &mut self,
-        mut return_data: Vec<u8>,
+        #[cfg(target_os = "solana")] mut return_data: Vec<u8>,
+        #[cfg(not(target_os = "solana"))] return_data: Vec<u8>,
         backend: &mut B,
     ) -> Result<Action> {
         if self.reason == Reason::Create {
+            #[cfg(target_os = "solana")]
             let code = std::mem::take(&mut return_data);
+
+            #[cfg(not(target_os = "solana"))]
+            let code = return_data.clone();
+
             backend.set_code(self.context.contract, self.chain_id, code)?;
         }
 
@@ -1386,6 +1390,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             self,
             backend,
             super::tracing::Event::EndVM {
+                context: self.context,
+                chain_id: self.chain_id,
                 status: super::ExitStatus::Return(return_data.clone())
             }
         );
@@ -1436,6 +1442,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             self,
             backend,
             super::tracing::Event::EndVM {
+                context: self.context,
+                chain_id: self.chain_id,
                 status: super::ExitStatus::Revert(return_data.clone())
             }
         );
@@ -1493,6 +1501,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             self,
             backend,
             super::tracing::Event::EndVM {
+                context: self.context,
+                chain_id: self.chain_id,
                 status: super::ExitStatus::Suicide
             }
         );
@@ -1526,6 +1536,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             self,
             backend,
             super::tracing::Event::EndVM {
+                context: self.context,
+                chain_id: self.chain_id,
                 status: super::ExitStatus::Stop
             }
         );

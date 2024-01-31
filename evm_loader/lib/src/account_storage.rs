@@ -433,10 +433,11 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         L: FnOnce(LegacyEtherData) -> R,
         F: FnOnce(BalanceAccount) -> R,
     {
-        let (pubkey, mut account, mut legacy) = self
+        let Ok((pubkey, mut account, mut legacy)) = self
             .use_balance_account(address, chain_id, false)
-            .await
-            .unwrap();
+            .await else {
+            return default;
+        };
 
         if let Some(account_data) = &mut account {
             let info = account_info(&pubkey, account_data);
@@ -470,7 +471,9 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         L: FnOnce(LegacyEtherData, &AccountInfo) -> R,
         F: FnOnce(ContractAccount) -> R,
     {
-        let (pubkey, mut account) = self.use_contract_account(address, false).await.unwrap();
+        let Ok((pubkey, mut account)) = self.use_contract_account(address, false).await else {
+            return default;
+        };
 
         let Some(account_data) = &mut account else {
             return default;

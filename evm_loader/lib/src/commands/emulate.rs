@@ -139,7 +139,7 @@ async fn emulate_trx<T: Tracer>(
             result: exit_status.into_result().unwrap_or_default(),
             iterations,
         },
-        tracer.map(|tracer| tracer.into_traces()),
+        tracer.map(|tracer| tracer.into_traces(used_gas)),
     ))
 }
 

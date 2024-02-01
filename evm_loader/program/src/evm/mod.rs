@@ -11,6 +11,7 @@ use solana_program::log::sol_log_data;
 
 pub use buffer::Buffer;
 
+use crate::evm::database::DatabaseExt;
 #[cfg(not(target_os = "solana"))]
 use crate::evm::tracing::{Event, TracerTypeOpt};
 use crate::{
@@ -326,8 +327,7 @@ impl<B: Database> Machine<B> {
         let target = Address::from_create(&origin, trx.nonce());
         sol_log_data(&[b"ENTER", b"CREATE", target.as_bytes()]);
 
-        if (backend.nonce(target, chain_id).await? != 0) || (backend.code_size(target).await? != 0)
-        {
+        if backend.is_non_empty(target, chain_id).await? {
             return Err(Error::DeployToExistingAccount(target, origin));
         }
 

@@ -53,6 +53,9 @@ pub trait Database {
 /// Provides convenience methods that can be implemented in terms of `Database`.
 #[maybe_async(?Send)]
 pub trait DatabaseExt {
+    /// See <https://github.com/ethereum/go-ethereum/blob/master/core/vm/evm.go#L443>
+    async fn is_non_empty(&self, address: Address, chain_id: u64) -> Result<bool>;
+
     /// Returns whether an account exists and is non-empty as specified in
     /// https://eips.ethereum.org/EIPS/eip-161.
     async fn account_exists(&self, address: Address, chain_id: u64) -> Result<bool>;
@@ -64,6 +67,10 @@ pub trait DatabaseExt {
 
 #[maybe_async(?Send)]
 impl<T: Database> DatabaseExt for T {
+    async fn is_non_empty(&self, address: Address, chain_id: u64) -> Result<bool> {
+        Ok(self.nonce(address, chain_id).await? > 0 || self.code_size(address).await? > 0)
+    }
+
     async fn account_exists(&self, address: Address, chain_id: u64) -> Result<bool> {
         Ok(self.nonce(address, chain_id).await? > 0 || self.balance(address, chain_id).await? > 0)
     }
@@ -185,7 +192,7 @@ mod tests {
         }
 
         async fn code_size(&self, address: Address) -> Result<usize> {
-            unimplemented!();
+            Ok(self.code(address).await?.len())
         }
 
         async fn code(&self, address: Address) -> Result<Buffer> {
@@ -257,14 +264,26 @@ mod tests {
     #[maybe_async]
     async fn code_hash(database_entry: Option<TestDatabaseEntry>) -> [u8; 32] {
         let address = Address::default();
-        let database: TestDatabase = database_entry
-            .map(|entry| (address, entry))
-            .into_iter()
-            .collect();
-        database
+        test_database(database_entry, address)
             .code_hash(address, crate::config::DEFAULT_CHAIN_ID)
             .await
             .unwrap()
+    }
+
+    #[maybe_async]
+    async fn is_non_empty(database_entry: Option<TestDatabaseEntry>) -> bool {
+        let address = Address::default();
+        test_database(database_entry, address)
+            .is_non_empty(address, crate::config::DEFAULT_CHAIN_ID)
+            .await
+            .unwrap()
+    }
+
+    fn test_database(database_entry: Option<TestDatabaseEntry>, address: Address) -> TestDatabase {
+        database_entry
+            .map(|entry| (address, entry))
+            .into_iter()
+            .collect()
     }
 
     #[tokio::test]
@@ -300,6 +319,42 @@ mod tests {
                 107, 210, 221, 107, 212, 8, 203, 238, 51, 66, 147, 88, 191, 36, 253, 198, 70, 18,
                 251, 248, 177, 180, 219, 96, 69, 24, 244, 15, 253, 52, 182, 7
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn is_non_empty_account_with_nonce() {
+        assert!(
+            is_non_empty(Some(TestDatabaseEntry {
+                balance: U256::from(0u8),
+                nonce: 1,
+                code: vec![],
+            }))
+            .await,
+        );
+    }
+
+    #[tokio::test]
+    async fn is_non_empty_account_with_zero_nonce_but_non_empty_code() {
+        assert!(
+            is_non_empty(Some(TestDatabaseEntry {
+                balance: U256::from(0u8),
+                nonce: 0,
+                code: vec![1, 2, 3],
+            }))
+            .await,
+        );
+    }
+
+    #[tokio::test]
+    async fn is_non_empty_account_with_zero_nonce_and_empty_code() {
+        assert!(
+            !is_non_empty(Some(TestDatabaseEntry {
+                balance: U256::from(0u8),
+                nonce: 0,
+                code: vec![],
+            }))
+            .await,
         );
     }
 }

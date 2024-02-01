@@ -1093,9 +1093,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
 
         sol_log_data(&[b"ENTER", b"CREATE", address.as_bytes()]);
 
-        if (backend.nonce(address, chain_id).await? != 0)
-            || (backend.code_size(address).await? != 0)
-        {
+        if backend.is_non_empty(address, chain_id).await? {
             return Err(Error::DeployToExistingAccount(address, self.context.caller));
         }
 

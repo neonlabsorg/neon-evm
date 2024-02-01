@@ -181,6 +181,7 @@ macro_rules! machine_type {
     }
 }
 
+use crate::evm::database::DatabaseExt;
 pub(crate) use machine_type;
 
 #[cfg(not(target_os = "solana"))]
@@ -371,8 +372,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         let target = Address::from_create(&origin, trx.nonce());
         sol_log_data(&[b"ENTER", b"CREATE", target.as_bytes()]);
 
-        if (backend.nonce(target, chain_id).await? != 0) || (backend.code_size(target).await? != 0)
-        {
+        if backend.is_non_empty(target, chain_id).await? {
             return Err(Error::DeployToExistingAccount(target, origin));
         }
 

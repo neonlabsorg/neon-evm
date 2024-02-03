@@ -1898,7 +1898,6 @@ dependencies = [
  "bincode",
  "borsh 0.9.3",
  "cfg-if",
- "enum_delegate",
  "ethnum",
  "evm-loader-macro",
  "hex",

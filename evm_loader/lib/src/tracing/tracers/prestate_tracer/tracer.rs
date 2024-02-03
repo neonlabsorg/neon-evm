@@ -2,6 +2,7 @@ use crate::tracing::tracers::prestate_tracer::state_diff::{
     build_prestate_tracer_diff_mode_result, build_prestate_tracer_pre_state,
 };
 use crate::tracing::TraceConfig;
+use async_trait::async_trait;
 use evm_loader::evm::database::Database;
 use evm_loader::evm::tracing::{EmulationResult, Event, EventListener};
 use serde::{Deserialize, Serialize};
@@ -40,8 +41,15 @@ pub struct PrestateTracerConfig {
     pub diff_mode: bool,
 }
 
+#[async_trait(?Send)]
 impl EventListener for PrestateTracer {
-    fn event(&mut self, _executor_state: &mut impl Database, _event: Event) {}
+    async fn event(
+        &mut self,
+        _executor_state: &mut impl Database,
+        _event: Event,
+    ) -> evm_loader::error::Result<()> {
+        Ok(())
+    }
 
     fn into_traces(self, emulation_result: EmulationResult) -> Value {
         if self.config.diff_mode {

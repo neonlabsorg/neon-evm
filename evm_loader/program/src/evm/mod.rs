@@ -36,14 +36,14 @@ macro_rules! tracing_event {
     ($self:ident, $backend:ident, $x:expr) => {
         #[cfg(not(target_os = "solana"))]
         if let Some(tracer) = &mut $self.tracer {
-            tracer.event($backend, $x);
+            tracer.event($backend, $x).await?;
         }
     };
     ($self:ident, $backend:ident, $condition:expr, $x:expr) => {
         #[cfg(not(target_os = "solana"))]
         if let Some(tracer) = &mut $self.tracer {
             if $condition {
-                tracer.event($backend, $x);
+                tracer.event($backend, $x).await?;
             }
         }
     };
@@ -53,13 +53,15 @@ macro_rules! trace_end_step {
     ($self:ident, $backend:ident, $return_data:expr) => {
         #[cfg(not(target_os = "solana"))]
         if let Some(tracer) = &mut $self.tracer {
-            tracer.event(
-                $backend,
-                crate::evm::tracing::Event::EndStep {
-                    gas_used: 0_u64,
-                    return_data: $return_data,
-                },
-            )
+            tracer
+                .event(
+                    $backend,
+                    crate::evm::tracing::Event::EndStep {
+                        gas_used: 0_u64,
+                        return_data: $return_data,
+                    },
+                )
+                .await?
         }
     };
     ($self:ident, $backend:ident, $condition:expr; $return_data_getter:expr) => {
@@ -495,7 +497,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn fork(
+    async fn fork(
         &mut self,
         backend: &mut B,
         reason: Reason,
@@ -504,7 +506,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         execution_code: Buffer,
         call_data: Buffer,
         gas_limit: Option<U256>,
-    ) {
+    ) -> Result<()> {
         tracing_event!(
             self,
             backend,
@@ -539,6 +541,8 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
         self.parent = Some(Box::new(other));
 
         backend.snapshot();
+
+        Ok(())
     }
 
     fn join(&mut self) -> Self {

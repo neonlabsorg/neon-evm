@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use std::collections::BTreeMap;
 
 use ethnum::U256;
@@ -141,8 +142,13 @@ impl StructLogger {
     }
 }
 
+#[async_trait(?Send)]
 impl EventListener for StructLogger {
-    fn event(&mut self, _executor_state: &mut impl Database, event: Event) {
+    async fn event(
+        &mut self,
+        _executor_state: &mut impl Database,
+        event: Event,
+    ) -> evm_loader::error::Result<()> {
         match event {
             Event::BeginVM { .. } => {
                 self.depth += 1;
@@ -213,6 +219,7 @@ impl EventListener for StructLogger {
                 }
             }
         };
+        Ok(())
     }
 
     fn into_traces(self, emulation_result: EmulationResult) -> Value {

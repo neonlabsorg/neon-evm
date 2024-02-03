@@ -2,6 +2,7 @@ use crate::tracing::tracers::openeth::tracer::OpenEthereumTracer;
 use crate::tracing::tracers::prestate_tracer::tracer::PrestateTracer;
 use crate::tracing::tracers::struct_logger::StructLogger;
 use crate::tracing::TraceConfig;
+use async_trait::async_trait;
 use ethnum::U256;
 use evm_loader::evm::database::Database;
 use evm_loader::evm::tracing::EmulationResult;
@@ -14,12 +15,33 @@ pub mod prestate_tracer;
 pub mod state_diff;
 pub mod struct_logger;
 
-#[derive(Debug)]
-#[enum_delegate::implement(EventListener)] // cannot use enum_dispatch because of trait and enum in different crates
+#[derive(Debug)] // cannot use enum_dispatch because of trait and enum in different crates
 pub enum TracerTypeEnum {
     StructLogger(StructLogger),
     OpenEthereumTracer(OpenEthereumTracer),
     PrestateTracer(PrestateTracer),
+}
+
+#[async_trait(?Send)]
+impl EventListener for TracerTypeEnum {
+    async fn event(
+        &mut self,
+        executor_state: &mut impl Database,
+        event: Event,
+    ) -> evm_loader::error::Result<()> {
+        match self {
+            TracerTypeEnum::StructLogger(tracer) => tracer.event(executor_state, event).await,
+            TracerTypeEnum::OpenEthereumTracer(tracer) => tracer.event(executor_state, event).await,
+            TracerTypeEnum::PrestateTracer(tracer) => tracer.event(executor_state, event).await,
+        }
+    }
+    fn into_traces(self, emulation_result: EmulationResult) -> Value {
+        match self {
+            TracerTypeEnum::StructLogger(tracer) => tracer.into_traces(emulation_result),
+            TracerTypeEnum::OpenEthereumTracer(tracer) => tracer.into_traces(emulation_result),
+            TracerTypeEnum::PrestateTracer(tracer) => tracer.into_traces(emulation_result),
+        }
+    }
 }
 
 pub fn new_tracer(

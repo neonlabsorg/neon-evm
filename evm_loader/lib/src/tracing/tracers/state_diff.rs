@@ -1,3 +1,4 @@
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
 use async_trait::async_trait;
@@ -134,7 +135,11 @@ pub struct StateDiffTracer {
 }
 
 impl StateDiffTracer {
-    pub fn event(&mut self, event: Event) {
+    pub async fn event(
+        &mut self,
+        executor_state: &mut impl Database,
+        event: Event,
+    ) -> evm_loader::error::Result<()> {
         match event {
             Event::BeginVM {
                 context,
@@ -149,22 +154,33 @@ impl StateDiffTracer {
                 stack,
                 memory: _memory,
             } => match opcode {
-                opcode_table::SLOAD | opcode_table::SSTORE if stack.len() >= 1 => {
+                opcode_table::SLOAD | opcode_table::SSTORE if !stack.is_empty() => {
                     let index = H256::from(&stack[stack.len() - 1]);
                     let address = self.context.as_ref().unwrap().contract;
 
-                    self.pre
+                    match self
+                        .pre
                         .entry(address)
                         .or_default()
                         .storage
                         .get_or_insert_with(BTreeMap::new)
-                        .entry(index);
-                    // .or_insert_with(|| );
+                        .entry(index)
+                    {
+                        Entry::Vacant(entry) => {
+                            entry.insert(H256::from(
+                                executor_state
+                                    .storage(address, U256::from_be_bytes(index.to_fixed_bytes()))
+                                    .await?,
+                            ));
+                        }
+                        Entry::Occupied(_) => {}
+                    }
                 }
                 _ => {}
             },
             Event::EndStep { .. } => {}
             _ => {}
         }
+        Ok(())
     }
 }

@@ -4,6 +4,7 @@ use std::fmt::Debug;
 
 use crate::evm::database::Database;
 use ethnum::U256;
+use maybe_async::maybe_async;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use web3::types::{Bytes, H256};
@@ -37,9 +38,13 @@ pub struct EmulationResult {
     pub states: States,
 }
 
-#[enum_delegate::register]
+#[maybe_async(?Send)]
 pub trait EventListener {
-    fn event(&mut self, executor_state: &mut impl Database, event: Event);
+    async fn event(
+        &mut self,
+        executor_state: &mut impl Database,
+        event: Event,
+    ) -> crate::error::Result<()>;
     fn into_traces(self, emulation_result: EmulationResult) -> Value;
 }
 

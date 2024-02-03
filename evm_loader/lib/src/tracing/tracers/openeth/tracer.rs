@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use std::fmt::Debug;
 
 use evm_loader::evm::database::Database;
@@ -38,8 +39,13 @@ impl From<TraceConfig> for CallAnalytics {
     }
 }
 
+#[async_trait(?Send)]
 impl EventListener for OpenEthereumTracer {
-    fn event(&mut self, _executor_state: &mut impl Database, event: Event) {
+    async fn event(
+        &mut self,
+        executor_state: &mut impl Database,
+        event: Event,
+    ) -> evm_loader::error::Result<()> {
         if let Event::EndStep {
             gas_used: _gas_used,
             return_data,
@@ -47,7 +53,7 @@ impl EventListener for OpenEthereumTracer {
         {
             self.output = return_data.clone().map(Into::into);
         }
-        self.state_diff_tracer.event(event);
+        self.state_diff_tracer.event(executor_state, event).await
     }
 
     fn into_traces(self, emulation_result: EmulationResult) -> Value {

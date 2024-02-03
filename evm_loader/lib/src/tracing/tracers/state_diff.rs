@@ -154,7 +154,7 @@ impl StateDiffTracer {
                 opcode,
                 pc: _pc,
                 stack,
-                memory: _memory,
+                memory,
             } => {
                 let context = self.context.as_ref().unwrap();
                 let caller = context.contract;
@@ -193,6 +193,17 @@ impl StateDiffTracer {
                             .await?;
 
                         let created_address = Address::from_create(&caller, nonce);
+                        self.lookup_account(executor_state, chain_id, created_address)
+                            .await?;
+                    }
+                    opcode_table::CREATE2 if stack.len() >= 4 => {
+                        let offset = U256::from_be_bytes(stack[stack.len() - 2]).as_usize();
+                        let length = U256::from_be_bytes(stack[stack.len() - 3]).as_usize();
+                        let salt = stack[stack.len() - 4];
+
+                        let initialization_code = &memory[offset..offset + length];
+                        let created_address =
+                            Address::from_create2(&caller, &salt, initialization_code);
                         self.lookup_account(executor_state, chain_id, created_address)
                             .await?;
                     }

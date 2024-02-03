@@ -156,7 +156,8 @@ impl StateDiffTracer {
                 stack,
                 memory: _memory,
             } => {
-                let caller = self.context.as_ref().unwrap().contract;
+                let context = self.context.as_ref().unwrap();
+                let caller = context.contract;
                 match opcode {
                     opcode_table::SLOAD | opcode_table::SSTORE if !stack.is_empty() => {
                         let index = H256::from(&stack[stack.len() - 1]);
@@ -184,6 +185,15 @@ impl StateDiffTracer {
                     {
                         let address = Address::from(*array_ref!(stack[stack.len() - 2], 12, 20));
                         self.lookup_account(executor_state, chain_id, address)
+                            .await?;
+                    }
+                    opcode_table::CREATE => {
+                        let nonce = executor_state
+                            .nonce(caller, context.contract_chain_id)
+                            .await?;
+
+                        let created_address = Address::from_create(&caller, nonce);
+                        self.lookup_account(executor_state, chain_id, created_address)
                             .await?;
                     }
                     _ => {}

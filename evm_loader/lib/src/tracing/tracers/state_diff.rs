@@ -155,27 +155,30 @@ impl StateDiffTracer {
                 pc: _pc,
                 stack,
                 memory: _memory,
-            } => match opcode {
-                opcode_table::SLOAD | opcode_table::SSTORE if !stack.is_empty() => {
-                    let address = self.context.as_ref().unwrap().contract;
-                    let index = H256::from(&stack[stack.len() - 1]);
+            } => {
+                let caller = self.context.as_ref().unwrap().contract;
+                match opcode {
+                    opcode_table::SLOAD | opcode_table::SSTORE if !stack.is_empty() => {
+                        let index = H256::from(&stack[stack.len() - 1]);
+                        self.lookup_storage(executor_state, caller, index).await?;
+                    }
+                    opcode_table::EXTCODECOPY
+                    | opcode_table::EXTCODEHASH
+                    | opcode_table::EXTCODESIZE
+                    | opcode_table::BALANCE
+                    | opcode_table::SELFDESTRUCT
+                        if !stack.is_empty() =>
+                    {
+                        let address = Address::from(*array_ref!(stack[stack.len() - 1], 12, 20));
 
-                    self.lookup_storage(executor_state, address, index).await?;
-                }
-                opcode_table::EXTCODECOPY
-                | opcode_table::EXTCODEHASH
-                | opcode_table::EXTCODESIZE
-                | opcode_table::BALANCE
-                | opcode_table::SELFDESTRUCT
-                    if !stack.is_empty() =>
-                {
-                    let address = Address::from(*array_ref!(stack[stack.len() - 1], 12, 20));
+                        self.lookup_account(executor_state, chain_id, address)
+                            .await?;
 
-                    self.lookup_account(executor_state, chain_id, address)
-                        .await?;
+                        // todo mark caller as deleted for selfdestruct and add unit test
+                    }
+                    _ => {}
                 }
-                _ => {}
-            },
+            }
             Event::EndStep { .. } => {}
             _ => {}
         }

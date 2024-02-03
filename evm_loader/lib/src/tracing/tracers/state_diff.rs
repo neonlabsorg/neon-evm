@@ -171,30 +171,39 @@ impl StateDiffTracer {
                 {
                     let address = Address::from(*array_ref!(stack[stack.len() - 1], 12, 20));
 
-                    match self.pre.entry(address) {
-                        Entry::Vacant(entry) => {
-                            entry.insert(Account {
-                                balance: Some(web3::types::U256::from(
-                                    executor_state
-                                        .balance(address, chain_id)
-                                        .await?
-                                        .to_be_bytes(),
-                                )),
-                                code: Some(Bytes::from(
-                                    executor_state.code(address).await?.to_vec(),
-                                )),
-                                nonce: Some(executor_state.nonce(address, chain_id).await?),
-                                storage: None,
-                            });
-                        }
-                        Entry::Occupied(_) => {}
-                    }
+                    self.lookup_account(executor_state, chain_id, address)
+                        .await?;
                 }
                 _ => {}
             },
             Event::EndStep { .. } => {}
             _ => {}
         }
+        Ok(())
+    }
+
+    async fn lookup_account(
+        &mut self,
+        executor_state: &mut impl Database,
+        chain_id: u64,
+        address: Address,
+    ) -> evm_loader::error::Result<()> {
+        match self.pre.entry(address) {
+            Entry::Vacant(entry) => {
+                entry.insert(Account {
+                    balance: Some(web3::types::U256::from(
+                        executor_state
+                            .balance(address, chain_id)
+                            .await?
+                            .to_be_bytes(),
+                    )),
+                    code: Some(Bytes::from(executor_state.code(address).await?.to_vec())),
+                    nonce: Some(executor_state.nonce(address, chain_id).await?),
+                    storage: None,
+                });
+            }
+            Entry::Occupied(_) => {}
+        };
         Ok(())
     }
 

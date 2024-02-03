@@ -130,6 +130,7 @@ fn to_web3_u256(v: U256) -> web3::types::U256 {
 
 #[derive(Default, Debug)]
 pub struct StateDiffTracer {
+    depth: usize,
     context: Option<Context>,
     pre: State,
     _post: State,
@@ -147,9 +148,14 @@ impl StateDiffTracer {
                 context,
                 code: _code,
             } => {
+                if self.depth == 0 {}
+
+                self.depth += 1;
                 self.context = Some(context);
             }
-            Event::EndVM { .. } => {}
+            Event::EndVM { .. } => {
+                self.depth -= 1;
+            }
             Event::BeginStep {
                 opcode,
                 pc: _pc,
@@ -157,11 +163,11 @@ impl StateDiffTracer {
                 memory,
             } => {
                 let context = self.context.as_ref().unwrap();
-                let caller = context.contract;
+                let contract = context.contract;
                 match opcode {
                     opcode_table::SLOAD | opcode_table::SSTORE if !stack.is_empty() => {
                         let index = H256::from(&stack[stack.len() - 1]);
-                        self.lookup_storage(executor_state, caller, index).await?;
+                        self.lookup_storage(executor_state, contract, index).await?;
                     }
                     opcode_table::EXTCODECOPY
                     | opcode_table::EXTCODEHASH
@@ -171,7 +177,6 @@ impl StateDiffTracer {
                         if !stack.is_empty() =>
                     {
                         let address = Address::from(*array_ref!(stack[stack.len() - 1], 12, 20));
-
                         self.lookup_account(executor_state, chain_id, address)
                             .await?;
 
@@ -189,10 +194,10 @@ impl StateDiffTracer {
                     }
                     opcode_table::CREATE => {
                         let nonce = executor_state
-                            .nonce(caller, context.contract_chain_id)
+                            .nonce(contract, context.contract_chain_id)
                             .await?;
 
-                        let created_address = Address::from_create(&caller, nonce);
+                        let created_address = Address::from_create(&contract, nonce);
                         self.lookup_account(executor_state, chain_id, created_address)
                             .await?;
                     }
@@ -203,7 +208,7 @@ impl StateDiffTracer {
 
                         let initialization_code = &memory[offset..offset + length];
                         let created_address =
-                            Address::from_create2(&caller, &salt, initialization_code);
+                            Address::from_create2(&contract, &salt, initialization_code);
                         self.lookup_account(executor_state, chain_id, created_address)
                             .await?;
                     }

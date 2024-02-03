@@ -134,7 +134,7 @@ pub struct StateDiffTracer {
     depth: usize,
     context: Option<Context>,
     pre: State,
-    _post: State,
+    post: State,
 }
 
 impl StateDiffTracer {
@@ -185,6 +185,43 @@ impl StateDiffTracer {
                     self.pre.entry(context.caller).or_default().balance = Some(
                         self.pre.entry(context.caller).or_default().balance.unwrap() - self.tx_fee,
                     );
+
+                    for (address, account) in &self.pre {
+                        self.post.insert(
+                            *address,
+                            Account {
+                                balance: Some(web3::types::U256::from(
+                                    executor_state
+                                        .balance(*address, chain_id)
+                                        .await?
+                                        .to_be_bytes(),
+                                )),
+                                code: Some(Bytes::from(
+                                    executor_state.code(*address).await?.to_vec(),
+                                )),
+                                nonce: Some(executor_state.nonce(*address, chain_id).await?),
+                                storage: {
+                                    let mut new_storage = BTreeMap::new();
+
+                                    for key in account.storage.as_ref().unwrap().keys() {
+                                        new_storage.insert(
+                                            *key,
+                                            H256::from(
+                                                executor_state
+                                                    .storage(
+                                                        *address,
+                                                        U256::from_be_bytes(key.to_fixed_bytes()),
+                                                    )
+                                                    .await?,
+                                            ),
+                                        );
+                                    }
+
+                                    Some(new_storage)
+                                },
+                            },
+                        );
+                    }
                 }
             }
             Event::BeginStep {

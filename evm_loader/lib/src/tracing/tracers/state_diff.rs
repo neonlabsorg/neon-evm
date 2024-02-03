@@ -176,6 +176,16 @@ impl StateDiffTracer {
 
                         // todo mark caller as deleted for selfdestruct and add unit test
                     }
+                    opcode_table::DELEGATECALL
+                    | opcode_table::CALL
+                    | opcode_table::STATICCALL
+                    | opcode_table::CALLCODE
+                        if stack.len() >= 5 =>
+                    {
+                        let address = Address::from(*array_ref!(stack[stack.len() - 2], 12, 20));
+                        self.lookup_account(executor_state, chain_id, address)
+                            .await?;
+                    }
                     _ => {}
                 }
             }

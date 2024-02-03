@@ -201,23 +201,30 @@ impl StateDiffTracer {
                                 )),
                                 nonce: Some(executor_state.nonce(*address, chain_id).await?),
                                 storage: {
-                                    let mut new_storage = BTreeMap::new();
+                                    match account.storage.as_ref() {
+                                        None => None,
+                                        Some(storage) => {
+                                            let mut new_storage = BTreeMap::new();
 
-                                    for key in account.storage.as_ref().unwrap().keys() {
-                                        new_storage.insert(
-                                            *key,
-                                            H256::from(
-                                                executor_state
-                                                    .storage(
-                                                        *address,
-                                                        U256::from_be_bytes(key.to_fixed_bytes()),
-                                                    )
-                                                    .await?,
-                                            ),
-                                        );
+                                            for key in storage.keys() {
+                                                new_storage.insert(
+                                                    *key,
+                                                    H256::from(
+                                                        executor_state
+                                                            .storage(
+                                                                *address,
+                                                                U256::from_be_bytes(
+                                                                    key.to_fixed_bytes(),
+                                                                ),
+                                                            )
+                                                            .await?,
+                                                    ),
+                                                );
+                                            }
+
+                                            Some(new_storage)
+                                        }
                                     }
-
-                                    Some(new_storage)
                                 },
                             },
                         );

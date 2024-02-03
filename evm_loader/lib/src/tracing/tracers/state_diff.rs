@@ -133,8 +133,7 @@ pub struct StateDiffTracer {
     tx_fee: web3::types::U256,
     depth: usize,
     context: Option<Context>,
-    pre: State,
-    post: State,
+    pub states: States,
 }
 
 impl StateDiffTracer {
@@ -157,8 +156,9 @@ impl StateDiffTracer {
 
                     let value = web3::types::U256::from_big_endian(&context.value.to_be_bytes());
 
-                    self.pre.entry(context.contract).or_default().balance = Some(
-                        self.pre
+                    self.states.pre.entry(context.contract).or_default().balance = Some(
+                        self.states
+                            .pre
                             .entry(context.contract)
                             .or_default()
                             .balance
@@ -166,11 +166,25 @@ impl StateDiffTracer {
                             - value,
                     );
 
-                    self.pre.entry(context.caller).or_default().balance =
-                        Some(self.pre.entry(context.caller).or_default().balance.unwrap() + value);
+                    self.states.pre.entry(context.caller).or_default().balance = Some(
+                        self.states
+                            .pre
+                            .entry(context.caller)
+                            .or_default()
+                            .balance
+                            .unwrap()
+                            + value,
+                    );
 
-                    self.pre.entry(context.caller).or_default().nonce =
-                        Some(self.pre.entry(context.caller).or_default().nonce.unwrap() - 1);
+                    self.states.pre.entry(context.caller).or_default().nonce = Some(
+                        self.states
+                            .pre
+                            .entry(context.caller)
+                            .or_default()
+                            .nonce
+                            .unwrap()
+                            - 1,
+                    );
                 }
 
                 self.depth += 1;
@@ -182,12 +196,18 @@ impl StateDiffTracer {
                 if self.depth == 0 {
                     let context = self.context.as_ref().unwrap();
 
-                    self.pre.entry(context.caller).or_default().balance = Some(
-                        self.pre.entry(context.caller).or_default().balance.unwrap() - self.tx_fee,
+                    self.states.pre.entry(context.caller).or_default().balance = Some(
+                        self.states
+                            .pre
+                            .entry(context.caller)
+                            .or_default()
+                            .balance
+                            .unwrap()
+                            - self.tx_fee,
                     );
 
-                    for (address, account) in &self.pre {
-                        self.post.insert(
+                    for (address, account) in &mut self.states.pre {
+                        self.states.post.insert(
                             *address,
                             Account {
                                 balance: Some(web3::types::U256::from(
@@ -302,7 +322,7 @@ impl StateDiffTracer {
         chain_id: u64,
         address: Address,
     ) -> evm_loader::error::Result<()> {
-        match self.pre.entry(address) {
+        match self.states.pre.entry(address) {
             Entry::Vacant(entry) => {
                 entry.insert(Account {
                     balance: Some(web3::types::U256::from(
@@ -328,6 +348,7 @@ impl StateDiffTracer {
         index: H256,
     ) -> evm_loader::error::Result<()> {
         match self
+            .states
             .pre
             .entry(address)
             .or_default()

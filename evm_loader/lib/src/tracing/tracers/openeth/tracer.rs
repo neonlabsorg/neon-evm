@@ -59,13 +59,13 @@ impl EventListener for OpenEthereumTracer {
             .await
     }
 
-    fn into_traces(self, emulation_result: EmulationResult) -> Value {
+    fn into_traces(self, _emulation_result: EmulationResult) -> Value {
         serde_json::to_value(TraceResults {
             output: self.output.unwrap_or_default(),
             trace: vec![],
             vm_trace: None,
             state_diff: if self.call_analytics.state_diffing {
-                Some(emulation_result.states.into_state_diff())
+                Some(self.state_diff_tracer.states.into_state_diff())
             } else {
                 None
             },

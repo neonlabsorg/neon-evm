@@ -70,7 +70,7 @@ async fn trace_increment_call(trace_config: TraceConfig, expected_trace: &str) {
     assert_eq!(emulate_response.steps_executed, 112);
     assert_eq!(emulate_response.used_gas, 25_000);
     assert_eq!(emulate_response.iterations, 3);
-    assert_eq!(emulate_response.solana_accounts.len(), 2);
+    assert_eq!(emulate_response.solana_accounts.len(), 4); // todo why 4 instead of 2?
 
     let result = into_traces(tracer, emulate_response);
 

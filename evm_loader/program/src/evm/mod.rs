@@ -36,14 +36,14 @@ macro_rules! tracing_event {
     ($self:ident, $backend:ident, $x:expr) => {
         #[cfg(not(target_os = "solana"))]
         if let Some(tracer) = &mut $self.tracer {
-            tracer.event($backend, $x).await?;
+            tracer.event($backend, $x, $self.chain_id).await?;
         }
     };
     ($self:ident, $backend:ident, $condition:expr, $x:expr) => {
         #[cfg(not(target_os = "solana"))]
         if let Some(tracer) = &mut $self.tracer {
             if $condition {
-                tracer.event($backend, $x).await?;
+                tracer.event($backend, $x, $self.chain_id).await?;
             }
         }
     };
@@ -60,6 +60,7 @@ macro_rules! trace_end_step {
                         gas_used: 0_u64,
                         return_data: $return_data,
                     },
+                    $self.chain_id,
                 )
                 .await?
         }

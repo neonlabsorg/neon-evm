@@ -148,6 +148,7 @@ impl EventListener for StructLogger {
         &mut self,
         _executor_state: &mut impl Database,
         event: Event,
+        _chain_id: u64,
     ) -> evm_loader::error::Result<()> {
         match event {
             Event::BeginVM { .. } => {

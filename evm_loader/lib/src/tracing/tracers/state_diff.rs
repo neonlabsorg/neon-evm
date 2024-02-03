@@ -1,3 +1,4 @@
+use arrayref::array_ref;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -139,6 +140,7 @@ impl StateDiffTracer {
         &mut self,
         executor_state: &mut impl Database,
         event: Event,
+        chain_id: u64,
     ) -> evm_loader::error::Result<()> {
         match event {
             Event::BeginVM {
@@ -155,23 +157,35 @@ impl StateDiffTracer {
                 memory: _memory,
             } => match opcode {
                 opcode_table::SLOAD | opcode_table::SSTORE if !stack.is_empty() => {
-                    let index = H256::from(&stack[stack.len() - 1]);
                     let address = self.context.as_ref().unwrap().contract;
+                    let index = H256::from(&stack[stack.len() - 1]);
 
-                    match self
-                        .pre
-                        .entry(address)
-                        .or_default()
-                        .storage
-                        .get_or_insert_with(BTreeMap::new)
-                        .entry(index)
-                    {
+                    self.lookup_storage(executor_state, address, index).await?;
+                }
+                opcode_table::EXTCODECOPY
+                | opcode_table::EXTCODEHASH
+                | opcode_table::EXTCODESIZE
+                | opcode_table::BALANCE
+                | opcode_table::SELFDESTRUCT
+                    if !stack.is_empty() =>
+                {
+                    let address = Address::from(*array_ref!(stack[stack.len() - 1], 12, 20));
+
+                    match self.pre.entry(address) {
                         Entry::Vacant(entry) => {
-                            entry.insert(H256::from(
-                                executor_state
-                                    .storage(address, U256::from_be_bytes(index.to_fixed_bytes()))
-                                    .await?,
-                            ));
+                            entry.insert(Account {
+                                balance: Some(web3::types::U256::from(
+                                    executor_state
+                                        .balance(address, chain_id)
+                                        .await?
+                                        .to_be_bytes(),
+                                )),
+                                code: Some(Bytes::from(
+                                    executor_state.code(address).await?.to_vec(),
+                                )),
+                                nonce: Some(executor_state.nonce(address, chain_id).await?),
+                                storage: None,
+                            });
                         }
                         Entry::Occupied(_) => {}
                     }
@@ -181,6 +195,32 @@ impl StateDiffTracer {
             Event::EndStep { .. } => {}
             _ => {}
         }
+        Ok(())
+    }
+
+    async fn lookup_storage(
+        &mut self,
+        executor_state: &mut impl Database,
+        address: Address,
+        index: H256,
+    ) -> evm_loader::error::Result<()> {
+        match self
+            .pre
+            .entry(address)
+            .or_default()
+            .storage
+            .get_or_insert_with(BTreeMap::new)
+            .entry(index)
+        {
+            Entry::Vacant(entry) => {
+                entry.insert(H256::from(
+                    executor_state
+                        .storage(address, U256::from_be_bytes(index.to_fixed_bytes()))
+                        .await?,
+                ));
+            }
+            Entry::Occupied(_) => {}
+        };
         Ok(())
     }
 }

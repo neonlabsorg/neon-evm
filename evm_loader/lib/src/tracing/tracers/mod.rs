@@ -28,11 +28,18 @@ impl EventListener for TracerTypeEnum {
         &mut self,
         executor_state: &mut impl Database,
         event: Event,
+        chain_id: u64,
     ) -> evm_loader::error::Result<()> {
         match self {
-            TracerTypeEnum::StructLogger(tracer) => tracer.event(executor_state, event).await,
-            TracerTypeEnum::OpenEthereumTracer(tracer) => tracer.event(executor_state, event).await,
-            TracerTypeEnum::PrestateTracer(tracer) => tracer.event(executor_state, event).await,
+            TracerTypeEnum::StructLogger(tracer) => {
+                tracer.event(executor_state, event, chain_id).await
+            }
+            TracerTypeEnum::OpenEthereumTracer(tracer) => {
+                tracer.event(executor_state, event, chain_id).await
+            }
+            TracerTypeEnum::PrestateTracer(tracer) => {
+                tracer.event(executor_state, event, chain_id).await
+            }
         }
     }
     fn into_traces(self, emulation_result: EmulationResult) -> Value {

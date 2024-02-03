@@ -47,6 +47,7 @@ impl EventListener for PrestateTracer {
         &mut self,
         _executor_state: &mut impl Database,
         _event: Event,
+        _chain_id: u64,
     ) -> evm_loader::error::Result<()> {
         Ok(())
     }

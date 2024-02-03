@@ -44,6 +44,7 @@ pub trait EventListener {
         &mut self,
         executor_state: &mut impl Database,
         event: Event,
+        chain_id: u64,
     ) -> crate::error::Result<()>;
     fn into_traces(self, emulation_result: EmulationResult) -> Value;
 }

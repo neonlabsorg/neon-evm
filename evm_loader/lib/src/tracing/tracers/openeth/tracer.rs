@@ -45,6 +45,7 @@ impl EventListener for OpenEthereumTracer {
         &mut self,
         executor_state: &mut impl Database,
         event: Event,
+        chain_id: u64,
     ) -> evm_loader::error::Result<()> {
         if let Event::EndStep {
             gas_used: _gas_used,
@@ -53,7 +54,9 @@ impl EventListener for OpenEthereumTracer {
         {
             self.output = return_data.clone().map(Into::into);
         }
-        self.state_diff_tracer.event(executor_state, event).await
+        self.state_diff_tracer
+            .event(executor_state, event, chain_id)
+            .await
     }
 
     fn into_traces(self, emulation_result: EmulationResult) -> Value {

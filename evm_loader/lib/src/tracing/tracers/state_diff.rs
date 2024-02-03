@@ -130,6 +130,7 @@ fn to_web3_u256(v: U256) -> web3::types::U256 {
 
 #[derive(Default, Debug)]
 pub struct StateDiffTracer {
+    tx_fee: web3::types::U256,
     depth: usize,
     context: Option<Context>,
     pre: State,
@@ -148,13 +149,43 @@ impl StateDiffTracer {
                 context,
                 code: _code,
             } => {
-                if self.depth == 0 {}
+                if self.depth == 0 {
+                    self.lookup_account(executor_state, chain_id, context.caller)
+                        .await?;
+                    self.lookup_account(executor_state, chain_id, context.contract)
+                        .await?;
+
+                    let value = web3::types::U256::from_big_endian(&context.value.to_be_bytes());
+
+                    self.pre.entry(context.contract).or_default().balance = Some(
+                        self.pre
+                            .entry(context.contract)
+                            .or_default()
+                            .balance
+                            .unwrap()
+                            - value,
+                    );
+
+                    self.pre.entry(context.caller).or_default().balance =
+                        Some(self.pre.entry(context.caller).or_default().balance.unwrap() + value);
+
+                    self.pre.entry(context.caller).or_default().nonce =
+                        Some(self.pre.entry(context.caller).or_default().nonce.unwrap() - 1);
+                }
 
                 self.depth += 1;
                 self.context = Some(context);
             }
             Event::EndVM { .. } => {
                 self.depth -= 1;
+
+                if self.depth == 0 {
+                    let context = self.context.as_ref().unwrap();
+
+                    self.pre.entry(context.caller).or_default().balance = Some(
+                        self.pre.entry(context.caller).or_default().balance.unwrap() - self.tx_fee,
+                    );
+                }
             }
             Event::BeginStep {
                 opcode,

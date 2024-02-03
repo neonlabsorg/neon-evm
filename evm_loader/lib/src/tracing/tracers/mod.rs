@@ -53,6 +53,7 @@ impl EventListener for TracerTypeEnum {
 
 pub fn new_tracer(
     gas_used: Option<U256>,
+    gas_price: Option<U256>,
     trace_config: TraceConfig,
 ) -> evm_loader::error::Result<TracerTypeEnum> {
     match trace_config.tracer.as_deref() {
@@ -61,6 +62,9 @@ pub fn new_tracer(
             trace_config,
         ))),
         Some("openethereum") => Ok(TracerTypeEnum::OpenEthereumTracer(OpenEthereumTracer::new(
+            gas_used
+                .unwrap_or_default()
+                .saturating_mul(gas_price.unwrap_or_default()),
             trace_config,
         ))),
         Some("prestateTracer") => Ok(TracerTypeEnum::PrestateTracer(PrestateTracer::new(

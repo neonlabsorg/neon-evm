@@ -40,9 +40,11 @@ async fn test_trace_prestate_diff_mode_contract_creation() {
 // tx_hash: 0xe888205d8f3f504d45da558ea0aea42a35130dad77f5e34c940acce3ca9182a8
 async fn trace_contract_creation(trace_config: TraceConfig, expected_trace: &str) {
     let gas_used = Some(U256::from(19_010_800u64));
+    let gas_price = Some(U256::from(360_307_885_736u64));
+
     let chain_id = 1234;
 
-    let tracer = new_tracer(gas_used, trace_config).unwrap();
+    let tracer = new_tracer(gas_used, gas_price, trace_config).unwrap();
 
     let program_id = Pubkey::new_unique();
 
@@ -71,7 +73,7 @@ async fn trace_contract_creation(trace_config: TraceConfig, expected_trace: &str
         data: Some(code.clone()),
         gas_limit: Some(U256::from(19_035_800u64)),
         gas_used,
-        gas_price: Some(U256::from(360_307_885_736u64)),
+        gas_price,
         ..TxParams::default()
     };
 

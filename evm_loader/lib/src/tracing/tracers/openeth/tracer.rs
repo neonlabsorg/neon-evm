@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use ethnum::U256;
 use std::fmt::Debug;
 
 use evm_loader::evm::database::Database;
@@ -21,11 +22,14 @@ pub struct OpenEthereumTracer {
 
 impl OpenEthereumTracer {
     #[must_use]
-    pub fn new(trace_config: TraceConfig) -> Self {
+    pub fn new(tx_fee: U256, trace_config: TraceConfig) -> Self {
         OpenEthereumTracer {
             output: None,
             call_analytics: trace_config.into(),
-            state_diff_tracer: StateDiffTracer::default(),
+            state_diff_tracer: StateDiffTracer {
+                tx_fee: web3::types::U256::from(tx_fee.to_be_bytes()),
+                ..StateDiffTracer::default()
+            },
         }
     }
 }

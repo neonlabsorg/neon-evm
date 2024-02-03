@@ -130,9 +130,9 @@ fn to_web3_u256(v: U256) -> web3::types::U256 {
 
 #[derive(Default, Debug)]
 pub struct StateDiffTracer {
-    tx_fee: web3::types::U256,
-    depth: usize,
-    context: Option<Context>,
+    pub tx_fee: web3::types::U256,
+    pub depth: usize,
+    pub context: Option<Context>,
     pub states: States,
 }
 
@@ -196,16 +196,6 @@ impl StateDiffTracer {
                 if self.depth == 0 {
                     let context = self.context.as_ref().unwrap();
 
-                    self.states.pre.entry(context.caller).or_default().balance = Some(
-                        self.states
-                            .pre
-                            .entry(context.caller)
-                            .or_default()
-                            .balance
-                            .unwrap()
-                            - self.tx_fee,
-                    );
-
                     for (address, account) in &mut self.states.pre {
                         self.states.post.insert(
                             *address,
@@ -249,6 +239,16 @@ impl StateDiffTracer {
                             },
                         );
                     }
+
+                    self.states.post.entry(context.caller).or_default().balance = Some(
+                        self.states
+                            .post
+                            .entry(context.caller)
+                            .or_default()
+                            .balance
+                            .unwrap()
+                            - self.tx_fee,
+                    );
                 }
             }
             Event::BeginStep {

@@ -40,9 +40,10 @@ async fn test_trace_prestate_diff_mode_increment_call() {
 // tx_hash: 0xf1a8130526ff5951a8d1c7e31623f23ec84d8644514e5513a440e139a30f5166
 async fn trace_increment_call(trace_config: TraceConfig, expected_trace: &str) {
     let gas_used = Some(U256::from(10_000u64));
+    let gas_price = Some(U256::from(360_123_562_234_u64));
     let chain_id = 1234;
 
-    let tracer = new_tracer(gas_used, trace_config).unwrap();
+    let tracer = new_tracer(gas_used, gas_price, trace_config).unwrap();
 
     let origin = Address::from_hex("0x82211934c340b29561381392348d48413e15adc8").unwrap();
     let target = Address::from_hex("0x356726f027a805fab3bd7dd0413a96d81bc6f599").unwrap();
@@ -56,7 +57,7 @@ async fn trace_increment_call(trace_config: TraceConfig, expected_trace: &str) {
     let mut test_account_storage =
         helpers::test_emulator_account_storage(program_id, &rpc, chain_id).await;
 
-    let trx = increment_tx_params(gas_used, origin, target).await;
+    let trx = increment_tx_params(gas_used, gas_price, origin, target).await;
 
     // let mut backend = ExecutorState::new(&mut test_account_storage);
 
@@ -85,13 +86,18 @@ async fn trace_increment_call(trace_config: TraceConfig, expected_trace: &str) {
     // );
 }
 
-async fn increment_tx_params(gas_used: Option<U256>, origin: Address, target: Address) -> TxParams {
+async fn increment_tx_params(
+    gas_used: Option<U256>,
+    gas_price: Option<U256>,
+    origin: Address,
+    target: Address,
+) -> TxParams {
     TxParams {
         from: origin,
         to: Some(target),
         data: Some(hex::decode("d09de08a").unwrap()),
         gas_used,
-        gas_price: Some(U256::from(360_123_562_234_u64)),
+        gas_price,
         gas_limit: Some(U256::from(30_000u64)),
         ..TxParams::default()
     }

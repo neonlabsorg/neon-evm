@@ -22,7 +22,11 @@ pub async fn trace_transaction(
         .map(|c| c.trace_config.clone())
         .unwrap_or_default();
 
-    let tracer = new_tracer(emulate_request.tx.gas_used, trace_config)?;
+    let tracer = new_tracer(
+        emulate_request.tx.gas_used,
+        emulate_request.tx.gas_price,
+        trace_config,
+    )?;
 
     let (r, tracer) =
         super::emulate::execute(rpc, program_id, emulate_request, Some(tracer)).await?;

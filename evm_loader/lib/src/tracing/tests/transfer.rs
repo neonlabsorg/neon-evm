@@ -51,10 +51,11 @@ async fn trace_transfer_transaction(trace_config: TraceConfig, expected_trace: &
     let value = U256::from(100_000_000_000_000_000u64);
 
     let gas_used = Some(U256::from(10_000u64));
+    let gas_price = Some(U256::from(426_771_289_239u64));
 
-    let trx = transfer_tx_params(origin, target, value, gas_used).await;
+    let trx = transfer_tx_params(origin, target, value, gas_used, gas_price).await;
 
-    let tracer = new_tracer(gas_used, trace_config).unwrap();
+    let tracer = new_tracer(gas_used, gas_price, trace_config).unwrap();
 
     let (emulate_response, tracer) =
         emulate_trx(trx, &mut test_account_storage, 1000, Some(tracer))
@@ -116,13 +117,14 @@ async fn transfer_tx_params(
     target: Address,
     value: U256,
     gas_used: Option<U256>,
+    gas_price: Option<U256>,
 ) -> TxParams {
     TxParams {
         from: origin,
         to: Some(target),
         value: Some(value),
         gas_used,
-        gas_price: Some(U256::from(426_771_289_239u64)),
+        gas_price,
         gas_limit: Some(U256::from(30_000u64)),
         ..TxParams::default()
     }

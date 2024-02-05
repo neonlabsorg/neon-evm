@@ -4,13 +4,12 @@ updates:
       directory: "/evm_loader"
       schedule:
           interval: "daily"
-          time: "10:00"
-          timezone: "UTC"
       target-branch: "develop"
       open-pull-requests-limit: 1
-      assignees:
+      reviewers:
         - "anton-lisanin"
         - "s-medvedev"
+        - "andreisilviudragnea"
       ignore:
         - dependency-name: "solana-program"
         - dependency-name: "spl-token"

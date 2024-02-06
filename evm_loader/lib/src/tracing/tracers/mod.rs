@@ -56,18 +56,20 @@ pub fn new_tracer(
     gas_price: Option<U256>,
     trace_config: TraceConfig,
 ) -> evm_loader::error::Result<TracerTypeEnum> {
+    let tx_fee = gas_used
+        .unwrap_or_default()
+        .saturating_mul(gas_price.unwrap_or_default());
     match trace_config.tracer.as_deref() {
         None | Some("") => Ok(TracerTypeEnum::StructLogger(StructLogger::new(
             gas_used,
             trace_config,
         ))),
         Some("openethereum") => Ok(TracerTypeEnum::OpenEthereumTracer(OpenEthereumTracer::new(
-            gas_used
-                .unwrap_or_default()
-                .saturating_mul(gas_price.unwrap_or_default()),
+            tx_fee,
             trace_config,
         ))),
         Some("prestateTracer") => Ok(TracerTypeEnum::PrestateTracer(PrestateTracer::new(
+            tx_fee,
             trace_config,
         ))),
         _ => Err(evm_loader::error::Error::Custom(format!(

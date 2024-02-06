@@ -7,16 +7,13 @@ use solana_sdk::pubkey::Pubkey;
 
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::rpc::Rpc;
-use crate::tracing::tracers::state_diff::ExecutorStateExt;
 use crate::types::{EmulateRequest, TxParams};
 use crate::{
     account_storage::{EmulatorAccountStorage, SolanaAccount},
     errors::NeonError,
     NeonResult,
 };
-use evm_loader::account_storage::AccountStorage;
 use evm_loader::evm::tracing::EventListener;
-use evm_loader::evm::tracing::States;
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
@@ -35,7 +32,6 @@ pub struct EmulateResponse {
     pub used_gas: u64,
     pub iterations: u64,
     pub solana_accounts: Vec<SolanaAccount>,
-    pub states: States,
 }
 
 impl EmulateResponse {
@@ -49,7 +45,6 @@ impl EmulateResponse {
             used_gas: 0,
             iterations: 0,
             solana_accounts: vec![],
-            states: Default::default(),
         }
     }
 }
@@ -90,14 +85,6 @@ pub(crate) async fn emulate_trx<T: EventListener>(
     tracer: Option<T>,
 ) -> NeonResult<(EmulateResponse, Option<T>)> {
     info!("tx_params: {:?}", tx_params);
-
-    let tx_fee = tx_params
-        .gas_used
-        .unwrap_or_default()
-        .saturating_mul(tx_params.gas_price.unwrap_or_default());
-    let chain_id = tx_params
-        .chain_id
-        .unwrap_or_else(|| account_storage.default_chain_id());
 
     let (origin, tx) = tx_params.into_transaction(account_storage).await;
 
@@ -150,9 +137,6 @@ pub(crate) async fn emulate_trx<T: EventListener>(
             solana_accounts,
             result: exit_status.into_result().unwrap_or_default(),
             iterations,
-            states: ExecutorState::new_with_actions(account_storage, actions)
-                .build_states(origin, tx_fee, chain_id)
-                .await?,
         },
         tracer,
     ))

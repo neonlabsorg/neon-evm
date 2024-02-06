@@ -38,7 +38,6 @@ impl From<EmulateResponse> for EmulationResult {
     fn from(emulate_response: EmulateResponse) -> Self {
         EmulationResult {
             used_gas: emulate_response.used_gas,
-            states: emulate_response.states,
         }
     }
 }

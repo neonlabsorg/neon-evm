@@ -35,7 +35,6 @@ pub struct States {
 #[derive(Debug, Clone)]
 pub struct EmulationResult {
     pub used_gas: u64,
-    pub states: States,
 }
 
 #[maybe_async(?Send)]

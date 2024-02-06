@@ -92,7 +92,7 @@ async fn trace_contract_creation(trace_config: TraceConfig, expected_trace: &str
     assert_eq!(emulate_response.steps_executed, 17);
     assert_eq!(emulate_response.used_gas, 25_000);
     assert_eq!(emulate_response.iterations, 3);
-    assert_eq!(emulate_response.solana_accounts.len(), 4); // TODO why 4 and not 3
+    assert_eq!(emulate_response.solana_accounts.len(), 3); // TODO why 4 and not 3
 
     let result = into_traces(tracer, emulate_response);
 

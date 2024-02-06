@@ -206,9 +206,7 @@ impl StateDiffTracer {
                                         .await?
                                         .to_be_bytes(),
                                 )),
-                                code: Some(Bytes::from(
-                                    executor_state.code(*address).await?.to_vec(),
-                                )),
+                                code: map_code(executor_state.code(*address).await?),
                                 nonce: Some(executor_state.nonce(*address, chain_id).await?),
                                 storage: {
                                     match account.storage.as_ref() {
@@ -331,7 +329,7 @@ impl StateDiffTracer {
                             .await?
                             .to_be_bytes(),
                     )),
-                    code: Some(Bytes::from(executor_state.code(address).await?.to_vec())),
+                    code: map_code(executor_state.code(address).await?),
                     nonce: Some(executor_state.nonce(address, chain_id).await?),
                     storage: None,
                 });

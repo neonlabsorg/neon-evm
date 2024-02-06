@@ -24,7 +24,7 @@ pub enum Action {
     Noop,
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, clippy::needless_pass_by_ref_mut)]
 impl<B: Database> Machine<B> {
     /// Unknown instruction
     #[maybe_async]

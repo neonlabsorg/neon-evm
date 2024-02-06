@@ -19,13 +19,13 @@ ENV NEON_REVISION=${REVISION}
 RUN cargo fmt --check && \
     cargo clippy --release && \
     cargo build --release && \
-    cargo build-bpf --features devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
-    cargo build-bpf --features testnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet.so && \
-    cargo build-bpf --features govertest && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest.so && \
-    cargo build-bpf --features govertest,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest-emergency.so && \
-    cargo build-bpf --features mainnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet.so && \
-    cargo build-bpf --features mainnet,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet-emergency.so && \
-    cargo build-bpf --features ci --dump
+    cargo build-sbf --features devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
+    cargo build-sbf --features testnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet.so && \
+    cargo build-sbf --features govertest && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest.so && \
+    cargo build-sbf --features govertest,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest-emergency.so && \
+    cargo build-sbf --features mainnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet.so && \
+    cargo build-sbf --features mainnet,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet-emergency.so && \
+    cargo build-sbf --features ci --dump
 
 
 # Add neon_test_invoke_program to the genesis

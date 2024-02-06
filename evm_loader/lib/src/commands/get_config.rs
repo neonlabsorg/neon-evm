@@ -71,8 +71,12 @@ impl CallDbClient {
             programdata_address,
         }) = account.state()
         {
-            let Some(programdata_account) = self.get_account(&programdata_address).await?.value else {
-                return Err(NeonError::AssociatedPdaNotFound(programdata_address, program_id));
+            let Some(programdata_account) = self.get_account(&programdata_address).await?.value
+            else {
+                return Err(NeonError::AssociatedPdaNotFound(
+                    programdata_address,
+                    program_id,
+                ));
             };
 
             let offset = UpgradeableLoaderState::size_of_programdata_metadata();

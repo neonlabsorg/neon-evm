@@ -159,6 +159,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
                             self.rent(),
                         )?;
                     }
+                    #[cfg(feature = "metaplex")]
                     program_id if mpl_token_metadata::check_id(program_id) => {
                         crate::external_programs::metaplex::emulate(
                             data,

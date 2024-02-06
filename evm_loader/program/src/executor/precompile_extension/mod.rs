@@ -3,6 +3,7 @@ use maybe_async::maybe_async;
 
 use super::ExecutorState;
 
+#[cfg(feature = "metaplex")]
 mod metaplex;
 mod neon_token;
 mod query_account;
@@ -22,6 +23,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
     const SYSTEM_ACCOUNT_SPL_TOKEN: Address = Address([
         0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x04,
     ]);
+    #[cfg(feature = "metaplex")]
     const SYSTEM_ACCOUNT_METAPLEX: Address = Address([
         0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x05,
     ]);
@@ -32,7 +34,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         *address == Self::SYSTEM_ACCOUNT_QUERY
             || *address == Self::SYSTEM_ACCOUNT_NEON_TOKEN
             || *address == Self::SYSTEM_ACCOUNT_SPL_TOKEN
-            || *address == Self::SYSTEM_ACCOUNT_METAPLEX
+        // || *address == Self::SYSTEM_ACCOUNT_METAPLEX
     }
 
     #[maybe_async]
@@ -53,6 +55,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
             Self::SYSTEM_ACCOUNT_SPL_TOKEN => {
                 Some(self.spl_token(address, input, context, is_static).await)
             }
+            #[cfg(feature = "metaplex")]
             Self::SYSTEM_ACCOUNT_METAPLEX => {
                 Some(self.metaplex(address, input, context, is_static).await)
             }

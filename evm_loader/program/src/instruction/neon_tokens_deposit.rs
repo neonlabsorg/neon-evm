@@ -77,7 +77,8 @@ fn validate(
         return Err(Error::AccountInvalidKey(contract_account, expected_pubkey));
     }
 
-    let Ok(chain_id_index) = crate::config::CHAIN_ID_LIST.binary_search_by_key(&chain_id, |c| c.0) else {
+    let Ok(chain_id_index) = crate::config::CHAIN_ID_LIST.binary_search_by_key(&chain_id, |c| c.0)
+    else {
         return Err(Error::InvalidChainId(chain_id));
     };
 

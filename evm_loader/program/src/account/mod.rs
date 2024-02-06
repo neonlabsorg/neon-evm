@@ -253,7 +253,10 @@ impl<'a> AccountsDB<'a> {
 
     #[must_use]
     pub fn get(&self, pubkey: &Pubkey) -> &AccountInfo<'a> {
-        let Ok(index) = self.sorted_accounts.binary_search_by_key(&pubkey, |a| a.key) else {
+        let Ok(index) = self
+            .sorted_accounts
+            .binary_search_by_key(&pubkey, |a| a.key)
+        else {
             panic!("address {pubkey} must be present in the transaction");
         };
 

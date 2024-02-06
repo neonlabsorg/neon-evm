@@ -11,7 +11,8 @@ pub fn process<'a>(
 
     let requested_property = std::str::from_utf8(instruction)?;
 
-    let Ok(index) = crate::config::PARAMETERS.binary_search_by(|p| p.0.cmp(requested_property)) else {
+    let Ok(index) = crate::config::PARAMETERS.binary_search_by(|p| p.0.cmp(requested_property))
+    else {
         return Err(ProgramError::InvalidArgument.into());
     };
 

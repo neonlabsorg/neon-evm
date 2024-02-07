@@ -11,6 +11,7 @@ use crate::commands::get_config::BuildConfigSimulator;
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::evm::database::Database;
 use evm_loader::evm::tracing::{Account, Event, State, States};
+use evm_loader::evm::Reason::Create;
 use evm_loader::evm::{opcode_table, Buffer, Context};
 use evm_loader::executor::ExecutorState;
 use evm_loader::types::Address;
@@ -147,6 +148,7 @@ impl StateDiffTracer {
             Event::BeginVM {
                 context,
                 code: _code,
+                reason,
             } => {
                 if self.depth == 0 {
                     self.lookup_account(executor_state, chain_id, context.caller)
@@ -155,16 +157,6 @@ impl StateDiffTracer {
                         .await?;
 
                     let value = web3::types::U256::from_big_endian(&context.value.to_be_bytes());
-
-                    self.states.pre.entry(context.contract).or_default().balance = Some(
-                        self.states
-                            .pre
-                            .entry(context.contract)
-                            .or_default()
-                            .balance
-                            .unwrap()
-                            - value,
-                    );
 
                     self.states.pre.entry(context.caller).or_default().balance = Some(
                         self.states
@@ -176,6 +168,16 @@ impl StateDiffTracer {
                             + value,
                     );
 
+                    self.states.pre.entry(context.contract).or_default().balance = Some(
+                        self.states
+                            .pre
+                            .entry(context.contract)
+                            .or_default()
+                            .balance
+                            .unwrap()
+                            - value,
+                    );
+
                     self.states.pre.entry(context.caller).or_default().nonce = Some(
                         self.states
                             .pre
@@ -185,6 +187,19 @@ impl StateDiffTracer {
                             .unwrap()
                             - 1,
                     );
+
+                    // TODO check how Go Ethereum handles this
+                    if reason == Create {
+                        self.states.pre.entry(context.contract).or_default().nonce = Some(
+                            self.states
+                                .pre
+                                .entry(context.contract)
+                                .or_default()
+                                .nonce
+                                .unwrap()
+                                - 1,
+                        );
+                    }
                 }
 
                 self.depth += 1;
@@ -293,6 +308,8 @@ impl StateDiffTracer {
                         let created_address = Address::from_create(&contract, nonce);
                         self.lookup_account(executor_state, chain_id, created_address)
                             .await?;
+
+                        // TODO add unit test
                     }
                     opcode_table::CREATE2 if stack.len() >= 4 => {
                         let offset = U256::from_be_bytes(stack[stack.len() - 2]).as_usize();
@@ -304,6 +321,8 @@ impl StateDiffTracer {
                             Address::from_create2(&contract, &salt, initialization_code);
                         self.lookup_account(executor_state, chain_id, created_address)
                             .await?;
+
+                        // TODO Add unit test
                     }
                     _ => {}
                 }

@@ -11,7 +11,7 @@ use web3::types::{Bytes, H256};
 
 use crate::types::Address;
 
-use super::{Context, ExitStatus};
+use super::{Context, ExitStatus, Reason};
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/native/prestate.go#L39>
 pub type State = BTreeMap<Address, Account>;
@@ -53,6 +53,7 @@ pub enum Event {
     BeginVM {
         context: Context,
         code: Vec<u8>,
+        reason: Reason,
     },
     EndVM {
         status: ExitStatus,

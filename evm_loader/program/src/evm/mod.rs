@@ -119,7 +119,7 @@ impl ExitStatus {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Reason {
     Call,
     Create,
@@ -432,7 +432,8 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             backend,
             Event::BeginVM {
                 context: self.context,
-                code: self.execution_code.to_vec()
+                code: self.execution_code.to_vec(),
+                reason: self.reason
             }
         );
 
@@ -513,7 +514,8 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
             backend,
             Event::BeginVM {
                 context,
-                code: execution_code.to_vec()
+                code: execution_code.to_vec(),
+                reason
             }
         );
 

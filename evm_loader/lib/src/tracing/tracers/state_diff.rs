@@ -1,122 +1,17 @@
 use arrayref::array_ref;
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
-use async_trait::async_trait;
 use ethnum::U256;
 use web3::types::{Bytes, H256};
 
-use crate::account_storage::EmulatorAccountStorage;
-use crate::commands::get_config::BuildConfigSimulator;
-use evm_loader::account_storage::AccountStorage;
 use evm_loader::evm::database::Database;
-use evm_loader::evm::tracing::{Account, Event, State, States};
+use evm_loader::evm::tracing::{Account, Event, States};
 use evm_loader::evm::Reason::Create;
 use evm_loader::evm::{opcode_table, Buffer, Context};
-use evm_loader::executor::ExecutorState;
 use evm_loader::types::Address;
 
-use crate::rpc::Rpc;
-use crate::NeonError;
-
 // TODO NDEV-2451 - Add operator balance diff to pre and post state
-#[async_trait(?Send)]
-pub trait ExecutorStateExt {
-    fn used_addresses(&self) -> BTreeSet<Address>;
-
-    async fn build_states(
-        &mut self,
-        from: Address,
-        tx_fee: U256,
-        chain_id: u64,
-    ) -> Result<States, NeonError>;
-
-    async fn build_pre_state(&mut self, chain_id: u64) -> Result<State, NeonError>;
-
-    async fn build_post_state(
-        &mut self,
-        from: Address,
-        tx_fee: U256,
-        chain_id: u64,
-    ) -> Result<State, NeonError>;
-}
-
-#[async_trait(?Send)]
-impl<T: Rpc + BuildConfigSimulator> ExecutorStateExt
-    for ExecutorState<'_, EmulatorAccountStorage<'_, T>>
-{
-    fn used_addresses(&self) -> BTreeSet<Address> {
-        self.backend.used_addresses.borrow().clone()
-    }
-
-    async fn build_states(
-        &mut self,
-        from: Address,
-        tx_fee: U256,
-        chain_id: u64,
-    ) -> Result<States, NeonError> {
-        Ok(States {
-            post: self.build_post_state(from, tx_fee, chain_id).await?,
-            pre: self.build_pre_state(chain_id).await?,
-        })
-    }
-
-    async fn build_pre_state(&mut self, chain_id: u64) -> Result<State, NeonError> {
-        let mut pre_state = BTreeMap::new();
-
-        for address in self.used_addresses().into_iter() {
-            pre_state.insert(
-                address,
-                Account {
-                    balance: self
-                        .backend
-                        .balance(address, chain_id)
-                        .await
-                        .map(to_web3_u256),
-                    nonce: self.backend.nonce(address, chain_id).await,
-                    code: map_code(self.backend.code(address).await),
-                    storage: self
-                        .storage_state_tracer
-                        .initial_storage_for_address(&address),
-                },
-            );
-        }
-
-        Ok(pre_state)
-    }
-
-    async fn build_post_state(
-        &mut self,
-        from: Address,
-        tx_fee: U256,
-        chain_id: u64,
-    ) -> Result<State, NeonError> {
-        let mut post_state = BTreeMap::new();
-
-        for address in self.used_addresses().into_iter() {
-            let mut balance = self.balance(address, chain_id).await?;
-
-            if address == from {
-                balance -= tx_fee;
-            }
-
-            post_state.insert(
-                address,
-                Account {
-                    balance: Some(to_web3_u256(balance)),
-                    nonce: Some(self.nonce(address, chain_id).await?),
-                    code: map_code(self.code(address).await?),
-                    storage: self
-                        .storage_state_tracer
-                        .final_storage_for_address(&address),
-                },
-            );
-        }
-
-        Ok(post_state)
-    }
-}
-
 fn map_code(buffer: Buffer) -> Option<Bytes> {
     if buffer.is_empty() {
         None
@@ -156,7 +51,7 @@ impl StateDiffTracer {
                     self.lookup_account(executor_state, chain_id, context.contract)
                         .await?;
 
-                    let value = web3::types::U256::from_big_endian(&context.value.to_be_bytes());
+                    let value = to_web3_u256(context.value);
 
                     self.states.pre.entry(context.caller).or_default().balance = Some(
                         self.states
@@ -215,11 +110,8 @@ impl StateDiffTracer {
                         self.states.post.insert(
                             *address,
                             Account {
-                                balance: Some(web3::types::U256::from(
-                                    executor_state
-                                        .balance(*address, chain_id)
-                                        .await?
-                                        .to_be_bytes(),
+                                balance: Some(to_web3_u256(
+                                    executor_state.balance(*address, chain_id).await?,
                                 )),
                                 code: map_code(executor_state.code(*address).await?),
                                 nonce: Some(executor_state.nonce(*address, chain_id).await?),
@@ -342,11 +234,8 @@ impl StateDiffTracer {
         match self.states.pre.entry(address) {
             Entry::Vacant(entry) => {
                 entry.insert(Account {
-                    balance: Some(web3::types::U256::from(
-                        executor_state
-                            .balance(address, chain_id)
-                            .await?
-                            .to_be_bytes(),
+                    balance: Some(to_web3_u256(
+                        executor_state.balance(address, chain_id).await?,
                     )),
                     code: map_code(executor_state.code(address).await?),
                     nonce: Some(executor_state.nonce(address, chain_id).await?),

@@ -499,6 +499,7 @@ impl<B: Database, #[cfg(not(target_os = "solana"))] T: EventListener> machine_ty
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[maybe_async]
     async fn fork(
         &mut self,
         backend: &mut B,

@@ -17,26 +17,30 @@ use crate::types::TxParams;
 
 #[tokio::test]
 async fn test_trace_transfer_transaction() {
-    trace_transfer_transaction(TraceConfig::default(), "{\"gas\":10000,\"failed\":false,\"returnValue\":\"\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":0,\"gasCost\":0,\"depth\":1,\"stack\":[]}]}").await;
+    trace_transfer_transaction(TraceConfig::default(), "{\"gas\":10000,\"failed\":false,\"returnValue\":\"\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":0,\"gasCost\":0,\"depth\":1,\"stack\":[]}]}", 3).await;
 }
 
 #[tokio::test]
 async fn test_trace_state_diff_transfer_transaction() {
-    trace_transfer_transaction(helpers::state_diff_trace_config(), "{\"output\":\"0x\",\"stateDiff\":{\"0x4bbac480d466865807ec5e98ffdf429c170e2a4e\":{\"balance\":{\"*\":{\"from\":\"0x6c6a20ec9d08c1b590\",\"to\":\"0x6c68ae7dae54436b20\"}},\"nonce\":{\"*\":{\"from\":\"0x1\",\"to\":\"0x2\"}},\"code\":\"=\",\"storage\":{}},\"0xf2418612ef70c2207da5d42511b7f58587ba27e3\":{\"balance\":{\"*\":{\"from\":\"0x6c6cf6a1041aca0000\",\"to\":\"0x6c6e59e67c78540000\"}},\"nonce\":\"=\",\"code\":\"=\",\"storage\":{}}},\"trace\":[],\"vmTrace\":null}").await;
+    trace_transfer_transaction(helpers::state_diff_trace_config(), "{\"output\":\"0x\",\"stateDiff\":{\"0x4bbac480d466865807ec5e98ffdf429c170e2a4e\":{\"balance\":{\"*\":{\"from\":\"0x6c6a20ec9d08c1b590\",\"to\":\"0x6c68ae7dae54436b20\"}},\"nonce\":{\"*\":{\"from\":\"0x1\",\"to\":\"0x2\"}},\"code\":\"=\",\"storage\":{}},\"0xf2418612ef70c2207da5d42511b7f58587ba27e3\":{\"balance\":{\"*\":{\"from\":\"0x6c6cf6a1041aca0000\",\"to\":\"0x6c6e59e67c78540000\"}},\"nonce\":\"=\",\"code\":\"=\",\"storage\":{}}},\"trace\":[],\"vmTrace\":null}", 4).await;
 }
 
 #[tokio::test]
 async fn test_trace_prestate_transfer_transaction() {
-    trace_transfer_transaction(helpers::prestate_trace_config(), "{\"0x4bbac480d466865807ec5e98ffdf429c170e2a4e\":{\"balance\":\"0x6c6a20ec9d08c1b590\",\"nonce\":1},\"0xf2418612ef70c2207da5d42511b7f58587ba27e3\":{\"balance\":\"0x6c6cf6a1041aca0000\",\"nonce\":0}}").await;
+    trace_transfer_transaction(helpers::prestate_trace_config(), "{\"0x4bbac480d466865807ec5e98ffdf429c170e2a4e\":{\"balance\":\"0x6c6a20ec9d08c1b590\",\"nonce\":1},\"0xf2418612ef70c2207da5d42511b7f58587ba27e3\":{\"balance\":\"0x6c6cf6a1041aca0000\",\"nonce\":0}}", 4).await;
 }
 
 #[tokio::test]
 async fn test_trace_prestate_diff_mode_transfer_transaction() {
-    trace_transfer_transaction(helpers::prestate_diff_mode_trace_config(), "{\"post\":{\"0x4bbac480d466865807ec5e98ffdf429c170e2a4e\":{\"balance\":\"0x6c68ae7dae54436b20\",\"nonce\":2},\"0xf2418612ef70c2207da5d42511b7f58587ba27e3\":{\"balance\":\"0x6c6e59e67c78540000\"}},\"pre\":{\"0x4bbac480d466865807ec5e98ffdf429c170e2a4e\":{\"balance\":\"0x6c6a20ec9d08c1b590\",\"nonce\":1},\"0xf2418612ef70c2207da5d42511b7f58587ba27e3\":{\"balance\":\"0x6c6cf6a1041aca0000\",\"nonce\":0}}}").await;
+    trace_transfer_transaction(helpers::prestate_diff_mode_trace_config(), "{\"post\":{\"0x4bbac480d466865807ec5e98ffdf429c170e2a4e\":{\"balance\":\"0x6c68ae7dae54436b20\",\"nonce\":2},\"0xf2418612ef70c2207da5d42511b7f58587ba27e3\":{\"balance\":\"0x6c6e59e67c78540000\"}},\"pre\":{\"0x4bbac480d466865807ec5e98ffdf429c170e2a4e\":{\"balance\":\"0x6c6a20ec9d08c1b590\",\"nonce\":1},\"0xf2418612ef70c2207da5d42511b7f58587ba27e3\":{\"balance\":\"0x6c6cf6a1041aca0000\",\"nonce\":0}}}", 4).await;
 }
 
 // tx_hash: 0xa3c0a2d8f7519217775ca49e836cdfffec8cd1d16950553f3b41b580d10d44b7
-async fn trace_transfer_transaction(trace_config: TraceConfig, expected_trace: &str) {
+async fn trace_transfer_transaction(
+    trace_config: TraceConfig,
+    expected_trace: &str,
+    expected_solana_accounts: usize,
+) {
     let origin = Address::from_hex("0x4bbac480d466865807ec5e98ffdf429c170e2a4e").unwrap();
     let target = Address::from_hex("0xf2418612ef70c2207da5d42511b7f58587ba27e3").unwrap();
     let chain_id = 1234;
@@ -67,7 +71,10 @@ async fn trace_transfer_transaction(trace_config: TraceConfig, expected_trace: &
     assert_eq!(emulate_response.steps_executed, 1);
     assert_eq!(emulate_response.used_gas, 25_000);
     assert_eq!(emulate_response.iterations, 3);
-    assert_eq!(emulate_response.solana_accounts.len(), 3);
+    assert_eq!(
+        emulate_response.solana_accounts.len(),
+        expected_solana_accounts
+    );
 
     let result = into_traces(tracer, emulate_response);
 

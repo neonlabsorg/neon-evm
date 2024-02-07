@@ -9,7 +9,7 @@ use evm_loader::types::Address;
 use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
 use solana_sdk::sysvar::{slot_hashes, Sysvar};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
 use crate::{rpc::Rpc, NeonError};
@@ -46,8 +46,6 @@ pub struct SolanaAccount {
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     pub accounts: RefCell<HashMap<Pubkey, SolanaAccount>>,
-    /// All Neon addresses used during transaction emulation
-    pub used_addresses: RefCell<BTreeSet<Address>>,
     pub gas: u64,
     rpc: &'rpc T,
     program_id: Pubkey,
@@ -84,7 +82,6 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
 
         Ok(Self {
             accounts: RefCell::new(HashMap::new()),
-            used_addresses: RefCell::new(BTreeSet::new()),
             program_id,
             chains,
             gas: 0,
@@ -169,8 +166,6 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         chain_id: u64,
         is_writable: bool,
     ) -> client_error::Result<(Pubkey, Option<Account>, Option<Account>)> {
-        self.used_addresses.borrow_mut().insert(address);
-
         let (pubkey, _) = address.find_balance_address(self.program_id(), chain_id);
         let account = self.use_account(pubkey, is_writable).await?;
 
@@ -189,8 +184,6 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         address: Address,
         is_writable: bool,
     ) -> client_error::Result<(Pubkey, Option<Account>)> {
-        self.used_addresses.borrow_mut().insert(address);
-
         let (pubkey, _) = address.find_solana_address(self.program_id());
         let account = self.use_account(pubkey, is_writable).await?;
 

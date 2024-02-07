@@ -21,15 +21,31 @@ impl StatesExt for States {
         let mut state_diff = BTreeMap::new();
 
         for address in self.pre.keys() {
-            state_diff.insert(
-                H160::from(address.as_bytes()),
-                AccountDiff {
-                    balance: self.balance_diff(address),
-                    nonce: self.nonce_diff(address),
-                    code: self.code_diff(address),
-                    storage: self.storage_diff(address),
-                },
-            );
+            let pre_balance = self.pre.balance(address).unwrap();
+            let pre_nonce = self.pre.nonce(address).unwrap();
+            let pre_code = self.pre.code(address);
+
+            if pre_balance.is_zero() && pre_nonce.is_zero() && pre_code.is_none() {
+                state_diff.insert(
+                    H160::from(address.as_bytes()),
+                    AccountDiff {
+                        balance: build_diff(None, self.post.balance(address)),
+                        nonce: build_diff(None, self.post.nonce(address)),
+                        code: build_diff(None, self.post.code(address)),
+                        storage: self.storage_diff(address),
+                    },
+                );
+            } else {
+                state_diff.insert(
+                    H160::from(address.as_bytes()),
+                    AccountDiff {
+                        balance: self.balance_diff(address),
+                        nonce: self.nonce_diff(address),
+                        code: self.code_diff(address),
+                        storage: self.storage_diff(address),
+                    },
+                );
+            }
         }
 
         StateDiff(state_diff)

@@ -9,8 +9,6 @@ use solana_program::pubkey::Pubkey;
 use crate::account_storage::AccountStorage;
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
-#[cfg(not(target_os = "solana"))]
-use crate::evm::tracing::StorageStateTracer;
 use crate::evm::{Context, ExitStatus};
 use crate::types::Address;
 
@@ -21,9 +19,6 @@ use super::OwnedAccountInfo;
 /// Represents the state of executor abstracted away from a self.backend.
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
 pub struct ExecutorState<'a, B: AccountStorage> {
-    /// Used for collecting storage state changes for each Neon address during Neon transaction execution
-    #[cfg(not(target_os = "solana"))]
-    pub storage_state_tracer: StorageStateTracer,
     // todo replace this with intercepting storage set and get in tracer
     // todo fix storage state diff
     /// Used for retrieving initial account states before Neon transaction execution (read-only access)
@@ -72,8 +67,6 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         };
 
         Self {
-            #[cfg(not(target_os = "solana"))]
-            storage_state_tracer: StorageStateTracer::default(),
             backend,
             cache: RefCell::new(cache),
             actions,
@@ -369,26 +362,15 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
-        let value = self.get_storage(from_address, from_index).await?;
-
-        #[cfg(not(target_os = "solana"))]
-        self.storage_state_tracer
-            .read_storage(from_address, from_index, value);
-
-        Ok(value)
+        Ok(self.get_storage(from_address, from_index).await?)
     }
 
     fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
-        let set_storage = Action::EvmSetStorage {
+        self.actions.push(Action::EvmSetStorage {
             address,
             index,
             value,
-        };
-        self.actions.push(set_storage);
-
-        #[cfg(not(target_os = "solana"))]
-        self.storage_state_tracer
-            .write_storage(address, index, value);
+        });
 
         Ok(())
     }

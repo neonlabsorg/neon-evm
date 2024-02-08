@@ -116,7 +116,7 @@ impl StateExt for State {
     }
 
     fn nonce(&self, address: &Address) -> Option<U256> {
-        self.get(address).and_then(|v| v.nonce).map(|v| v.into())
+        self.get(address).map(|v| v.nonce.into())
     }
 
     fn code(&self, address: &Address) -> Option<Bytes> {

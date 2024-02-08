@@ -20,7 +20,7 @@ pub type State = BTreeMap<Address, Account>;
 pub struct Account {
     pub balance: web3::types::U256,
     pub code: Option<Bytes>,
-    pub nonce: Option<u64>,
+    pub nonce: u64,
     pub storage: Option<BTreeMap<H256, H256>>,
 }
 
@@ -79,27 +79,13 @@ impl StateDiffTracer {
                     self.states.pre.entry(context.contract).or_default().balance =
                         self.states.pre.entry(context.contract).or_default().balance - value;
 
-                    self.states.pre.entry(context.caller).or_default().nonce = Some(
-                        self.states
-                            .pre
-                            .entry(context.caller)
-                            .or_default()
-                            .nonce
-                            .unwrap()
-                            - 1,
-                    );
+                    self.states.pre.entry(context.caller).or_default().nonce =
+                        self.states.pre.entry(context.caller).or_default().nonce - 1;
 
                     // TODO check how Go Ethereum handles this
                     if reason == Create {
-                        self.states.pre.entry(context.contract).or_default().nonce = Some(
-                            self.states
-                                .pre
-                                .entry(context.contract)
-                                .or_default()
-                                .nonce
-                                .unwrap()
-                                - 1,
-                        );
+                        self.states.pre.entry(context.contract).or_default().nonce =
+                            self.states.pre.entry(context.contract).or_default().nonce - 1;
                     }
                 }
 
@@ -120,7 +106,7 @@ impl StateDiffTracer {
                                     executor_state.balance(*address, chain_id).await?,
                                 ),
                                 code: map_code(executor_state.code(*address).await?),
-                                nonce: Some(executor_state.nonce(*address, chain_id).await?),
+                                nonce: executor_state.nonce(*address, chain_id).await?,
                                 storage: {
                                     match account.storage.as_ref() {
                                         None => None,
@@ -235,7 +221,7 @@ impl StateDiffTracer {
                 entry.insert(Account {
                     balance: to_web3_u256(executor_state.balance(address, chain_id).await?),
                     code: map_code(executor_state.code(address).await?),
-                    nonce: Some(executor_state.nonce(address, chain_id).await?),
+                    nonce: executor_state.nonce(address, chain_id).await?,
                     storage: None,
                 });
             }

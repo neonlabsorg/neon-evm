@@ -52,7 +52,7 @@ pub fn build_prestate_tracer_pre_state(pre: State) -> PrestateTracerPreState {
             PrestateTracerPreAccount {
                 balance: account.balance,
                 code: account.code,
-                nonce: account.nonce.unwrap_or_default(),
+                nonce: account.nonce,
                 storage: account.storage,
             },
         );
@@ -86,9 +86,9 @@ pub fn build_prestate_tracer_diff_mode_result(states: States) -> PrestateTracerD
                         None
                     }
                 }),
-                nonce: post_account.and_then(|a| a.nonce).and_then(|nonce| {
-                    if nonce != pre_account.nonce {
-                        Some(nonce)
+                nonce: post_account.and_then(|post_account| {
+                    if post_account.nonce != pre_account.nonce {
+                        Some(post_account.nonce)
                     } else {
                         None
                     }

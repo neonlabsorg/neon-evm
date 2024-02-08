@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
-use evm_loader::evm::tracing::{State, States};
 use serde::{Deserialize, Serialize};
 use web3::types::{Bytes, H256, U256};
 
+use crate::tracing::tracers::state_diff::{State, States};
 use evm_loader::types::Address;
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/native/prestate.go#L39>

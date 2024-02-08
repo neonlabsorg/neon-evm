@@ -6,10 +6,30 @@ use ethnum::U256;
 use web3::types::{Bytes, H256};
 
 use evm_loader::evm::database::Database;
-use evm_loader::evm::tracing::{Account, Event, States};
+use evm_loader::evm::tracing::Event;
 use evm_loader::evm::Reason::Create;
 use evm_loader::evm::{opcode_table, Buffer, Context};
 use evm_loader::types::Address;
+use serde::{Deserialize, Serialize};
+
+/// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/native/prestate.go#L39>
+pub type State = BTreeMap<Address, Account>;
+
+/// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/native/prestate.go#L41>
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Account {
+    pub balance: Option<web3::types::U256>,
+    pub code: Option<Bytes>,
+    pub nonce: Option<u64>,
+    pub storage: Option<BTreeMap<H256, H256>>,
+}
+
+/// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/native/prestate.go#L255>
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct States {
+    pub post: State,
+    pub pre: State,
+}
 
 // TODO NDEV-2451 - Add operator balance diff to pre and post state
 fn map_code(buffer: Buffer) -> Option<Bytes> {

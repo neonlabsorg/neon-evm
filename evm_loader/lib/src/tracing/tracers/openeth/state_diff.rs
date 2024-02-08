@@ -112,7 +112,7 @@ trait StateExt {
 
 impl StateExt for State {
     fn balance(&self, address: &Address) -> Option<U256> {
-        self.get(address).and_then(|v| v.balance)
+        self.get(address).map(|v| v.balance)
     }
 
     fn nonce(&self, address: &Address) -> Option<U256> {

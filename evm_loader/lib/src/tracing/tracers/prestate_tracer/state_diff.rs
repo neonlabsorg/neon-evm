@@ -50,7 +50,7 @@ pub fn build_prestate_tracer_pre_state(pre: State) -> PrestateTracerPreState {
         result.insert(
             address,
             PrestateTracerPreAccount {
-                balance: account.balance.unwrap_or_default(),
+                balance: account.balance,
                 code: account.code,
                 nonce: account.nonce.unwrap_or_default(),
                 storage: account.storage,
@@ -72,9 +72,9 @@ pub fn build_prestate_tracer_diff_mode_result(states: States) -> PrestateTracerD
         post.insert(
             *address,
             PrestateTracerPostAccount {
-                balance: post_account.and_then(|a| a.balance).and_then(|balance| {
-                    if balance != pre_account.balance {
-                        Some(balance)
+                balance: post_account.and_then(|post_account| {
+                    if post_account.balance != pre_account.balance {
+                        Some(post_account.balance)
                     } else {
                         None
                     }

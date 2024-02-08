@@ -18,7 +18,7 @@ pub type State = BTreeMap<Address, Account>;
 /// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/native/prestate.go#L41>
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Account {
-    pub balance: Option<web3::types::U256>,
+    pub balance: web3::types::U256,
     pub code: Option<Bytes>,
     pub nonce: Option<u64>,
     pub storage: Option<BTreeMap<H256, H256>>,
@@ -73,25 +73,11 @@ impl StateDiffTracer {
 
                     let value = to_web3_u256(context.value);
 
-                    self.states.pre.entry(context.caller).or_default().balance = Some(
-                        self.states
-                            .pre
-                            .entry(context.caller)
-                            .or_default()
-                            .balance
-                            .unwrap()
-                            + value,
-                    );
+                    self.states.pre.entry(context.caller).or_default().balance =
+                        self.states.pre.entry(context.caller).or_default().balance + value;
 
-                    self.states.pre.entry(context.contract).or_default().balance = Some(
-                        self.states
-                            .pre
-                            .entry(context.contract)
-                            .or_default()
-                            .balance
-                            .unwrap()
-                            - value,
-                    );
+                    self.states.pre.entry(context.contract).or_default().balance =
+                        self.states.pre.entry(context.contract).or_default().balance - value;
 
                     self.states.pre.entry(context.caller).or_default().nonce = Some(
                         self.states
@@ -130,9 +116,9 @@ impl StateDiffTracer {
                         self.states.post.insert(
                             *address,
                             Account {
-                                balance: Some(to_web3_u256(
+                                balance: to_web3_u256(
                                     executor_state.balance(*address, chain_id).await?,
-                                )),
+                                ),
                                 code: map_code(executor_state.code(*address).await?),
                                 nonce: Some(executor_state.nonce(*address, chain_id).await?),
                                 storage: {
@@ -165,15 +151,8 @@ impl StateDiffTracer {
                         );
                     }
 
-                    self.states.post.entry(context.caller).or_default().balance = Some(
-                        self.states
-                            .post
-                            .entry(context.caller)
-                            .or_default()
-                            .balance
-                            .unwrap()
-                            - self.tx_fee,
-                    );
+                    self.states.post.entry(context.caller).or_default().balance =
+                        self.states.post.entry(context.caller).or_default().balance - self.tx_fee;
                 }
             }
             Event::BeginStep {
@@ -254,9 +233,7 @@ impl StateDiffTracer {
         match self.states.pre.entry(address) {
             Entry::Vacant(entry) => {
                 entry.insert(Account {
-                    balance: Some(to_web3_u256(
-                        executor_state.balance(address, chain_id).await?,
-                    )),
+                    balance: to_web3_u256(executor_state.balance(address, chain_id).await?),
                     code: map_code(executor_state.code(address).await?),
                     nonce: Some(executor_state.nonce(address, chain_id).await?),
                     storage: None,

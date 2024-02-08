@@ -19,8 +19,6 @@ use super::OwnedAccountInfo;
 /// Represents the state of executor abstracted away from a self.backend.
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
 pub struct ExecutorState<'a, B: AccountStorage> {
-    // todo replace this with intercepting storage set and get in tracer
-    // todo fix storage state diff
     /// Used for retrieving initial account states before Neon transaction execution (read-only access)
     pub backend: &'a B,
     cache: RefCell<Cache>,
@@ -55,11 +53,6 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 
     #[must_use]
     pub fn new(backend: &'a B) -> Self {
-        Self::new_with_actions(backend, Vec::with_capacity(64))
-    }
-
-    #[must_use]
-    pub fn new_with_actions(backend: &'a B, actions: Vec<Action>) -> Self {
         let cache = Cache {
             solana_accounts: BTreeMap::new(),
             block_number: backend.block_number(),
@@ -69,7 +62,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         Self {
             backend,
             cache: RefCell::new(cache),
-            actions,
+            actions: Vec::with_capacity(64),
             stack: Vec::with_capacity(16),
             exit_status: None,
         }

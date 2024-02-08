@@ -198,11 +198,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 #[maybe_async(?Send)]
 impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     async fn nonce(&self, from_address: Address, from_chain_id: u64) -> Result<u64> {
-        let mut nonce = self
-            .backend
-            .nonce(from_address, from_chain_id)
-            .await
-            .unwrap_or_default();
+        let mut nonce = self.backend.nonce(from_address, from_chain_id).await;
         let mut increment = 0_u64;
 
         for action in &self.actions {
@@ -226,11 +222,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn balance(&self, from_address: Address, from_chain_id: u64) -> Result<U256> {
-        let mut balance = self
-            .backend
-            .balance(from_address, from_chain_id)
-            .await
-            .unwrap_or_default();
+        let mut balance = self.backend.balance(from_address, from_chain_id).await;
 
         for action in &self.actions {
             match action {

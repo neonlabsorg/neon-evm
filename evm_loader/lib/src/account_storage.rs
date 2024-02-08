@@ -382,9 +382,10 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         &self,
         address: Address,
         chain_id: u64,
+        default: R,
         legacy_action: L,
         action: F,
-    ) -> Option<R>
+    ) -> R
     where
         L: FnOnce(LegacyEtherData) -> R,
         F: FnOnce(BalanceAccount) -> R,
@@ -392,28 +393,28 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         let Ok((pubkey, mut account, mut legacy)) = self
             .use_balance_account(address, chain_id, false)
             .await else {
-            return None;
+            return default;
         };
 
         if let Some(account_data) = &mut account {
             let info = account_info(&pubkey, account_data);
             if let Ok(a) = BalanceAccount::from_account(self.program_id(), info) {
-                return Some(action(a));
+                return action(a);
             }
         }
 
         if chain_id != self.default_chain_id() {
-            return None;
+            return default;
         }
 
         if let Some(legacy_data) = &mut legacy {
             let info = account_info(&pubkey, legacy_data);
             if let Ok(a) = LegacyEtherData::from_account(self.program_id(), &info) {
-                return Some(legacy_action(a));
+                return legacy_action(a);
             }
         }
 
-        None
+        default
     }
 
     pub async fn ethereum_contract_map_or<F, L, R>(
@@ -542,34 +543,36 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         }
     }
 
-    async fn nonce(&self, address: Address, chain_id: u64) -> Option<u64> {
+    async fn nonce(&self, address: Address, chain_id: u64) -> u64 {
         info!("nonce {address}  {chain_id}");
 
         let nonce_override = self.account_override(address, |a| a.nonce);
         if let Some(nonce_override) = nonce_override {
-            return Some(nonce_override);
+            return nonce_override;
         }
 
         self.ethereum_balance_map_or(
             address,
             chain_id,
+            0,
             |legacy| legacy.trx_count,
             |account| account.nonce(),
         )
         .await
     }
 
-    async fn balance(&self, address: Address, chain_id: u64) -> Option<U256> {
+    async fn balance(&self, address: Address, chain_id: u64) -> U256 {
         info!("balance {address} {chain_id}");
 
         let balance_override = self.account_override(address, |a| a.balance);
         if let Some(balance_override) = balance_override {
-            return Some(balance_override);
+            return balance_override;
         }
 
         self.ethereum_balance_map_or(
             address,
             chain_id,
+            U256::ZERO,
             |legacy| legacy.balance,
             |account| account.balance(),
         )

@@ -46,9 +46,9 @@ pub trait AccountStorage {
     async fn block_hash(&self, number: u64) -> [u8; 32];
 
     /// Get account nonce
-    async fn nonce(&self, address: Address, chain_id: u64) -> Option<u64>; // todo maybe revert this
+    async fn nonce(&self, address: Address, chain_id: u64) -> u64; // todo maybe revert this
     /// Get account balance
-    async fn balance(&self, address: Address, chain_id: u64) -> Option<U256>;
+    async fn balance(&self, address: Address, chain_id: u64) -> U256;
 
     fn is_valid_chain_id(&self, chain_id: u64) -> bool;
     fn chain_id_to_token(&self, chain_id: u64) -> Pubkey;

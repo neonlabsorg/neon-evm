@@ -8,7 +8,6 @@ use web3::types::Bytes;
 
 use evm_loader::evm::tracing::{EmulationResult, Event, EventListener};
 
-use crate::tracing::tracers::openeth::state_diff::StatesExt;
 use crate::tracing::tracers::openeth::types::{CallAnalytics, TraceResults};
 use crate::tracing::tracers::state_diff::StateDiffTracer;
 use crate::tracing::TraceConfig;

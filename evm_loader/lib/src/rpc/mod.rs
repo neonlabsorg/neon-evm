@@ -87,6 +87,7 @@ mod tests {
     use solana_program_test::ProgramTest;
     use solana_sdk::account::AccountSharedData;
     use solana_sdk::signature::Signature;
+    use solana_sdk::transaction::Transaction;
     use solana_transaction_status::option_serializer::OptionSerializer;
     use solana_transaction_status::{UiLoadedAddresses, UiTransactionEncoding};
     use std::str::FromStr;
@@ -135,7 +136,10 @@ mod tests {
             let account = get_account(&tracer_db.client, pubkey, slot).await;
 
             println!("writable {pubkey} {account:?}");
-            // context.set_account(&pubkey, &account.into());
+            if let Ok(account) = account {
+                let account: Account = account.try_into().unwrap();
+                context.set_account(&pubkey, &account.into());
+            }
         }
 
         for address in loaded_addresses.readonly {
@@ -145,22 +149,31 @@ mod tests {
             let account = get_account(&tracer_db.client, pubkey, slot).await;
 
             println!("readonly {pubkey} {account:?}");
-            // context.set_account(&pubkey, &account.into());
+            if let Ok(account) = account {
+                let account: Account = account.try_into().unwrap();
+                context.set_account(&pubkey, &account.into());
+            }
         }
 
         let tx = tx.transaction.transaction.decode().unwrap();
 
         println!("decoded {tx:?}");
 
-        for key in tx.message.static_account_keys() {
-            let account = rpc_client.get_account(key).await.unwrap();
-            println!("account {account:?}");
-        }
+        // for key in tx.message.static_account_keys() {
+        //     let account = rpc_client.get_account(key).await.unwrap();
+        //     println!("account {account:?}");
+        // }
 
         // for lookup in tx.message.address_table_lookups().unwrap() {
         //     let account = rpc_client.get_account(&lookup.account_key).await.unwrap();
         //     println!("lookup {account:?}");
         // }
+
+        // let tx = Transaction::new_unsigned(Message::new(tx.message.instructions()));
+
+        let result = context.banks_client.simulate_transaction(tx).await.unwrap();
+
+        println!("simulation result = {result:?}");
     }
 
     #[test]

@@ -243,75 +243,30 @@ impl ClickHouseDb {
         pubkey: &Pubkey,
         slot: u64,
     ) -> Result<Option<Account>, ChError> {
-        info!("get_account_at_slot {{ pubkey: {pubkey}, slot: {slot} }}");
-        let (first, mut branch) = self.get_branch_slots(Some(slot)).await.map_err(|e| {
-            error!("get_branch_slots error: {:?}", e);
-            e
-        })?;
-
         let pubkey_str = format!("{:?}", pubkey.to_bytes());
 
-        if let Some(rooted_slot) = self
-            .get_account_rooted_slot(&pubkey_str, first)
-            .await
-            .map_err(|e| {
-                error!("get_account_rooted_slot error: {:?}", e);
-                e
-            })?
-        {
-            branch.push(rooted_slot);
-        }
-
-        let mut row = if branch.is_empty() {
-            None
-        } else {
-            let query = r#"
-                SELECT owner, lamports, executable, rent_epoch, data, txn_signature
-                FROM events.update_account_distributed
-                WHERE pubkey = ?
-                  AND slot IN ?
-                ORDER BY pubkey, slot DESC, write_version DESC
-                LIMIT 1
-            "#;
-
-            let time_start = Instant::now();
-            let row = Self::row_opt(
-                self.client
-                    .query(query)
-                    .bind(pubkey_str.clone())
-                    .bind(branch.as_slice())
-                    .fetch_one::<AccountRow>()
-                    .await,
-            )
-            .map_err(|e| {
-                error!("get_account_at_slot error: {e}");
-                ChError::Db(e)
-            })?;
-            let execution_time = Instant::now().duration_since(time_start);
-            info!(
-                "get_account_at_slot {{ pubkey: {pubkey}, slot: {slot} }} sql(1) returned {row:?}, time: {} sec",
-                execution_time.as_secs_f64()
-            );
-
-            row
-        };
-
-        if row.is_none() {
-            let time_start = Instant::now();
-            row = self.get_older_account_row_at(&pubkey_str, slot).await?;
-            let execution_time = Instant::now().duration_since(time_start);
-            info!(
-                "get_account_at {{ pubkey: {pubkey}, slot: {slot} }} sql(2) returned {row:?}, time: {} sec",
-                execution_time.as_secs_f64()
-            );
-        }
+        let row = Self::row_opt(
+            self.client
+                .query(
+                    r#"
+                    SELECT owner, lamports, executable, rent_epoch, data, txn_signature
+                    FROM events.update_account_distributed
+                    WHERE pubkey = ?
+                      AND slot < ?
+                    ORDER BY slot DESC, write_version DESC
+                    LIMIT 1
+                "#,
+                )
+                .bind(pubkey_str)
+                .bind(slot)
+                .fetch_one::<AccountRow>()
+                .await,
+        )?;
 
         let result = row
             .map(|a| a.try_into())
             .transpose()
             .map_err(|e| ChError::Db(clickhouse::error::Error::Custom(e)));
-
-        info!("get_account_at_slot {{ pubkey: {pubkey}, slot: {slot} }} -> {result:?}");
 
         result
     }

@@ -26,14 +26,6 @@ impl CallDbClient {
         slot: u64,
         tx_index_in_block: Option<u64>,
     ) -> Result<Self, NeonError> {
-        let earliest_rooted_slot = tracer_db
-            .get_earliest_rooted_slot()
-            .await
-            .map_err(NeonError::ClickHouse)?;
-        if slot < earliest_rooted_slot {
-            return Err(NeonError::EarlySlot(slot, earliest_rooted_slot));
-        }
-
         Ok(Self {
             tracer_db,
             slot,

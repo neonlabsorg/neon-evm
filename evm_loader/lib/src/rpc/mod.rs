@@ -173,6 +173,23 @@ mod tests {
 
         println!("decoded {tx:?}");
 
+        let address_lookup_table_key = tx
+            .message
+            .address_table_lookups()
+            .unwrap()
+            .first()
+            .unwrap()
+            .account_key;
+
+        // let account = rpc_client.get_account(&pubkey).await;
+        let account = get_account(&tracer_db.client, address_lookup_table_key, slot).await;
+
+        println!("address_lookup_table_account {address_lookup_table_key} {account:?}");
+        if let Ok(account) = account {
+            let account: Account = account.try_into().unwrap();
+            context.set_account(&address_lookup_table_key, &account.into());
+        }
+
         // for key in tx.message.static_account_keys() {
         //     let account = rpc_client.get_account(key).await.unwrap();
         //     println!("account {account:?}");
@@ -185,15 +202,158 @@ mod tests {
 
         // let tx = Transaction::new_unsigned(Message::new(tx.message.instructions()));
 
-        // let tx = Transaction::new_unsigned(Message::new(&[Instruction::new_with_bytes(
-        //     neon_evm_pubkey,
-        //     &tx.message.instructions().last().unwrap().data,
-        //     vec![AccountMeta {
-        //         pubkey: Default::default(),
-        //         is_signer: false,
-        //         is_writable: false,
-        //     }],
-        // )]));
+        let tx = Transaction::new_unsigned(Message::new(
+            &[Instruction::new_with_bytes(
+                neon_evm_pubkey,
+                &tx.message.instructions().last().unwrap().data,
+                vec![
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("5ysUSZknqkoYYQKF6Dbt92d5aTWBt5H2p2y8sY5fLJpp")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: true,
+                    },
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("5GRKYKDwhsjARx1NUUUpyEun3ANGtAmRCYXLC4yyVWid")
+                            .unwrap(),
+                        is_signer: true,
+                        is_writable: true,
+                    },
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("51r4RKRKNA6eLoLc3eKuNzmQQoswp98B1TQiC4KRWHcP")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: true,
+                    },
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("AG4GfVijKTfxwtxRXTSVdxXmMBHdyD7XmUxiHTcu7NpC")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: true,
+                    },
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("11111111111111111111111111111111").unwrap(),
+                        is_signer: false,
+                        is_writable: false,
+                    },
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("NeonVMyRX5GbCrsAHnUwx1nYYoJAtskU1bWUo6JGNyG")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: false,
+                    },
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("2hzhEy9GJUYM3v7uocc2TtuuHrvYwTHy4wXiyLnQTGf9")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: false,
+                    },
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("48W4UZeZuR1fc1strDG2qjctHkK6B6ueqYBXcsT9ge9W")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: true,
+                    },
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("4bwQcuoDPg2rsfjjSwBT2oARfFBm34M7aoWwnRmRje66")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: false,
+                    },
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("53L7YhhhA4J9KhAy1Fmfc2ReYQTDcrPj77Me6Vdp7YFx")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: true,
+                    },
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("5KuJMkRzVGgzy9EYQHMjsGBhZe2ZXouCeJ5gjn7d4WKj")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: true,
+                    },
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("5Lm7nBLnoKouQzg2ULVQkzJ57PfafRctzsUsJigHsPtU")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: true,
+                    }, // 12
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("6EscUPSWFVHpbtoELx6CmR4TdNUq77yeHpbVx77ZUB9u")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: false,
+                    }, // 13
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("7AL3iWyLCmKmxuaCXZDiDsYUMaB1iwrSDLmSryihQrAd")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: false,
+                    }, // 14
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("9bBrVxJkX61vhuYXzJ8K91JtFrctDbesReju6qf5pkM1")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: false,
+                    }, // 15
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("AXisyaUthrsf9nxai11AuVrJzyC7rrxuthVGFDo4MvUp")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: false,
+                    }, // 16
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("AYkPFpqXyuD4pZvMJtRXBhD2vgTrGcKGs7hV5Ynr45ga")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: true,
+                    }, // 17
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("BhPPTPCPSSDjBLqiZpwjVSmDNrTHBUBgGx746vuWhEHg")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: false,
+                    }, // 18
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("Bvh7ZoJyhrrkVRVQTNENSQENae84gAH8WxdzUNVrBahP")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: true,
+                    }, // 19
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("BypdCd5tuJnyoihHg3SVW7qqRsqyVVccg2EURUX3twrg")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: false,
+                    }, // 20
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("C9ouTkDQWzgLfwJhvB9c3LiKTYTZFUiqvS6P9FdRh8LU")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: false,
+                    }, // 21
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("CHQjfH7AaxHBfgi8g8HRcZGPJgNMjQ3ofNroEmZUsoXs")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: false,
+                    }, // 22
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("CWLGxiFYHKi6YDHgED2nEGP3DnSyKVGBgXt52SKMturu")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: true,
+                    }, // 23
+                    AccountMeta {
+                        pubkey: Pubkey::from_str("CWLGxiFYHKi6YDHgED2nEGP3DnSyKVGBgXt52SKMturu")
+                            .unwrap(),
+                        is_signer: false,
+                        is_writable: true,
+                    }, // 24
+                ],
+            )],
+            None,
+        ));
 
         let result = context.banks_client.simulate_transaction(tx).await.unwrap();
 
@@ -202,7 +362,7 @@ mod tests {
 
     #[test]
     fn test2() {
-        let pubkey = Pubkey::from_str("51r4RKRKNA6eLoLc3eKuNzmQQoswp98B1TQiC4KRWHcP").unwrap();
+        let pubkey = Pubkey::from_str("G9162vkmcM5hAswEeKCaAVcWwmWhnMxcuoszXmjsdyrS").unwrap();
         let pubkey_str = format!("{:?}", pubkey.to_bytes());
 
         println!("pubkey_str {pubkey_str}");

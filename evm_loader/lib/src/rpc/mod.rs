@@ -87,6 +87,7 @@ mod tests {
     use solana_client::rpc_config::RpcTransactionConfig;
     use solana_program_test::ProgramTest;
     use solana_sdk::account::AccountSharedData;
+    use solana_sdk::instruction::AccountMeta;
     use solana_sdk::signature::Signature;
     use solana_sdk::transaction::Transaction;
     use solana_transaction_status::option_serializer::OptionSerializer;
@@ -156,15 +157,16 @@ mod tests {
             }
         }
 
-        let pubkey = Pubkey::from_str("NeonVMyRX5GbCrsAHnUwx1nYYoJAtskU1bWUo6JGNyG").unwrap();
+        let neon_evm_pubkey =
+            Pubkey::from_str("NeonVMyRX5GbCrsAHnUwx1nYYoJAtskU1bWUo6JGNyG").unwrap();
 
         // let account = rpc_client.get_account(&pubkey).await;
-        let account = get_account(&tracer_db.client, pubkey, slot).await;
+        let account = get_account(&tracer_db.client, neon_evm_pubkey, slot).await;
 
-        println!("NeonEVM {pubkey} {account:?}");
+        println!("NeonEVM {neon_evm_pubkey} {account:?}");
         if let Ok(account) = account {
             let account: Account = account.try_into().unwrap();
-            context.set_account(&pubkey, &account.into());
+            context.set_account(&neon_evm_pubkey, &account.into());
         }
 
         let tx = tx.transaction.transaction.decode().unwrap();
@@ -183,7 +185,15 @@ mod tests {
 
         // let tx = Transaction::new_unsigned(Message::new(tx.message.instructions()));
 
-        // let tx = Transaction::new_unsigned(Message::new(&[Instruction::new_with_bytes()]));
+        // let tx = Transaction::new_unsigned(Message::new(&[Instruction::new_with_bytes(
+        //     neon_evm_pubkey,
+        //     &tx.message.instructions().last().unwrap().data,
+        //     vec![AccountMeta {
+        //         pubkey: Default::default(),
+        //         is_signer: false,
+        //         is_writable: false,
+        //     }],
+        // )]));
 
         let result = context.banks_client.simulate_transaction(tx).await.unwrap();
 

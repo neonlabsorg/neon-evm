@@ -9,13 +9,13 @@ use solana_sdk::pubkey::Pubkey;
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::rpc::Rpc;
 use crate::syscall_stubs::setup_emulator_syscall_stubs;
+use crate::tracing::tracers::Tracer;
 use crate::types::{EmulateRequest, TxParams};
 use crate::{
     account_storage::{EmulatorAccountStorage, SolanaAccount},
     errors::NeonError,
     NeonResult,
 };
-use evm_loader::evm::tracing::Tracer;
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},

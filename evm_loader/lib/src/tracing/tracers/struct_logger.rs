@@ -7,9 +7,10 @@ use serde::Serialize;
 use serde_json::Value;
 use web3::types::Bytes;
 
+use crate::tracing::tracers::Tracer;
 use crate::tracing::TraceConfig;
 use evm_loader::evm::opcode_table::OPNAMES;
-use evm_loader::evm::tracing::{Event, EventListener, Tracer};
+use evm_loader::evm::tracing::{Event, EventListener};
 
 /// `StructLoggerResult` groups all structured logs emitted by the EVM
 /// while replaying a transaction in debug mode as well as transaction

@@ -9,7 +9,7 @@ use web3::types::Bytes;
 
 use crate::tracing::TraceConfig;
 use evm_loader::evm::opcode_table::OPNAMES;
-use evm_loader::evm::tracing::{Event, EventListener};
+use evm_loader::evm::tracing::{Event, EventListener, Tracer};
 
 /// `StructLoggerResult` groups all structured logs emitted by the EVM
 /// while replaying a transaction in debug mode as well as transaction
@@ -204,7 +204,9 @@ impl EventListener for StructLogger {
             }
         };
     }
+}
 
+impl Tracer for StructLogger {
     fn into_traces(self) -> Value {
         let exit_status = self.exit_status.expect("Emulation is not completed");
         let result = StructLoggerResult {

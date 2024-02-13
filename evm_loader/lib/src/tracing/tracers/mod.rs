@@ -1,7 +1,7 @@
 use crate::tracing::tracers::struct_logger::StructLogger;
 use crate::tracing::TraceConfig;
 use evm_loader::evm::database::Database;
-use evm_loader::evm::tracing::{Event, EventListener};
+use evm_loader::evm::tracing::{Event, EventListener, Tracer};
 use serde_json::Value;
 
 pub mod struct_logger;
@@ -18,7 +18,9 @@ impl EventListener for TracerTypeEnum {
             }
         }
     }
+}
 
+impl Tracer for TracerTypeEnum {
     fn into_traces(self) -> Value {
         match self {
             TracerTypeEnum::StructLogger(struct_logger) => struct_logger.into_traces(),

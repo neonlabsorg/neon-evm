@@ -8,11 +8,17 @@ pub struct NoopEventListener;
 
 pub trait EventListener {
     fn event(&mut self, executor_state: &impl Database, event: Event);
+}
+
+pub trait Tracer: EventListener {
     fn into_traces(self) -> Value;
 }
 
 impl EventListener for NoopEventListener {
     fn event(&mut self, _executor_state: &impl Database, _event: Event) {}
+}
+
+impl Tracer for NoopEventListener {
     fn into_traces(self) -> Value {
         Value::Null
     }

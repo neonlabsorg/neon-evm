@@ -15,7 +15,7 @@ use crate::{
     errors::NeonError,
     NeonResult,
 };
-use evm_loader::evm::tracing::EventListener;
+use evm_loader::evm::tracing::Tracer;
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
@@ -51,7 +51,7 @@ impl EmulateResponse {
     }
 }
 
-pub async fn execute<T: EventListener>(
+pub async fn execute<T: Tracer>(
     rpc: &(impl Rpc + BuildConfigSimulator),
     program_id: Pubkey,
     emulate_request: EmulateRequest,
@@ -82,7 +82,7 @@ pub async fn execute<T: EventListener>(
     emulate_trx(emulate_request.tx, &mut storage, step_limit, tracer).await
 }
 
-async fn emulate_trx<T: EventListener>(
+async fn emulate_trx<T: Tracer>(
     tx_params: TxParams,
     storage: &mut EmulatorAccountStorage<'_, impl Rpc>,
     step_limit: u64,

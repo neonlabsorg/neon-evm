@@ -10,22 +10,33 @@ pub use legacy_storage_cell::LegacyStorageData;
 use solana_program::system_program;
 use solana_program::{account_info::AccountInfo, rent::Rent, sysvar::Sysvar};
 
+use super::program::System;
 use super::Holder;
+use super::Operator;
 use super::StateFinalizedAccount;
 use super::TAG_HOLDER;
 use super::TAG_STATE_FINALIZED;
 use super::{AccountsDB, ContractAccount, TAG_STORAGE_CELL};
+use crate::account::ACCOUNT_PREFIX_LEN;
 use crate::{
     account::{BalanceAccount, StorageCell},
     account_storage::KeysCache,
     error::Result,
 };
 
+// First version
 pub const TAG_STATE_DEPRECATED: u8 = 22;
 pub const TAG_STATE_FINALIZED_DEPRECATED: u8 = 31;
 pub const TAG_HOLDER_DEPRECATED: u8 = 51;
 pub const TAG_ACCOUNT_CONTRACT_DEPRECATED: u8 = 12;
 pub const TAG_STORAGE_CELL_DEPRECATED: u8 = 42;
+// Before account revision (Holder and Finalized remain the same)
+pub const TAG_STATE_BEFORE_REVISION: u8 = 23;
+pub const TAG_ACCOUNT_BALANCE_BEFORE_REVISION: u8 = 60;
+pub const TAG_ACCOUNT_CONTRACT_BEFORE_REVISION: u8 = 70;
+pub const TAG_STORAGE_CELL_BEFORE_REVISION: u8 = 43;
+
+pub const ACCOUNT_PREFIX_LEN_BEFORE_REVISION: usize = 2;
 
 fn reduce_account_size(account: &AccountInfo, required_len: usize, rent: &Rent) -> Result<u64> {
     assert!(account.data_len() > required_len);
@@ -54,7 +65,7 @@ fn kill_account(account: &AccountInfo) -> Result<u64> {
     Ok(value)
 }
 
-fn update_ether_account(
+fn update_ether_account_from_v1(
     legacy_data: &LegacyEtherData,
     db: &AccountsDB,
     keys: &KeysCache,
@@ -89,8 +100,6 @@ fn update_ether_account(
             Some(keys),
         )?;
         contract.set_storage_multiple_values(0, &storage);
-
-        super::set_block(&crate::ID, account, legacy_data.rw_blocked)?;
     } else {
         // This is not contract. Just kill it.
         lamports_collected += kill_account(account)?;
@@ -107,14 +116,12 @@ fn update_ether_account(
         )?;
         balance.mint(legacy_data.balance)?;
         balance.increment_nonce_by(legacy_data.trx_count)?;
-
-        super::set_block(&crate::ID, db.get(balance.pubkey()), legacy_data.rw_blocked)?;
     }
 
     Ok(lamports_collected)
 }
 
-fn update_storage_account(
+fn update_storage_account_from_v1(
     legacy_data: &LegacyStorageData,
     db: &AccountsDB,
     keys: &KeysCache,
@@ -157,7 +164,6 @@ pub fn update_holder_account(account: &AccountInfo) -> Result<u8> {
             let legacy_data = LegacyHolderData::from_account(&crate::ID, account)?;
 
             super::set_tag(&crate::ID, account, TAG_HOLDER)?;
-            super::set_block(&crate::ID, account, false)?;
 
             let mut holder = Holder::from_account(&crate::ID, account.clone())?;
             holder.update(|data| {
@@ -172,7 +178,6 @@ pub fn update_holder_account(account: &AccountInfo) -> Result<u8> {
             let legacy_data = LegacyFinalizedData::from_account(&crate::ID, account)?;
 
             super::set_tag(&crate::ID, account, TAG_STATE_FINALIZED)?;
-            super::set_block(&crate::ID, account, false)?;
 
             let mut state = StateFinalizedAccount::from_account(&crate::ID, account.clone())?;
             state.update(|data| {
@@ -184,6 +189,38 @@ pub fn update_holder_account(account: &AccountInfo) -> Result<u8> {
         }
         tag => Ok(tag),
     }
+}
+
+fn update_account_from_before_revision<'a>(
+    account: &AccountInfo<'a>,
+    operator: &Operator<'a>,
+    system: &System<'a>,
+) -> Result<()> {
+    const PREFIX_BEFORE: usize = ACCOUNT_PREFIX_LEN_BEFORE_REVISION;
+    const PREFIX_AFTER: usize = ACCOUNT_PREFIX_LEN;
+
+    assert!(account.data_len() > PREFIX_BEFORE);
+    let data_len = account.data_len() - PREFIX_BEFORE;
+
+    let required_len = account.data_len() + PREFIX_AFTER - PREFIX_BEFORE;
+    account.realloc(required_len, false)?;
+
+    let rent = Rent::get()?;
+    let minimum_balance = rent.minimum_balance(account.data_len());
+    if account.lamports() < minimum_balance {
+        let required_lamports = minimum_balance - account.lamports();
+        system.transfer(operator, account, required_lamports)?;
+    }
+
+    let mut account_data = account.try_borrow_mut_data()?;
+    unsafe {
+        let ptr = account_data.as_mut_ptr();
+        let src = ptr.add(PREFIX_BEFORE);
+        let dst = ptr.add(PREFIX_AFTER);
+        solana_program::program_memory::sol_memmove(dst, src, data_len);
+    };
+
+    Ok(())
 }
 
 pub fn update_legacy_accounts(accounts: &AccountsDB) -> Result<u64> {
@@ -207,18 +244,28 @@ pub fn update_legacy_accounts(accounts: &AccountsDB) -> Result<u64> {
         match tag {
             LegacyEtherData::TAG => {
                 let legacy_data = LegacyEtherData::from_account(&crate::ID, account)?;
-                lamports_collected += update_ether_account(&legacy_data, accounts, &keys, &rent)?;
+                lamports_collected +=
+                    update_ether_account_from_v1(&legacy_data, accounts, &keys, &rent)?;
             }
             LegacyStorageData::TAG => {
                 let legacy_data = LegacyStorageData::from_account(&crate::ID, account)?;
                 legacy_storage.push(legacy_data);
+            }
+            TAG_ACCOUNT_BALANCE_BEFORE_REVISION
+            | TAG_ACCOUNT_CONTRACT_BEFORE_REVISION
+            | TAG_STORAGE_CELL_BEFORE_REVISION => {
+                update_account_from_before_revision(
+                    account,
+                    accounts.operator(),
+                    accounts.system(),
+                )?;
             }
             _ => {}
         }
     }
 
     for data in legacy_storage {
-        lamports_collected += update_storage_account(&data, accounts, &keys, &rent)?;
+        lamports_collected += update_storage_account_from_v1(&data, accounts, &keys, &rent)?;
     }
 
     Ok(lamports_collected)
@@ -233,5 +280,9 @@ pub fn is_legacy_tag(tag: u8) -> bool {
             | TAG_HOLDER_DEPRECATED
             | TAG_STATE_FINALIZED_DEPRECATED
             | TAG_STATE_DEPRECATED
+            | TAG_STATE_BEFORE_REVISION
+            | TAG_ACCOUNT_BALANCE_BEFORE_REVISION
+            | TAG_ACCOUNT_CONTRACT_BEFORE_REVISION
+            | TAG_STORAGE_CELL_BEFORE_REVISION
     )
 }

@@ -94,7 +94,7 @@ async fn emulate_trx<T: Tracer>(
     info!("tx: {:?}", tx);
 
     let mut backend = ExecutorState::new(storage);
-    let mut evm = match Machine::new(tx, origin, &mut backend, tracer).await {
+    let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
         Ok(evm) => evm,
         Err(e) => return Ok((EmulateResponse::revert(e), None)),
     };

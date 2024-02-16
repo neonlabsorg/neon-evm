@@ -1,9 +1,10 @@
 use async_trait::async_trait;
 use evm_loader::account::legacy::{
-    LegacyEtherData, LegacyStorageData, TAG_ACCOUNT_CONTRACT_DEPRECATED,
-    TAG_STORAGE_CELL_DEPRECATED,
+    LegacyEtherData, LegacyStorageData, ACCOUNT_PREFIX_LEN_BEFORE_REVISION,
+    TAG_ACCOUNT_BALANCE_BEFORE_REVISION, TAG_ACCOUNT_CONTRACT_BEFORE_REVISION,
+    TAG_ACCOUNT_CONTRACT_DEPRECATED, TAG_STORAGE_CELL_BEFORE_REVISION, TAG_STORAGE_CELL_DEPRECATED,
 };
-use evm_loader::account::{TAG_ACCOUNT_CONTRACT, TAG_STORAGE_CELL};
+use evm_loader::account::{ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_CONTRACT, TAG_STORAGE_CELL};
 use evm_loader::account_storage::find_slot_hash;
 use evm_loader::types::Address;
 use solana_sdk::rent::Rent;
@@ -367,6 +368,27 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
                         .minimum_balance(BalanceAccount::required_account_size());
                     self.gas = self.gas.saturating_add(lamports);
                 }
+            }
+
+            if matches!(
+                tag,
+                TAG_ACCOUNT_BALANCE_BEFORE_REVISION
+                    | TAG_ACCOUNT_CONTRACT_BEFORE_REVISION
+                    | TAG_STORAGE_CELL_BEFORE_REVISION
+            ) {
+                const PREFIX_BEFORE: usize = ACCOUNT_PREFIX_LEN_BEFORE_REVISION;
+                const PREFIX_AFTER: usize = ACCOUNT_PREFIX_LEN;
+                const EXPANSION_LEN: usize = PREFIX_AFTER - PREFIX_BEFORE;
+
+                account.is_writable = true;
+                account.is_legacy = true;
+
+                let lamports = self
+                    .rent
+                    .minimum_balance(EXPANSION_LEN)
+                    .saturating_sub(self.rent.minimum_balance(0));
+
+                self.gas = self.gas.saturating_add(lamports);
             }
         }
 

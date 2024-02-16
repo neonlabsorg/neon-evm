@@ -22,7 +22,7 @@ VALIDATOR_ARGS=(
   --bpf-program ${METAPLEX} ${METAPLEX_PATH}
 )
 
-LIST_OF_TEST_PROGRAMS=("test_invoke_program" "counter" "cross_program_invocation" "transfer_sol")
+LIST_OF_TEST_PROGRAMS=("test_invoke_program" "counter" "cross_program_invocation" "transfer_sol" "transfer_tokens")
 
 for program in "${LIST_OF_TEST_PROGRAMS[@]}"; do
   keypair="${NEON_BIN}/deploy/${program}/${program}-keypair.json"

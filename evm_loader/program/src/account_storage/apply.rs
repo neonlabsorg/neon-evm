@@ -2,9 +2,7 @@ use ethnum::U256;
 use solana_program::account_info::AccountInfo;
 use solana_program::instruction::Instruction;
 use solana_program::program::{invoke_signed_unchecked, invoke_unchecked};
-use solana_program::rent::Rent;
 use solana_program::system_program;
-use solana_program::sysvar::Sysvar;
 use std::collections::HashMap;
 
 use crate::account::BalanceAccount;
@@ -47,14 +45,12 @@ impl<'a> ProgramAccountStorage<'a> {
     pub fn allocate(&mut self, actions: &[Action]) -> Result<AllocateResult> {
         let mut total_result = AllocateResult::Ready;
 
-        let rent = Rent::get()?;
-
         for action in actions {
             if let Action::EvmSetCode { address, code, .. } = action {
                 let result = ContractAccount::allocate(
                     *address,
                     code,
-                    &rent,
+                    &self.rent,
                     &self.accounts,
                     Some(&self.keys),
                 )?;
@@ -177,8 +173,6 @@ impl<'a> ProgramAccountStorage<'a> {
     fn apply_storage(&mut self, storage: HashMap<Address, HashMap<U256, [u8; 32]>>) -> Result<()> {
         const STATIC_STORAGE_LIMIT: U256 = U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128);
 
-        let rent = Rent::get()?;
-
         for (address, storage) in storage {
             let mut contract = self.contract_account(address)?;
 
@@ -211,7 +205,8 @@ impl<'a> ProgramAccountStorage<'a> {
                     let sign: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], address.as_bytes(), &[bump]];
 
                     let len = values.len();
-                    let mut storage = StorageCell::create(cell_address, len, &self.accounts, sign)?;
+                    let mut storage =
+                        StorageCell::create(cell_address, len, &self.accounts, sign, &self.rent)?;
                     let mut cells = storage.cells_mut();
 
                     assert_eq!(cells.len(), len);
@@ -225,7 +220,7 @@ impl<'a> ProgramAccountStorage<'a> {
                         storage.update(subindex, &value)?;
                     }
 
-                    storage.sync_lamports(rent, &self.accounts)?;
+                    storage.sync_lamports(&self.rent, &self.accounts)?;
                 };
             }
         }

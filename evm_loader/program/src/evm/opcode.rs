@@ -1,13 +1,13 @@
 /// <https://ethereum.github.io/yellowpaper/paper.pdf>
 use ethnum::{I256, U256};
 use maybe_async::maybe_async;
-use solana_program::log::sol_log_data;
 
 use super::{
     database::{Database, DatabaseExt},
     tracing_event, Context, Machine, Reason,
 };
 use crate::{
+    debug::log_data,
     error::{Error, Result},
     evm::{trace_end_step, Buffer},
     types::Address,
@@ -984,11 +984,11 @@ impl<B: Database> Machine<B> {
         let address = self.context.contract.as_bytes();
 
         match N {
-            0 => sol_log_data(&[b"LOG0", address, &[0], data]),                                                
-            1 => sol_log_data(&[b"LOG1", address, &[1], &topics[0], data]),                                    
-            2 => sol_log_data(&[b"LOG2", address, &[2], &topics[0], &topics[1], data]),                        
-            3 => sol_log_data(&[b"LOG3", address, &[3], &topics[0], &topics[1], &topics[2], data]),            
-            4 => sol_log_data(&[b"LOG4", address, &[4], &topics[0], &topics[1], &topics[2], &topics[3], data]),
+            0 => log_data(&[b"LOG0", address, &[0], data]),                                                
+            1 => log_data(&[b"LOG1", address, &[1], &topics[0], data]),                                    
+            2 => log_data(&[b"LOG2", address, &[2], &topics[0], &topics[1], data]),                        
+            3 => log_data(&[b"LOG3", address, &[3], &topics[0], &topics[1], &topics[2], data]),            
+            4 => log_data(&[b"LOG4", address, &[4], &topics[0], &topics[1], &topics[2], &topics[3], data]),
             _ => unreachable!(),
         }
 
@@ -1089,7 +1089,7 @@ impl<B: Database> Machine<B> {
         );
         backend.snapshot();
 
-        sol_log_data(&[b"ENTER", b"CREATE", address.as_bytes()]);
+        log_data(&[b"ENTER", b"CREATE", address.as_bytes()]);
 
         if (backend.nonce(address, chain_id).await? != 0)
             || (backend.code_size(address).await? != 0)
@@ -1149,7 +1149,7 @@ impl<B: Database> Machine<B> {
         );
         backend.snapshot();
 
-        sol_log_data(&[b"ENTER", b"CALL", address.as_bytes()]);
+        log_data(&[b"ENTER", b"CALL", address.as_bytes()]);
 
         if self.is_static && (value != U256::ZERO) {
             return Err(Error::StaticModeViolation(self.context.caller));
@@ -1204,7 +1204,7 @@ impl<B: Database> Machine<B> {
         );
         backend.snapshot();
 
-        sol_log_data(&[b"ENTER", b"CALLCODE", address.as_bytes()]);
+        log_data(&[b"ENTER", b"CALLCODE", address.as_bytes()]);
 
         if backend.balance(self.context.caller, chain_id).await? < value {
             return Err(Error::InsufficientBalance(
@@ -1257,7 +1257,7 @@ impl<B: Database> Machine<B> {
         );
         backend.snapshot();
 
-        sol_log_data(&[b"ENTER", b"DELEGATECALL", address.as_bytes()]);
+        log_data(&[b"ENTER", b"DELEGATECALL", address.as_bytes()]);
 
         self.opcode_call_precompile_impl(backend, &address).await
     }
@@ -1308,7 +1308,7 @@ impl<B: Database> Machine<B> {
 
         backend.snapshot();
 
-        sol_log_data(&[b"ENTER", b"STATICCALL", address.as_bytes()]);
+        log_data(&[b"ENTER", b"STATICCALL", address.as_bytes()]);
 
         self.opcode_call_precompile_impl(backend, &address).await
     }
@@ -1361,7 +1361,7 @@ impl<B: Database> Machine<B> {
         }
 
         backend.commit_snapshot();
-        sol_log_data(&[b"EXIT", b"RETURN"]);
+        log_data(&[b"EXIT", b"RETURN"]);
 
         if self.parent.is_none() {
             return Ok(Action::Return(return_data));
@@ -1409,7 +1409,7 @@ impl<B: Database> Machine<B> {
         return_data: Vec<u8>,
         backend: &mut B,
     ) -> Result<Action> {
-        sol_log_data(&[b"EXIT", b"REVERT", &return_data]);
+        log_data(&[b"EXIT", b"REVERT", &return_data]);
         backend.revert_snapshot();
 
         if self.parent.is_none() {
@@ -1466,7 +1466,7 @@ impl<B: Database> Machine<B> {
         backend.selfdestruct(self.context.contract)?;
 
         backend.commit_snapshot();
-        sol_log_data(&[b"EXIT", b"SELFDESTRUCT"]);
+        log_data(&[b"EXIT", b"SELFDESTRUCT"]);
 
         if self.parent.is_none() {
             return Ok(Action::Suicide);
@@ -1498,7 +1498,7 @@ impl<B: Database> Machine<B> {
     #[maybe_async]
     pub async fn opcode_stop(&mut self, backend: &mut B) -> Result<Action> {
         backend.commit_snapshot();
-        sol_log_data(&[b"EXIT", b"STOP"]);
+        log_data(&[b"EXIT", b"STOP"]);
 
         if self.parent.is_none() {
             return Ok(Action::Stop);

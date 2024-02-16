@@ -2,6 +2,7 @@ use ethnum::{AsU256, U256};
 use maybe_async::maybe_async;
 use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
+use solana_program::rent::Rent;
 
 use crate::account_storage::{AccountStorage, SyncedAccountStorage};
 use crate::error::{Error, Result};
@@ -159,6 +160,14 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
 
     fn block_timestamp(&self) -> Result<U256> {
         Ok(self.backend.block_timestamp())
+    }
+
+    fn rent(&self) -> &Rent {
+        self.backend.rent()
+    }
+
+    fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
+        self.backend.return_data()
     }
 
     async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {

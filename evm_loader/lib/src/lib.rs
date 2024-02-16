@@ -7,7 +7,6 @@ pub mod emulator_state;
 pub mod errors;
 pub mod rpc;
 pub mod solana_emulator;
-pub mod syscall_stubs;
 pub mod tracing;
 pub mod types;
 

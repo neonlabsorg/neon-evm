@@ -1,7 +1,7 @@
+use crate::rpc::{CallDbClient, CloneRpcClient, RpcEnum};
+use crate::types::TracerDb;
 use crate::Config;
-use neon_lib::rpc::{CallDbClient, CloneRpcClient, RpcEnum};
-use neon_lib::types::TracerDb;
-use neon_lib::NeonError;
+use crate::NeonError;
 
 pub struct State {
     pub tracer_db: TracerDb,

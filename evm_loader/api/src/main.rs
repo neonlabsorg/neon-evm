@@ -33,7 +33,7 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 type NeonApiResult<T> = Result<T, NeonApiError>;
-type NeonApiState = Data<api_server::state::State>;
+type NeonApiState = Data<neon_lib::state::State>;
 
 #[actix_web::main]
 async fn main() -> NeonApiResult<()> {
@@ -55,7 +55,7 @@ async fn main() -> NeonApiResult<()> {
 
     let config = config::create_from_api_config(&api_config)?;
 
-    let state: NeonApiState = Data::new(api_server::state::State::new(config));
+    let state: NeonApiState = Data::new(neon_lib::state::State::new(config));
 
     let listener_addr = options
         .value_of("host")

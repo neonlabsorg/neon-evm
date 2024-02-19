@@ -8,7 +8,7 @@ use evm_loader::account_storage::find_slot_hash;
 use evm_loader::types::Address;
 use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
-use solana_sdk::sysvar::{slot_hashes, Sysvar};
+use solana_sdk::sysvar::slot_hashes;
 use std::collections::{BTreeMap, HashSet};
 use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
 
@@ -87,23 +87,12 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             Some(chains) => chains,
         };
 
-        // TODO: is it correct to get rent from the account
-        let mut rent_account = rpc
+        let rent_account = rpc
             .get_account(&solana_sdk::sysvar::rent::id())
             .await?
             .value
-            .unwrap();
-        let rent = Rent::from_account_info(&AccountInfo {
-            key: &solana_sdk::sysvar::rent::id(),
-            is_signer: false,
-            is_writable: false,
-            lamports: Rc::new(RefCell::new(&mut rent_account.lamports)),
-            data: Rc::new(RefCell::new(&mut rent_account.data)),
-            owner: &rent_account.owner,
-            executable: rent_account.executable,
-            rent_epoch: rent_account.rent_epoch,
-        })?;
-
+            .ok_or(NeonError::AccountNotFound(solana_sdk::sysvar::rent::id()))?;
+        let rent = bincode::deserialize::<Rent>(&rent_account.data)?;
         info!("Rent: {rent:?}");
 
         Ok(Self {

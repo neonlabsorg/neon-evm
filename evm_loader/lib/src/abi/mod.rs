@@ -23,6 +23,7 @@ use abi_stable::{
 };
 use async_ffi::FutureExt;
 use clap::ArgMatches;
+use lazy_static::lazy_static;
 use neon_lib_interface::{
     types::{NeonEVMLibError, RNeonEVMLibResult},
     NeonEVMLib,
@@ -55,9 +56,17 @@ fn get_build_info() -> RString {
         .into()
 }
 
+lazy_static! {
+    static ref RUNTIME: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
+}
+
 #[sabi_extern_fn]
 fn invoke<'a>(method: RStr<'a>, params: RStr<'a>) -> RNeonEVMLibResult<'a> {
     async move {
+        // Needed for tokio::task::spawn_blocking using thread local storage inside dynamic library
+        // since dynamic library and executable have different thread local storage namespaces
+        let _guard = RUNTIME.enter();
+
         dispatch(method.as_str(), params.as_str())
             .await
             .map(RString::from)

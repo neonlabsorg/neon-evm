@@ -47,6 +47,7 @@ async-ffi = { version = "0.4.1", features = ["abi_stable"] }
 strum = "0.25.0"
 strum_macros = "0.25.3"
 clap = "2.33.3"
+lazy_static = "1.4.0"
 
 [build-dependencies]
 build-info-build = "0.0.31"

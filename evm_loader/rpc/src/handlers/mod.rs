@@ -48,31 +48,28 @@ pub async fn invoke(
         params_str = serde_json::to_string(&params_value).unwrap();
     }
 
-    library.invoke()(
-        method_str.into(),
-        serde_json::to_string(&params_str).unwrap().as_str().into(),
-    )
-    .await
-    .map(|x| serde_json::from_str::<serde_json::Value>(&x).unwrap())
-    .map_err(|s| {
-        let NeonEVMLibError {
-            code,
-            message,
-            data,
-        } = serde_json::from_str(s.as_str()).unwrap();
+    library.invoke()(method_str.into(), params_str.as_str().into())
+        .await
+        .map(|x| serde_json::from_str::<serde_json::Value>(&x).unwrap())
+        .map_err(|s| {
+            let NeonEVMLibError {
+                code,
+                message,
+                data,
+            } = serde_json::from_str(s.as_str()).unwrap();
 
-        jsonrpc_v2::Error::Full {
-            code: code as i64,
-            message,
-            data: Some(Box::new(
-                data.as_ref()
-                    .and_then(Value::as_str)
-                    .unwrap_or("null")
-                    .to_string(),
-            )),
-        }
-    })
-    .into()
+            jsonrpc_v2::Error::Full {
+                code: code as i64,
+                message,
+                data: Some(Box::new(
+                    data.as_ref()
+                        .and_then(Value::as_str)
+                        .unwrap_or("null")
+                        .to_string(),
+                )),
+            }
+        })
+        .into()
 }
 
 pub async fn lib_build_info(

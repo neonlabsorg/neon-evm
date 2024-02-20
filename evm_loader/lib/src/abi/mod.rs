@@ -97,12 +97,11 @@ async fn dispatch(method_str: &str, params_str: &str) -> Result<String, NeonErro
         _ => serde_json::from_str(params_str).map_err(|_| params_to_neon_error(params_str))?,
     };
     let rpc = build_rpc(&config, slot, tx_index_in_block).await?;
-    let singer = build_signer(&config)?;
 
     match method {
         LibMethod::CancelTrx => cancel_trx::execute(
             &config.build_solana_rpc_client(),
-            &*singer,
+            &*build_signer(&config)?,
             &config,
             params_str,
         )
@@ -110,7 +109,7 @@ async fn dispatch(method_str: &str, params_str: &str) -> Result<String, NeonErro
         .map(|v| serde_json::to_string(&v).unwrap()),
         LibMethod::CollectTreasury => collect_treasury::execute(
             &config.build_clone_solana_rpc_client(),
-            &*singer,
+            &*build_signer(&config)?,
             &config,
             params_str,
         )
@@ -142,7 +141,7 @@ async fn dispatch(method_str: &str, params_str: &str) -> Result<String, NeonErro
             .map(|v| serde_json::to_string(&v).unwrap()),
         LibMethod::InitEnvironment => init_environment::execute(
             &config.build_clone_solana_rpc_client(),
-            &*singer,
+            &*build_signer(&config)?,
             &config,
             params_str,
         )

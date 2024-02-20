@@ -10,10 +10,10 @@ mod get_storage_at;
 mod init_environment;
 mod trace;
 
+use crate::state::State;
 use crate::{
     config::{self},
-    rpc::{CallDbClient, RpcEnum},
-    types::{RequestWithSlot, TracerDb},
+    types::RequestWithSlot,
     Config, LibMethod, NeonError,
 };
 use abi_stable::{
@@ -58,6 +58,7 @@ fn get_build_info() -> RString {
 
 lazy_static! {
     static ref RUNTIME: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
+    static ref STATE: State = State::new(load_config().unwrap());
 }
 
 #[sabi_extern_fn]
@@ -76,7 +77,7 @@ fn invoke<'a>(method: RStr<'a>, params: RStr<'a>) -> RNeonEVMLibResult<'a> {
     .into_local_ffi()
 }
 
-async fn load_config() -> Result<Config, NeonError> {
+fn load_config() -> Result<Config, NeonError> {
     let api_options = config::load_api_config_from_enviroment();
     let config = config::create_from_api_config(&api_options)?;
 
@@ -85,7 +86,6 @@ async fn load_config() -> Result<Config, NeonError> {
 
 async fn dispatch(method_str: &str, params_str: &str) -> Result<String, NeonError> {
     let method: LibMethod = method_str.parse()?;
-    let config = load_config().await?;
     let RequestWithSlot {
         slot,
         tx_index_in_block,
@@ -96,7 +96,9 @@ async fn dispatch(method_str: &str, params_str: &str) -> Result<String, NeonErro
         },
         _ => serde_json::from_str(params_str).map_err(|_| params_to_neon_error(params_str))?,
     };
-    let rpc = build_rpc(&config, slot, tx_index_in_block).await?;
+    let state = &STATE;
+    let rpc = state.build_rpc(slot, tx_index_in_block).await?;
+    let config = &state.config;
 
     match method {
         LibMethod::CancelTrx => cancel_trx::execute(
@@ -181,23 +183,4 @@ fn build_signer(config: &Config) -> Result<Box<dyn Signer>, NeonError> {
     .map_err(|_| NeonError::KeypairNotSpecified)?;
 
     Ok(signer)
-}
-
-async fn build_rpc(
-    config: &Config,
-    slot: Option<u64>,
-    tx_index_in_block: Option<u64>,
-) -> Result<RpcEnum, NeonError> {
-    Ok(if let Some(slot) = slot {
-        RpcEnum::CallDbClient(
-            CallDbClient::new(
-                TracerDb::new(config.db_config.as_ref().expect("db-config not found")),
-                slot,
-                tx_index_in_block,
-            )
-            .await?,
-        )
-    } else {
-        RpcEnum::CloneRpcClient(config.build_clone_solana_rpc_client())
-    })
 }

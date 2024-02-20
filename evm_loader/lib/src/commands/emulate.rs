@@ -1,4 +1,5 @@
 use evm_loader::account::ContractAccount;
+use evm_loader::account_storage::AccountStorage;
 use evm_loader::error::build_revert_message;
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
@@ -92,6 +93,9 @@ async fn emulate_trx<T: Tracer>(
 
     info!("origin: {:?}", origin);
     info!("tx: {:?}", tx);
+
+    let chain_id = tx.chain_id().unwrap_or_else(|| storage.default_chain_id());
+    storage.use_balance_account(origin, chain_id, true).await?;
 
     let mut backend = ExecutorState::new(storage);
     let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {

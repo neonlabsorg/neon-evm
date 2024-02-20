@@ -6,8 +6,8 @@ use std::cell::{Ref, RefMut};
 
 pub use crate::config::ACCOUNT_SEED_VERSION;
 
-pub use ether_balance::BalanceAccount;
-pub use ether_contract::{AllocateResult, ContractAccount};
+pub use ether_balance::{BalanceAccount, Header as BalanceHeader};
+pub use ether_contract::{AllocateResult, ContractAccount, Header as ContractHeader};
 pub use ether_storage::{StorageCell, StorageCellAddress};
 pub use holder::Holder;
 pub use incinerator::Incinerator;

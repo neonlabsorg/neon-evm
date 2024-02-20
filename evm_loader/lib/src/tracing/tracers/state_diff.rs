@@ -8,7 +8,6 @@ use web3::types::{Bytes, H256};
 use crate::types::TxParams;
 use evm_loader::evm::database::Database;
 use evm_loader::evm::tracing::Event;
-use evm_loader::evm::Reason::Create;
 use evm_loader::evm::{opcode_table, Buffer};
 use evm_loader::types::Address;
 use serde::{Deserialize, Serialize};
@@ -23,6 +22,12 @@ pub struct Account {
     pub storage: BTreeMap<H256, H256>,
 }
 
+impl Account {
+    pub fn is_empty(&self) -> bool {
+        self.balance.is_zero() && self.nonce == 0 && self.code.0.is_empty()
+    }
+}
+
 // TODO NDEV-2451 - Add operator balance diff to pre and post state
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct States {
@@ -34,7 +39,8 @@ fn map_code(buffer: Buffer) -> Bytes {
     buffer.to_vec().into()
 }
 
-fn to_web3_u256(v: U256) -> web3::types::U256 {
+// todo move this
+pub(crate) fn to_web3_u256(v: U256) -> web3::types::U256 {
     web3::types::U256::from(v.to_be_bytes())
 }
 
@@ -67,10 +73,12 @@ impl StateDiffTracer {
             Event::BeginVM {
                 context,
                 chain_id,
-                code: _code,
-                reason,
+                opcode,
+                ..
             } => {
-                if self.depth == 0 {
+                self.depth += 1;
+
+                if self.depth == 1 {
                     self.lookup_account(executor_state, chain_id, context.caller)
                         .await?;
                     self.lookup_account(executor_state, chain_id, context.contract)
@@ -92,7 +100,7 @@ impl StateDiffTracer {
 
                     self.state_map.entry(context.caller).or_default().pre.nonce -= 1;
 
-                    if reason == Create {
+                    if opcode == opcode_table::CREATE {
                         self.state_map
                             .entry(context.contract)
                             .or_default()
@@ -100,15 +108,11 @@ impl StateDiffTracer {
                             .nonce -= 1;
                     }
                 }
-
-                self.depth += 1;
             }
             Event::EndVM {
                 context, chain_id, ..
             } => {
-                self.depth -= 1;
-
-                if self.depth == 0 {
+                if self.depth == 1 {
                     for (address, states) in &mut self.state_map {
                         states.post = Account {
                             balance: to_web3_u256(
@@ -144,14 +148,16 @@ impl StateDiffTracer {
                         .post
                         .balance -= self.tx_fee;
                 }
+
+                self.depth -= 1;
             }
             Event::BeginStep {
                 context,
                 chain_id,
                 opcode,
-                pc: _pc,
                 stack,
                 memory,
+                ..
             } => {
                 let contract = context.contract;
                 match opcode {
@@ -203,7 +209,6 @@ impl StateDiffTracer {
                     _ => {}
                 }
             }
-            _ => {}
         }
         Ok(())
     }

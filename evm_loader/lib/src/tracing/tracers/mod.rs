@@ -1,3 +1,4 @@
+use crate::tracing::tracers::call_tracer::CallTracer;
 use crate::tracing::tracers::openeth::tracer::OpenEthereumTracer;
 use crate::tracing::tracers::prestate_tracer::tracer::PrestateTracer;
 use crate::tracing::tracers::struct_logger::StructLogger;
@@ -10,6 +11,7 @@ use evm_loader::evm::tracing::Event;
 use evm_loader::evm::tracing::EventListener;
 use serde_json::Value;
 
+pub mod call_tracer;
 pub mod openeth;
 pub mod prestate_tracer;
 pub mod state_diff;
@@ -20,6 +22,7 @@ pub enum TracerTypeEnum {
     StructLogger(StructLogger),
     OpenEthereumTracer(OpenEthereumTracer),
     PrestateTracer(PrestateTracer),
+    CallTracer(CallTracer),
 }
 
 // cannot use enum_dispatch because of trait and enum in different crates
@@ -34,6 +37,7 @@ impl EventListener for TracerTypeEnum {
             TracerTypeEnum::StructLogger(tracer) => tracer.event(executor_state, event).await,
             TracerTypeEnum::OpenEthereumTracer(tracer) => tracer.event(executor_state, event).await,
             TracerTypeEnum::PrestateTracer(tracer) => tracer.event(executor_state, event).await,
+            TracerTypeEnum::CallTracer(tracer) => tracer.event(executor_state, event).await,
         }
     }
 }
@@ -57,6 +61,10 @@ pub fn new_tracer(
             tx,
         ))),
         Some("prestateTracer") => Ok(TracerTypeEnum::PrestateTracer(PrestateTracer::new(
+            trace_config,
+            tx,
+        ))),
+        Some("callTracer") => Ok(TracerTypeEnum::CallTracer(CallTracer::new(
             trace_config,
             tx,
         ))),

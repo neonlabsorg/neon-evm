@@ -16,6 +16,7 @@ use evm_loader::solana_program::rent::Rent;
 use evm_loader::types::Address;
 
 use crate::account_storage::account_info;
+use crate::tracing::tracers::call_tracer::CallTracerConfig;
 use solana_client::client_error::Result as ClientResult;
 use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
 use solana_sdk::account::Account;
@@ -138,6 +139,20 @@ pub fn prestate_diff_mode_trace_config() -> TraceConfig {
         tracer: Some("prestateTracer".to_string()),
         tracer_config: Some(
             serde_json::to_value(PrestateTracerConfig { diff_mode: true }).unwrap(),
+        ),
+        ..TraceConfig::default()
+    }
+}
+
+pub fn call_tracer_config() -> TraceConfig {
+    TraceConfig {
+        tracer: Some("callTracer".to_string()),
+        tracer_config: Some(
+            serde_json::to_value(CallTracerConfig {
+                only_top_call: false,
+                with_log: false,
+            })
+            .unwrap(),
         ),
         ..TraceConfig::default()
     }

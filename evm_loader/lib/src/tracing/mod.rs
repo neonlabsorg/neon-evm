@@ -69,6 +69,8 @@ pub struct TraceConfig {
     pub disable_stack: bool,
     #[serde(default)]
     pub enable_return_data: bool,
+    #[serde(default)]
+    pub limit: usize,
     pub tracer: Option<String>,
     pub timeout: Option<String>,
     pub tracer_config: Option<Value>,

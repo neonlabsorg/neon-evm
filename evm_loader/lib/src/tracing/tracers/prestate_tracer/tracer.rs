@@ -42,6 +42,7 @@ impl From<TraceConfig> for PrestateTracerConfig {
 #[derive(Serialize, Deserialize, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PrestateTracerConfig {
+    #[serde(default)]
     pub diff_mode: bool,
 }
 

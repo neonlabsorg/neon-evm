@@ -1,7 +1,8 @@
 use maybe_async::maybe_async;
 
-use super::{Context, ExitStatus, Reason};
+use super::{Context, ExitStatus};
 use crate::evm::database::Database;
+use crate::evm::opcode_table::Opcode;
 
 pub struct NoopEventListener;
 
@@ -30,8 +31,8 @@ pub enum Event {
     BeginVM {
         context: Context,
         chain_id: u64,
-        code: Vec<u8>,
-        reason: Reason,
+        input: Vec<u8>,
+        opcode: Opcode,
     },
     EndVM {
         context: Context,
@@ -41,12 +42,10 @@ pub enum Event {
     BeginStep {
         context: Context,
         chain_id: u64,
-        opcode: u8,
+        opcode: Opcode,
         pc: usize,
         stack: Vec<[u8; 32]>,
         memory: Vec<u8>,
-    },
-    EndStep {
-        return_data: Option<Vec<u8>>,
+        return_data: Vec<u8>,
     },
 }

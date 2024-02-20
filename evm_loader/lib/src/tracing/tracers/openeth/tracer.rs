@@ -46,8 +46,8 @@ impl EventListener for OpenEthereumTracer {
         executor_state: &impl Database,
         event: Event,
     ) -> evm_loader::error::Result<()> {
-        if let Event::EndStep { return_data } = &event {
-            self.output = return_data.clone().map(Into::into);
+        if let Event::EndVM { status, .. } = &event {
+            self.output = status.clone().into_result().map(Into::into);
         }
         self.state_diff_tracer.event(executor_state, event).await
     }

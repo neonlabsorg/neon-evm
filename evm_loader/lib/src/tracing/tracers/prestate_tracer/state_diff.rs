@@ -41,6 +41,11 @@ pub fn build_prestate_tracer_pre_state(state_map: StateMap) -> PrestateTracerSta
 
     for (address, states) in state_map {
         let pre_account = states.pre;
+
+        if pre_account.is_empty() {
+            continue;
+        }
+
         result.insert(
             address,
             PrestateTracerAccount {
@@ -93,17 +98,23 @@ pub fn build_prestate_tracer_diff_mode_result(state_map: StateMap) -> PrestateTr
         for (key, initial_value) in pre_account.storage {
             // don't include the empty slot
             if initial_value == H256::zero() {
-                pre.entry(address).or_default().storage.remove(&key);
+                pre.entry(address).and_modify(|account| {
+                    account.storage.remove(&key);
+                });
             }
 
-            let final_value = post_account.storage.get(&key).cloned().unwrap();
+            let final_value = post_account.storage.get(&key).cloned().unwrap_or_default();
 
             // Omit unchanged slots
             if initial_value == final_value {
-                pre.entry(address).or_default().storage.remove(&key);
+                pre.entry(address).and_modify(|account| {
+                    account.storage.remove(&key);
+                });
             } else {
                 modified = true;
-                storage.insert(key, final_value);
+                if final_value != H256::zero() {
+                    storage.insert(key, final_value);
+                }
             }
         }
 

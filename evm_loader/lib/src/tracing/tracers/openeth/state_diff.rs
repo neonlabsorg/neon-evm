@@ -9,8 +9,7 @@ pub fn into_state_diff(state_map: StateMap) -> StateDiff {
         let pre_account = states.pre;
         let post_account = states.post;
 
-        if pre_account.balance.is_zero() && pre_account.nonce == 0 && pre_account.code.0.is_empty()
-        {
+        if pre_account.is_empty() {
             state_diff.insert(
                 H160::from(address.as_bytes()),
                 AccountDiff {

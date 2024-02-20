@@ -10,7 +10,7 @@ use crate::evm::tracing::EventListener;
 use crate::{
     debug::log_data,
     error::{Error, Result},
-    evm::{trace_end_step, Buffer},
+    evm::Buffer,
     types::Address,
 };
 
@@ -1012,8 +1012,16 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             Address::from_create(&source, nonce)
         };
 
-        self.opcode_create_impl(created_address, value, offset, length, backend)
-            .await
+        self.opcode_create_impl(
+            created_address,
+            value,
+            offset,
+            length,
+            backend,
+            #[cfg(not(target_os = "solana"))]
+            super::opcode_table::CREATE,
+        )
+        .await
     }
 
     /// Constantinople harfork, EIP-1014: creates a create a new account with a deterministic address
@@ -1033,8 +1041,16 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             Address::from_create2(&self.context.contract, &salt, initialization_code)
         };
 
-        self.opcode_create_impl(created_address, value, offset, length, backend)
-            .await
+        self.opcode_create_impl(
+            created_address,
+            value,
+            offset,
+            length,
+            backend,
+            #[cfg(not(target_os = "solana"))]
+            super::opcode_table::CREATE2,
+        )
+        .await
     }
 
     #[maybe_async]
@@ -1045,6 +1061,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         offset: usize,
         length: usize,
         backend: &mut B,
+        #[cfg(not(target_os = "solana"))] opcode: super::opcode_table::Opcode,
     ) -> Result<Action> {
         let chain_id = self.context.contract_chain_id;
 
@@ -1074,8 +1091,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             super::tracing::Event::BeginVM {
                 context,
                 chain_id,
-                code: init_code.to_vec(),
-                reason: Reason::Create
+                input: init_code.to_vec(),
+                opcode
             }
         );
 
@@ -1137,8 +1154,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             super::tracing::Event::BeginVM {
                 context,
                 chain_id,
-                code: code.to_vec(),
-                reason: Reason::Call
+                input: call_data.to_vec(),
+                opcode: super::opcode_table::CALL
             }
         );
 
@@ -1195,8 +1212,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             super::tracing::Event::BeginVM {
                 context,
                 chain_id,
-                code: code.to_vec(),
-                reason: Reason::Call
+                input: call_data.to_vec(),
+                opcode: super::opcode_table::CALLCODE
             }
         );
 
@@ -1251,8 +1268,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             super::tracing::Event::BeginVM {
                 context,
                 chain_id: self.chain_id,
-                code: code.to_vec(),
-                reason: Reason::Call
+                input: call_data.to_vec(),
+                opcode: super::opcode_table::DELEGATECALL
             }
         );
 
@@ -1303,8 +1320,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             super::tracing::Event::BeginVM {
                 context,
                 chain_id,
-                code: code.to_vec(),
-                reason: Reason::Call
+                input: call_data.to_vec(),
+                opcode: super::opcode_table::STATICCALL
             }
         );
 
@@ -1364,16 +1381,17 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     #[maybe_async]
     pub async fn opcode_return_impl(
         &mut self,
-        #[cfg(target_os = "solana")] mut return_data: Vec<u8>,
-        #[cfg(not(target_os = "solana"))] return_data: Vec<u8>,
+        mut return_data: Vec<u8>,
         backend: &mut B,
     ) -> Result<Action> {
-        if self.reason == Reason::Create {
-            #[cfg(target_os = "solana")]
-            let code = std::mem::take(&mut return_data);
+        #[cfg(target_os = "solana")]
+        let return_data_clone = vec![];
 
-            #[cfg(not(target_os = "solana"))]
-            let code = return_data.clone();
+        #[cfg(not(target_os = "solana"))]
+        let return_data_clone = return_data.clone();
+
+        if self.reason == Reason::Create {
+            let code = std::mem::take(&mut return_data);
 
             backend.set_code(self.context.contract, self.chain_id, code)?;
         }
@@ -1381,20 +1399,19 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend.commit_snapshot();
         log_data(&[b"EXIT", b"RETURN"]);
 
-        if self.parent.is_none() {
-            return Ok(Action::Return(return_data));
-        }
-
-        trace_end_step!(self, backend, Some(return_data.clone()));
         tracing_event!(
             self,
             backend,
             super::tracing::Event::EndVM {
                 context: self.context,
                 chain_id: self.chain_id,
-                status: super::ExitStatus::Return(return_data.clone())
+                status: super::ExitStatus::Return(return_data_clone.clone())
             }
         );
+
+        if self.parent.is_none() {
+            return Ok(Action::Return(return_data_clone));
+        }
 
         let returned = self.join();
         match returned.reason {
@@ -1433,11 +1450,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend.revert_snapshot();
         log_data(&[b"EXIT", b"REVERT", &return_data]);
 
-        if self.parent.is_none() {
-            return Ok(Action::Revert(return_data));
-        }
-
-        trace_end_step!(self, backend, Some(return_data.clone()));
         tracing_event!(
             self,
             backend,
@@ -1447,6 +1459,10 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 status: super::ExitStatus::Revert(return_data.clone())
             }
         );
+
+        if self.parent.is_none() {
+            return Ok(Action::Revert(return_data));
+        }
 
         let returned = self.join();
         match returned.reason {
@@ -1492,11 +1508,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend.commit_snapshot();
         log_data(&[b"EXIT", b"SELFDESTRUCT"]);
 
-        if self.parent.is_none() {
-            return Ok(Action::Suicide);
-        }
-
-        trace_end_step!(self, backend, None);
         tracing_event!(
             self,
             backend,
@@ -1506,6 +1517,10 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 status: super::ExitStatus::Suicide
             }
         );
+
+        if self.parent.is_none() {
+            return Ok(Action::Suicide);
+        }
 
         let returned = self.join();
         match returned.reason {
@@ -1527,11 +1542,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend.commit_snapshot();
         log_data(&[b"EXIT", b"STOP"]);
 
-        if self.parent.is_none() {
-            return Ok(Action::Stop);
-        }
-
-        trace_end_step!(self, backend, None);
         tracing_event!(
             self,
             backend,
@@ -1541,6 +1551,10 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 status: super::ExitStatus::Stop
             }
         );
+
+        if self.parent.is_none() {
+            return Ok(Action::Stop);
+        }
 
         let returned = self.join();
         match returned.reason {

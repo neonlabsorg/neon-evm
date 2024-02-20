@@ -7,7 +7,7 @@ use serde::Serialize;
 use serde_json::Value;
 use web3::types::Bytes;
 
-use evm_loader::evm::opcode_table::OPNAMES;
+use evm_loader::evm::opcode_table::Opcode;
 use evm_loader::evm::tracing::{Event, EventListener};
 use evm_loader::evm::{opcode_table, ExitStatus};
 use evm_loader::types::Address;
@@ -41,7 +41,7 @@ struct StructLog {
     /// Program counter.
     pc: u64,
     /// Operation name
-    op: &'static str,
+    op: Opcode,
     /// Amount of used gas
     gas: u64,
     /// Gas cost for this instruction.
@@ -53,8 +53,8 @@ struct StructLog {
     /// Snapshot of the current stack sate
     #[serde(skip_serializing_if = "Option::is_none")]
     stack: Option<Vec<U256>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    return_data: Option<Bytes>,
+    #[serde(skip_serializing_if = "is_empty")]
+    return_data: Bytes,
     /// Snapshot of the current memory sate
     #[serde(skip_serializing_if = "Option::is_none")]
     memory: Option<Vec<String>>, // chunks of 32 bytes
@@ -67,38 +67,14 @@ struct StructLog {
     refund: u64,
 }
 
+fn is_empty(bytes: &Bytes) -> bool {
+    bytes.0.is_empty()
+}
+
 /// This is only used for serialize
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_zero(num: &u64) -> bool {
     *num == 0
-}
-
-impl StructLog {
-    #[must_use]
-    fn new(
-        opcode: u8,
-        pc: u64,
-        gas_cost: u64,
-        depth: usize,
-        memory: Option<Vec<String>>,
-        stack: Option<Vec<U256>>,
-        storage: Option<BTreeMap<String, String>>,
-    ) -> Self {
-        let op = OPNAMES[opcode as usize];
-        Self {
-            pc,
-            op,
-            gas: 0,
-            gas_cost,
-            depth,
-            memory,
-            stack,
-            return_data: None,
-            storage,
-            error: None,
-            refund: 0,
-        }
-    }
 }
 
 pub struct StructLogger {
@@ -136,11 +112,7 @@ impl EventListener for StructLogger {
             Event::BeginVM { .. } => {
                 self.depth += 1;
             }
-            Event::EndVM {
-                context: _context,
-                chain_id: _chain_id,
-                status,
-            } => {
+            Event::EndVM { status, .. } => {
                 if self.depth == 1 {
                     self.exit_status = Some(status);
                 }
@@ -148,12 +120,17 @@ impl EventListener for StructLogger {
             }
             Event::BeginStep {
                 context,
-                chain_id: _chain_id,
                 opcode,
                 pc,
                 stack,
                 memory,
+                return_data,
+                ..
             } => {
+                if self.config.limit > 0 && self.logs.len() >= self.config.limit {
+                    return Ok(());
+                }
+
                 let storage = if !self.config.disable_storage {
                     if opcode == opcode_table::SLOAD && !stack.is_empty() {
                         let index = U256::from_be_bytes(stack[stack.len() - 1]);
@@ -191,12 +168,7 @@ impl EventListener for StructLogger {
                 let stack = if self.config.disable_stack {
                     None
                 } else {
-                    Some(
-                        stack
-                            .iter()
-                            .map(|entry| U256::from_be_bytes(*entry))
-                            .collect(),
-                    )
+                    Some(stack.into_iter().map(U256::from_be_bytes).collect())
                 };
 
                 let memory = if self.config.enable_memory {
@@ -205,17 +177,19 @@ impl EventListener for StructLogger {
                     None
                 };
 
-                self.logs.push(StructLog::new(
-                    opcode, pc as u64, 0, self.depth, memory, stack, storage,
-                ));
-            }
-            Event::EndStep { return_data } => {
-                if self.config.enable_return_data {
-                    self.logs
-                        .last_mut()
-                        .expect("`EndStep` event before `BeginStep`")
-                        .return_data = return_data.map(Into::into);
-                }
+                self.logs.push(StructLog {
+                    pc: pc as u64,
+                    op: opcode,
+                    gas: 0,
+                    gas_cost: 0,
+                    depth: self.depth,
+                    memory,
+                    stack,
+                    return_data: return_data.into(),
+                    storage,
+                    error: None,
+                    refund: 0,
+                });
             }
         };
         Ok(())
@@ -250,7 +224,7 @@ mod tests {
                 .to_string(),
             struct_logs: vec![StructLog {
                 pc: 8,
-                op: "PUSH2",
+                op: opcode_table::PUSH2,
                 gas: 0,
                 gas_cost: 0,
                 depth: 1,
@@ -260,7 +234,7 @@ mod tests {
                     "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
                     "0000000000000000000000000000000000000000000000000000000000000080".to_string(),
                 ]),
-                return_data: None,
+                return_data: vec![].into(),
                 storage: None,
                 refund: 0,
                 error: None,
@@ -278,13 +252,13 @@ mod tests {
                 .to_string(),
             struct_logs: vec![StructLog {
                 pc: 0,
-                op: "PUSH1",
+                op: opcode_table::PUSH1,
                 gas: 0,
                 gas_cost: 0,
                 depth: 1,
                 stack: None,
                 memory: None,
-                return_data: None,
+                return_data: vec![].into(),
                 storage: None,
                 refund: 0,
                 error: None,
@@ -302,13 +276,13 @@ mod tests {
                 .to_string(),
             struct_logs: vec![StructLog {
                 pc: 0,
-                op: "PUSH1",
+                op: opcode_table::PUSH1,
                 gas: 0,
                 gas_cost: 0,
                 depth: 1,
                 stack: Some(vec![]),
                 memory: Some(vec![]),
-                return_data: None,
+                return_data: vec![].into(),
                 storage: None,
                 refund: 0,
                 error: None,

@@ -2,7 +2,7 @@
 #![allow(clippy::type_repetition_in_bounds)]
 #![allow(clippy::unsafe_derive_deserialize)]
 
-use std::{fmt::Display, marker::PhantomData, ops::Range};
+use std::{marker::PhantomData, ops::Range};
 
 use ethnum::U256;
 use maybe_async::maybe_async;
@@ -49,29 +49,6 @@ macro_rules! tracing_event {
     };
 }
 
-macro_rules! trace_end_step {
-    ($self:ident, $backend:ident, $return_data:expr) => {
-        #[cfg(not(target_os = "solana"))]
-        if let Some(tracer) = &mut $self.tracer {
-            tracer
-                .event(
-                    $backend,
-                    crate::evm::tracing::Event::EndStep {
-                        return_data: $return_data,
-                    },
-                )
-                .await?
-        }
-    };
-    ($self:ident, $backend:ident, $condition:expr; $return_data_getter:expr) => {
-        #[cfg(not(target_os = "solana"))]
-        if $condition {
-            trace_end_step!($self, $backend, $return_data_getter)
-        }
-    };
-}
-
-pub(crate) use trace_end_step;
 pub(crate) use tracing_event;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -83,12 +60,14 @@ pub enum ExitStatus {
     StepLimit,
 }
 
-impl Display for ExitStatus {
+#[cfg(not(target_os = "solana"))]
+impl std::fmt::Display for ExitStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.status())
     }
 }
 
+#[cfg(not(target_os = "solana"))]
 impl ExitStatus {
     #[must_use]
     pub fn status(&self) -> &'static str {
@@ -351,8 +330,16 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             crate::evm::tracing::Event::BeginVM {
                 context: self.context,
                 chain_id: self.chain_id,
-                code: self.execution_code.to_vec(),
-                reason: self.reason
+                input: if self.reason == Reason::Call {
+                    self.call_data.to_vec()
+                } else {
+                    self.execution_code.to_vec()
+                },
+                opcode: if self.reason == Reason::Call {
+                    opcode_table::CALL
+                } else {
+                    opcode_table::CREATE
+                }
             }
         );
 
@@ -376,10 +363,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                     crate::evm::tracing::Event::BeginStep {
                         context: self.context,
                         chain_id: self.chain_id,
-                        opcode,
+                        opcode: opcode.into(),
                         pc: self.pc,
                         stack: self.stack.to_vec(),
                         memory: self.memory.to_vec(),
+                        return_data: self.return_data.to_vec()
                     }
                 );
 
@@ -390,11 +378,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                         self.opcode_revert_impl(message, backend).await?
                     }
                 };
-
-                trace_end_step!(self, backend, opcode_result != Action::Noop; match &opcode_result {
-                    Action::Return(value) | Action::Revert(value) => Some(value.clone()),
-                    _ => None,
-                });
 
                 match opcode_result {
                     Action::Continue => self.pc += 1,
@@ -407,16 +390,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 };
             }
         };
-
-        tracing_event!(
-            self,
-            backend,
-            crate::evm::tracing::Event::EndVM {
-                context: self.context,
-                chain_id: self.chain_id,
-                status: status.clone()
-            }
-        );
 
         Ok((status, step, self.tracer.take()))
     }

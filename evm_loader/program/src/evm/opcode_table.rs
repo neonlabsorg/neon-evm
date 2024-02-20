@@ -44,8 +44,29 @@ macro_rules! opcode_table {
             opnames
         };
 
+        #[repr(transparent)]
+        #[derive(PartialEq, Eq, Default)]
+        pub struct Opcode(pub u8);
+
         #[cfg(not(target_os = "solana"))]
-        $(pub const $opname: u8 = $opcode;)*
+        $(pub const $opname: Opcode = Opcode($opcode);)*
+
+        #[cfg(not(target_os = "solana"))]
+        impl From<u8> for Opcode {
+            fn from(opcode: u8) -> Self {
+                Opcode(opcode)
+            }
+        }
+
+        #[cfg(not(target_os = "solana"))]
+        impl serde::Serialize for Opcode {
+            fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                serializer.serialize_str(OPNAMES[self.0 as usize])
+            }
+        }
     }
 }
 

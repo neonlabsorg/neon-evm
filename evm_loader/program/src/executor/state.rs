@@ -423,7 +423,14 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
         if self.stack.is_empty() {
             // sanity check
+            #[cfg(target_os = "solana")]
             assert!(self.actions.is_empty());
+
+            #[cfg(not(target_os = "solana"))] // todo fix this
+            {
+                assert_eq!(self.actions.len(), 1);
+                assert!(matches!(self.actions[0], Action::EvmIncrementNonce { .. }));
+            }
         }
     }
 

@@ -30,6 +30,7 @@ use crate::build_info::get_build_info;
 use evm_loader::types::Address;
 use neon_lib::errors::NeonError;
 use neon_lib::rpc::{CallDbClient, RpcEnum};
+use neon_lib::tracing::tracers::TracerTypeEnum;
 use neon_lib::types::TracerDb;
 use solana_clap_utils::keypair::signer_from_path;
 use solana_sdk::signature::Signer;
@@ -45,9 +46,9 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
             let rpc = build_rpc(options, config).await?;
 
             let request = read_tx_from_stdin()?;
-            emulate::execute(&rpc, config.evm_loader, request, None)
+            emulate::execute(&rpc, config.evm_loader, request, None::<TracerTypeEnum>)
                 .await
-                .map(|result| json!(result))
+                .map(|(result, _)| json!(result))
         }
         ("trace", Some(_)) => {
             let rpc = build_rpc(options, config).await?;
@@ -90,12 +91,12 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
                 .map(|result| json!(result))
         }
         ("cancel-trx", Some(params)) => {
-            let rpc_client = config.build_solana_rpc_client();
+            let rpc_client = config.build_clone_solana_rpc_client();
             let signer = build_signer(config)?;
 
             let storage_account =
                 pubkey_of(params, "storage_account").expect("storage_account parse error");
-            cancel_trx::execute(&rpc_client, &*signer, config.evm_loader, &storage_account)
+            cancel_trx::execute(rpc_client, &*signer, config.evm_loader, &storage_account)
                 .await
                 .map(|result| json!(result))
         }

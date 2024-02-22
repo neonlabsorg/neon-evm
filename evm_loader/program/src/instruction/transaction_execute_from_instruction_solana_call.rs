@@ -1,4 +1,5 @@
 use crate::account::{program, AccountsDB, BalanceAccount, Operator, Treasury};
+use crate::debug::log_data;
 use crate::error::Result;
 use crate::gasometer::Gasometer;
 use crate::types::Transaction;
@@ -25,8 +26,8 @@ pub fn process<'a>(
     let trx = Transaction::from_rlp(messsage)?;
     let origin = trx.recover_caller_address()?;
 
-    solana_program::log::sol_log_data(&[b"HASH", &trx.hash()]);
-    solana_program::log::sol_log_data(&[b"MINER", operator_balance.address().as_bytes()]);
+    log_data(&[b"HASH", &trx.hash()]);
+    log_data(&[b"MINER", operator_balance.address().as_bytes()]);
 
     let accounts_db = AccountsDB::new(
         &accounts[4..],
@@ -40,6 +41,5 @@ pub fn process<'a>(
     gasometer.record_solana_transaction_cost();
     gasometer.record_address_lookup_table(accounts);
 
-    super::transaction_execute::validate(program_id, &accounts_db)?;
     super::transaction_execute::execute_with_solana_call(accounts_db, gasometer, trx, origin)
 }

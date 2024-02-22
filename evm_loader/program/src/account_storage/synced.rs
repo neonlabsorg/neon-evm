@@ -2,9 +2,7 @@ use ethnum::U256;
 use solana_program::account_info::AccountInfo;
 use solana_program::instruction::Instruction;
 use solana_program::program::{invoke_signed_unchecked, invoke_unchecked};
-use solana_program::rent::Rent;
 use solana_program::system_program;
-use solana_program::sysvar::Sysvar;
 
 use crate::account::{AllocateResult, ContractAccount, StorageCell};
 use crate::account_storage::SyncedAccountStorage;
@@ -14,9 +12,13 @@ use crate::types::Address;
 
 impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<'a> {
     fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
-        let rent = Rent::get()?;
-        let result =
-            ContractAccount::allocate(address, &code, &rent, &self.accounts, Some(&self.keys))?;
+        let result = ContractAccount::allocate(
+            address,
+            &code,
+            &self.rent,
+            &self.accounts,
+            Some(&self.keys),
+        )?;
 
         if result != AllocateResult::Ready {
             return Err(crate::error::Error::AccountSpaceAllocationFailure);
@@ -36,7 +38,6 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
 
     fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
         const STATIC_STORAGE_LIMIT: U256 = U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128);
-        let rent = Rent::get()?;
 
         if index < STATIC_STORAGE_LIMIT {
             // Static Storage - Write into contract account
@@ -51,7 +52,8 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
                 let (_, bump) = self.keys.contract_with_bump_seed(&crate::ID, address);
                 let sign: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], address.as_bytes(), &[bump]];
 
-                let mut storage = StorageCell::create(cell_address, 1, &self.accounts, sign)?;
+                let mut storage =
+                    StorageCell::create(cell_address, 1, &self.accounts, sign, &self.rent)?;
                 let mut cells = storage.cells_mut();
 
                 assert_eq!(cells.len(), 1);
@@ -61,7 +63,7 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
                 let mut storage = StorageCell::from_account(&crate::ID, account.clone())?;
                 storage.update((index & 0xFF).as_u8(), &value)?;
 
-                storage.sync_lamports(rent, &self.accounts)?;
+                storage.sync_lamports(&self.rent, &self.accounts)?;
             };
         }
 

@@ -6,7 +6,6 @@ use std::collections::BTreeMap;
 use tokio::sync::{Mutex, MutexGuard, OnceCell};
 
 use crate::rpc::Rpc;
-use crate::syscall_stubs;
 use crate::NeonError;
 use evm_loader::{account_storage::AccountStorage, executor::OwnedAccountInfo};
 use solana_program_test::{processor, ProgramTest, ProgramTestContext};
@@ -31,17 +30,6 @@ pub struct SolanaEmulator {
 static SOLANA_EMULATOR: OnceCell<Mutex<SolanaEmulator>> = OnceCell::const_new();
 const SEEDS_PUBKEY: Pubkey = pubkey!("Seeds11111111111111111111111111111111111111");
 
-macro_rules! processor_with_original_stubs {
-    ($process_instruction:expr) => {
-        processor!(|program_id, accounts, instruction_data| {
-            let use_original_stubs_saved = syscall_stubs::use_original_stubs_for_thread(true);
-            let result = $process_instruction(program_id, accounts, instruction_data);
-            syscall_stubs::use_original_stubs_for_thread(use_original_stubs_saved);
-            result
-        })
-    };
-}
-
 pub async fn get_solana_emulator() -> MutexGuard<'static, SolanaEmulator> {
     SOLANA_EMULATOR
         .get()
@@ -59,9 +47,7 @@ pub async fn init_solana_emulator(
             let emulator = SolanaEmulator::new(program_id, rpc_client)
                 .await
                 .expect("Initialize SolanaEmulator");
-            syscall_stubs::setup_emulator_syscall_stubs(rpc_client)
-                .await
-                .expect("Setup emulator syscall stubs");
+
             Mutex::new(emulator)
         })
         .await
@@ -121,7 +107,7 @@ impl SolanaEmulator {
         program_test.add_program(
             "evm_loader",
             program_id,
-            processor_with_original_stubs!(process_emulator_instruction),
+            processor!(process_emulator_instruction),
         );
 
         // Disable features (get known feature list and disable by actual value)

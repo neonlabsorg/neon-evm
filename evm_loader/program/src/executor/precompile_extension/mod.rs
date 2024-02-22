@@ -4,7 +4,7 @@ use crate::{
     types::Address,
 };
 use maybe_async::maybe_async;
-use solana_program::{pubkey::Pubkey, rent::Rent, system_instruction, sysvar::Sysvar};
+use solana_program::{pubkey::Pubkey, system_instruction};
 
 use super::OwnedAccountInfo;
 
@@ -82,8 +82,7 @@ pub fn create_account<State: Database>(
     owner: &Pubkey,
     seeds: Vec<Vec<u8>>,
 ) -> Result<()> {
-    let rent = Rent::get()?;
-    let minimum_balance = rent.minimum_balance(space);
+    let minimum_balance = state.rent().minimum_balance(space);
 
     let required_lamports = minimum_balance.saturating_sub(account.lamports);
 

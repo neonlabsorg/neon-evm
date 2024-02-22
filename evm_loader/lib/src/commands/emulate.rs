@@ -16,6 +16,7 @@ use crate::{
     errors::NeonError,
     NeonResult,
 };
+use evm_loader::evm::database::Database;
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
@@ -94,10 +95,11 @@ async fn emulate_trx<T: Tracer>(
     info!("origin: {:?}", origin);
     info!("tx: {:?}", tx);
 
-    let chain_id = tx.chain_id().unwrap_or_else(|| storage.default_chain_id());
-    storage.use_balance_account(origin, chain_id, true).await?;
-
     let mut backend = ExecutorState::new(storage);
+
+    let chain_id = tx.chain_id().unwrap_or_else(|| storage.default_chain_id());
+    backend.increment_nonce(origin, chain_id)?; // revert this too
+
     let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
         Ok(evm) => evm,
         Err(e) => return Ok((EmulateResponse::revert(e), None)),

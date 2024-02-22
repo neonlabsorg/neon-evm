@@ -27,9 +27,9 @@ pub enum AllocateResult {
 
 #[repr(C, packed)]
 pub struct HeaderV0 {
-    pub address: Address,
-    pub chain_id: u64,
-    pub generation: u32,
+    address: Address,
+    chain_id: u64,
+    generation: u32,
 }
 
 impl AccountHeader for HeaderV0 {
@@ -139,8 +139,19 @@ impl<'a> ContractAccount<'a> {
 
         let account = accounts.get(&pubkey).clone();
 
-        super::validate_tag(&crate::ID, &account, TAG_EMPTY)?;
-        super::set_tag(&crate::ID, &account, TAG_ACCOUNT_CONTRACT, Header::VERSION)?;
+        Self::new(&crate::ID, account, address, chain_id, generation, code)
+    }
+
+    pub fn new(
+        program_id: &Pubkey,
+        account: AccountInfo<'a>,
+        address: Address,
+        chain_id: u64,
+        generation: u32,
+        code: &[u8],
+    ) -> Result<Self> {
+        super::validate_tag(program_id, &account, TAG_EMPTY)?;
+        super::set_tag(program_id, &account, TAG_ACCOUNT_CONTRACT, Header::VERSION)?;
 
         let mut contract = Self { account };
         {

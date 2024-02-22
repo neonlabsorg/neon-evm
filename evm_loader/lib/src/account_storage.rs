@@ -424,7 +424,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         let (pubkey, mut account, mut legacy) = self
             .use_balance_account(address, chain_id, false)
             .await
-            .unwrap();
+            .expect("Rpc call should not fail");
 
         if let Some(account_data) = &mut account {
             let info = account_info(&pubkey, account_data);
@@ -458,7 +458,10 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         L: FnOnce(LegacyEtherData, &AccountInfo) -> R,
         F: FnOnce(ContractAccount) -> R,
     {
-        let (pubkey, mut account) = self.use_contract_account(address, false).await.unwrap();
+        let (pubkey, mut account) = self
+            .use_contract_account(address, false)
+            .await
+            .expect("Rpc call should not fail");
 
         let Some(account_data) = &mut account else {
             return default;
@@ -498,7 +501,10 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         L: FnOnce(LegacyStorageData, &AccountInfo) -> R,
         F: FnOnce(StorageCell) -> R,
     {
-        let (pubkey, mut account) = self.use_storage_cell(address, index, false).await.unwrap();
+        let (pubkey, mut account) = self
+            .use_storage_cell(address, index, false)
+            .await
+            .expect("Rpc call should not fail");
 
         let Some(account_data) = &mut account else {
             return default;

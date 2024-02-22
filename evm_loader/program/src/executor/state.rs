@@ -28,6 +28,7 @@ pub struct ExecutorState<'a, B: AccountStorage> {
     exit_status: Option<ExitStatus>,
 }
 
+#[cfg(target_os = "solana")]
 impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     pub fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize> {
         let mut cursor = std::io::Cursor::new(buffer);
@@ -48,7 +49,9 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
             exit_status,
         })
     }
+}
 
+impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     #[must_use]
     pub fn new(backend: &'a B) -> Self {
         let cache = Cache {
@@ -426,7 +429,14 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
         if self.stack.is_empty() {
             // sanity check
+            #[cfg(target_os = "solana")]
             assert!(self.actions.is_empty());
+
+            #[cfg(not(target_os = "solana"))] // todo fix this
+            {
+                assert_eq!(self.actions.len(), 1);
+                assert!(matches!(self.actions[0], Action::EvmIncrementNonce { .. }));
+            }
         }
     }
 

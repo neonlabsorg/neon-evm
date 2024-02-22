@@ -1362,6 +1362,12 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         mut return_data: Vec<u8>,
         backend: &mut B,
     ) -> Result<Action> {
+        #[cfg(target_os = "solana")]
+        let return_data_clone = vec![];
+
+        #[cfg(not(target_os = "solana"))]
+        let return_data_clone = return_data.clone(); // revert this
+
         if self.reason == Reason::Create {
             let code = std::mem::take(&mut return_data);
             backend
@@ -1375,11 +1381,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         end_vm!(
             self,
             backend,
-            super::ExitStatus::Return(return_data.clone())
+            super::ExitStatus::Return(return_data_clone.clone())
         );
 
         if self.parent.is_none() {
-            return Ok(Action::Return(return_data));
+            return Ok(Action::Return(return_data_clone));
         }
 
         let returned = self.join();

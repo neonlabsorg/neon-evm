@@ -3,7 +3,7 @@
 #![allow(clippy::unsafe_derive_deserialize)]
 #![allow(clippy::future_not_send)]
 
-use std::{fmt::Display, marker::PhantomData, ops::Range};
+use std::{marker::PhantomData, ops::Range};
 
 use ethnum::U256;
 use maybe_async::maybe_async;
@@ -113,12 +113,14 @@ pub enum ExitStatus {
     StepLimit,
 }
 
-impl Display for ExitStatus {
+#[cfg(not(target_os = "solana"))]
+impl std::fmt::Display for ExitStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.status())
     }
 }
 
+#[cfg(not(target_os = "solana"))]
 impl ExitStatus {
     #[must_use]
     pub fn status(&self) -> &'static str {

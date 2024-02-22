@@ -16,10 +16,10 @@ use super::{
 
 #[repr(C, packed)]
 pub struct HeaderV0 {
-    pub address: Address,
-    pub chain_id: u64,
-    pub trx_count: u64,
-    pub balance: U256,
+    address: Address,
+    chain_id: u64,
+    trx_count: u64,
+    balance: U256,
 }
 impl AccountHeader for HeaderV0 {
     const VERSION: u8 = 0;
@@ -79,7 +79,7 @@ impl<'a> BalanceAccount<'a> {
             |keys| keys.balance_with_bump_seed(&crate::ID, address, chain_id),
         );
 
-        // Already created. Return immidiately
+        // Already created. Return immediately
         let account = accounts.get(&pubkey).clone();
         if !system_program::check_id(account.owner) {
             let balance_account = Self::from_account(&crate::ID, account)?;
@@ -119,11 +119,11 @@ impl<'a> BalanceAccount<'a> {
             operator,
             &account,
             program_seeds,
-            ACCOUNT_PREFIX_LEN + size_of::<Header>(),
+            Self::required_account_size(),
             rent,
         )?;
 
-        Self::initialize(account, &crate::ID, address, chain_id)
+        Self::initialize(account, &crate::ID, address, chain_id, 0, U256::ZERO)
     }
 
     pub fn initialize(
@@ -131,14 +131,16 @@ impl<'a> BalanceAccount<'a> {
         program_id: &Pubkey,
         address: Address,
         chain_id: u64,
+        trx_count: u64,
+        balance: U256,
     ) -> Result<Self> {
         super::set_tag(program_id, &account, TAG_ACCOUNT_BALANCE, Header::VERSION)?;
         {
             let mut header = super::header_mut::<Header>(&account);
             header.v0.address = address;
             header.v0.chain_id = chain_id;
-            header.v0.trx_count = 0;
-            header.v0.balance = U256::ZERO;
+            header.v0.trx_count = trx_count;
+            header.v0.balance = balance;
             header.revision = 1;
         }
 

@@ -93,7 +93,7 @@ pub fn execute_with_solana_call(
         return Err(Error::OutOfGas(gas_limit, used_gas));
     }
 
-    solana_program::log::sol_log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
+    log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
     let gas_cost = used_gas.saturating_mul(gas_price);
     account_storage.transfer_gas_payment(origin, chain_id, gas_cost)?;

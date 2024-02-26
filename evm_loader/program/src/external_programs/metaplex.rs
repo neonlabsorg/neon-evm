@@ -31,7 +31,7 @@ pub fn emulate(
         }
         17 => {
             let args = CreateMasterEditionV3InstructionArgs::try_from_slice(data)?;
-            create_master_edition_v3(meta, accounts, args, rent)
+            create_master_edition_v3(meta, accounts, args.max_supply, rent)
         }
         _ => Err("Unknown Metaplex instruction".into()),
     }
@@ -92,7 +92,7 @@ fn create_metadata_accounts_v3(
 fn create_master_edition_v3(
     meta: &[AccountMeta],
     accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
-    args: CreateMasterEditionV3InstructionArgs,
+    max_supply: Option<u64>,
     rent: &Rent,
 ) -> Result<()> {
     let edition_account_key = &meta[0].pubkey;
@@ -130,7 +130,7 @@ fn create_master_edition_v3(
     let edition = MasterEdition {
         key: Key::MasterEditionV2,
         supply: 0,
-        max_supply: args.max_supply,
+        max_supply,
     };
 
     // Master Edition Account

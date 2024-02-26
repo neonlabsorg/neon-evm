@@ -51,7 +51,6 @@ borsh = "0.9"
 bincode = "1"
 serde_bytes = "0.11.12"
 serde = { version = "1.0.186", default-features = false, features = ["derive", "rc"] }
-serde_json = { version = "1.0.107", features = ["preserve_order"], optional = true }
 ethnum = { version = "1.4", default-features = false, features = ["serde"] }
 cfg-if = { version = "1.0" }
 log = { version = "0.4", default-features = false, optional = true }
@@ -62,11 +61,12 @@ async-trait = { version = "0.1.73", optional = true }
 version = "0.2.7"
 features = ["is_sync"]
 
+
 [lib]
 crate-type = ["cdylib", "lib"]
 
 [dev-dependencies]
-serde_json = "1.0.105"
+serde_json = { version = "1.0.107", features = ["preserve_order"] }
 solana-program-test = "=1.16.23"
 solana-sdk = "=1.16.23"
 tokio = { version = "1.0", features = ["full"] }

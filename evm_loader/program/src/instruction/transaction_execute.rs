@@ -1,27 +1,13 @@
-use solana_program::pubkey::Pubkey;
-
 use crate::account::{AccountsDB, AllocateResult};
 use crate::account_storage::ProgramAccountStorage;
+use crate::debug::log_data;
 use crate::error::{Error, Result};
+use crate::evm::tracing::NoopEventListener;
 use crate::evm::Machine;
 use crate::executor::{ExecutorState, SyncedExecutorState};
 use crate::gasometer::Gasometer;
 use crate::instruction::transaction_step::log_return_value;
 use crate::types::{Address, Transaction};
-
-pub fn validate(program_id: &Pubkey, accounts: &AccountsDB) -> Result<()> {
-    for account in accounts {
-        if account.owner != program_id {
-            continue;
-        }
-
-        if crate::account::is_blocked(program_id, account)? {
-            return Err(Error::AccountBlocked(*account.key));
-        }
-    }
-
-    Ok(())
-}
 
 pub fn execute(
     accounts: AccountsDB<'_>,
@@ -35,11 +21,15 @@ pub fn execute(
 
     let mut account_storage = ProgramAccountStorage::new(accounts)?;
 
+    trx.validate(origin, &account_storage)?;
+
+    account_storage.origin(origin, &trx)?.increment_nonce()?;
+
     let (exit_reason, apply_state) = {
         let mut backend = ExecutorState::new(&account_storage);
 
-        let mut evm = Machine::new(trx, origin, &mut backend)?;
-        let (result, _) = evm.execute(u64::MAX, &mut backend)?;
+        let mut evm = Machine::new(&trx, origin, &mut backend, None::<NoopEventListener>)?;
+        let (result, _, _) = evm.execute(u64::MAX, &mut backend)?;
 
         let actions = backend.into_actions();
 
@@ -60,7 +50,7 @@ pub fn execute(
         return Err(Error::OutOfGas(gas_limit, used_gas));
     }
 
-    solana_program::log::sol_log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
+    log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
     let gas_cost = used_gas.saturating_mul(gas_price);
     account_storage.transfer_gas_payment(origin, chain_id, gas_cost)?;
@@ -82,11 +72,15 @@ pub fn execute_with_solana_call(
 
     let mut account_storage = ProgramAccountStorage::new(accounts)?;
 
+    trx.validate(origin, &account_storage)?;
+
+    account_storage.origin(origin, &trx)?.increment_nonce()?;
+
     let exit_reason = {
         let mut backend = SyncedExecutorState::new(&mut account_storage);
 
-        let mut evm = Machine::new(trx, origin, &mut backend)?;
-        let (result, _) = evm.execute(u64::MAX, &mut backend)?;
+        let mut evm = Machine::new(&trx, origin, &mut backend, None::<NoopEventListener>)?;
+        let (result, _, _) = evm.execute(u64::MAX, &mut backend)?;
 
         result
     };
@@ -99,7 +93,7 @@ pub fn execute_with_solana_call(
         return Err(Error::OutOfGas(gas_limit, used_gas));
     }
 
-    solana_program::log::sol_log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
+    log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
     let gas_cost = used_gas.saturating_mul(gas_price);
     account_storage.transfer_gas_payment(origin, chain_id, gas_cost)?;

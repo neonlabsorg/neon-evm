@@ -1,18 +1,21 @@
 use async_trait::async_trait;
 use evm_loader::account::legacy::{
-    LegacyEtherData, LegacyStorageData, TAG_ACCOUNT_CONTRACT_DEPRECATED,
-    TAG_STORAGE_CELL_DEPRECATED,
+    LegacyEtherData, LegacyStorageData, ACCOUNT_PREFIX_LEN_BEFORE_REVISION,
+    TAG_ACCOUNT_BALANCE_BEFORE_REVISION, TAG_ACCOUNT_CONTRACT_BEFORE_REVISION,
+    TAG_ACCOUNT_CONTRACT_DEPRECATED, TAG_STORAGE_CELL_BEFORE_REVISION, TAG_STORAGE_CELL_DEPRECATED,
 };
-use evm_loader::account::{TAG_ACCOUNT_CONTRACT, TAG_STORAGE_CELL};
+use evm_loader::account::{ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_CONTRACT, TAG_STORAGE_CELL};
 use evm_loader::account_storage::find_slot_hash;
 use evm_loader::types::Address;
 use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
-use solana_sdk::sysvar::{slot_hashes, Sysvar};
-use std::collections::{BTreeMap, HashSet};
-use std::{cell::RefCell, collections::HashMap, convert::TryInto, rc::Rc};
+use solana_sdk::sysvar::slot_hashes;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::{cell::RefCell, convert::TryInto, rc::Rc};
 
+use crate::account_update::update_account;
 use crate::solana_emulator::get_solana_emulator;
+use crate::NeonResult;
 use crate::{rpc::Rpc, NeonError};
 use ethnum::U256;
 use evm_loader::{
@@ -58,6 +61,7 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     chains: Vec<ChainInfo>,
     block_number: u64,
     block_timestamp: i64,
+    rent: Rent,
     state_overrides: Option<AccountOverrides>,
 }
 
@@ -86,6 +90,14 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             Some(chains) => chains,
         };
 
+        let rent_account = rpc
+            .get_account(&solana_sdk::sysvar::rent::id())
+            .await?
+            .value
+            .ok_or(NeonError::AccountNotFound(solana_sdk::sysvar::rent::id()))?;
+        let rent = bincode::deserialize::<Rent>(&rent_account.data)?;
+        info!("Rent: {rent:?}");
+
         Ok(Self {
             accounts: RefCell::new(HashMap::new()),
             program_id,
@@ -95,6 +107,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             block_number,
             block_timestamp,
             state_overrides,
+            rent,
         })
     }
 
@@ -169,9 +182,13 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         address: Address,
         chain_id: u64,
         is_writable: bool,
-    ) -> client_error::Result<(Pubkey, Option<Account>, Option<Account>)> {
+    ) -> NeonResult<(Pubkey, Option<Account>, Option<Account>)> {
         let (pubkey, _) = address.find_balance_address(self.program_id(), chain_id);
-        let account = self.use_account(pubkey, is_writable).await?;
+        let mut account = self.use_account(pubkey, is_writable).await?;
+
+        if let Some(account) = &mut account {
+            update_account(&self.program_id, &pubkey, account)?;
+        }
 
         let legacy_account = if account.is_none() && (chain_id == self.default_chain_id()) {
             let (legacy_pubkey, _) = address.find_solana_address(self.program_id());
@@ -187,9 +204,13 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         &self,
         address: Address,
         is_writable: bool,
-    ) -> client_error::Result<(Pubkey, Option<Account>)> {
+    ) -> NeonResult<(Pubkey, Option<Account>)> {
         let (pubkey, _) = address.find_solana_address(self.program_id());
-        let account = self.use_account(pubkey, is_writable).await?;
+        let mut account = self.use_account(pubkey, is_writable).await?;
+
+        if let Some(account) = &mut account {
+            update_account(&self.program_id, &pubkey, account)?;
+        }
 
         Ok((pubkey, account))
     }
@@ -199,21 +220,23 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         address: Address,
         index: U256,
         is_writable: bool,
-    ) -> client_error::Result<(Pubkey, Option<Account>)> {
+    ) -> NeonResult<(Pubkey, Option<Account>)> {
         let (base, _) = address.find_solana_address(self.program_id());
         let cell_address = StorageCellAddress::new(self.program_id(), &base, &index);
 
-        let account = self
+        let mut account = self
             .use_account(*cell_address.pubkey(), is_writable)
             .await?;
+
+        if let Some(account) = &mut account {
+            update_account(&self.program_id, cell_address.pubkey(), account)?;
+        }
 
         Ok((*cell_address.pubkey(), account))
     }
 
     pub async fn apply_actions(&mut self, actions: Vec<Action>) -> Result<(), NeonError> {
         info!("apply_actions");
-
-        let rent = Rent::get()?;
 
         let mut new_balance_accounts = HashSet::new();
 
@@ -262,12 +285,13 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
                         let empty_size = StorageCell::required_account_size(0);
 
                         let gas = if account.is_none() {
-                            rent.minimum_balance(cell_size)
+                            self.rent.minimum_balance(cell_size)
                         } else {
                             let existing_value = self.storage(address, index).await;
                             if existing_value == [0_u8; 32] {
-                                rent.minimum_balance(cell_size)
-                                    .saturating_sub(rent.minimum_balance(empty_size))
+                                self.rent
+                                    .minimum_balance(cell_size)
+                                    .saturating_sub(self.rent.minimum_balance(empty_size))
                             } else {
                                 0
                             }
@@ -294,7 +318,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
                     self.use_contract_account(address, true).await?;
 
                     let space = ContractAccount::required_account_size(&code);
-                    self.gas = self.gas.saturating_add(rent.minimum_balance(space));
+                    self.gas = self.gas.saturating_add(self.rent.minimum_balance(space));
                 }
                 Action::EvmSelfDestruct { address } => {
                     info!("selfdestruct {address}");
@@ -320,7 +344,8 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         }
 
         self.gas = self.gas.saturating_add(
-            rent.minimum_balance(BalanceAccount::required_account_size())
+            self.rent
+                .minimum_balance(BalanceAccount::required_account_size())
                 .saturating_mul(new_balance_accounts.len() as u64),
         );
 
@@ -330,8 +355,6 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
     pub async fn mark_legacy_accounts(&mut self) -> Result<(), NeonError> {
         let mut accounts = self.accounts.borrow_mut();
         let mut additional_balances = Vec::new();
-
-        let rent = Rent::get()?;
 
         for (key, account) in accounts.iter_mut() {
             let Some(account_data) = account.data.as_mut() else {
@@ -361,9 +384,32 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
 
                 if (legacy_data.code_size > 0) || (legacy_data.generation > 0) {
                     // This is a contract, we need additional gas for conversion
-                    let lamports = rent.minimum_balance(BalanceAccount::required_account_size());
+                    let lamports = self
+                        .rent
+                        .minimum_balance(BalanceAccount::required_account_size());
                     self.gas = self.gas.saturating_add(lamports);
                 }
+            }
+
+            if matches!(
+                tag,
+                TAG_ACCOUNT_BALANCE_BEFORE_REVISION
+                    | TAG_ACCOUNT_CONTRACT_BEFORE_REVISION
+                    | TAG_STORAGE_CELL_BEFORE_REVISION
+            ) {
+                const PREFIX_BEFORE: usize = ACCOUNT_PREFIX_LEN_BEFORE_REVISION;
+                const PREFIX_AFTER: usize = ACCOUNT_PREFIX_LEN;
+                const EXPANSION_LEN: usize = PREFIX_AFTER - PREFIX_BEFORE;
+
+                account.is_writable = true;
+                account.is_legacy = true;
+
+                let lamports = self
+                    .rent
+                    .minimum_balance(EXPANSION_LEN)
+                    .saturating_sub(self.rent.minimum_balance(0));
+
+                self.gas = self.gas.saturating_add(lamports);
             }
         }
 
@@ -531,6 +577,16 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     fn block_timestamp(&self) -> U256 {
         info!("block_timestamp");
         self.block_timestamp.try_into().unwrap()
+    }
+
+    fn rent(&self) -> &Rent {
+        &self.rent
+    }
+
+    fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
+        info!("return_data");
+        // TODO: implement return_data() method with SyncedAccountStorage implementation
+        unimplemented!();
     }
 
     async fn block_hash(&self, slot: u64) -> [u8; 32] {
@@ -742,7 +798,6 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     ) -> evm_loader::error::Result<()> {
         let instruction = Instruction::new_with_bytes(*program_id, instruction_data, meta.to_vec());
         let solana_emulator = get_solana_emulator().await;
-        //let solana_emulator = self.solana_emulator.lock().expect("Lock solana_emulator");
         solana_emulator
             .emulate_solana_call(self, &instruction, accounts, seeds)
             .await

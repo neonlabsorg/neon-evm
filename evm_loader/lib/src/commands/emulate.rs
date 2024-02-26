@@ -1,12 +1,15 @@
 use evm_loader::account::ContractAccount;
+use evm_loader::account_storage::AccountStorage;
 use evm_loader::error::build_revert_message;
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE;
 use solana_sdk::pubkey::Pubkey;
 
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::rpc::Rpc;
+use crate::tracing::tracers::Tracer;
 use crate::types::{EmulateRequest, TxParams};
 use crate::{
     account_storage::{EmulatorAccountStorage, SolanaAccount},
@@ -14,7 +17,6 @@ use crate::{
     errors::NeonError,
     NeonResult,
 };
-use evm_loader::evm::tracing::TracerType;
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
@@ -56,12 +58,12 @@ impl EmulateResponse {
     }
 }
 
-pub async fn execute(
+pub async fn execute<T: Tracer>(
     rpc: &(impl Rpc + BuildConfigSimulator),
     program_id: Pubkey,
     emulate_request: EmulateRequest,
-    tracer: Option<TracerType>,
-) -> NeonResult<EmulateResponse> {
+    tracer: Option<T>,
+) -> NeonResult<(EmulateResponse, Option<Value>)> {
     let block_overrides = emulate_request
         .trace_config
         .as_ref()
@@ -86,12 +88,12 @@ pub async fn execute(
     emulate_trx(emulate_request.tx, &mut storage, step_limit, tracer).await
 }
 
-async fn emulate_trx(
+async fn emulate_trx<T: Tracer>(
     tx_params: TxParams,
     storage: &mut EmulatorAccountStorage<'_, impl Rpc>,
     step_limit: u64,
-    tracer: Option<TracerType>,
-) -> NeonResult<EmulateResponse> {
+    tracer: Option<T>,
+) -> NeonResult<(EmulateResponse, Option<Value>)> {
     info!("tx_params: {:?}", tx_params);
 
     let (origin, tx) = tx_params.into_transaction(storage).await;
@@ -99,23 +101,22 @@ async fn emulate_trx(
     info!("origin: {:?}", origin);
     info!("tx: {:?}", tx);
 
-    let (exit_status, actions, steps_executed, execute_status) = {
-        let mut backend = EmulatorState::new(storage);
-        let mut evm = match Machine::new(tx, origin, &mut backend, tracer).await {
-            Ok(evm) => evm,
-            Err(e) => return Ok(EmulateResponse::revert(e)),
-        };
+    let chain_id = tx.chain_id().unwrap_or_else(|| storage.default_chain_id());
+    storage.use_balance_account(origin, chain_id, true).await?;
 
-        let (result, steps_executed) = evm.execute(step_limit, &mut backend).await?;
-        if result == ExitStatus::StepLimit {
-            return Err(NeonError::TooManySteps);
-        }
-
-        let execute_status = backend.execute_status.clone();
-        let actions = backend.into_actions();
-
-        (result, actions, steps_executed, execute_status)
+    let mut backend = EmulatorState::new(storage);
+    let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
+        Ok(evm) => evm,
+        Err(e) => return Ok((EmulateResponse::revert(e), None)),
     };
+
+    let (exit_status, steps_executed, tracer) = evm.execute(step_limit, &mut backend).await?;
+    if exit_status == ExitStatus::StepLimit {
+        return Err(NeonError::TooManySteps);
+    }
+
+    let execute_status = backend.execute_status.clone();
+    let actions = backend.into_actions();
 
     storage.apply_actions(actions.clone()).await?;
     storage.mark_legacy_accounts().await?;
@@ -135,17 +136,20 @@ async fn emulate_trx(
 
     let solana_accounts = storage.accounts.borrow().values().cloned().collect();
 
-    Ok(EmulateResponse {
-        exit_status: exit_status.to_string(),
-        external_solana_calls: execute_status.external_solana_calls,
-        reverts_before_solana_calls: execute_status.reverts_before_solana_calls,
-        reverts_after_solana_calls: execute_status.reverts_after_solana_calls,
-        steps_executed,
-        used_gas,
-        solana_accounts,
-        result: exit_status.into_result().unwrap_or_default(),
-        iterations,
-    })
+    Ok((
+        EmulateResponse {
+            exit_status: exit_status.to_string(),
+            external_solana_calls: execute_status.external_solana_calls,
+            reverts_before_solana_calls: execute_status.reverts_before_solana_calls,
+            reverts_after_solana_calls: execute_status.reverts_after_solana_calls,
+            steps_executed,
+            used_gas,
+            solana_accounts,
+            result: exit_status.into_result().unwrap_or_default(),
+            iterations,
+        },
+        tracer.map(|tracer| tracer.into_traces()),
+    ))
 }
 
 fn realloc_iterations(actions: &[Action]) -> u64 {

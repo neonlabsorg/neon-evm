@@ -12,6 +12,7 @@ use evm_loader::executor::{
 use evm_loader::types::Address;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
+use solana_sdk::rent::Rent;
 
 #[derive(Default, Clone)]
 pub struct ExecuteStatus {
@@ -134,6 +135,14 @@ impl<'a, B: AccountStorage> Database for EmulatorState<'a, B> {
 
     async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
         self.inner_state.external_account(address).await
+    }
+
+    fn rent(&self) -> &Rent {
+        self.inner_state.rent()
+    }
+
+    fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
+        self.inner_state.return_data()
     }
 
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R

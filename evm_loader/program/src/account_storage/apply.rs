@@ -1,15 +1,15 @@
+use std::collections::{HashMap, HashSet};
+
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
 use solana_program::instruction::Instruction;
 use solana_program::program::{invoke_signed_unchecked, invoke_unchecked};
-use solana_program::rent::Rent;
+use solana_program::pubkey::Pubkey;
 use solana_program::system_program;
-use solana_program::sysvar::Sysvar;
-use std::collections::HashMap;
 
-use crate::account::BalanceAccount;
+use crate::account::{increment_revision, BalanceAccount};
 use crate::account::{AllocateResult, ContractAccount, StorageCell};
-use crate::account_storage::ProgramAccountStorage;
+use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::config::{
     ACCOUNT_SEED_VERSION, PAYMENT_TO_TREASURE, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
 };
@@ -47,14 +47,12 @@ impl<'a> ProgramAccountStorage<'a> {
     pub fn allocate(&mut self, actions: &[Action]) -> Result<AllocateResult> {
         let mut total_result = AllocateResult::Ready;
 
-        let rent = Rent::get()?;
-
         for action in actions {
             if let Action::EvmSetCode { address, code, .. } = action {
                 let result = ContractAccount::allocate(
                     *address,
                     code,
-                    &rent,
+                    &self.rent,
                     &self.accounts,
                     Some(&self.keys),
                 )?;
@@ -71,6 +69,7 @@ impl<'a> ProgramAccountStorage<'a> {
     pub fn apply_state_change(&mut self, actions: Vec<Action>) -> Result<()> {
         debug_print!("Applies begin");
 
+        let mut modified_accounts: HashSet<Pubkey> = HashSet::with_capacity(64);
         let mut storage = HashMap::with_capacity(16);
 
         for action in actions {
@@ -84,6 +83,9 @@ impl<'a> ProgramAccountStorage<'a> {
                     let mut source = self.balance_account(source, chain_id)?;
                     let mut target = self.create_balance_account(target, chain_id)?;
                     source.transfer(&mut target, value)?;
+
+                    modified_accounts.insert(*source.pubkey());
+                    modified_accounts.insert(*target.pubkey());
                 }
                 Action::Burn {
                     source,
@@ -92,6 +94,8 @@ impl<'a> ProgramAccountStorage<'a> {
                 } => {
                     let mut account = self.create_balance_account(source, chain_id)?;
                     account.burn(value)?;
+
+                    modified_accounts.insert(*account.pubkey());
                 }
                 Action::EvmSetStorage {
                     address,
@@ -106,13 +110,15 @@ impl<'a> ProgramAccountStorage<'a> {
                 Action::EvmIncrementNonce { address, chain_id } => {
                     let mut account = self.create_balance_account(address, chain_id)?;
                     account.increment_nonce()?;
+
+                    // Nonce increment is not count as account modification
                 }
                 Action::EvmSetCode {
                     address,
                     chain_id,
                     code,
                 } => {
-                    ContractAccount::init(
+                    let account = ContractAccount::init(
                         address,
                         chain_id,
                         0,
@@ -120,6 +126,8 @@ impl<'a> ProgramAccountStorage<'a> {
                         &self.accounts,
                         Some(&self.keys),
                     )?;
+
+                    modified_accounts.insert(*account.pubkey());
                 }
                 Action::EvmSelfDestruct { address: _ } => {
                     // EIP-6780: SELFDESTRUCT only in the same transaction
@@ -168,25 +176,38 @@ impl<'a> ProgramAccountStorage<'a> {
             }
         }
 
-        self.apply_storage(storage)?;
+        self.apply_storage(storage, &mut modified_accounts)?;
+
+        for pubkey in modified_accounts {
+            let account = self.accounts.get(&pubkey);
+            increment_revision(self.program_id(), account)?;
+        }
+
         debug_print!("Applies done");
 
         Ok(())
     }
 
-    fn apply_storage(&mut self, storage: HashMap<Address, HashMap<U256, [u8; 32]>>) -> Result<()> {
+    fn apply_storage(
+        &mut self,
+        storage: HashMap<Address, HashMap<U256, [u8; 32]>>,
+        modified_accounts: &mut HashSet<Pubkey>,
+    ) -> Result<()> {
         const STATIC_STORAGE_LIMIT: U256 = U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128);
 
-        let rent = Rent::get()?;
-
         for (address, storage) in storage {
-            let mut contract = self.contract_account(address)?;
+            let mut contract: Option<ContractAccount> = None;
 
             let mut infinite_values: HashMap<U256, HashMap<u8, [u8; 32]>> =
                 HashMap::with_capacity(storage.len());
 
             for (index, value) in storage {
                 if index < STATIC_STORAGE_LIMIT {
+                    let contract = contract.get_or_insert_with(|| {
+                        self.contract_account(address)
+                            .expect("contract already created")
+                    });
+
                     // Static Storage - Write into contract account
                     let index: usize = index.as_usize();
                     contract.set_storage_value(index, &value);
@@ -202,16 +223,23 @@ impl<'a> ProgramAccountStorage<'a> {
                 }
             }
 
+            if let Some(contract) = contract {
+                modified_accounts.insert(*contract.pubkey());
+            }
+
             for (index, values) in infinite_values {
                 let cell_address = self.keys.storage_cell_address(&crate::ID, address, index);
 
                 let account = self.accounts.get(cell_address.pubkey());
+                modified_accounts.insert(*account.key);
+
                 if system_program::check_id(account.owner) {
                     let (_, bump) = self.keys.contract_with_bump_seed(&crate::ID, address);
                     let sign: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], address.as_bytes(), &[bump]];
 
                     let len = values.len();
-                    let mut storage = StorageCell::create(cell_address, len, &self.accounts, sign)?;
+                    let mut storage =
+                        StorageCell::create(cell_address, len, &self.accounts, sign, &self.rent)?;
                     let mut cells = storage.cells_mut();
 
                     assert_eq!(cells.len(), len);
@@ -225,7 +253,7 @@ impl<'a> ProgramAccountStorage<'a> {
                         storage.update(subindex, &value)?;
                     }
 
-                    storage.sync_lamports(rent, &self.accounts)?;
+                    storage.sync_lamports(&self.rent, &self.accounts)?;
                 };
             }
         }

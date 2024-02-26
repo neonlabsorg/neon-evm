@@ -6,7 +6,7 @@ use crate::types::Address;
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
 use solana_program::instruction::AccountMeta;
-use solana_program::{pubkey::Pubkey, sysvar::slot_hashes};
+use solana_program::{pubkey::Pubkey, rent::Rent, sysvar::slot_hashes};
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 
@@ -28,6 +28,14 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
             .unix_timestamp
             .try_into()
             .expect("Timestamp is positive")
+    }
+
+    fn rent(&self) -> &Rent {
+        &self.rent
+    }
+
+    fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
+        solana_program::program::get_return_data()
     }
 
     fn block_hash(&self, slot: u64) -> [u8; 32] {

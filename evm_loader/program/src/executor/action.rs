@@ -1,37 +1,31 @@
 use ethnum::U256;
-use serde::{Deserialize, Serialize};
 use solana_program::{instruction::AccountMeta, pubkey::Pubkey};
 
-use crate::types::Address;
+use crate::types::{vector::{into_vector, Vector}, Address};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum Action {
     ExternalInstruction {
         program_id: Pubkey,
-        accounts: Vec<AccountMeta>,
-        #[serde(with = "serde_bytes")]
-        data: Vec<u8>,
-        seeds: Vec<Vec<u8>>,
+        accounts: Vector<AccountMeta>,
+        data: Vector<u8>,
+        seeds: Vector<Vector<u8>>,
         fee: u64,
     },
     Transfer {
         source: Address,
         target: Address,
         chain_id: u64,
-        #[serde(with = "ethnum::serde::bytes::le")]
         value: U256,
     },
     Burn {
         source: Address,
         chain_id: u64,
-        #[serde(with = "ethnum::serde::bytes::le")]
         value: U256,
     },
     EvmSetStorage {
         address: Address,
-        #[serde(with = "ethnum::serde::bytes::le")]
         index: U256,
-        #[serde(with = "serde_bytes_32")]
         value: [u8; 32],
     },
     EvmIncrementNonce {
@@ -41,15 +35,14 @@ pub enum Action {
     EvmSetCode {
         address: Address,
         chain_id: u64,
-        #[serde(with = "serde_bytes")]
-        code: Vec<u8>,
+        code: Vector<u8>,
     },
     EvmSelfDestruct {
         address: Address,
     },
 }
 
-pub fn filter_selfdestruct(actions: Vec<Action>) -> Vec<Action> {
+pub fn filter_selfdestruct(actions: Vector<Action>) -> Vector<Action> {
     // Find all the account addresses which are scheduled to EvmSelfDestruct
     let accounts_to_destroy: std::collections::HashSet<_> = actions
         .iter()
@@ -59,7 +52,8 @@ pub fn filter_selfdestruct(actions: Vec<Action>) -> Vec<Action> {
         })
         .collect();
 
-    actions
+    // allocator_api2 does not implemented for Vector<T, Allocator>, hence we need an explicit copying...
+    let tmp_actions = actions
         .into_iter()
         .filter(|action| {
             match action {
@@ -78,78 +72,8 @@ pub fn filter_selfdestruct(actions: Vec<Action>) -> Vec<Action> {
                 Action::EvmSelfDestruct { .. } => false,
             }
         })
-        .collect()
-}
-
-mod serde_bytes_32 {
-    pub fn serialize<S>(value: &[u8; 32], serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        if serializer.is_human_readable() {
-            serializer.serialize_str(&hex::encode(value))
-        } else {
-            serializer.serialize_bytes(value)
-        }
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; 32], D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct BytesVisitor;
-
-        impl<'de> serde::de::Visitor<'de> for BytesVisitor {
-            type Value = [u8; 32];
-
-            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                f.write_str("[u8; 32]")
-            }
-
-            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                use serde::de::Unexpected::Str;
-
-                let value = hex::decode(value)
-                    .map_err(|_| serde::de::Error::invalid_value(Str(value), &self))?;
-
-                let value_len = value.len();
-                value
-                    .try_into()
-                    .map_err(|_| serde::de::Error::invalid_length(value_len, &self))
-            }
-
-            fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                value
-                    .try_into()
-                    .map_err(|_| serde::de::Error::invalid_length(value.len(), &self))
-            }
-
-            fn visit_seq<S>(self, mut seq: S) -> Result<Self::Value, S::Error>
-            where
-                S: serde::de::SeqAccess<'de>,
-            {
-                let mut bytes = Vec::with_capacity(32);
-                while let Some(b) = seq.next_element()? {
-                    bytes.push(b);
-                }
-                bytes
-                    .try_into()
-                    .map_err(|_| serde::de::Error::custom("Invalid [u8; 32] value"))
-            }
-        }
-
-        if deserializer.is_human_readable() {
-            deserializer.deserialize_str(BytesVisitor)
-        } else {
-            deserializer.deserialize_bytes(BytesVisitor)
-        }
-    }
+        .collect();
+    into_vector(tmp_actions)
 }
 
 #[cfg(test)]
@@ -166,8 +90,8 @@ mod tests {
             ]),
             value: Default::default(),
         };
-        let serialized = bincode::serialize(&action).unwrap();
-        let _deserialized: Action = bincode::deserialize(&serialized).unwrap();
+        //let serialized = bincode::serialize(&action).unwrap();
+        //let _deserialized: Action = bincode::deserialize(&serialized).unwrap();
     }
 
     #[cfg(not(target_os = "solana"))]
@@ -181,7 +105,7 @@ mod tests {
             ]),
             value: Default::default(),
         };
-        let serialized = serde_json::to_string(&action).unwrap();
-        let _deserialized: Action = serde_json::from_str(&serialized).unwrap();
+        //let serialized = serde_json::to_string(&action).unwrap();
+        //let _deserialized: Action = serde_json::from_str(&serialized).unwrap();
     }
 }

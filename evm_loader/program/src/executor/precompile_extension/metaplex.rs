@@ -10,12 +10,10 @@ use mpl_token_metadata::state::{
 use solana_program::{pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
 
 use crate::{
-    account::ACCOUNT_SEED_VERSION,
-    account_storage::AccountStorage,
-    error::{Error, Result},
-    executor::ExecutorState,
-    types::Address,
+    account::ACCOUNT_SEED_VERSION, account_storage::AccountStorage, error::{Error, Result}, executor::ExecutorState, types::{vector::into_vector, Address}
 };
+
+use crate::vector;
 
 // "[0xc5, 0x73, 0x50, 0xc6]": "createMetadata(bytes32,string,string,string)"
 // "[0x4a, 0xe8, 0xb6, 0x6b]": "createMasterEdition(bytes32,uint64)"
@@ -155,10 +153,10 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         let signer = context.caller;
         let (signer_pubkey, bump_seed) = self.backend.contract_pubkey(signer);
 
-        let seeds = vec![
-            vec![ACCOUNT_SEED_VERSION],
-            signer.as_bytes().to_vec(),
-            vec![bump_seed],
+        let seeds = vector![
+            vector![ACCOUNT_SEED_VERSION],
+            into_vector(signer.as_bytes().to_vec()),
+            vector![bump_seed],
         ];
 
         let (metadata_pubkey, _) = mpl_token_metadata::pda::find_metadata_account(&mint);
@@ -210,10 +208,10 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         let signer = context.caller;
         let (signer_pubkey, bump_seed) = self.backend.contract_pubkey(signer);
 
-        let seeds = vec![
-            vec![ACCOUNT_SEED_VERSION],
-            signer.as_bytes().to_vec(),
-            vec![bump_seed],
+        let seeds = vector![
+            vector![ACCOUNT_SEED_VERSION],
+            into_vector(signer.as_bytes().to_vec()),
+            vector![bump_seed],
         ];
 
         let (metadata_pubkey, _) = mpl_token_metadata::pda::find_metadata_account(&mint);

@@ -1,20 +1,18 @@
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use ethnum::U256;
 use maybe_async::maybe_async;
-use serde::{Deserialize, Serialize};
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-use crate::account_storage::AccountStorage;
+use crate::{account_storage::AccountStorage, types::{tree_map::BTreeMap, vector::{into_vector, Vector}}, vector};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct OwnedAccountInfo {
     pub key: Pubkey,
     pub is_signer: bool,
     pub is_writable: bool,
     pub lamports: u64,
-    #[serde(with = "serde_bytes")]
-    pub data: Vec<u8>,
+    pub data: Vector<u8>,
     pub owner: Pubkey,
     pub executable: bool,
     pub rent_epoch: solana_program::clock::Epoch,
@@ -31,9 +29,9 @@ impl OwnedAccountInfo {
             data: if info.executable || (info.owner == program_id) {
                 // This is only used to emulate external programs
                 // They don't use data in our accounts
-                vec![]
+                vector![]
             } else {
-                info.data.borrow().to_vec()
+                into_vector(info.data.borrow().to_vec())
             },
             owner: *info.owner,
             executable: info.executable,
@@ -57,12 +55,9 @@ impl<'a> solana_program::account_info::IntoAccountInfo<'a> for &'a mut OwnedAcco
     }
 }
 
-#[derive(Serialize, Deserialize)]
 pub struct Cache {
     pub solana_accounts: BTreeMap<Pubkey, OwnedAccountInfo>,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub block_number: U256,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub block_timestamp: U256,
 }
 
@@ -73,14 +68,13 @@ pub async fn cache_get_or_insert_account<B: AccountStorage>(
     key: Pubkey,
     backend: &B,
 ) -> OwnedAccountInfo {
-    use std::collections::btree_map::Entry;
-
     let mut cache = cache.borrow_mut();
-    match cache.solana_accounts.entry(key) {
-        Entry::Vacant(entry) => {
+    match cache.solana_accounts.get(&key) {
+        None => {
             let owned_account_info = backend.clone_solana_account(&key).await;
-            entry.insert(owned_account_info).clone()
+            cache.solana_accounts.insert(key, &owned_account_info);
+            owned_account_info.clone()
         }
-        Entry::Occupied(entry) => entry.get().clone(),
+        Some(value) => value.clone(),
     }
 }

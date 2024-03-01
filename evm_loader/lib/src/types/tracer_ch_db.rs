@@ -21,6 +21,7 @@ use std::{
     },
     time::Instant,
 };
+use tracing::trace;
 
 #[derive(Clone)]
 pub struct ClickHouseDb {
@@ -594,12 +595,21 @@ impl ClickHouseDb {
             write_version ASC"#;
 
         let pubkey_str = format!("{:?}", pubkey.to_bytes());
+
+        trace!("get_neon_revisions: query pubkey: {pubkey_str}");
+
         let rows: Vec<RevisionRow> = self
             .client
             .query(query)
             .bind(pubkey_str)
             .fetch_all()
             .await?;
+
+        trace!("Got {} rows from ClickHouse", rows.len());
+
+        for i in 0..rows.len() {
+            trace!("Row {}: {:?}", i, rows[i].data);
+        }
 
         let mut results: Vec<(u64, String)> = Vec::new();
 

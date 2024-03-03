@@ -59,7 +59,8 @@ impl<'a, 'r> PersistentState<'a, 'r> {
         let mut state = unsafe { ManuallyDrop::new(std::ptr::read(state_ptr)) };
 
         // Reinit buffers.
-        state.root_evm.reinit(&state.backend);
+        let st = &mut *state;
+        st.root_evm.reinit(&st.backend);
         state
     }
 }

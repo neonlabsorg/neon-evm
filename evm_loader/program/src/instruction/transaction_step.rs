@@ -2,15 +2,11 @@ use crate::account::{AccountsDB, AllocateResult, StateAccount};
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::config::{EVM_STEPS_LAST_ITERATION_MAX, EVM_STEPS_MIN};
 use crate::error::{Error, Result};
-use crate::evm::tracing::NoopEventListener;
-use crate::evm::{ExitStatus, Machine};
-use crate::executor::{Action, ExecutorState};
+use crate::evm::ExitStatus;
+use crate::executor::Action;
 use crate::gasometer::Gasometer;
 use crate::persistent_state::PersistentState;
 use crate::types::{Address, Transaction, Vector};
-
-type EvmBackend<'a, 'r> = ExecutorState<'r, ProgramAccountStorage<'a>>;
-type Evm<'a, 'r> = Machine<EvmBackend<'a, 'r>, NoopEventListener>;
 
 pub fn do_begin<'a>(
     accounts: AccountsDB<'a>,
@@ -22,7 +18,7 @@ pub fn do_begin<'a>(
     debug_print!("do_begin");
 
     let accounts = ProgramAccountStorage::new(accounts)?;
-    // create and load the PersistentState struct into the holder account heap. 
+    // create and load the PersistentState struct into the holder account heap.
     PersistentState::alloc(trx, origin, &accounts);
 
     // Burn `gas_limit` tokens from the origin account
@@ -48,17 +44,16 @@ pub fn do_continue<'a>(
     }
 
     let account_storage = ProgramAccountStorage::new(accounts)?;
-    let mut persistent_state  = PersistentState::restore(&account_storage);
+    let mut persistent_state = PersistentState::restore(&account_storage);
 
     let (result, steps_executed, _) = {
         match persistent_state.backend.exit_status() {
             Some(status) => (status.clone(), 0_u64, None),
             None => {
-                // TODO: BORROWCHECKER CURSES HERE (FOR A REASON).
-                // I NEED TO FIGURE OUT THE WAY TO AVOID IT WITHOUT MAJOR CHANGES.
+                let persistent_state = &mut *persistent_state;
                 let be = &mut persistent_state.backend;
                 persistent_state.root_evm.execute(step_count, be)?
-            },
+            }
         }
     };
 

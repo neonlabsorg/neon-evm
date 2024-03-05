@@ -32,6 +32,7 @@ pub struct ProgramAccountStorage<'a> {
     rent: Rent,
     accounts: AccountsDB<'a>,
     keys: keys_cache::KeysCache,
+    synced_modified_contracts: std::collections::HashSet<Pubkey>,
 }
 
 /// Account storage

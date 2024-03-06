@@ -1,4 +1,4 @@
-# Note: This crate must be built using cargo build-bpf
+# Note: This crate must be built using cargo build-sbf
 
 [package]
 name = "evm-loader"

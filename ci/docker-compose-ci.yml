@@ -8,7 +8,7 @@ services:
       - CI=true
     hostname: solana
     ports:
-       - "8899"
+      - "8899"
     expose:
       - "8899"
     ulimits:
@@ -64,6 +64,7 @@ services:
       NEON_DB_INDEXER_PASSWORD: "vUlpDyAP0gA98R5Bu"
       KEYPAIR: /opt/operator-keypairs/id.json
       FEEPAIR: /opt/operator-keypairs/id.json
+      SOLANA_KEY_FOR_CONFIG: BMp6gEnveANdvSvspESJUrNczuHz1GF5UQKjVLCkAZih
     image: ${EVM_LOADER_IMAGE}
     ports:
       - "3100"

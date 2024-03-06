@@ -14,7 +14,7 @@ use crate::evm::{Context, ExitStatus};
 use crate::types::Address;
 
 use super::action::Action;
-use super::cache::{cache_get_or_insert_account, Cache};
+use super::cache::{cache_get_or_insert_account, cache_get_or_insert_balance, Cache};
 use super::precompile_extension::PrecompiledContracts;
 use super::OwnedAccountInfo;
 
@@ -54,6 +54,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     pub fn new(backend: &'a B) -> Self {
         let cache = Cache {
             solana_accounts: BTreeMap::new(),
+            native_balances: BTreeMap::new(),
             block_number: backend.block_number(),
             block_timestamp: backend.block_timestamp(),
         };
@@ -126,7 +127,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn balance(&self, from_address: Address, from_chain_id: u64) -> Result<U256> {
-        let mut balance = self.backend.balance(from_address, from_chain_id).await;
+        let cache_key = (from_address, from_chain_id);
+        let mut balance = cache_get_or_insert_balance(&self.cache, cache_key, self.backend).await;
 
         for action in &self.actions {
             match action {

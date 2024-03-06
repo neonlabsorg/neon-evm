@@ -10,6 +10,8 @@ use crate::config::{ACCOUNT_SEED_VERSION, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT};
 use crate::error::Result;
 use crate::types::Address;
 
+use super::{AccountStorage, ProgramAccountStorage};
+
 impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<'a> {
     fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
         let result = ContractAccount::allocate(
@@ -44,6 +46,11 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
             let mut contract = self.contract_account(address)?;
             let index: usize = index.as_usize();
             contract.set_storage_value(index, &value);
+
+            // Mark contract as modified
+            // We can't increase the revision here because it might break the pointer to the contract code inside the evm.
+            // TODO: After Account HEAP experiment, may be we could remove the Buffer magic
+            self.synced_modified_contracts.insert(*contract.pubkey());
         } else {
             // Infinite Storage - Write into separate account
             let cell_address = self.keys.storage_cell_address(&crate::ID, address, index);
@@ -64,6 +71,7 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
                 storage.update((index & 0xFF).as_u8(), &value)?;
 
                 storage.sync_lamports(&self.rent, &self.accounts)?;
+                storage.increment_revision(&self.rent, &self.accounts)?;
             };
         }
 
@@ -129,6 +137,21 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
         } else {
             invoke_unchecked(&instruction, &accounts_info)?;
         }
+
+        Ok(())
+    }
+}
+
+impl<'a> ProgramAccountStorage<'a> {
+    pub fn increment_revision_for_modified_contracts(&mut self) -> Result<()> {
+        for pubkey in self.synced_modified_contracts.iter() {
+            let account = self.accounts.get(pubkey);
+
+            let mut contract = ContractAccount::from_account(&self.program_id(), account.clone())?;
+            contract.increment_revision(&self.rent, &self.accounts)?;
+        }
+
+        self.synced_modified_contracts.clear();
 
         Ok(())
     }

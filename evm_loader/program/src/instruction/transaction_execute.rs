@@ -85,6 +85,7 @@ pub fn execute_with_solana_call(
         result
     };
 
+    account_storage.increment_revision_for_modified_contracts()?;
     account_storage.transfer_treasury_payment()?;
 
     gasometer.record_operator_expenses(account_storage.operator());

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::account::{
     AccountsDB, BalanceAccount, ContractAccount, Operator, StorageCell, Treasury,
 };
@@ -18,6 +20,7 @@ impl<'a> ProgramAccountStorage<'a> {
             rent: Rent::get()?,
             accounts,
             keys: KeysCache::new(),
+            synced_modified_contracts: HashSet::new(),
         })
     }
 

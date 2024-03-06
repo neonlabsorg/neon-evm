@@ -88,6 +88,7 @@ struct Data {
     pub steps_executed: u64,
 }
 
+#[allow(clippy::struct_field_names)]
 #[repr(C, packed)]
 struct Header {
     pub evm_state_len: usize,

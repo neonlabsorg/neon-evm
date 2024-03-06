@@ -15,6 +15,6 @@ pub async fn execute(
         serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
 
     emulate::execute(rpc, config.evm_loader, params.body, None::<TracerTypeEnum>)
-    .await
-    .map(|(response, _)| response)
+        .await
+        .map(|(response, _)| response)
 }

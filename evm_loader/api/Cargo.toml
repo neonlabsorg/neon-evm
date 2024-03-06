@@ -22,7 +22,7 @@ neon-lib = { path = "../lib" }
 actix-web = "4.4.0"
 actix-request-identifier = "4.1.0"
 hex = "0.4.2"
-build-info = { version = "0.0.31", features = ["serde"] }
+build-info = { version = "0.0.34", features = ["serde"] }
 
 [build-dependencies]
 build-info-build = "0.0.31"

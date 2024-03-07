@@ -6,6 +6,7 @@ use std::net::AddrParseError;
 use std::string::FromUtf8Error;
 
 use log::error;
+use neon_lib_interface::NeonEVMLibLoadError;
 use solana_cli::cli::CliError as SolanaCliError;
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_client::tpu_client::TpuSenderError as SolanaTpuSenderError;
@@ -45,6 +46,8 @@ pub enum NeonError {
     /// EVM Loader Error
     #[error("EVM Error. {0}")]
     EvmError(#[from] evm_loader::error::Error),
+    #[error("Can't load db config")]
+    LoadingDBConfigError,
     /// Need specify evm_loader
     #[error("EVM loader must be specified.")]
     EvmLoaderNotSpecified,
@@ -114,6 +117,12 @@ pub enum NeonError {
     TryFromSliceError(#[from] TryFromSliceError),
     #[error("Solana pubkey for config must be specified.")]
     SolanaKeyForConfigNotSpecified,
+    #[error("library interface error")]
+    NeonEVMLibLoadError(#[from] NeonEVMLibLoadError),
+    #[error("Incorrect lib method")]
+    IncorrectLibMethod,
+    #[error("strum parse error {0:?}")]
+    StrumParseError(#[from] strum::ParseError),
 }
 
 impl NeonError {
@@ -156,6 +165,10 @@ impl NeonError {
             NeonError::FromUtf8Error(_) => 258,
             NeonError::TryFromSliceError(_) => 259,
             NeonError::SolanaKeyForConfigNotSpecified => 260,
+            NeonError::NeonEVMLibLoadError(_) => 261,
+            NeonError::LoadingDBConfigError => 262,
+            NeonError::IncorrectLibMethod => 263,
+            NeonError::StrumParseError(_) => 264,
         }
     }
 }

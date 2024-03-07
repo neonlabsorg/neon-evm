@@ -28,7 +28,7 @@ pub struct APIOptions {
 
 /// # Errors
 #[must_use]
-pub fn load_api_config_from_enviroment() -> APIOptions {
+pub fn load_api_config_from_environment() -> APIOptions {
     let solana_cli_config_path: Option<String> =
         env::var("SOLANA_CLI_CONFIG_PATH").map(Some).unwrap_or(None);
 
@@ -50,7 +50,7 @@ pub fn load_api_config_from_enviroment() -> APIOptions {
         .and_then(|v| Pubkey::from_str(&v).ok())
         .expect("SOLANA_KEY_FOR_CONFIG variable must be a valid pubkey");
 
-    let db_config = load_db_config_from_enviroment();
+    let db_config = load_db_config_from_environment();
 
     APIOptions {
         solana_cli_config_path,
@@ -63,7 +63,7 @@ pub fn load_api_config_from_enviroment() -> APIOptions {
 }
 
 /// # Errors
-fn load_db_config_from_enviroment() -> ChDbConfig {
+fn load_db_config_from_environment() -> ChDbConfig {
     let clickhouse_url = env::var("NEON_DB_CLICKHOUSE_URLS")
         .map(|urls| {
             urls.split(';')

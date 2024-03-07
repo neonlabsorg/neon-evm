@@ -4,6 +4,9 @@ members = [
     'api',
     'cli',
     'lib',
+    'lib-interface',
+    'rpc',
+    'rpc-client',
     'program',
-    'program-macro'
+    'program-macro',
 ]

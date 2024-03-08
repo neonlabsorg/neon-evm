@@ -49,7 +49,7 @@ rlp = "0.5"
 static_assertions = "1"
 borsh = "0.10"
 bincode = "1"
-serde_bytes = "0.11.12"
+serde_bytes = "0.11.14"
 serde = { version = "1.0.186", default-features = false, features = ["derive", "rc"] }
 ethnum = { version = "1.4", default-features = false, features = ["serde"] }
 cfg-if = { version = "1.0" }

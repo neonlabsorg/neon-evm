@@ -8,6 +8,6 @@ edition = "2021"
 [dependencies]
 abi_stable = "0.11.1"
 thiserror = "1"
-async-ffi = { version = "0.4.1", features = ["abi_stable"] }
+async-ffi = { version = "0.5.0", features = ["abi_stable"] }
 serde = "1.0.147"
 serde_json = "1.0.85"

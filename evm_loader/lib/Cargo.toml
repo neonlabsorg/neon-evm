@@ -39,7 +39,7 @@ enum_dispatch = "0.3.12"
 web3 = "0.19.0"
 neon-lib-interface = { path = "../lib-interface" }
 abi_stable = "0.11.2"
-async-ffi = { version = "0.4.1", features = ["abi_stable"] }
+async-ffi = { version = "0.5.0", features = ["abi_stable"] }
 strum = "0.25.0"
 strum_macros = "0.25.3"
 clap = "2.33.3"

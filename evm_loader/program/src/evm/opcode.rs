@@ -5,14 +5,15 @@ use ethnum::{I256, U256};
 use maybe_async::maybe_async;
 
 use super::{
+    begin_vm,
     database::{Database, DatabaseExt},
-    tracing_event, Context, Machine, Reason,
+    end_vm, tracing_event, Context, Machine, Reason,
 };
 use crate::evm::tracing::EventListener;
 use crate::{
     debug::log_data,
     error::{Error, Result},
-    evm::{trace_end_step, Buffer},
+    evm::Buffer,
     types::Address,
 };
 
@@ -802,12 +803,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         let index = self.stack.pop_u256()?;
         let value = backend.storage(self.context.contract, index).await?;
 
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::StorageAccess { index, value }
-        );
-
         self.stack.push_array(&value)?;
 
         Ok(Action::Continue)
@@ -822,12 +817,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         let index = self.stack.pop_u256()?;
         let value = *self.stack.pop_array()?;
-
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::StorageAccess { index, value }
-        );
 
         backend.set_storage(self.context.contract, index, value)?;
 
@@ -1082,14 +1071,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             code_address: None,
         };
 
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::BeginVM {
-                context,
-                code: init_code.to_vec()
-            }
-        );
+        begin_vm!(self, backend, context, chain_id, init_code);
 
         self.fork(
             Reason::Create,
@@ -1143,14 +1125,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             code_address: Some(address),
         };
 
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
+        begin_vm!(self, backend, context, chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1199,14 +1174,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             ..self.context
         };
 
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
+        begin_vm!(self, backend, context, chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1253,14 +1221,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             ..self.context
         };
 
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
+        begin_vm!(self, backend, context, self.chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1303,14 +1264,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             code_address: Some(address),
         };
 
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
+        begin_vm!(self, backend, context, chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1379,18 +1333,15 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend.commit_snapshot();
         log_data(&[b"EXIT", b"RETURN"]);
 
+        end_vm!(
+            self,
+            backend,
+            super::ExitStatus::Return(return_data.clone())
+        );
+
         if self.parent.is_none() {
             return Ok(Action::Return(return_data));
         }
-
-        trace_end_step!(self, backend, Some(return_data.clone()));
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::EndVM {
-                status: super::ExitStatus::Return(return_data.clone())
-            }
-        );
 
         let returned = self.join();
         match returned.reason {
@@ -1429,18 +1380,15 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend.revert_snapshot();
         log_data(&[b"EXIT", b"REVERT", &return_data]);
 
+        end_vm!(
+            self,
+            backend,
+            super::ExitStatus::Revert(return_data.clone())
+        );
+
         if self.parent.is_none() {
             return Ok(Action::Revert(return_data));
         }
-
-        trace_end_step!(self, backend, Some(return_data.clone()));
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::EndVM {
-                status: super::ExitStatus::Revert(return_data.clone())
-            }
-        );
 
         let returned = self.join();
         match returned.reason {
@@ -1486,18 +1434,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend.commit_snapshot();
         log_data(&[b"EXIT", b"SELFDESTRUCT"]);
 
+        end_vm!(self, backend, super::ExitStatus::Suicide);
+
         if self.parent.is_none() {
             return Ok(Action::Suicide);
         }
-
-        trace_end_step!(self, backend, None);
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::EndVM {
-                status: super::ExitStatus::Suicide
-            }
-        );
 
         let returned = self.join();
         match returned.reason {
@@ -1519,18 +1460,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend.commit_snapshot();
         log_data(&[b"EXIT", b"STOP"]);
 
+        end_vm!(self, backend, super::ExitStatus::Stop);
+
         if self.parent.is_none() {
             return Ok(Action::Stop);
         }
-
-        trace_end_step!(self, backend, None);
-        tracing_event!(
-            self,
-            backend,
-            super::tracing::Event::EndVM {
-                status: super::ExitStatus::Stop
-            }
-        );
 
         let returned = self.join();
         match returned.reason {

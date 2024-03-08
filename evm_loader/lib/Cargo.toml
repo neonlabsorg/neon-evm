@@ -44,6 +44,7 @@ strum = "0.26.1"
 strum_macros = "0.26.1"
 clap = "2.33.3"
 lazy_static = "1.4.0"
+arrayref = "0.3.6"
 
 [build-dependencies]
 build-info-build = "0.0.31"

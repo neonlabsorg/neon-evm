@@ -76,7 +76,7 @@ pub async fn execute<T: Tracer>(
     )
     .await?;
 
-    let step_limit = emulate_request.step_limit.unwrap_or(100000);
+    let step_limit = emulate_request.step_limit.unwrap_or(100_000);
 
     emulate_trx(emulate_request.tx, &mut storage, step_limit, tracer).await
 }
@@ -137,7 +137,7 @@ async fn emulate_trx<T: Tracer>(
             result: exit_status.into_result().unwrap_or_default(),
             iterations,
         },
-        tracer.map(|tracer| tracer.into_traces()),
+        tracer.map(|tracer| tracer.into_traces(used_gas)),
     ))
 }
 

@@ -2033,7 +2033,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "serde",
- "syn 1.0.109",
+ "syn 2.0.50",
  "toml 0.8.0",
 ]
 

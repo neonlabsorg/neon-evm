@@ -2339,7 +2339,7 @@ checksum = "a7666983ed0dd8d21a6f6576ee00053ca0926fb281a5522577a4dbd0f1b54143"
 dependencies = [
  "log",
  "plain",
- "scroll",
+ "scroll 0.11.0",
 ]
 
 [[package]]
@@ -2350,7 +2350,7 @@ checksum = "0d6b4de4a8eb6c46a8c77e1d3be942cb9a8bf073c22374578e5ba4b08ed0ff68"
 dependencies = [
  "log",
  "plain",
- "scroll",
+ "scroll 0.11.0",
 ]
 
 [[package]]
@@ -3349,7 +3349,7 @@ dependencies = [
  "log",
  "neon-lib-interface",
  "rand 0.8.5",
- "scroll",
+ "scroll 0.12.0",
  "serde",
  "serde_json",
  "serde_with 3.6.1",
@@ -4573,6 +4573,12 @@ checksum = "04c565b551bafbef4157586fa379538366e4385d42082f255bfd96e4fe8519da"
 dependencies = [
  "scroll_derive",
 ]
+
+[[package]]
+name = "scroll"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ab8598aa408498679922eff7fa985c25d58a90771bd6be794434c5277eab1a6"
 
 [[package]]
 name = "scroll_derive"
@@ -6206,7 +6212,7 @@ dependencies = [
  "log",
  "rand 0.8.5",
  "rustc-demangle",
- "scroll",
+ "scroll 0.11.0",
  "thiserror",
  "winapi",
 ]

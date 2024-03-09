@@ -54,7 +54,7 @@ serde = { version = "1.0.186", default-features = false, features = ["derive", "
 ethnum = { version = "1.5", default-features = false, features = ["serde"] }
 cfg-if = { version = "1.0" }
 log = { version = "0.4", default-features = false, optional = true }
-maybe-async = "0.2.7"
+maybe-async = "0.2.10"
 async-trait = { version = "0.1.73", optional = true }
 
 [target.'cfg(target_os = "solana")'.dependencies.maybe-async]

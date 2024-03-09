@@ -19,7 +19,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2.2"
 tower = { version = "0.4", features = ["make"] }
 neon-lib = { path = "../lib" }
-actix-web = "4.4.0"
+actix-web = "4.5.1"
 actix-request-identifier = "4.1.0"
 hex = "0.4.2"
 build-info = { version = "0.0.31", features = ["serde"] }

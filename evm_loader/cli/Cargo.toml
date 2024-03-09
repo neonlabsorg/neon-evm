@@ -15,7 +15,7 @@ solana-cli-config = "=1.17.24"
 hex = "0.4.2"
 serde = "1.0.186"
 serde_json = { version = "1.0.114", features = ["preserve_order"] }
-log = "0.4.17"
+log = "0.4.21"
 fern = "0.6"
 ethnum = { version = "1.5", default-features = false, features = ["serde"] }
 tokio = { version = "1", features = ["full"] }

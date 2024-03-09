@@ -25,4 +25,4 @@ hex = "0.4.2"
 build-info = { version = "0.0.31", features = ["serde"] }
 
 [build-dependencies]
-build-info-build = "0.0.31"
+build-info-build = "0.0.35"

@@ -46,7 +46,7 @@ clap = "2.33.3"
 lazy_static = "1.4.0"
 
 [build-dependencies]
-build-info-build = "0.0.31"
+build-info-build = "0.0.35"
 
 [lib]
 crate-type = ["cdylib", "lib"]

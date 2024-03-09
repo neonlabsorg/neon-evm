@@ -19,7 +19,7 @@ build-info = { version = "0.0.31", features = ["serde"] }
 thiserror = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-appender = "0.2.2"
+tracing-appender = "0.2.3"
 
 [build-dependencies]
 build-info-build = "0.0.31"

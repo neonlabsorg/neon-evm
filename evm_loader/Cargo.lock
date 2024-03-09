@@ -904,6 +904,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "771fe0050b883fcc3ea2359b1a96bcfbc090b7116eae7c3c512c7a083fdf23d3"
 
 [[package]]
+name = "bs58"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5353f36341f7451062466f0b755b96ac3a9547e4d7f6b70d603fc721a7d7896"
+dependencies = [
+ "tinyvec",
+]
+
+[[package]]
 name = "bstr"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2028,7 +2037,7 @@ dependencies = [
 name = "evm-loader-macro"
 version = "1.0.0"
 dependencies = [
- "bs58",
+ "bs58 0.5.0",
  "itertools 0.12.1",
  "proc-macro2",
  "quote",
@@ -3354,7 +3363,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.0",
  "bincode",
- "bs58",
+ "bs58 0.5.0",
  "build-info",
  "build-info-build",
  "clap 2.34.0",
@@ -4989,7 +4998,7 @@ dependencies = [
  "Inflector",
  "base64 0.21.7",
  "bincode",
- "bs58",
+ "bs58 0.4.0",
  "bv",
  "lazy_static",
  "serde",
@@ -5194,7 +5203,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c343823d715ee17413e807a4646b061e0f90ced78dfe0d625ce951c34142891a"
 dependencies = [
  "bincode",
- "bs58",
+ "bs58 0.4.0",
  "clap 2.34.0",
  "console",
  "const_format",
@@ -5417,7 +5426,7 @@ dependencies = [
  "ahash 0.8.5",
  "blake3",
  "block-buffer 0.10.4",
- "bs58",
+ "bs58 0.4.0",
  "bv",
  "byteorder",
  "cc",
@@ -5566,7 +5575,7 @@ dependencies = [
  "blake3",
  "borsh 0.10.3",
  "borsh 0.9.3",
- "bs58",
+ "bs58 0.4.0",
  "bv",
  "bytemuck",
  "cc",
@@ -5753,7 +5762,7 @@ dependencies = [
  "async-trait",
  "base64 0.21.7",
  "bincode",
- "bs58",
+ "bs58 0.4.0",
  "indicatif",
  "log",
  "reqwest",
@@ -5777,7 +5786,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0190bf789cc7a1f3508928f01051381cc15bda16120a2a080ff10aa311388970"
 dependencies = [
  "base64 0.21.7",
- "bs58",
+ "bs58 0.4.0",
  "jsonrpc-core",
  "reqwest",
  "semver",
@@ -5893,7 +5902,7 @@ dependencies = [
  "bincode",
  "bitflags 2.4.0",
  "borsh 0.10.3",
- "bs58",
+ "bs58 0.4.0",
  "bytemuck",
  "byteorder",
  "chrono",
@@ -5942,7 +5951,7 @@ version = "1.17.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd8ad88355cf03e34b60ba12f65dffc44054e453aa1113a50169ee42ab6ad7a3"
 dependencies = [
- "bs58",
+ "bs58 0.4.0",
  "proc-macro2",
  "quote",
  "rustversion",
@@ -6081,7 +6090,7 @@ dependencies = [
  "base64 0.21.7",
  "bincode",
  "borsh 0.10.3",
- "bs58",
+ "bs58 0.4.0",
  "lazy_static",
  "log",
  "serde",

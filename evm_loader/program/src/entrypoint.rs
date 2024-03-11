@@ -49,7 +49,7 @@ fn process_instruction<'a>(
             instruction::config_get_version::process(program_id, accounts, instruction)
         }
         _ => {
-            solana_program::msg!("Emergency image: all instructions are rejected");
+            log_msg!("Emergency image: all instructions are rejected");
             Err(ProgramError::InvalidInstructionData.into())
         }
     }
@@ -124,9 +124,6 @@ fn process_instruction<'a>(
         EvmInstruction::CreateMainTreasury => {
             instruction::create_main_treasury::process(program_id, accounts, instruction)
                 .map_err(Error::from)
-        }
-        EvmInstruction::AccountBlockAdd => {
-            instruction::account_block_add::process(program_id, accounts, instruction)
         }
         EvmInstruction::AccountCreateBalance => {
             instruction::account_create_balance::process(program_id, accounts, instruction)

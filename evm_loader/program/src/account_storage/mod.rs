@@ -8,6 +8,7 @@ use solana_program::account_info::AccountInfo;
 use {crate::account::AccountsDB, solana_program::clock::Clock};
 
 use solana_program::pubkey::Pubkey;
+use solana_program::rent::Rent;
 
 #[cfg(target_os = "solana")]
 mod apply;
@@ -24,6 +25,7 @@ pub use keys_cache::KeysCache;
 #[cfg(target_os = "solana")]
 pub struct ProgramAccountStorage<'a> {
     clock: Clock,
+    rent: Rent,
     accounts: AccountsDB<'a>,
     keys: keys_cache::KeysCache,
 }
@@ -44,6 +46,12 @@ pub trait AccountStorage {
     /// Get block hash
     async fn block_hash(&self, number: u64) -> [u8; 32];
 
+    /// Get rent info
+    fn rent(&self) -> &Rent;
+
+    /// Get return data from Solana
+    fn return_data(&self) -> Option<(Pubkey, Vec<u8>)>;
+
     /// Get account nonce
     async fn nonce(&self, address: Address, chain_id: u64) -> u64;
     /// Get account balance
@@ -58,8 +66,6 @@ pub trait AccountStorage {
     /// Get contract solana address
     fn contract_pubkey(&self, address: Address) -> (Pubkey, u8);
 
-    /// Get code hash
-    async fn code_hash(&self, address: Address, chain_id: u64) -> [u8; 32];
     /// Get code size
     async fn code_size(&self, address: Address) -> usize;
     /// Get code data

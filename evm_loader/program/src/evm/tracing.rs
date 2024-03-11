@@ -1,41 +1,51 @@
-use std::cell::RefCell;
-use std::fmt::Debug;
-use std::rc::Rc;
-
-use ethnum::U256;
-use serde_json::Value;
+use maybe_async::maybe_async;
 
 use super::{Context, ExitStatus};
+use crate::evm::database::Database;
+use crate::evm::opcode_table::Opcode;
 
-pub trait EventListener: Debug {
-    fn event(&mut self, event: Event);
-    fn into_traces(self: Box<Self>) -> Value;
+pub struct NoopEventListener;
+
+#[maybe_async(?Send)]
+pub trait EventListener {
+    async fn event(
+        &mut self,
+        executor_state: &impl Database,
+        event: Event,
+    ) -> crate::error::Result<()>;
 }
 
-pub type TracerType = Rc<RefCell<Box<dyn EventListener>>>;
-pub type TracerTypeOpt = Option<TracerType>;
+#[maybe_async(?Send)]
+impl EventListener for NoopEventListener {
+    async fn event(
+        &mut self,
+        _executor_state: &impl Database,
+        _event: Event,
+    ) -> crate::error::Result<()> {
+        Ok(())
+    }
+}
 
 /// Trace event
 pub enum Event {
     BeginVM {
         context: Context,
-        code: Vec<u8>,
+        chain_id: u64,
+        input: Vec<u8>,
+        opcode: Opcode,
     },
     EndVM {
+        context: Context,
+        chain_id: u64,
         status: ExitStatus,
     },
     BeginStep {
-        opcode: u8,
+        context: Context,
+        chain_id: u64,
+        opcode: Opcode,
         pc: usize,
         stack: Vec<[u8; 32]>,
         memory: Vec<u8>,
-    },
-    EndStep {
-        gas_used: u64,
-        return_data: Option<Vec<u8>>,
-    },
-    StorageAccess {
-        index: U256,
-        value: [u8; 32],
+        return_data: Vec<u8>,
     },
 }

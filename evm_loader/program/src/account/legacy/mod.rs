@@ -10,8 +10,12 @@ pub use legacy_storage_cell::LegacyStorageData;
 use solana_program::system_program;
 use solana_program::{account_info::AccountInfo, rent::Rent, sysvar::Sysvar};
 
+use super::AccountHeader;
 use super::Holder;
+use super::HolderHeader;
 use super::StateFinalizedAccount;
+use super::StateFinalizedHeader;
+use super::StorageCellHeader;
 use super::TAG_HOLDER;
 use super::TAG_STATE_FINALIZED;
 use super::{AccountsDB, ContractAccount, TAG_STORAGE_CELL};
@@ -21,19 +25,21 @@ use crate::{
     error::Result,
 };
 
+// First version
 pub const TAG_STATE_DEPRECATED: u8 = 22;
 pub const TAG_STATE_FINALIZED_DEPRECATED: u8 = 31;
 pub const TAG_HOLDER_DEPRECATED: u8 = 51;
 pub const TAG_ACCOUNT_CONTRACT_DEPRECATED: u8 = 12;
 pub const TAG_STORAGE_CELL_DEPRECATED: u8 = 42;
+// Before account revision (Holder and Finalized remain the same)
+pub const TAG_STATE_BEFORE_REVISION: u8 = 23;
 
-fn reduce_account_size(account: &AccountInfo, required_len: usize) -> Result<u64> {
+fn reduce_account_size(account: &AccountInfo, required_len: usize, rent: &Rent) -> Result<u64> {
     assert!(account.data_len() > required_len);
 
     account.realloc(required_len, false)?;
 
     // Return excessive lamports to the operator
-    let rent = Rent::get()?;
     let minimum_balance = rent.minimum_balance(account.data_len());
     if account.lamports() > minimum_balance {
         let value = account.lamports() - minimum_balance;
@@ -55,10 +61,11 @@ fn kill_account(account: &AccountInfo) -> Result<u64> {
     Ok(value)
 }
 
-fn update_ether_account(
+fn update_ether_account_from_v1(
     legacy_data: &LegacyEtherData,
     db: &AccountsDB,
     keys: &KeysCache,
+    rent: &Rent,
 ) -> Result<u64> {
     let pubkey = keys.contract(&crate::ID, legacy_data.address);
     let account = db.get(&pubkey);
@@ -75,7 +82,7 @@ fn update_ether_account(
 
         // Make account smaller
         let required_len = ContractAccount::required_account_size(&code);
-        lamports_collected += reduce_account_size(account, required_len)?;
+        lamports_collected += reduce_account_size(account, required_len, rent)?;
 
         // Fill it with new data
         account.try_borrow_mut_data()?.fill(0);
@@ -89,8 +96,6 @@ fn update_ether_account(
             Some(keys),
         )?;
         contract.set_storage_multiple_values(0, &storage);
-
-        super::set_block(&crate::ID, account, legacy_data.rw_blocked)?;
     } else {
         // This is not contract. Just kill it.
         lamports_collected += kill_account(account)?;
@@ -103,20 +108,20 @@ fn update_ether_account(
             crate::config::DEFAULT_CHAIN_ID,
             db,
             Some(keys),
+            rent,
         )?;
         balance.mint(legacy_data.balance)?;
         balance.increment_nonce_by(legacy_data.trx_count)?;
-
-        super::set_block(&crate::ID, db.get(balance.pubkey()), legacy_data.rw_blocked)?;
     }
 
     Ok(lamports_collected)
 }
 
-fn update_storage_account(
+fn update_storage_account_from_v1(
     legacy_data: &LegacyStorageData,
     db: &AccountsDB,
     keys: &KeysCache,
+    rent: &Rent,
 ) -> Result<u64> {
     let mut lamports_collected = 0_u64;
 
@@ -137,14 +142,20 @@ fn update_storage_account(
 
     // Make account smaller
     let required_len = StorageCell::required_account_size(cells.len());
-    lamports_collected += reduce_account_size(&cell_account, required_len)?;
+    lamports_collected += reduce_account_size(&cell_account, required_len, rent)?;
 
     // Fill it with new data
     cell_account.try_borrow_mut_data()?.fill(0);
-    super::set_tag(&crate::ID, &cell_account, TAG_STORAGE_CELL)?;
+    super::set_tag(
+        &crate::ID,
+        &cell_account,
+        TAG_STORAGE_CELL,
+        StorageCellHeader::VERSION,
+    )?;
 
     let mut storage = StorageCell::from_account(&crate::ID, cell_account)?;
     storage.cells_mut().copy_from_slice(&cells);
+    storage.increment_revision(rent, db)?;
 
     Ok(lamports_collected)
 }
@@ -154,8 +165,7 @@ pub fn update_holder_account(account: &AccountInfo) -> Result<u8> {
         TAG_HOLDER_DEPRECATED => {
             let legacy_data = LegacyHolderData::from_account(&crate::ID, account)?;
 
-            super::set_tag(&crate::ID, account, TAG_HOLDER)?;
-            super::set_block(&crate::ID, account, false)?;
+            super::set_tag(&crate::ID, account, TAG_HOLDER, HolderHeader::VERSION)?;
 
             let mut holder = Holder::from_account(&crate::ID, account.clone())?;
             holder.update(|data| {
@@ -169,8 +179,12 @@ pub fn update_holder_account(account: &AccountInfo) -> Result<u8> {
         TAG_STATE_FINALIZED_DEPRECATED => {
             let legacy_data = LegacyFinalizedData::from_account(&crate::ID, account)?;
 
-            super::set_tag(&crate::ID, account, TAG_STATE_FINALIZED)?;
-            super::set_block(&crate::ID, account, false)?;
+            super::set_tag(
+                &crate::ID,
+                account,
+                TAG_STATE_FINALIZED,
+                StateFinalizedHeader::VERSION,
+            )?;
 
             let mut state = StateFinalizedAccount::from_account(&crate::ID, account.clone())?;
             state.update(|data| {
@@ -190,6 +204,8 @@ pub fn update_legacy_accounts(accounts: &AccountsDB) -> Result<u64> {
     let mut lamports_collected = 0_u64;
     let mut legacy_storage = Vec::with_capacity(accounts.accounts_len());
 
+    let rent = Rent::get()?;
+
     for account in accounts {
         if !crate::check_id(account.owner) {
             continue;
@@ -203,7 +219,8 @@ pub fn update_legacy_accounts(accounts: &AccountsDB) -> Result<u64> {
         match tag {
             LegacyEtherData::TAG => {
                 let legacy_data = LegacyEtherData::from_account(&crate::ID, account)?;
-                lamports_collected += update_ether_account(&legacy_data, accounts, &keys)?;
+                lamports_collected +=
+                    update_ether_account_from_v1(&legacy_data, accounts, &keys, &rent)?;
             }
             LegacyStorageData::TAG => {
                 let legacy_data = LegacyStorageData::from_account(&crate::ID, account)?;
@@ -214,7 +231,7 @@ pub fn update_legacy_accounts(accounts: &AccountsDB) -> Result<u64> {
     }
 
     for data in legacy_storage {
-        lamports_collected += update_storage_account(&data, accounts, &keys)?;
+        lamports_collected += update_storage_account_from_v1(&data, accounts, &keys, &rent)?;
     }
 
     Ok(lamports_collected)
@@ -229,5 +246,6 @@ pub fn is_legacy_tag(tag: u8) -> bool {
             | TAG_HOLDER_DEPRECATED
             | TAG_STATE_FINALIZED_DEPRECATED
             | TAG_STATE_DEPRECATED
+            | TAG_STATE_BEFORE_REVISION
     )
 }

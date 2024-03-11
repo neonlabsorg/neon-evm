@@ -1,37 +1,40 @@
 use actix_request_identifier::RequestId;
 use actix_web::{http::StatusCode, post, web::Json, Responder};
+use neon_lib::tracing::tracers::TracerTypeEnum;
 use std::convert::Into;
+use tracing::info;
 
 use crate::api_server::handlers::process_error;
-use crate::{
-    api_context, commands::emulate as EmulateCommand, types::EmulateApiRequest, NeonApiState,
-};
+use crate::{commands::emulate as EmulateCommand, types::EmulateApiRequest, NeonApiState};
 
 use super::process_result;
 
-#[tracing::instrument(skip(state, request_id), fields(id = request_id.as_str()))]
+#[tracing::instrument(skip_all, fields(id = request_id.as_str()))]
 #[post("/emulate")]
 pub async fn emulate(
     state: NeonApiState,
     request_id: RequestId,
     Json(emulate_request): Json<EmulateApiRequest>,
 ) -> impl Responder {
+    info!("emulate_request={:?}", emulate_request);
+
     let slot = emulate_request.slot;
     let index = emulate_request.tx_index_in_block;
 
-    let rpc_client = match api_context::build_rpc_client(&state, slot, index).await {
-        Ok(rpc_client) => rpc_client,
+    let rpc = match state.build_rpc(slot, index).await {
+        Ok(rpc) => rpc,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
 
     process_result(
         &EmulateCommand::execute(
-            rpc_client.as_ref(),
+            &rpc,
             state.config.evm_loader,
             emulate_request.body,
-            None,
+            None::<TracerTypeEnum>,
         )
         .await
+        .map(|(response, _)| response)
         .map_err(Into::into),
     )
 }

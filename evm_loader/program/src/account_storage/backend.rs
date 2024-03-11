@@ -5,7 +5,7 @@ use crate::executor::OwnedAccountInfo;
 use crate::types::Address;
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
-use solana_program::{pubkey::Pubkey, sysvar::slot_hashes};
+use solana_program::{pubkey::Pubkey, rent::Rent, sysvar::slot_hashes};
 use std::convert::TryInto;
 
 impl<'a> AccountStorage for ProgramAccountStorage<'a> {
@@ -26,6 +26,14 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
             .unix_timestamp
             .try_into()
             .expect("Timestamp is positive")
+    }
+
+    fn rent(&self) -> &Rent {
+        &self.rent
+    }
+
+    fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
+        solana_program::program::get_return_data()
     }
 
     fn block_hash(&self, slot: u64) -> [u8; 32] {
@@ -71,29 +79,6 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     fn contract_pubkey(&self, address: Address) -> (Pubkey, u8) {
         self.keys
             .contract_with_bump_seed(self.program_id(), address)
-    }
-
-    fn code_hash(&self, address: Address, chain_id: u64) -> [u8; 32] {
-        use solana_program::keccak;
-
-        if let Ok(contract) = self.contract_account(address) {
-            keccak::hash(&contract.code()).to_bytes()
-        } else {
-            // https://eips.ethereum.org/EIPS/eip-1052
-            // https://eips.ethereum.org/EIPS/eip-161
-            if let Ok(account) = self.balance_account(address, chain_id) {
-                if account.nonce() > 0 || account.balance() > 0 {
-                    // account without code
-                    keccak::hash(&[]).to_bytes()
-                } else {
-                    // non-existent account
-                    <[u8; 32]>::default()
-                }
-            } else {
-                // non-existent account
-                <[u8; 32]>::default()
-            }
-        }
     }
 
     fn code_size(&self, address: Address) -> usize {

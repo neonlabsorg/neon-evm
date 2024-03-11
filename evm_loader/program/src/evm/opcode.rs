@@ -1,12 +1,19 @@
+#![allow(clippy::needless_pass_by_ref_mut)]
+
 /// <https://ethereum.github.io/yellowpaper/paper.pdf>
 use ethnum::{I256, U256};
 use maybe_async::maybe_async;
-use solana_program::log::sol_log_data;
 
-use super::{database::Database, tracing_event, Context, Machine, Reason};
+use super::{
+    begin_vm,
+    database::{Database, DatabaseExt},
+    end_vm, tracing_event, Context, Machine, Reason,
+};
+use crate::evm::tracing::EventListener;
 use crate::{
+    debug::log_data,
     error::{Error, Result},
-    evm::{trace_end_step, Buffer},
+    evm::Buffer,
     types::Address,
 };
 
@@ -22,7 +29,7 @@ pub enum Action {
 }
 
 #[allow(clippy::unused_async)]
-impl<B: Database> Machine<B> {
+impl<B: Database, T: EventListener> Machine<B, T> {
     /// Unknown instruction
     #[maybe_async]
     pub async fn opcode_unknown(&mut self, _backend: &mut B) -> Result<Action> {
@@ -796,8 +803,6 @@ impl<B: Database> Machine<B> {
         let index = self.stack.pop_u256()?;
         let value = backend.storage(self.context.contract, index).await?;
 
-        tracing_event!(self, super::tracing::Event::StorageAccess { index, value });
-
         self.stack.push_array(&value)?;
 
         Ok(Action::Continue)
@@ -812,8 +817,6 @@ impl<B: Database> Machine<B> {
 
         let index = self.stack.pop_u256()?;
         let value = *self.stack.pop_array()?;
-
-        tracing_event!(self, super::tracing::Event::StorageAccess { index, value });
 
         backend.set_storage(self.context.contract, index, value)?;
 
@@ -981,11 +984,11 @@ impl<B: Database> Machine<B> {
         let address = self.context.contract.as_bytes();
 
         match N {
-            0 => sol_log_data(&[b"LOG0", address, &[0], data]),                                                
-            1 => sol_log_data(&[b"LOG1", address, &[1], &topics[0], data]),                                    
-            2 => sol_log_data(&[b"LOG2", address, &[2], &topics[0], &topics[1], data]),                        
-            3 => sol_log_data(&[b"LOG3", address, &[3], &topics[0], &topics[1], &topics[2], data]),            
-            4 => sol_log_data(&[b"LOG4", address, &[4], &topics[0], &topics[1], &topics[2], &topics[3], data]),
+            0 => log_data(&[b"LOG0", address, &[0], data]),                                                
+            1 => log_data(&[b"LOG1", address, &[1], &topics[0], data]),                                    
+            2 => log_data(&[b"LOG2", address, &[2], &topics[0], &topics[1], data]),                        
+            3 => log_data(&[b"LOG3", address, &[3], &topics[0], &topics[1], &topics[2], data]),            
+            4 => log_data(&[b"LOG4", address, &[4], &topics[0], &topics[1], &topics[2], &topics[3], data]),
             _ => unreachable!(),
         }
 
@@ -1068,13 +1071,7 @@ impl<B: Database> Machine<B> {
             code_address: None,
         };
 
-        tracing_event!(
-            self,
-            super::tracing::Event::BeginVM {
-                context,
-                code: init_code.to_vec()
-            }
-        );
+        begin_vm!(self, backend, context, chain_id, init_code);
 
         self.fork(
             Reason::Create,
@@ -1086,7 +1083,7 @@ impl<B: Database> Machine<B> {
         );
         backend.snapshot();
 
-        sol_log_data(&[b"ENTER", b"CREATE", address.as_bytes()]);
+        log_data(&[b"ENTER", b"CREATE", address.as_bytes()]);
 
         if (backend.nonce(address, chain_id).await? != 0)
             || (backend.code_size(address).await? != 0)
@@ -1128,13 +1125,7 @@ impl<B: Database> Machine<B> {
             code_address: Some(address),
         };
 
-        tracing_event!(
-            self,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
+        begin_vm!(self, backend, context, chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1146,7 +1137,7 @@ impl<B: Database> Machine<B> {
         );
         backend.snapshot();
 
-        sol_log_data(&[b"ENTER", b"CALL", address.as_bytes()]);
+        log_data(&[b"ENTER", b"CALL", address.as_bytes()]);
 
         if self.is_static && (value != U256::ZERO) {
             return Err(Error::StaticModeViolation(self.context.caller));
@@ -1183,13 +1174,7 @@ impl<B: Database> Machine<B> {
             ..self.context
         };
 
-        tracing_event!(
-            self,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
+        begin_vm!(self, backend, context, chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1201,7 +1186,7 @@ impl<B: Database> Machine<B> {
         );
         backend.snapshot();
 
-        sol_log_data(&[b"ENTER", b"CALLCODE", address.as_bytes()]);
+        log_data(&[b"ENTER", b"CALLCODE", address.as_bytes()]);
 
         if backend.balance(self.context.caller, chain_id).await? < value {
             return Err(Error::InsufficientBalance(
@@ -1236,13 +1221,7 @@ impl<B: Database> Machine<B> {
             ..self.context
         };
 
-        tracing_event!(
-            self,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
+        begin_vm!(self, backend, context, self.chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1254,7 +1233,7 @@ impl<B: Database> Machine<B> {
         );
         backend.snapshot();
 
-        sol_log_data(&[b"ENTER", b"DELEGATECALL", address.as_bytes()]);
+        log_data(&[b"ENTER", b"DELEGATECALL", address.as_bytes()]);
 
         self.opcode_call_precompile_impl(backend, &address).await
     }
@@ -1285,13 +1264,7 @@ impl<B: Database> Machine<B> {
             code_address: Some(address),
         };
 
-        tracing_event!(
-            self,
-            super::tracing::Event::BeginVM {
-                context,
-                code: code.to_vec()
-            }
-        );
+        begin_vm!(self, backend, context, chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1305,7 +1278,7 @@ impl<B: Database> Machine<B> {
 
         backend.snapshot();
 
-        sol_log_data(&[b"ENTER", b"STATICCALL", address.as_bytes()]);
+        log_data(&[b"ENTER", b"STATICCALL", address.as_bytes()]);
 
         self.opcode_call_precompile_impl(backend, &address).await
     }
@@ -1358,19 +1331,17 @@ impl<B: Database> Machine<B> {
         }
 
         backend.commit_snapshot();
-        sol_log_data(&[b"EXIT", b"RETURN"]);
+        log_data(&[b"EXIT", b"RETURN"]);
+
+        end_vm!(
+            self,
+            backend,
+            super::ExitStatus::Return(return_data.clone())
+        );
 
         if self.parent.is_none() {
             return Ok(Action::Return(return_data));
         }
-
-        trace_end_step!(self, Some(return_data.clone()));
-        tracing_event!(
-            self,
-            super::tracing::Event::EndVM {
-                status: super::ExitStatus::Return(return_data.clone())
-            }
-        );
 
         let returned = self.join();
         match returned.reason {
@@ -1407,19 +1378,17 @@ impl<B: Database> Machine<B> {
         backend: &mut B,
     ) -> Result<Action> {
         backend.revert_snapshot();
-        sol_log_data(&[b"EXIT", b"REVERT", &return_data]);
+        log_data(&[b"EXIT", b"REVERT", &return_data]);
+
+        end_vm!(
+            self,
+            backend,
+            super::ExitStatus::Revert(return_data.clone())
+        );
 
         if self.parent.is_none() {
             return Ok(Action::Revert(return_data));
         }
-
-        trace_end_step!(self, Some(return_data.clone()));
-        tracing_event!(
-            self,
-            super::tracing::Event::EndVM {
-                status: super::ExitStatus::Revert(return_data.clone())
-            }
-        );
 
         let returned = self.join();
         match returned.reason {
@@ -1463,19 +1432,13 @@ impl<B: Database> Machine<B> {
         backend.selfdestruct(self.context.contract)?;
 
         backend.commit_snapshot();
-        sol_log_data(&[b"EXIT", b"SELFDESTRUCT"]);
+        log_data(&[b"EXIT", b"SELFDESTRUCT"]);
+
+        end_vm!(self, backend, super::ExitStatus::Suicide);
 
         if self.parent.is_none() {
             return Ok(Action::Suicide);
         }
-
-        trace_end_step!(self, None);
-        tracing_event!(
-            self,
-            super::tracing::Event::EndVM {
-                status: super::ExitStatus::Suicide
-            }
-        );
 
         let returned = self.join();
         match returned.reason {
@@ -1495,19 +1458,13 @@ impl<B: Database> Machine<B> {
     #[maybe_async]
     pub async fn opcode_stop(&mut self, backend: &mut B) -> Result<Action> {
         backend.commit_snapshot();
-        sol_log_data(&[b"EXIT", b"STOP"]);
+        log_data(&[b"EXIT", b"STOP"]);
+
+        end_vm!(self, backend, super::ExitStatus::Stop);
 
         if self.parent.is_none() {
             return Ok(Action::Stop);
         }
-
-        trace_end_step!(self, None);
-        tracing_event!(
-            self,
-            super::tracing::Event::EndVM {
-                status: super::ExitStatus::Stop
-            }
-        );
 
         let returned = self.join();
         match returned.reason {

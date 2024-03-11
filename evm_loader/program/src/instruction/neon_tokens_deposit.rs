@@ -1,11 +1,11 @@
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::program::invoke_signed;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
 use spl_associated_token_account::get_associated_token_address;
 
 use crate::account::{program, token, AccountsDB, BalanceAccount, Operator, ACCOUNT_SEED_VERSION};
-use crate::config::DEFAULT_CHAIN_ID;
+use crate::config::{CHAIN_ID_LIST, DEFAULT_CHAIN_ID};
 use crate::error::{Error, Result};
 use crate::types::Address;
 
@@ -42,7 +42,7 @@ pub fn process<'a>(
     accounts: &'a [AccountInfo<'a>],
     instruction: &[u8],
 ) -> Result<()> {
-    solana_program::msg!("Instruction: Deposit");
+    log_msg!("Instruction: Deposit");
 
     let parsed_accounts = Accounts::from_slice(accounts)?;
 
@@ -77,11 +77,11 @@ fn validate(
         return Err(Error::AccountInvalidKey(contract_account, expected_pubkey));
     }
 
-    let Ok(chain_id_index) = crate::config::CHAIN_ID_LIST.binary_search_by_key(&chain_id, |c| c.0) else {
+    let Ok(chain_id_index) = CHAIN_ID_LIST.binary_search_by_key(&chain_id, |c| c.0) else {
         return Err(Error::InvalidChainId(chain_id));
     };
 
-    let expected_mint = crate::config::CHAIN_ID_LIST[chain_id_index].2;
+    let expected_mint = CHAIN_ID_LIST[chain_id_index].2;
     if mint != expected_mint {
         return Err(Error::AccountInvalidKey(mint, expected_mint));
     }
@@ -162,7 +162,9 @@ fn execute(program_id: &Pubkey, accounts: Accounts, address: Address, chain_id: 
         excessive_lamports += crate::account::legacy::update_legacy_accounts(&accounts_db)?;
     }
 
-    let mut balance_account = BalanceAccount::create(address, chain_id, &accounts_db, None)?;
+    let rent = Rent::get()?;
+
+    let mut balance_account = BalanceAccount::create(address, chain_id, &accounts_db, None, &rent)?;
     balance_account.mint(deposit)?;
 
     **accounts_db.operator().try_borrow_mut_lamports()? += excessive_lamports;

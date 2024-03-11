@@ -7,7 +7,7 @@ use crate::account::TAG_STATE_FINALIZED;
 use crate::error::{Error, Result};
 use crate::types::Transaction;
 
-use super::{Operator, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_HOLDER};
+use super::{AccountHeader, Operator, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_HOLDER};
 
 /// Ethereum holder data account
 #[repr(C, packed)]
@@ -15,6 +15,10 @@ pub struct Header {
     pub owner: Pubkey,
     pub transaction_hash: [u8; 32],
     pub transaction_len: usize,
+}
+
+impl AccountHeader for Header {
+    const VERSION: u8 = 0;
 }
 
 pub struct Holder<'a> {
@@ -28,7 +32,7 @@ impl<'a> Holder<'a> {
     pub fn from_account(program_id: &Pubkey, account: AccountInfo<'a>) -> Result<Self> {
         match super::tag(program_id, &account)? {
             TAG_STATE_FINALIZED => {
-                super::set_tag(program_id, &account, TAG_HOLDER)?;
+                super::set_tag(program_id, &account, TAG_HOLDER, Header::VERSION)?;
 
                 let mut holder = Self { account };
                 holder.clear();
@@ -56,7 +60,7 @@ impl<'a> Holder<'a> {
         }
 
         super::validate_tag(program_id, &account, TAG_EMPTY)?;
-        super::set_tag(&crate::ID, &account, TAG_HOLDER)?;
+        super::set_tag(&crate::ID, &account, TAG_HOLDER, Header::VERSION)?;
 
         let mut holder = Self::from_account(program_id, account)?;
         holder.header_mut().owner = *operator.key;
@@ -116,7 +120,7 @@ impl<'a> Holder<'a> {
         {
             let mut buffer = self.buffer_mut();
             let Some(buffer) = buffer.get_mut(begin..end) else {
-                return Err(Error::HolderInsufficientSize(buffer.len(), end))
+                return Err(Error::HolderInsufficientSize(buffer.len(), end));
             };
 
             buffer.copy_from_slice(bytes);

@@ -3,8 +3,10 @@ use std::collections::BTreeMap;
 
 use ethnum::{AsU256, U256};
 use maybe_async::maybe_async;
+use mpl_token_metadata::programs::MPL_TOKEN_METADATA_ID;
 use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
+use solana_program::rent::Rent;
 
 use crate::account_storage::AccountStorage;
 use crate::error::{Error, Result};
@@ -13,7 +15,7 @@ use crate::evm::{Context, ExitStatus};
 use crate::types::Address;
 
 use super::action::Action;
-use super::cache::{cache_get_or_insert_account, Cache};
+use super::cache::{cache_get_or_insert_account, cache_get_or_insert_balance, Cache};
 use super::OwnedAccountInfo;
 
 /// Represents the state of executor abstracted away from a self.backend.
@@ -51,6 +53,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     pub fn new(backend: &'a B) -> Self {
         let cache = Cache {
             solana_accounts: BTreeMap::new(),
+            native_balances: BTreeMap::new(),
             block_number: backend.block_number(),
             block_timestamp: backend.block_timestamp(),
         };
@@ -155,10 +158,16 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
                             data,
                             meta,
                             &mut accounts,
+                            self.rent(),
                         )?;
                     }
-                    program_id if mpl_token_metadata::check_id(program_id) => {
-                        crate::external_programs::metaplex::emulate(data, meta, &mut accounts)?;
+                    program_id if &MPL_TOKEN_METADATA_ID == program_id => {
+                        crate::external_programs::metaplex::emulate(
+                            data,
+                            meta,
+                            &mut accounts,
+                            self.rent(),
+                        )?;
                     }
                     _ => {
                         return Err(Error::Custom(format!(
@@ -200,7 +209,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn balance(&self, from_address: Address, from_chain_id: u64) -> Result<U256> {
-        let mut balance = self.backend.balance(from_address, from_chain_id).await;
+        let cache_key = (from_address, from_chain_id);
+        let mut balance = cache_get_or_insert_balance(&self.cache, cache_key, self.backend).await;
 
         for action in &self.actions {
             match action {
@@ -282,20 +292,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         }
 
         Ok(self.backend.code_size(from_address).await)
-    }
-
-    async fn code_hash(&self, from_address: Address, chain_id: u64) -> Result<[u8; 32]> {
-        use solana_program::keccak::hash;
-
-        for action in &self.actions {
-            if let Action::EvmSetCode { address, code, .. } = action {
-                if &from_address == address {
-                    return Ok(hash(code).to_bytes());
-                }
-            }
-        }
-
-        Ok(self.backend.code_hash(from_address, chain_id).await)
     }
 
     async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
@@ -401,6 +397,14 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(cache.block_timestamp)
     }
 
+    fn rent(&self) -> &Rent {
+        self.backend.rent()
+    }
+
+    fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
+        self.backend.return_data()
+    }
+
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
         F: FnOnce(&solana_program::account_info::AccountInfo) -> R,
@@ -422,8 +426,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
         if self.stack.is_empty() {
             // sanity check
-            assert_eq!(self.actions.len(), 1);
-            assert!(matches!(self.actions[0], Action::EvmIncrementNonce { .. }));
+            assert!(self.actions.is_empty());
         }
     }
 

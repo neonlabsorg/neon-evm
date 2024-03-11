@@ -1,8 +1,10 @@
-use ethnum::U256;
-use evm_loader::types::hexbytes::HexBytes;
-use evm_loader::types::Address;
-use serde_json::Value;
 use std::collections::HashMap;
+
+use ethnum::U256;
+use serde_json::Value;
+use web3::types::Bytes;
+
+use evm_loader::types::Address;
 
 pub mod tracers;
 
@@ -29,7 +31,7 @@ pub struct BlockOverrides {
 #[serde(rename_all = "camelCase")]
 pub struct AccountOverride {
     pub nonce: Option<u64>,
-    pub code: Option<HexBytes>,
+    pub code: Option<Bytes>,
     pub balance: Option<U256>,
     pub state: Option<HashMap<U256, U256>>,
     pub state_diff: Option<HashMap<U256, U256>>,
@@ -65,6 +67,8 @@ pub struct TraceConfig {
     pub disable_stack: bool,
     #[serde(default)]
     pub enable_return_data: bool,
+    #[serde(default)]
+    pub limit: usize,
     pub tracer: Option<String>,
     pub timeout: Option<String>,
     pub tracer_config: Option<Value>,

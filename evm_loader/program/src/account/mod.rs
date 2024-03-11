@@ -2,18 +2,19 @@ use crate::error::{Error, Result};
 use crate::types::Address;
 use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
+use solana_program::rent::Rent;
 use std::cell::{Ref, RefMut};
 
 pub use crate::config::ACCOUNT_SEED_VERSION;
 
-pub use ether_balance::BalanceAccount;
-pub use ether_contract::{AllocateResult, ContractAccount};
-pub use ether_storage::{StorageCell, StorageCellAddress};
-pub use holder::Holder;
+pub use ether_balance::{BalanceAccount, Header as BalanceHeader};
+pub use ether_contract::{AllocateResult, ContractAccount, Header as ContractHeader};
+pub use ether_storage::{Header as StorageCellHeader, StorageCell, StorageCellAddress};
+pub use holder::{Header as HolderHeader, Holder};
 pub use incinerator::Incinerator;
 pub use operator::Operator;
-pub use state::StateAccount;
-pub use state_finalized::StateFinalizedAccount;
+pub use state::{AccountsStatus, StateAccount};
+pub use state_finalized::{Header as StateFinalizedHeader, StateFinalizedAccount};
 pub use treasury::{MainTreasury, Treasury};
 
 use self::program::System;
@@ -32,7 +33,7 @@ pub mod token;
 mod treasury;
 
 pub const TAG_EMPTY: u8 = 0;
-pub const TAG_STATE: u8 = 23;
+pub const TAG_STATE: u8 = 24;
 pub const TAG_STATE_FINALIZED: u8 = 32;
 pub const TAG_HOLDER: u8 = 52;
 
@@ -40,7 +41,9 @@ pub const TAG_ACCOUNT_BALANCE: u8 = 60;
 pub const TAG_ACCOUNT_CONTRACT: u8 = 70;
 pub const TAG_STORAGE_CELL: u8 = 43;
 
-const ACCOUNT_PREFIX_LEN: usize = 2;
+const TAG_OFFSET: usize = 0;
+const HEADER_VERSION_OFFSET: usize = 1;
+pub const ACCOUNT_PREFIX_LEN: usize = 1/*tag*/ + 1/*header version*/;
 
 #[inline]
 fn section<'r, T>(account: &'r AccountInfo<'_>, offset: usize) -> Ref<'r, T> {
@@ -72,6 +75,70 @@ fn section_mut<'r, T>(account: &'r AccountInfo<'_>, offset: usize) -> RefMut<'r,
     })
 }
 
+trait AccountHeader {
+    const VERSION: u8;
+}
+struct NoHeader {}
+impl AccountHeader for NoHeader {
+    const VERSION: u8 = 0;
+}
+
+#[inline]
+fn header<'r, T: AccountHeader>(account: &'r AccountInfo<'_>) -> Ref<'r, T> {
+    section(account, ACCOUNT_PREFIX_LEN)
+}
+
+#[inline]
+fn header_mut<'r, T: AccountHeader>(account: &'r AccountInfo<'_>) -> RefMut<'r, T> {
+    section_mut(account, ACCOUNT_PREFIX_LEN)
+}
+
+fn expand_header<'a, From: AccountHeader, To: AccountHeader>(
+    account: &AccountInfo<'a>,
+    rent: &Rent,
+    db: &AccountsDB<'a>,
+) -> Result<()> {
+    let from_len = std::mem::size_of::<From>();
+    let to_len = std::mem::size_of::<To>();
+
+    assert!(to_len >= from_len);
+    assert!(account.data_len() >= ACCOUNT_PREFIX_LEN + from_len);
+
+    let data_len = account.data_len() - ACCOUNT_PREFIX_LEN - from_len;
+    let required_len = ACCOUNT_PREFIX_LEN + to_len + data_len;
+    assert!(required_len >= account.data_len());
+
+    account.realloc(required_len, false)?;
+
+    let minimum_balance = rent.minimum_balance(required_len);
+    if account.lamports() < minimum_balance {
+        let required_lamports = minimum_balance - account.lamports();
+
+        let system = db.system();
+        let operator = db.operator();
+        system.transfer(operator, account, required_lamports)?;
+    }
+
+    {
+        let mut account_data = account.try_borrow_mut_data()?;
+
+        let begin = ACCOUNT_PREFIX_LEN + from_len;
+        let end = begin + data_len;
+        let target = ACCOUNT_PREFIX_LEN + to_len;
+        account_data.copy_within(begin..end, target);
+        account_data[begin..target].fill(0);
+        account_data[HEADER_VERSION_OFFSET] = To::VERSION;
+    }
+
+    Ok(())
+}
+
+fn header_version(info: &AccountInfo) -> u8 {
+    // This is used only inside the module and account validation should be already done
+    let data = info.data.borrow();
+    data[HEADER_VERSION_OFFSET]
+}
+
 pub fn tag(program_id: &Pubkey, info: &AccountInfo) -> Result<u8> {
     if info.owner != program_id {
         return Err(Error::AccountInvalidOwner(*info.key, *program_id));
@@ -82,16 +149,17 @@ pub fn tag(program_id: &Pubkey, info: &AccountInfo) -> Result<u8> {
         return Err(Error::AccountInvalidData(*info.key));
     }
 
-    Ok(data[0])
+    Ok(data[TAG_OFFSET])
 }
 
-pub fn set_tag(program_id: &Pubkey, info: &AccountInfo, tag: u8) -> Result<()> {
+pub fn set_tag(program_id: &Pubkey, info: &AccountInfo, tag: u8, header_version: u8) -> Result<()> {
     assert_eq!(info.owner, program_id);
 
     let mut data = info.try_borrow_mut_data()?;
     assert!(data.len() >= ACCOUNT_PREFIX_LEN);
 
-    data[0] = tag;
+    data[TAG_OFFSET] = tag;
+    data[HEADER_VERSION_OFFSET] = header_version;
 
     Ok(())
 }
@@ -106,51 +174,18 @@ pub fn validate_tag(program_id: &Pubkey, info: &AccountInfo, tag: u8) -> Result<
     }
 }
 
-pub fn is_blocked(program_id: &Pubkey, info: &AccountInfo) -> Result<bool> {
-    if info.owner != program_id {
-        return Err(Error::AccountInvalidOwner(*info.key, *program_id));
+pub fn revision(program_id: &Pubkey, info: &AccountInfo) -> Result<u32> {
+    match tag(program_id, info)? {
+        TAG_STORAGE_CELL => {
+            let cell = StorageCell::from_account(program_id, info.clone())?;
+            Ok(cell.revision())
+        }
+        TAG_ACCOUNT_CONTRACT => {
+            let contract = ContractAccount::from_account(program_id, info.clone())?;
+            Ok(contract.revision())
+        }
+        _ => Ok(0),
     }
-
-    let data = info.try_borrow_data()?;
-    if data.len() < ACCOUNT_PREFIX_LEN {
-        return Err(Error::AccountInvalidData(*info.key));
-    }
-
-    if legacy::is_legacy_tag(data[0]) {
-        return Err(Error::AccountLegacy(*info.key));
-    }
-
-    Ok(data[1] == 1)
-}
-
-#[inline]
-fn set_block(program_id: &Pubkey, info: &AccountInfo, block: bool) -> Result<()> {
-    assert_eq!(info.owner, program_id);
-
-    let mut data = info.try_borrow_mut_data()?;
-    if data.len() < ACCOUNT_PREFIX_LEN {
-        return Err(Error::AccountInvalidData(*info.key));
-    }
-
-    if legacy::is_legacy_tag(data[0]) {
-        return Err(Error::AccountLegacy(*info.key));
-    }
-
-    if block && (data[1] != 0) {
-        return Err(Error::AccountBlocked(*info.key));
-    }
-
-    data[1] = block.into();
-
-    Ok(())
-}
-
-pub fn block(program_id: &Pubkey, info: &AccountInfo) -> Result<()> {
-    set_block(program_id, info, true)
-}
-
-pub fn unblock(program_id: &Pubkey, info: &AccountInfo) -> Result<()> {
-    set_block(program_id, info, false)
 }
 
 /// # Safety
@@ -253,9 +288,10 @@ impl<'a> AccountsDB<'a> {
 
     #[must_use]
     pub fn get(&self, pubkey: &Pubkey) -> &AccountInfo<'a> {
-        let Ok(index) = self.sorted_accounts.binary_search_by_key(&pubkey, |a| a.key) else {
-            panic!("address {pubkey} must be present in the transaction");
-        };
+        let index = self
+            .sorted_accounts
+            .binary_search_by_key(&pubkey, |a| a.key)
+            .unwrap_or_else(|_| panic!("address {pubkey} must be present in the transaction"));
 
         // We just got an 'index' from the binary_search over this vector.
         unsafe { self.sorted_accounts.get_unchecked(index) }

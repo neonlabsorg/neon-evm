@@ -7,7 +7,8 @@ use solana_sdk::{
 };
 use std::{collections::HashMap, convert::TryFrom, fs::File, io::Read};
 
-use crate::{context::Context, errors::NeonError, Config, NeonResult};
+use crate::rpc::Rpc;
+use crate::{errors::NeonError, Config, NeonResult};
 
 pub type GetNeonElfReturn = HashMap<String, String>;
 
@@ -16,9 +17,9 @@ pub struct CachedElfParams {
 }
 
 impl CachedElfParams {
-    pub async fn new(config: &Config, context: &Context<'_>) -> Self {
+    pub async fn new(config: &Config, rpc: &impl Rpc) -> Self {
         Self {
-            elf_params: read_elf_parameters_from_account(config, context)
+            elf_params: read_elf_parameters_from_account(config, rpc)
                 .await
                 .expect("read elf_params error"),
         }
@@ -84,6 +85,16 @@ pub fn read_elf_parameters(_config: &Config, program_data: &[u8]) -> GetNeonElfR
 
 pub fn get_elf_parameter(data: &[u8], elf_parameter: &str) -> Result<String> {
     let offset = UpgradeableLoaderState::size_of_programdata_metadata();
+
+    // Check if the offset is within the bounds of `data`
+    if data.len() <= offset {
+        let error_msg = format!(
+            "Offset beyond data bounds. Data len: {}, offset: {offset}, data bytes: {data:?}",
+            data.len(),
+        );
+        return Err(anyhow::anyhow!(error_msg));
+    }
+
     let program_data = &data[offset..];
 
     let elf = goblin::elf::Elf::parse(program_data).context("Unable to parse ELF file")?;
@@ -143,20 +154,18 @@ pub fn get_elf_parameter(data: &[u8], elf_parameter: &str) -> Result<String> {
 
 pub async fn read_elf_parameters_from_account(
     config: &Config,
-    context: &Context<'_>,
+    rpc: &impl Rpc,
 ) -> Result<GetNeonElfReturn, NeonError> {
-    let (_, program_data) =
-        read_program_data_from_account(config, context, &config.evm_loader).await?;
+    let (_, program_data) = read_program_data_from_account(config, rpc, &config.evm_loader).await?;
     Ok(read_elf_parameters(config, &program_data))
 }
 
 pub async fn read_program_data_from_account(
     config: &Config,
-    context: &Context<'_>,
+    rpc: &impl Rpc,
     evm_loader: &Pubkey,
 ) -> Result<(Option<Pubkey>, Vec<u8>), NeonError> {
-    let account = context
-        .rpc_client
+    let account = rpc
         .get_account_with_commitment(evm_loader, config.commitment)
         .await?
         .value
@@ -169,8 +178,7 @@ pub async fn read_program_data_from_account(
             programdata_address,
         }) = account.state()
         {
-            let programdata_account = context
-                .rpc_client
+            let programdata_account = rpc
                 .get_account_with_commitment(&programdata_address, config.commitment)
                 .await?
                 .value
@@ -226,19 +234,19 @@ fn read_program_params_from_file(
 
 async fn read_program_params_from_account(
     config: &Config,
-    context: &Context<'_>,
+    rpc: &impl Rpc,
 ) -> NeonResult<GetNeonElfReturn> {
-    read_elf_parameters_from_account(config, context).await
+    read_elf_parameters_from_account(config, rpc).await
 }
 
 pub async fn execute(
     config: &Config,
-    context: &Context<'_>,
+    rpc: &impl Rpc,
     program_location: Option<&str>,
 ) -> NeonResult<GetNeonElfReturn> {
     if let Some(program_location) = program_location {
         read_program_params_from_file(config, program_location)
     } else {
-        read_program_params_from_account(config, context).await
+        read_program_params_from_account(config, rpc).await
     }
 }

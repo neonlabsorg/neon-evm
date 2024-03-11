@@ -1,4 +1,6 @@
 use crate::account::{AccountsDB, BalanceAccount, Operator, StateAccount};
+use crate::config::DEFAULT_CHAIN_ID;
+use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::gasometer::{CANCEL_TRX_COST, LAST_ITERATION_COST};
 use arrayref::array_ref;
@@ -10,7 +12,7 @@ pub fn process<'a>(
     accounts: &'a [AccountInfo<'a>],
     instruction: &[u8],
 ) -> Result<()> {
-    solana_program::msg!("Instruction: Cancel Transaction");
+    log_msg!("Instruction: Cancel Transaction");
 
     let transaction_hash = array_ref![instruction, 0, 32];
 
@@ -18,20 +20,20 @@ pub fn process<'a>(
     let operator = Operator::from_account(&accounts[1])?;
     let operator_balance = BalanceAccount::from_account(program_id, accounts[2].clone())?;
 
-    solana_program::log::sol_log_data(&[b"HASH", transaction_hash]);
-    solana_program::log::sol_log_data(&[b"MINER", operator_balance.address().as_bytes()]);
+    log_data(&[b"HASH", transaction_hash]);
+    log_data(&[b"MINER", operator_balance.address().as_bytes()]);
 
     let accounts_db = AccountsDB::new(&accounts[3..], operator, Some(operator_balance), None, None);
-    let storage = StateAccount::restore(program_id, storage_info, &accounts_db, true)?;
+    let (storage, _) = StateAccount::restore(program_id, storage_info, &accounts_db)?;
 
     validate(&storage, transaction_hash)?;
     execute(program_id, accounts_db, storage)
 }
 
 fn validate(storage: &StateAccount, transaction_hash: &[u8; 32]) -> Result<()> {
-    if &storage.trx_hash() != transaction_hash {
+    if &storage.trx().hash() != transaction_hash {
         return Err(Error::HolderInvalidHash(
-            storage.trx_hash(),
+            storage.trx().hash(),
             *transaction_hash,
         ));
     }
@@ -44,9 +46,11 @@ fn execute<'a>(
     mut accounts: AccountsDB<'a>,
     mut storage: StateAccount<'a>,
 ) -> Result<()> {
+    let trx_chain_id = storage.trx().chain_id().unwrap_or(DEFAULT_CHAIN_ID);
+
     let used_gas = U256::ZERO;
     let total_used_gas = storage.gas_used();
-    solana_program::log::sol_log_data(&[
+    log_data(&[
         b"GAS",
         &used_gas.to_le_bytes(),
         &total_used_gas.to_le_bytes(),
@@ -56,15 +60,13 @@ fn execute<'a>(
     let _ = storage.consume_gas(gas, accounts.operator_balance()); // ignore error
 
     let origin = storage.trx_origin();
-    let (origin_pubkey, _) = origin.find_balance_address(program_id, storage.trx_chain_id());
+    let (origin_pubkey, _) = origin.find_balance_address(program_id, trx_chain_id);
 
     {
         let origin_info = accounts.get(&origin_pubkey).clone();
         let mut account = BalanceAccount::from_account(program_id, origin_info)?;
-        account.increment_nonce()?;
-
         storage.refund_unused_gas(&mut account)?;
     }
 
-    storage.finalize(program_id, &accounts)
+    storage.finalize(program_id)
 }

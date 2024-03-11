@@ -1,4 +1,3 @@
-use ethnum::U256;
 use evm_loader::account::{
     legacy::{
         LegacyFinalizedData, LegacyHolderData, TAG_HOLDER_DEPRECATED,
@@ -6,7 +5,7 @@ use evm_loader::account::{
     },
     Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use solana_sdk::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt::Display;
 
@@ -14,7 +13,7 @@ use crate::{account_storage::account_info, rpc::Rpc, NeonResult};
 
 use serde_with::{hex::Hex, serde_as, skip_serializing_none, DisplayFromStr};
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub enum Status {
     #[default]
     Empty,
@@ -25,7 +24,7 @@ pub enum Status {
 }
 
 #[serde_as]
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AccountMeta {
     pub is_writable: bool,
     #[serde_as(as = "DisplayFromStr")]
@@ -34,7 +33,7 @@ pub struct AccountMeta {
 
 #[serde_as]
 #[skip_serializing_none]
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct GetHolderResponse {
     pub status: Status,
     pub len: Option<usize>,
@@ -45,11 +44,8 @@ pub struct GetHolderResponse {
     pub tx: Option<[u8; 32]>,
     pub chain_id: Option<u64>,
 
-    pub gas_price: Option<U256>,
-    pub gas_limit: Option<U256>,
-    pub gas_used: Option<U256>,
-
-    pub accounts: Option<Vec<AccountMeta>>,
+    #[serde_as(as = "Option<Vec<DisplayFromStr>>")]
+    pub accounts: Option<Vec<Pubkey>>,
 }
 
 impl GetHolderResponse {
@@ -114,24 +110,14 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
         }
         TAG_STATE => {
             let state = StateAccount::from_account(program_id, info)?;
-            let accounts = state
-                .blocked_accounts()
-                .iter()
-                .map(|a| AccountMeta {
-                    is_writable: a.is_writable,
-                    key: a.key,
-                })
-                .collect();
+            let accounts = state.accounts().copied().collect();
 
             Ok(GetHolderResponse {
                 status: Status::Active,
                 len: Some(data_len),
                 owner: Some(state.owner()),
-                tx: Some(state.trx_hash()),
-                chain_id: Some(state.trx_chain_id()),
-                gas_limit: Some(state.trx_gas_limit()),
-                gas_price: Some(state.trx_gas_price()),
-                gas_used: Some(state.gas_used()),
+                tx: Some(state.trx().hash()),
+                chain_id: state.trx().chain_id(),
                 accounts: Some(accounts),
             })
         }
@@ -140,13 +126,13 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
 }
 
 pub async fn execute(
-    rpc_client: &dyn Rpc,
+    rpc: &impl Rpc,
     program_id: &Pubkey,
     address: Pubkey,
 ) -> NeonResult<GetHolderResponse> {
-    let response = rpc_client.get_account(&address).await?;
+    let response = rpc.get_account(&address).await?;
     let Some(mut account) = response.value else {
-        return Ok(GetHolderResponse::empty())
+        return Ok(GetHolderResponse::empty());
     };
 
     let info = account_info(&address, &mut account);

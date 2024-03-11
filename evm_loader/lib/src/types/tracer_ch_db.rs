@@ -3,11 +3,9 @@ use crate::{
     types::tracer_ch_common::{AccountRow, ChError, RevisionRow, SlotParent, ROOT_BLOCK_DELAY},
 };
 
-use super::{
-    tracer_ch_common::{ChResult, EthSyncStatus, EthSyncing, RevisionMap, SlotParentRooted},
-    ChDbConfig,
-};
+use super::tracer_ch_common::{ChResult, EthSyncStatus, EthSyncing, RevisionMap, SlotParentRooted};
 
+use crate::types::ChDbConfig;
 use clickhouse::Client;
 use log::{debug, error, info};
 use rand::Rng;

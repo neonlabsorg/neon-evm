@@ -37,7 +37,7 @@ pub struct AccessListItem {
 
 #[serde_as]
 #[skip_serializing_none]
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct TxParams {
     pub nonce: Option<u64>,
     pub from: Address,
@@ -46,6 +46,7 @@ pub struct TxParams {
     pub data: Option<Vec<u8>>,
     pub value: Option<U256>,
     pub gas_limit: Option<U256>,
+    pub actual_gas_used: Option<U256>,
     pub gas_price: Option<U256>,
     pub access_list: Option<Vec<AccessListItem>>,
     pub chain_id: Option<u64>,
@@ -172,6 +173,30 @@ pub struct GetStorageAtRequest {
     pub contract: Address,
     pub index: U256,
     pub slot: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct CancelTrxRequest {
+    pub storage_account: Pubkey,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct RequestWithSlot {
+    pub slot: Option<u64>,
+    pub tx_index_in_block: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct GetNeonElfRequest {
+    pub program_location: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct InitEnvironmentRequest {
+    pub send_trx: bool,
+    pub force: bool,
+    pub keys_dir: Option<String>,
+    pub file: Option<String>,
 }
 
 #[serde_as]

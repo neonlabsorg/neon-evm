@@ -1,6 +1,5 @@
 #![deny(warnings)]
 #![deny(clippy::all, clippy::pedantic)]
-mod api_context;
 mod api_options;
 mod api_server;
 #[allow(clippy::module_name_repetitions)]
@@ -10,9 +9,9 @@ use actix_web::web;
 use actix_web::App;
 use actix_web::HttpServer;
 use api_server::handlers::NeonApiError;
+use neon_lib::abi::state::State;
 pub use neon_lib::commands;
 pub use neon_lib::config;
-pub use neon_lib::context;
 pub use neon_lib::errors;
 pub use neon_lib::types;
 use tracing_appender::non_blocking::NonBlockingBuilder;
@@ -31,11 +30,11 @@ use crate::api_server::handlers::get_storage_at::get_storage_at;
 use crate::api_server::handlers::trace::trace;
 use crate::build_info::get_build_info;
 pub use config::Config;
-pub use context::Context;
 use tracing::info;
+use tracing_subscriber::EnvFilter;
 
 type NeonApiResult<T> = Result<T, NeonApiError>;
-type NeonApiState = Data<api_server::state::State>;
+type NeonApiState = Data<State>;
 
 #[actix_web::main]
 async fn main() -> NeonApiResult<()> {
@@ -46,15 +45,15 @@ async fn main() -> NeonApiResult<()> {
         .lossy(false)
         .finish(std::io::stdout());
 
-    tracing_subscriber::fmt().with_writer(non_blocking).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(non_blocking)
+        .init();
 
     info!("{}", get_build_info());
 
-    let api_config = config::load_api_config_from_enviroment();
-
-    let config = config::create_from_api_config(&api_config)?;
-
-    let state: NeonApiState = Data::new(api_server::state::State::new(config));
+    let api_config = config::load_api_config_from_environment();
+    let state: NeonApiState = Data::new(State::new(api_config));
 
     let listener_addr = options
         .value_of("host")

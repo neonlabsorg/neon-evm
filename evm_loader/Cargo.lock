@@ -3359,6 +3359,7 @@ version = "1.11.1"
 dependencies = [
  "abi_stable",
  "anyhow",
+ "arrayref",
  "async-ffi",
  "async-trait",
  "base64 0.22.0",

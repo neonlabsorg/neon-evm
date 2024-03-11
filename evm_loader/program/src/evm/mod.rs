@@ -33,44 +33,74 @@ pub mod tracing;
 mod utils;
 
 macro_rules! tracing_event {
-    ($self:ident, $backend:ident, $x:expr) => {
+    ($self:expr, $backend:expr, $event:expr) => {
         #[cfg(not(target_os = "solana"))]
         if let Some(tracer) = &mut $self.tracer {
-            tracer.event($backend, $x);
+            tracer.event($backend, $event).await?;
         }
     };
-    ($self:ident, $backend:ident, $condition:expr, $x:expr) => {
-        #[cfg(not(target_os = "solana"))]
-        if let Some(tracer) = &mut $self.tracer {
-            if $condition {
-                tracer.event($backend, $x);
+}
+
+macro_rules! begin_vm {
+    ($self:expr, $backend:expr, $context:expr, $chain_id:expr, $input:expr, $opcode:expr) => {
+        tracing_event!(
+            $self,
+            $backend,
+            crate::evm::tracing::Event::BeginVM {
+                context: $context,
+                chain_id: $chain_id,
+                input: $input.to_vec(),
+                opcode: $opcode
             }
-        }
+        );
+    };
+    ($self:expr, $backend:expr, $context:expr, $chain_id:expr, $input:expr) => {
+        begin_vm!(
+            $self,
+            $backend,
+            $context,
+            $chain_id,
+            $input,
+            $self.execution_code.get_or_default($self.pc).into()
+        );
     };
 }
 
-macro_rules! trace_end_step {
-    ($self:ident, $backend:ident, $return_data:expr) => {
-        #[cfg(not(target_os = "solana"))]
-        if let Some(tracer) = &mut $self.tracer {
-            tracer.event(
-                $backend,
-                crate::evm::tracing::Event::EndStep {
-                    gas_used: 0_u64,
-                    return_data: $return_data,
-                },
-            )
-        }
-    };
-    ($self:ident, $backend:ident, $condition:expr; $return_data_getter:expr) => {
-        #[cfg(not(target_os = "solana"))]
-        if $condition {
-            trace_end_step!($self, $backend, $return_data_getter)
-        }
+macro_rules! end_vm {
+    ($self:expr, $backend:expr, $status:expr) => {
+        tracing_event!(
+            $self,
+            $backend,
+            crate::evm::tracing::Event::EndVM {
+                context: $self.context,
+                chain_id: $self.chain_id,
+                status: $status
+            }
+        );
     };
 }
 
-pub(crate) use trace_end_step;
+macro_rules! begin_step {
+    ($self:expr, $backend:expr) => {
+        tracing_event!(
+            $self,
+            $backend,
+            crate::evm::tracing::Event::BeginStep {
+                context: $self.context,
+                chain_id: $self.chain_id,
+                opcode: $self.execution_code.get_or_default($self.pc).into(),
+                pc: $self.pc,
+                stack: $self.stack.to_vec(),
+                memory: $self.memory.to_vec(),
+                return_data: $self.return_data.to_vec()
+            }
+        );
+    };
+}
+
+pub(crate) use begin_step;
+pub(crate) use begin_vm;
+pub(crate) use end_vm;
 pub(crate) use tracing_event;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -344,12 +374,20 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         let mut step = 0_u64;
 
-        tracing_event!(
+        begin_vm!(
             self,
             backend,
-            tracing::Event::BeginVM {
-                context: self.context,
-                code: self.execution_code.to_vec()
+            self.context,
+            self.chain_id,
+            if self.reason == Reason::Call {
+                self.call_data.to_vec()
+            } else {
+                self.execution_code.to_vec()
+            },
+            if self.reason == Reason::Call {
+                opcode_table::CALL
+            } else {
+                opcode_table::CREATE
             }
         );
 
@@ -367,16 +405,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
                 let opcode = self.execution_code.get_or_default(self.pc);
 
-                tracing_event!(
-                    self,
-                    backend,
-                    tracing::Event::BeginStep {
-                        opcode,
-                        pc: self.pc,
-                        stack: self.stack.to_vec(),
-                        memory: self.memory.to_vec()
-                    }
-                );
+                begin_step!(self, backend);
 
                 let opcode_result = match self.execute_opcode(backend, opcode).await {
                     Ok(result) => result,
@@ -385,11 +414,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                         self.opcode_revert_impl(message, backend).await?
                     }
                 };
-
-                trace_end_step!(self, backend, opcode_result != Action::Noop; match &opcode_result {
-                    Action::Return(value) | Action::Revert(value) => Some(value.clone()),
-                    _ => None,
-                });
 
                 match opcode_result {
                     Action::Continue => self.pc += 1,
@@ -402,14 +426,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 };
             }
         };
-
-        tracing_event!(
-            self,
-            backend,
-            tracing::Event::EndVM {
-                status: status.clone()
-            }
-        );
 
         Ok((status, step, self.tracer.take()))
     }

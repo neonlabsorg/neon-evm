@@ -18,13 +18,10 @@ pub async fn trace_transaction(
         .map(|c| c.trace_config.clone())
         .unwrap_or_default();
 
-    let tracer = new_tracer(&trace_config)?;
+    let tracer = new_tracer(&emulate_request.tx, trace_config)?;
 
-    let (r, traces) =
+    let (_, traces) =
         super::emulate::execute(rpc, program_id, emulate_request, Some(tracer)).await?;
 
-    let mut traces = traces.expect("traces should not be None");
-    traces["gas"] = r.used_gas.into();
-
-    Ok(traces)
+    Ok(traces.expect("traces should not be None"))
 }

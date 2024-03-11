@@ -228,7 +228,7 @@ macro_rules! Err {
 }
 
 #[must_use]
-fn format_revert_error(msg: &[u8]) -> Option<&str> {
+pub fn format_revert_error(msg: &[u8]) -> Option<&str> {
     if msg.starts_with(&[0x08, 0xc3, 0x79, 0xa0]) {
         // Error(string) function selector
         let msg = &msg[4..];
@@ -255,7 +255,7 @@ fn format_revert_error(msg: &[u8]) -> Option<&str> {
 }
 
 #[must_use]
-fn format_revert_panic(msg: &[u8]) -> Option<U256> {
+pub fn format_revert_panic(msg: &[u8]) -> Option<U256> {
     if msg.starts_with(&[0x4e, 0x48, 0x7b, 0x71]) {
         // Panic(uint256) function selector
         let msg = &msg[4..];

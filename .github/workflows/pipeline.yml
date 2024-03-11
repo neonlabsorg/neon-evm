@@ -127,8 +127,8 @@ jobs:
           failure() &&
            (github.ref_name == 'develop' ||
              github.ref_name == 'master' ||
-             steps.is_version_branch.outputs.value) ||
-             startsWith(github.ref , 'refs/tags/')
+             steps.is_version_branch.outputs.value ||
+             startsWith(github.ref , 'refs/tags/'))
         run: |
           python3 ./.github/workflows/deploy.py send_notification \
           --url=${{secrets.SLACK_EVM_CHANNEL_URL}} \

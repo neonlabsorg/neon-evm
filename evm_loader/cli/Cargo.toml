@@ -23,4 +23,4 @@ neon-lib = { path = "../lib" }
 build-info = { version = "0.0.31", features = ["serde"] }
 
 [build-dependencies]
-build-info-build = "0.0.31"
+build-info-build = "0.0.36"

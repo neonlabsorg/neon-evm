@@ -22,4 +22,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2.3"
 
 [build-dependencies]
-build-info-build = "0.0.31"
+build-info-build = "0.0.36"

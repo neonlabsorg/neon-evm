@@ -47,7 +47,7 @@ lazy_static = "1.4.0"
 arrayref = "0.3.6"
 
 [build-dependencies]
-build-info-build = "0.0.31"
+build-info-build = "0.0.36"
 
 [lib]
 crate-type = ["cdylib", "lib"]

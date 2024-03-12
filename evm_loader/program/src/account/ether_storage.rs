@@ -146,10 +146,7 @@ impl<'a> StorageCell<'a> {
         })
     }
 
-    pub fn initialize(
-        account: AccountInfo<'a>,
-        program_id: &Pubkey,
-    ) -> Result<Self> {
+    pub fn initialize(account: AccountInfo<'a>, program_id: &Pubkey) -> Result<Self> {
         super::validate_tag(program_id, &account, TAG_EMPTY)?;
         super::set_tag(program_id, &account, TAG_STORAGE_CELL, Header::VERSION)?;
         {

@@ -262,7 +262,12 @@ mod tests {
             unimplemented!();
         }
 
-        async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
+        async fn set_storage(
+            &mut self,
+            address: Address,
+            index: U256,
+            value: [u8; 32],
+        ) -> Result<()> {
             unimplemented!();
         }
 

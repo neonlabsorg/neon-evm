@@ -138,14 +138,7 @@ impl<'a> ContractAccount<'a> {
         );
 
         let account = accounts.get(&pubkey).clone();
-        Self::initialize(
-            account,
-            &crate::ID,
-            address,
-            chain_id,
-            generation,
-            code,
-        )
+        Self::initialize(account, &crate::ID, address, chain_id, generation, code)
     }
 
     pub fn initialize(

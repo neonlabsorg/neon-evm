@@ -298,7 +298,8 @@ async fn initialize_mint<State: Database>(
         spl_token::state::Mint::LEN,
         &spl_token::ID,
         seeds,
-    ).await?;
+    )
+    .await?;
 
     let initialize_mint = spl_token::instruction::initialize_mint(
         &spl_token::ID,
@@ -307,7 +308,9 @@ async fn initialize_mint<State: Database>(
         Some(&freeze_authority.unwrap_or(signer_pubkey)),
         decimals,
     )?;
-    state.queue_external_instruction(initialize_mint, vec![], 0, true).await?;
+    state
+        .queue_external_instruction(initialize_mint, vec![], 0, true)
+        .await?;
 
     Ok(mint_key.to_bytes().to_vec())
 }
@@ -352,7 +355,8 @@ async fn initialize_account<State: Database>(
         spl_token::state::Account::LEN,
         &spl_token::ID,
         seeds,
-    ).await?;
+    )
+    .await?;
 
     let initialize_mint = spl_token::instruction::initialize_account2(
         &spl_token::ID,
@@ -360,7 +364,9 @@ async fn initialize_account<State: Database>(
         &mint,
         &owner.unwrap_or(signer_pubkey),
     )?;
-    state.queue_external_instruction(initialize_mint, vec![], 0, true).await?;
+    state
+        .queue_external_instruction(initialize_mint, vec![], 0, true)
+        .await?;
 
     Ok(account_key.to_bytes().to_vec())
 }
@@ -387,7 +393,9 @@ async fn close_account<State: Database>(
         &signer_pubkey,
         &[],
     )?;
-    state.queue_external_instruction(close_account, vec![seeds], 0, true).await?;
+    state
+        .queue_external_instruction(close_account, vec![seeds], 0, true)
+        .await?;
 
     Ok(vec![])
 }
@@ -417,7 +425,9 @@ async fn approve<State: Database>(
         &[],
         amount,
     )?;
-    state.queue_external_instruction(approve, vec![seeds], 0, true).await?;
+    state
+        .queue_external_instruction(approve, vec![seeds], 0, true)
+        .await?;
 
     Ok(vec![])
 }
@@ -438,7 +448,9 @@ async fn revoke<State: Database>(
     ];
 
     let revoke = spl_token::instruction::revoke(&spl_token::ID, &account, &signer_pubkey, &[])?;
-    state.queue_external_instruction(revoke, vec![seeds], 0, true).await?;
+    state
+        .queue_external_instruction(revoke, vec![seeds], 0, true)
+        .await?;
 
     Ok(vec![])
 }
@@ -468,7 +480,9 @@ async fn transfer<State: Database>(
         &[],
         amount,
     )?;
-    state.queue_external_instruction(transfer, vec![seeds], 0, true).await?;
+    state
+        .queue_external_instruction(transfer, vec![seeds], 0, true)
+        .await?;
 
     Ok(vec![])
 }
@@ -506,7 +520,9 @@ async fn transfer_with_seed<State: Database>(
         &[],
         amount,
     )?;
-    state.queue_external_instruction(transfer, vec![seeds], 0, true).await?;
+    state
+        .queue_external_instruction(transfer, vec![seeds], 0, true)
+        .await?;
 
     Ok(vec![])
 }
@@ -536,7 +552,9 @@ async fn mint_to<State: Database>(
         &[],
         amount,
     )?;
-    state.queue_external_instruction(mint_to, vec![seeds], 0, true).await?;
+    state
+        .queue_external_instruction(mint_to, vec![seeds], 0, true)
+        .await?;
 
     Ok(vec![])
 }
@@ -567,7 +585,9 @@ async fn burn<State: Database>(
         &[],
         amount
     )?;
-    state.queue_external_instruction(burn, vec![seeds], 0, true).await?;
+    state
+        .queue_external_instruction(burn, vec![seeds], 0, true)
+        .await?;
 
     Ok(vec![])
 }
@@ -595,7 +615,9 @@ async fn freeze<State: Database>(
         &signer_pubkey,
         &[],
     )?;
-    state.queue_external_instruction(freeze, vec![seeds], 0, true).await?;
+    state
+        .queue_external_instruction(freeze, vec![seeds], 0, true)
+        .await?;
 
     Ok(vec![])
 }
@@ -624,7 +646,9 @@ async fn thaw<State: Database>(
         &signer_pubkey,
         &[]
     )?;
-    state.queue_external_instruction(thaw, vec![seeds], 0, true).await?;
+    state
+        .queue_external_instruction(thaw, vec![seeds], 0, true)
+        .await?;
 
     Ok(vec![])
 }

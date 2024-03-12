@@ -205,6 +205,7 @@ impl<'a, B: AccountStorage> Database for EmulatorState<'a, B> {
         }
 
         self.inner_state
-            .queue_external_instruction(instruction, seeds, fee, emulated_internally).await
+            .queue_external_instruction(instruction, seeds, fee, emulated_internally)
+            .await
     }
 }

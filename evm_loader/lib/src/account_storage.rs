@@ -1,14 +1,16 @@
 use async_trait::async_trait;
-use evm_loader::account::legacy::{
-    LegacyEtherData, LegacyStorageData,
-};
+use evm_loader::account::legacy::{LegacyEtherData, LegacyStorageData};
 use evm_loader::account_storage::find_slot_hash;
 use evm_loader::types::Address;
 use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
 use solana_sdk::sysvar::slot_hashes;
 use std::collections::BTreeMap;
-use std::{cell::{RefCell, RefMut}, convert::TryInto, rc::Rc};
+use std::{
+    cell::{RefCell, RefMut},
+    convert::TryInto,
+    rc::Rc,
+};
 
 use crate::account_data::AccountData;
 use crate::emulator_state::ExecuteStatus;
@@ -16,12 +18,12 @@ use crate::solana_emulator::get_solana_emulator;
 use crate::NeonResult;
 use crate::{rpc::Rpc, NeonError};
 use ethnum::U256;
+pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use evm_loader::{
     account::{BalanceAccount, ContractAccount, StorageCell, StorageCellAddress},
     config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
     executor::{Action, OwnedAccountInfo},
 };
-pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use log::{debug, info, trace};
 use serde::{Deserialize, Serialize};
 use solana_client::client_error;
@@ -154,7 +156,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
 
         if let Some(account) = self.accounts_cache.get(&pubkey) {
-            return Ok(account.as_ref())
+            return Ok(account.as_ref());
         }
 
         let response = self.rpc.get_account(&pubkey).await?;
@@ -163,14 +165,17 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     }
 
     fn mark_account(&self, pubkey: Pubkey, is_writable: bool, is_legacy: bool) {
-        let mut data = self.used_accounts.insert(
-            pubkey,
-            Box::new(RefCell::new(SolanaAccount {
+        let mut data = self
+            .used_accounts
+            .insert(
                 pubkey,
-                is_writable: false,
-                is_legacy: false,
-            }))
-        ).borrow_mut();
+                Box::new(RefCell::new(SolanaAccount {
+                    pubkey,
+                    is_writable: false,
+                    is_legacy: false,
+                })),
+            )
+            .borrow_mut();
         data.is_writable |= is_writable;
         data.is_legacy |= is_legacy;
     }
@@ -179,9 +184,11 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         &self,
         info: &AccountInfo<'_>,
     ) -> NeonResult<(&RefCell<AccountData>, &RefCell<AccountData>)> {
-        let legacy = LegacyEtherData::from_account(&self.program_id, &info)?;
+        let legacy = LegacyEtherData::from_account(&self.program_id, info)?;
 
-        let (balance_pubkey, _) = legacy.address.find_balance_address(&self.program_id, self.default_chain_id());
+        let (balance_pubkey, _) = legacy
+            .address
+            .find_balance_address(&self.program_id, self.default_chain_id());
         let balance_data = self.add_empty_account(balance_pubkey)?;
         if (legacy.balance > 0) || (legacy.trx_count > 0) {
             let mut balance_data = balance_data.borrow_mut();
@@ -200,8 +207,8 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         let (contract_pubkey, _) = legacy.address.find_solana_address(&self.program_id);
         let contract_data = self.add_empty_account(contract_pubkey)?;
         if (legacy.code_size > 0) || (legacy.generation > 0) {
-            let code = legacy.read_code(&info);
-            let storage = legacy.read_storage(&info);
+            let code = legacy.read_code(info);
+            let storage = legacy.read_storage(info);
 
             let mut contract_data = contract_data.borrow_mut();
             let mut contract = self.create_ethereum_contract(
@@ -211,7 +218,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                 legacy.generation,
                 &code,
             )?;
-            if code.len() > 0 {
+            if !code.is_empty() {
                 contract.set_storage_multiple_values(0, &storage);
             }
             self.mark_account(contract_pubkey, true, true);
@@ -222,10 +229,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         Ok((contract_data, balance_data))
     }
 
-    async fn _get_contract_generation_limited(
-        &self,
-        address: Address,
-    ) -> NeonResult<Option<u32>> {
+    async fn _get_contract_generation_limited(&self, address: Address) -> NeonResult<Option<u32>> {
         let extract_generation = |contract_data: &RefCell<AccountData>| -> NeonResult<Option<u32>> {
             let mut contract_data = contract_data.borrow_mut();
             if contract_data.is_empty() {
@@ -233,7 +237,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             } else {
                 let contract = ContractAccount::from_account(
                     &self.program_id,
-                    contract_data.into_account_info()
+                    contract_data.into_account_info(),
                 )?;
                 if contract.code().len() > 0 {
                     Ok(Some(contract.generation()))
@@ -251,18 +255,19 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             if let Some(account) = &mut account {
                 let info = account_info(&pubkey, account);
                 if *info.owner != self.program_id {
-                    let account_data = AccountData::new_from_account(pubkey, &account);
-                    self.accounts.insert(pubkey, Box::new(RefCell::new(account_data)))
+                    let account_data = AccountData::new_from_account(pubkey, account);
+                    self.accounts
+                        .insert(pubkey, Box::new(RefCell::new(account_data)))
                 } else {
                     match evm_loader::account::tag(&self.program_id, &info)? {
                         evm_loader::account::TAG_ACCOUNT_CONTRACT => {
                             let data = AccountData::new_from_account(pubkey, account);
                             self.accounts.insert(pubkey, Box::new(RefCell::new(data)))
                         }
-                        evm_loader::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED => {
-                            self._add_legacy_account(&info).await
-                                .map(|(contract, _balance)| contract)?
-                        }
+                        evm_loader::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED => self
+                            ._add_legacy_account(&info)
+                            .await
+                            .map(|(contract, _balance)| contract)?,
                         _ => {
                             unimplemented!();
                         }
@@ -282,20 +287,20 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         info: &AccountInfo<'_>,
         pubkey: Pubkey,
     ) -> NeonResult<&RefCell<AccountData>> {
-        let generation = self._get_contract_generation_limited(legacy_storage.address).await?;
+        let generation = self
+            ._get_contract_generation_limited(legacy_storage.address)
+            .await?;
         let storage_data = self.add_empty_account(pubkey)?;
 
         if Some(legacy_storage.generation) == generation {
-            let cells = legacy_storage.read_cells(&info);
+            let cells = legacy_storage.read_cells(info);
 
             let mut storage_data = storage_data.borrow_mut();
             self.create_ethereum_storage(&mut storage_data)?;
 
             storage_data.expand(StorageCell::required_account_size(cells.len()));
-            let mut storage = StorageCell::from_account(
-                &self.program_id,
-                storage_data.into_account_info()
-            )?;
+            let mut storage =
+                StorageCell::from_account(&self.program_id, storage_data.into_account_info())?;
             storage.cells_mut().copy_from_slice(&cells);
         }
         self.mark_account(pubkey, true, true);
@@ -313,26 +318,31 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         if *info.owner != self.program_id {
             let account_data = AccountData::new_from_account(pubkey, &account);
             self.mark_account(pubkey, false, false);
-            Ok(self.accounts.insert(pubkey, Box::new(RefCell::new(account_data))))
+            Ok(self
+                .accounts
+                .insert(pubkey, Box::new(RefCell::new(account_data))))
         } else {
             let tag = evm_loader::account::tag(&self.program_id, &info)?;
             println!(" - tag: {tag}");
             match tag {
-                evm_loader::account::TAG_ACCOUNT_BALANCE |
-                evm_loader::account::TAG_ACCOUNT_CONTRACT |
-                evm_loader::account::TAG_STORAGE_CELL => {
+                evm_loader::account::TAG_ACCOUNT_BALANCE
+                | evm_loader::account::TAG_ACCOUNT_CONTRACT
+                | evm_loader::account::TAG_STORAGE_CELL => {
                     // TODO: update header from previous revisions
                     let account_data = AccountData::new_from_account(pubkey, &account);
                     self.mark_account(pubkey, false, false);
-                    Ok(self.accounts.insert(pubkey, Box::new(RefCell::new(account_data))))
+                    Ok(self
+                        .accounts
+                        .insert(pubkey, Box::new(RefCell::new(account_data))))
                 }
-                evm_loader::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED => {
-                    self._add_legacy_account(&info).await
-                        .map(|(contract, _balance)| contract)
-                }
+                evm_loader::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED => self
+                    ._add_legacy_account(&info)
+                    .await
+                    .map(|(contract, _balance)| contract),
                 evm_loader::account::legacy::TAG_STORAGE_CELL_DEPRECATED => {
                     let legacy_storage = LegacyStorageData::from_account(&self.program_id, &info)?;
-                    self._add_legacy_storage(&legacy_storage, &info, pubkey).await
+                    self._add_legacy_storage(&legacy_storage, &info, pubkey)
+                        .await
                 }
                 _ => {
                     unimplemented!();
@@ -341,14 +351,13 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
     }
 
-    fn add_empty_account(
-        &self,
-        pubkey: Pubkey,
-    ) -> NeonResult<&RefCell<AccountData>> {
+    fn add_empty_account(&self, pubkey: Pubkey) -> NeonResult<&RefCell<AccountData>> {
         println!("Add empty account: {:?}", pubkey);
         let account_data = AccountData::new(pubkey);
         self.mark_account(pubkey, false, false);
-        Ok(self.accounts.insert(pubkey, Box::new(RefCell::new(account_data))))
+        Ok(self
+            .accounts
+            .insert(pubkey, Box::new(RefCell::new(account_data))))
     }
 
     async fn use_account(
@@ -375,9 +384,9 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         chain_id: u64,
     ) -> NeonResult<&RefCell<AccountData>> {
         let (pubkey, _) = address.find_balance_address(self.program_id(), chain_id);
-        
+
         if let Some(account) = self.accounts.get(&pubkey) {
-            return Ok(account)
+            return Ok(account);
         }
 
         match self._get_account_from_rpc(pubkey).await? {
@@ -385,8 +394,8 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             None => {
                 if chain_id == self.default_chain_id() {
                     println!("Find account on legacy address");
-                    let (legacy_pubkey, _) = address.find_solana_address(&self.program_id());
-                    if let Some(_) = self.accounts.get(&legacy_pubkey) {
+                    let (legacy_pubkey, _) = address.find_solana_address(self.program_id());
+                    if self.accounts.get(&legacy_pubkey).is_some() {
                         // We already have information about contract account (empty or filled with data).
                         // So the balance should be updated, but it is missed. So return the empty account.
                         println!("Legacy account is already added");
@@ -397,16 +406,16 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                         println!("Legacy account is not added");
                         match self._get_account_from_rpc(legacy_pubkey).await? {
                             Some(legacy_account) => {
-                                self.add_account(legacy_pubkey, &legacy_account).await?;
+                                self.add_account(legacy_pubkey, legacy_account).await?;
                                 match self.accounts.get(&pubkey) {
                                     Some(account) => Ok(account),
                                     None => self.add_empty_account(pubkey),
                                 }
-                            },
+                            }
                             None => {
                                 self.add_empty_account(legacy_pubkey)?;
                                 self.add_empty_account(pubkey)
-                            },
+                            }
                         }
                     }
                 } else {
@@ -416,14 +425,11 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
     }
 
-    async fn get_contract_account(
-        &self,
-        address: Address,
-    ) -> NeonResult<&RefCell<AccountData>> {
+    async fn get_contract_account(&self, address: Address) -> NeonResult<&RefCell<AccountData>> {
         let (pubkey, _) = address.find_solana_address(self.program_id());
 
         if let Some(account) = self.accounts.get(&pubkey) {
-            return Ok(account)
+            return Ok(account);
         }
 
         match self._get_account_from_rpc(pubkey).await? {
@@ -451,7 +457,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
     }
 
-    pub async fn ethereum_balance_map_or<F,R>(
+    pub async fn ethereum_balance_map_or<F, R>(
         &self,
         address: Address,
         chain_id: u64,
@@ -461,7 +467,10 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     where
         F: FnOnce(&BalanceAccount) -> R,
     {
-        let mut balance_data = self.get_balance_account(address, chain_id).await?.borrow_mut();
+        let mut balance_data = self
+            .get_balance_account(address, chain_id)
+            .await?
+            .borrow_mut();
         if balance_data.is_empty() {
             Ok(default)
         } else {
@@ -471,7 +480,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
     }
 
-    pub async fn ethereum_contract_map_or<F,R>(
+    pub async fn ethereum_contract_map_or<F, R>(
         &self,
         address: Address,
         default: R,
@@ -490,7 +499,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
     }
 
-    pub async fn ethereum_storage_map_or<F,R>(
+    pub async fn ethereum_storage_map_or<F, R>(
         &self,
         address: Address,
         index: U256,
@@ -506,7 +515,12 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         } else {
             let account_info = storage_data.into_account_info();
             let storage = StorageCell::from_account(self.program_id(), account_info)?;
-            println!("Storage: ({:?},{:?}) -> {:?}", address, index, storage.cells());
+            println!(
+                "Storage: ({:?},{:?}) -> {:?}",
+                address,
+                index,
+                storage.cells()
+            );
             Ok(action(&storage))
         }
     }
@@ -551,17 +565,17 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         code: &[u8],
     ) -> evm_loader::error::Result<ContractAccount> {
         self.mark_account(account_data.pubkey, true, false);
-        let required_len = ContractAccount::required_account_size(&code);
+        let required_len = ContractAccount::required_account_size(code);
         account_data.assign(self.program_id)?;
         account_data.expand(required_len);
-        
+
         ContractAccount::initialize(
             account_data.into_account_info(),
             &self.program_id,
             address,
             chain_id,
             generation,
-            &code,
+            code,
         )
     }
 
@@ -573,10 +587,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         account_data.assign(self.program_id)?;
         account_data.expand(StorageCell::required_account_size(0));
 
-        StorageCell::initialize(
-            account_data.into_account_info(),
-            &self.program_id,
-        )
+        StorageCell::initialize(account_data.into_account_info(), &self.program_id)
     }
 
     fn get_or_create_ethereum_storage(
@@ -790,21 +801,32 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         */
     }
 
-    async fn mint(&mut self, address: Address, chain_id: u64, value: U256) -> evm_loader::error::Result<()> {
-        let mut balance_data = self.get_balance_account(address, chain_id).await
-            .map_err(map_neon_error)?.borrow_mut();
+    async fn mint(
+        &mut self,
+        address: Address,
+        chain_id: u64,
+        value: U256,
+    ) -> evm_loader::error::Result<()> {
+        let mut balance_data = self
+            .get_balance_account(address, chain_id)
+            .await
+            .map_err(map_neon_error)?
+            .borrow_mut();
         self.mark_account(balance_data.pubkey, true, false);
 
-        let mut balance = self.get_or_create_ethereum_balance(&mut balance_data, address, chain_id)?;
+        let mut balance =
+            self.get_or_create_ethereum_balance(&mut balance_data, address, chain_id)?;
         balance.mint(value)?;
 
         Ok(())
     }
 
     pub fn used_accounts(&self) -> Vec<SolanaAccount> {
-        self.used_accounts.clone().into_map()
-            .iter()
-            .map(|(_,v)| v.borrow().clone())
+        self.used_accounts
+            .clone()
+            .into_map()
+            .values()
+            .map(|v| v.borrow().clone())
             .collect::<Vec<_>>()
     }
 
@@ -813,21 +835,21 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
 
         let mut changes_in_rent = 0i64;
         for (pubkey, account) in accounts.into_map().iter() {
-            let original_rent = self
-                .accounts_cache
-                .get(&pubkey)
-                .map_or_else(
-                    || 0,
-                    |v| v.as_ref().map_or_else(
-                        || 0, 
-                        |v| 
+            let original_rent = self.accounts_cache.get(pubkey).map_or_else(
+                || 0,
+                |v| {
+                    v.as_ref().map_or_else(
+                        || 0,
+                        |v| {
                             if v.owner != system_program::ID {
                                 self.rent.minimum_balance(v.data.len())
                             } else {
                                 0
                             }
+                        },
                     )
-                );
+                },
+            );
             let new_acc = account.borrow();
             let new_rent = if new_acc.is_empty() {
                 0
@@ -836,7 +858,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             };
 
             changes_in_rent += new_rent as i64 - original_rent as i64;
-        };
+        }
 
         changes_in_rent
     }
@@ -880,8 +902,8 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         if let Ok(account) = self.use_account(slot_hashes::ID, false).await {
             let account_data = account.borrow();
             let data = account_data.data();
-            if data.len() > 0 {
-                return find_slot_hash(slot, &data);
+            if !data.is_empty() {
+                return find_slot_hash(slot, data);
             }
         }
         panic!("Error querying account {} from Solana", slot_hashes::ID)
@@ -896,13 +918,9 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         //     return nonce_override;
         // }
 
-        self.ethereum_balance_map_or(
-            address,
-            chain_id,
-            u64::default(),
-            |account| account.nonce(),
-        )
-        .await.unwrap()
+        self.ethereum_balance_map_or(address, chain_id, u64::default(), |account| account.nonce())
+            .await
+            .unwrap()
     }
 
     async fn balance(&self, address: Address, chain_id: u64) -> U256 {
@@ -914,13 +932,11 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         //     return balance_override;
         // }
 
-        self.ethereum_balance_map_or(
-            address,
-            chain_id,
-            U256::default(),
-            |account| account.balance(),
-        )
-        .await.unwrap()
+        self.ethereum_balance_map_or(address, chain_id, U256::default(), |account| {
+            account.balance()
+        })
+        .await
+        .unwrap()
     }
 
     fn is_valid_chain_id(&self, chain_id: u64) -> bool {
@@ -960,12 +976,9 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
             "Account {address} - invalid tag"
         )));
 
-        self.ethereum_contract_map_or(
-            address,
-            default_value,
-            |a| Ok(a.chain_id()),
-        )
-        .await.unwrap()
+        self.ethereum_contract_map_or(address, default_value, |a| Ok(a.chain_id()))
+            .await
+            .unwrap()
     }
 
     fn contract_pubkey(&self, address: Address) -> (Pubkey, u8) {
@@ -990,12 +1003,9 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         // }
 
         let code = self
-            .ethereum_contract_map_or(
-                address,
-                Vec::default(),
-                |c| c.code().to_vec(),
-            )
-            .await.unwrap();
+            .ethereum_contract_map_or(address, Vec::default(), |c| c.code().to_vec())
+            .await
+            .unwrap();
 
         Buffer::from_vec(code)
     }
@@ -1009,23 +1019,18 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
 
         let value = if index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u64) {
             let index: usize = index.as_usize();
-            self.ethereum_contract_map_or(
-                address,
-                [0_u8; 32],
-                |c| c.storage_value(index),
-            )
-            .await.unwrap()
+            self.ethereum_contract_map_or(address, [0_u8; 32], |c| c.storage_value(index))
+                .await
+                .unwrap()
         } else {
             let subindex = (index & 0xFF).as_u8();
             let index = index & !U256::new(0xFF);
 
-            self.ethereum_storage_map_or(
-                address,
-                index,
-                <[u8; 32]>::default(),
-                |cell| cell.get(subindex),
-            )
-            .await.unwrap()
+            self.ethereum_storage_map_or(address, index, <[u8; 32]>::default(), |cell| {
+                cell.get(subindex)
+            })
+            .await
+            .unwrap()
         };
 
         info!("storage {address} -> {index} = {}", hex::encode(value));
@@ -1053,8 +1058,8 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
                 .await
                 .expect("Error querying account from Solana");
 
-                let mut account_data = account.borrow_mut();
-                let info = account_data.into_account_info();
+            let mut account_data = account.borrow_mut();
+            let info = account_data.into_account_info();
             OwnedAccountInfo::from_account_info(self.program_id(), &info)
         }
     }
@@ -1095,36 +1100,49 @@ fn map_neon_error(e: NeonError) -> evm_loader::error::Error {
 
 #[async_trait(?Send)]
 impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
-    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> evm_loader::error::Result<()> {
+    async fn set_code(
+        &mut self,
+        address: Address,
+        chain_id: u64,
+        code: Vec<u8>,
+    ) -> evm_loader::error::Result<()> {
         {
-            let mut account_data = self.get_contract_account(address).await
-                .map_err(map_neon_error)?.borrow_mut();
+            let mut account_data = self
+                .get_contract_account(address)
+                .await
+                .map_err(map_neon_error)?
+                .borrow_mut();
 
             if account_data.is_busy() {
-                return Err(evm_loader::error::Error::AccountAlreadyInitialized(account_data.pubkey));
+                return Err(evm_loader::error::Error::AccountAlreadyInitialized(
+                    account_data.pubkey,
+                ));
             };
 
-            self.create_ethereum_contract(
-                &mut account_data,
-                address,
-                chain_id,
-                0,
-                &code,
-            )?;
+            self.create_ethereum_contract(&mut account_data, address, chain_id, 0, &code)?;
         }
 
-        let realloc = ContractAccount::required_account_size(&code) / solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE;
+        let realloc = ContractAccount::required_account_size(&code)
+            / solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE;
         self.realloc_iterations = self.realloc_iterations.max(realloc as u64);
-        
+
         Ok(())
     }
 
-    async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> evm_loader::error::Result<()> {
+    async fn set_storage(
+        &mut self,
+        address: Address,
+        index: U256,
+        value: [u8; 32],
+    ) -> evm_loader::error::Result<()> {
         const STATIC_STORAGE_LIMIT: U256 = U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128);
 
         if index < STATIC_STORAGE_LIMIT {
-            let mut contract_data = self.get_contract_account(address).await
-                .map_err(map_neon_error)?.borrow_mut();
+            let mut contract_data = self
+                .get_contract_account(address)
+                .await
+                .map_err(map_neon_error)?
+                .borrow_mut();
 
             let mut contract = ContractAccount::from_account(
                 self.program_id(),
@@ -1137,8 +1155,11 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             let subindex = (index & 0xFF).as_u8();
             let index = index & !U256::new(0xFF);
 
-            let mut storage_data = self.get_storage_account(address, index).await
-                .map_err(map_neon_error)?.borrow_mut();
+            let mut storage_data = self
+                .get_storage_account(address, index)
+                .await
+                .map_err(map_neon_error)?
+                .borrow_mut();
 
             let mut storage = self.get_or_create_ethereum_storage(&mut storage_data)?;
             storage.update(subindex, &value)?;
@@ -1148,10 +1169,18 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         Ok(())
     }
 
-    async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> evm_loader::error::Result<()> {
-        let mut balance_data = self.get_balance_account(address, chain_id).await
-            .map_err(map_neon_error)?.borrow_mut();
-        let mut balance = self.get_or_create_ethereum_balance(&mut balance_data, address, chain_id)?;
+    async fn increment_nonce(
+        &mut self,
+        address: Address,
+        chain_id: u64,
+    ) -> evm_loader::error::Result<()> {
+        let mut balance_data = self
+            .get_balance_account(address, chain_id)
+            .await
+            .map_err(map_neon_error)?
+            .borrow_mut();
+        let mut balance =
+            self.get_or_create_ethereum_balance(&mut balance_data, address, chain_id)?;
         balance.increment_nonce()?;
 
         Ok(())
@@ -1170,12 +1199,21 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         Ok(())
     }
 
-    async fn burn(&mut self, address: Address, chain_id: u64, value: U256) -> evm_loader::error::Result<()> {
-        let mut balance_data = self.get_balance_account(address, chain_id).await
-            .map_err(map_neon_error)?.borrow_mut();
+    async fn burn(
+        &mut self,
+        address: Address,
+        chain_id: u64,
+        value: U256,
+    ) -> evm_loader::error::Result<()> {
+        let mut balance_data = self
+            .get_balance_account(address, chain_id)
+            .await
+            .map_err(map_neon_error)?
+            .borrow_mut();
         self.mark_account(balance_data.pubkey, true, false);
 
-        let mut balance = self.get_or_create_ethereum_balance(&mut balance_data, address, chain_id)?;
+        let mut balance =
+            self.get_or_create_ethereum_balance(&mut balance_data, address, chain_id)?;
         balance.burn(value)?;
 
         Ok(())
@@ -1226,30 +1264,30 @@ pub fn account_info<'a>(key: &'a Pubkey, account: &'a mut Account) -> AccountInf
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str::FromStr;
-    use hex_literal::hex;
     use crate::tracing::AccountOverride;
+    use hex_literal::hex;
     use std::collections::HashMap;
+    use std::str::FromStr;
 
     mod mock_rpc_client {
-        use async_trait::async_trait;
-        use solana_client::rpc_response::{Response, RpcResult, RpcResponseContext};
-        use solana_sdk::account::Account;
-        use solana_sdk::pubkey::Pubkey;
-        use solana_sdk::commitment_config::CommitmentConfig;
-        use std::collections::HashMap;
-        use crate::{rpc::Rpc, commands::get_config::ConfigSimulator};
-        use solana_client::client_error::Result as ClientResult;
-        use solana_sdk::clock::{Slot, UnixTimestamp};
         use crate::commands::get_config::BuildConfigSimulator;
         use crate::NeonResult;
+        use crate::{commands::get_config::ConfigSimulator, rpc::Rpc};
+        use async_trait::async_trait;
+        use solana_client::client_error::Result as ClientResult;
+        use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
+        use solana_sdk::account::Account;
+        use solana_sdk::clock::{Slot, UnixTimestamp};
+        use solana_sdk::commitment_config::CommitmentConfig;
+        use solana_sdk::pubkey::Pubkey;
+        use std::collections::HashMap;
 
         pub struct MockRpcClient {
             accounts: HashMap<Pubkey, Account>,
         }
 
         impl MockRpcClient {
-            pub fn new(accounts: &[(Pubkey,Account)]) -> Self {
+            pub fn new(accounts: &[(Pubkey, Account)]) -> Self {
                 Self {
                     accounts: accounts.iter().cloned().collect(),
                 }
@@ -1261,11 +1299,14 @@ mod tests {
             async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>> {
                 let result = self.accounts.get(key).cloned();
                 Ok(Response {
-                    context: RpcResponseContext { slot: 0, api_version: None },
+                    context: RpcResponseContext {
+                        slot: 0,
+                        api_version: None,
+                    },
                     value: result,
                 })
             }
-        
+
             async fn get_account_with_commitment(
                 &self,
                 key: &Pubkey,
@@ -1273,21 +1314,22 @@ mod tests {
             ) -> RpcResult<Option<Account>> {
                 self.get_account(key).await
             }
-        
+
             async fn get_multiple_accounts(
                 &self,
                 pubkeys: &[Pubkey],
             ) -> ClientResult<Vec<Option<Account>>> {
-                let result = pubkeys.iter().map(
-                    |key| self.accounts.get(key).cloned()
-                ).collect::<Vec<_>>();
+                let result = pubkeys
+                    .iter()
+                    .map(|key| self.accounts.get(key).cloned())
+                    .collect::<Vec<_>>();
                 Ok(result)
             }
-        
+
             async fn get_block_time(&self, _slot: Slot) -> ClientResult<UnixTimestamp> {
                 Ok(UnixTimestamp::default())
             }
-        
+
             async fn get_slot(&self) -> ClientResult<Slot> {
                 Ok(Slot::default())
             }
@@ -1295,7 +1337,10 @@ mod tests {
 
         #[async_trait(?Send)]
         impl BuildConfigSimulator for MockRpcClient {
-            async fn build_config_simulator(&self, _program_id: Pubkey) -> NeonResult<ConfigSimulator> {
+            async fn build_config_simulator(
+                &self,
+                _program_id: Pubkey,
+            ) -> NeonResult<ConfigSimulator> {
                 unimplemented!();
             }
         }
@@ -1309,7 +1354,7 @@ mod tests {
         trx_count: u64,
         generation: u32,
         code: &[u8],
-        storage: &[[u8;32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
+        storage: &[[u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
     ) -> Account {
         let data_length = if (code.len() > 0) || (generation > 0) {
             1 + LegacyEtherData::SIZE + 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT + code.len()
@@ -1327,7 +1372,7 @@ mod tests {
             balance_ptr,
             generation_ptr,
             code_size_ptr,
-            rw_blocked_ptr
+            rw_blocked_ptr,
         ) = arrayref::mut_array_refs![data_ref, 1, 20, 1, 8, 32, 4, 4, 1];
 
         *tag_ptr = LegacyEtherData::TAG.to_le_bytes();
@@ -1353,7 +1398,7 @@ mod tests {
             let code_ptr = &mut data[code_offset..][..code.len()];
             code_ptr.copy_from_slice(code);
         }
-        
+
         Account {
             lamports: rent.minimum_balance(data.len()),
             data: data,
@@ -1370,34 +1415,49 @@ mod tests {
         balance: U256,
         trx_count: u64,
     ) -> Account {
-        let storage = [[0u8;32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT];
-        create_legacy_ether_contract(program_id, rent, address, balance, trx_count, 0u32, &[], &storage)
+        let storage = [[0u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT];
+        create_legacy_ether_contract(
+            program_id,
+            rent,
+            address,
+            balance,
+            trx_count,
+            0u32,
+            &[],
+            &storage,
+        )
     }
 
     struct ActualStorage {
         index: U256,
-        values: &'static [(u8, [u8;32])],
+        values: &'static [(u8, [u8; 32])],
     }
 
     struct LegacyStorage {
         generation: u32,
         index: U256,
-        values: &'static [(u8, [u8;32])],        
+        values: &'static [(u8, [u8; 32])],
     }
 
     impl ActualStorage {
-        pub fn account_with_pubkey(&self, program_id: &Pubkey, rent: &Rent, address: Address) -> (Pubkey,Account) {
+        pub fn account_with_pubkey(
+            &self,
+            program_id: &Pubkey,
+            rent: &Rent,
+            address: Address,
+        ) -> (Pubkey, Account) {
             let (contract, _) = address.find_solana_address(program_id);
             let cell_address = StorageCellAddress::new(program_id, &contract, &self.index);
             let cell_pubkey = *cell_address.pubkey();
             let mut account_data = AccountData::new(cell_pubkey);
             account_data.assign(*program_id).unwrap();
             account_data.expand(StorageCell::required_account_size(self.values.len()));
-            let mut storage = StorageCell::initialize(account_data.into_account_info(), program_id).unwrap();
+            let mut storage =
+                StorageCell::initialize(account_data.into_account_info(), program_id).unwrap();
             for (cell, (index, value)) in storage.cells_mut().iter_mut().zip(self.values.iter()) {
                 cell.subindex = *index;
                 cell.value.copy_from_slice(value);
-            };
+            }
             (
                 cell_pubkey,
                 Account {
@@ -1406,41 +1466,42 @@ mod tests {
                     owner: *program_id,
                     executable: false,
                     rent_epoch: 0,
-                }
+                },
             )
         }
     }
 
     impl LegacyStorage {
         pub fn required_account_size(count: usize) -> usize {
-            1 + LegacyStorageData::SIZE + std::mem::size_of::<(u8, [u8;32])>() * count
+            1 + LegacyStorageData::SIZE + std::mem::size_of::<(u8, [u8; 32])>() * count
         }
-        pub fn account_with_pubkey(&self, program_id: &Pubkey, rent: &Rent, address: Address) -> (Pubkey,Account) {
+        pub fn account_with_pubkey(
+            &self,
+            program_id: &Pubkey,
+            rent: &Rent,
+            address: Address,
+        ) -> (Pubkey, Account) {
             let (contract, _) = address.find_solana_address(program_id);
             let cell_address = StorageCellAddress::new(program_id, &contract, &self.index);
             let cell_pubkey = *cell_address.pubkey();
             let mut data = vec![0u8; Self::required_account_size(self.values.len())];
-    
+
             let data_ref = arrayref::array_mut_ref![data, 0, 1 + LegacyStorageData::SIZE];
-            let (
-                tag_ptr,
-                address_ptr,
-                generation_ptr,
-                index_ptr,
-            ) = arrayref::mut_array_refs![data_ref, 1, 20, 4, 32];
-    
+            let (tag_ptr, address_ptr, generation_ptr, index_ptr) =
+                arrayref::mut_array_refs![data_ref, 1, 20, 4, 32];
+
             *tag_ptr = LegacyStorageData::TAG.to_le_bytes();
             *address_ptr = *address.as_bytes();
             *generation_ptr = self.generation.to_le_bytes();
             *index_ptr = self.index.to_le_bytes();
-    
+
             let storage = unsafe {
                 let data = &mut data[1 + LegacyStorageData::SIZE..];
-                let ptr = data.as_mut_ptr().cast::<(u8, [u8;32])>();
+                let ptr = data.as_mut_ptr().cast::<(u8, [u8; 32])>();
                 std::slice::from_raw_parts_mut(ptr, self.values.len())
             };
             storage.copy_from_slice(self.values);
-    
+
             let account = Account {
                 lamports: rent.minimum_balance(data.len()),
                 data: data,
@@ -1448,7 +1509,7 @@ mod tests {
                 executable: false,
                 rent_epoch: 0,
             };
-    
+
             (cell_pubkey, account)
         }
     }
@@ -1460,10 +1521,16 @@ mod tests {
     }
 
     impl LegacyAccount {
-        pub fn account_with_pubkey(&self, program_id: &Pubkey, rent: &Rent)-> (Pubkey, Account) {
+        pub fn account_with_pubkey(&self, program_id: &Pubkey, rent: &Rent) -> (Pubkey, Account) {
             (
                 self.address.find_solana_address(&program_id).0,
-                create_legacy_ether_account(&program_id, &rent, self.address, self.balance, self.nonce)
+                create_legacy_ether_account(
+                    &program_id,
+                    &rent,
+                    self.address,
+                    self.balance,
+                    self.nonce,
+                ),
             )
         }
     }
@@ -1473,7 +1540,7 @@ mod tests {
         pub nonce: u64,
         pub generation: u32,
         pub code: &'static [u8],
-        pub storage: [[u8;32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
+        pub storage: [[u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
 
         pub legacy_storage: LegacyStorage,
         pub outdate_storage: LegacyStorage,
@@ -1492,16 +1559,26 @@ mod tests {
                     self.generation,
                     &self.code,
                     &self.storage,
-                )
+                ),
             )
         }
 
-        pub fn legacy_storage_with_pubkey(&self, program_id: &Pubkey, rent: &Rent) -> (Pubkey, Account) {
-            self.legacy_storage.account_with_pubkey(program_id, rent, self.address)
+        pub fn legacy_storage_with_pubkey(
+            &self,
+            program_id: &Pubkey,
+            rent: &Rent,
+        ) -> (Pubkey, Account) {
+            self.legacy_storage
+                .account_with_pubkey(program_id, rent, self.address)
         }
 
-        pub fn outdate_storage_with_pubkey(&self, program_id: &Pubkey, rent: &Rent) -> (Pubkey, Account) {
-            self.outdate_storage.account_with_pubkey(program_id, rent, self.address)
+        pub fn outdate_storage_with_pubkey(
+            &self,
+            program_id: &Pubkey,
+            rent: &Rent,
+        ) -> (Pubkey, Account) {
+            self.outdate_storage
+                .account_with_pubkey(program_id, rent, self.address)
         }
     }
 
@@ -1513,8 +1590,10 @@ mod tests {
     }
 
     impl ActualBalance {
-        pub fn account_with_pubkey(&self, program_id: &Pubkey, rent: &Rent)-> (Pubkey, Account) {
-            let (pubkey, _) = self.address.find_balance_address(&program_id, self.chain_id);
+        pub fn account_with_pubkey(&self, program_id: &Pubkey, rent: &Rent) -> (Pubkey, Account) {
+            let (pubkey, _) = self
+                .address
+                .find_balance_address(&program_id, self.chain_id);
             let mut account_data = AccountData::new(pubkey);
             account_data.assign(*program_id).unwrap();
             account_data.expand(BalanceAccount::required_account_size());
@@ -1524,7 +1603,8 @@ mod tests {
                 program_id,
                 self.address,
                 self.chain_id,
-            ).unwrap();
+            )
+            .unwrap();
             balance.mint(self.balance).unwrap();
             balance.increment_nonce_by(self.nonce).unwrap();
 
@@ -1536,7 +1616,7 @@ mod tests {
                     owner: *program_id,
                     executable: false,
                     rent_epoch: 0,
-                }
+                },
             )
         }
     }
@@ -1546,7 +1626,7 @@ mod tests {
         pub chain_id: u64,
         pub generation: u32,
         pub code: &'static [u8],
-        pub storage: [[u8;32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
+        pub storage: [[u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
 
         pub actual_storage: ActualStorage,
         pub legacy_storage: LegacyStorage,
@@ -1567,7 +1647,8 @@ mod tests {
                 self.chain_id,
                 self.generation,
                 self.code,
-            ).unwrap();
+            )
+            .unwrap();
             contract.set_storage_multiple_values(0, &self.storage);
 
             (
@@ -1578,23 +1659,37 @@ mod tests {
                     owner: *program_id,
                     executable: false,
                     rent_epoch: 0,
-                }
+                },
             )
         }
 
-        pub fn actual_storage_with_pubkey(&self, program_id: &Pubkey, rent: &Rent) -> (Pubkey, Account) {
-            self.actual_storage.account_with_pubkey(program_id, rent, self.address)
+        pub fn actual_storage_with_pubkey(
+            &self,
+            program_id: &Pubkey,
+            rent: &Rent,
+        ) -> (Pubkey, Account) {
+            self.actual_storage
+                .account_with_pubkey(program_id, rent, self.address)
         }
 
-        pub fn legacy_storage_with_pubkey(&self, program_id: &Pubkey, rent: &Rent) -> (Pubkey, Account) {
-            self.legacy_storage.account_with_pubkey(program_id, rent, self.address)
+        pub fn legacy_storage_with_pubkey(
+            &self,
+            program_id: &Pubkey,
+            rent: &Rent,
+        ) -> (Pubkey, Account) {
+            self.legacy_storage
+                .account_with_pubkey(program_id, rent, self.address)
         }
 
-        pub fn outdate_storage_with_pubkey(&self, program_id: &Pubkey, rent: &Rent) -> (Pubkey, Account) {
-            self.outdate_storage.account_with_pubkey(program_id, rent, self.address)
+        pub fn outdate_storage_with_pubkey(
+            &self,
+            program_id: &Pubkey,
+            rent: &Rent,
+        ) -> (Pubkey, Account) {
+            self.outdate_storage
+                .account_with_pubkey(program_id, rent, self.address)
         }
     }
-
 
     const LEGACY_CHAIN_ID: u64 = 1;
     const EXTRA_CHAIN_ID: u64 = 2;
@@ -1624,7 +1719,7 @@ mod tests {
         chain_id: LEGACY_CHAIN_ID,
         generation: 4,
         code: &[0x03, 0x04, 0x05],
-        storage: [[14u8;32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
+        storage: [[14u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
         actual_storage: ActualStorage {
             index: ACTUAL_STORAGE_INDEX,
             values: &[(0u8, [64u8; 32])],
@@ -1646,9 +1741,16 @@ mod tests {
         chain_id: LEGACY_CHAIN_ID,
         generation: 12,
         code: &[],
-        storage: [[0u8;32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],  // It's matter that suicide contract doesn't contains any values in storage!
-        actual_storage: ActualStorage{index: U256::ZERO, values: &[]},
-        legacy_storage: LegacyStorage{generation: 0, index: U256::ZERO, values: &[]},
+        storage: [[0u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT], // It's matter that suicide contract doesn't contains any values in storage!
+        actual_storage: ActualStorage {
+            index: U256::ZERO,
+            values: &[],
+        },
+        legacy_storage: LegacyStorage {
+            generation: 0,
+            index: U256::ZERO,
+            values: &[],
+        },
         outdate_storage: LegacyStorage {
             generation: 11,
             index: LEGACY_STORAGE_INDEX,
@@ -1668,7 +1770,7 @@ mod tests {
         nonce: 1,
         generation: 3,
         code: &[0x01, 0x02, 0x03],
-        storage: [[0u8;32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
+        storage: [[0u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
 
         legacy_storage: LegacyStorage {
             generation: 3,
@@ -1688,18 +1790,26 @@ mod tests {
         nonce: 0,
         generation: 2,
         code: &[0x01, 0x02, 0x03, 0x04],
-        storage: [[53u8;32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
-        legacy_storage: LegacyStorage {generation: 0, index: U256::ZERO, values: &[]},
-        outdate_storage: LegacyStorage {generation: 1, index: U256::ZERO, values: &[]},
+        storage: [[53u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
+        legacy_storage: LegacyStorage {
+            generation: 0,
+            index: U256::ZERO,
+            values: &[],
+        },
+        outdate_storage: LegacyStorage {
+            generation: 1,
+            index: U256::ZERO,
+            values: &[],
+        },
     };
-    
+
     const LEGACY_SUICIDE: LegacyContract = LegacyContract {
         address: Address(hex!("7a250d5630b4cf539739df2c5dacb4c659f24d21")),
         balance: U256::new(41234),
         nonce: 413,
         generation: 5,
         code: &[],
-        storage: [[42u8;32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
+        storage: [[42u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
 
         legacy_storage: LegacyStorage {
             generation: 413,
@@ -1725,31 +1835,32 @@ mod tests {
     impl Fixture {
         pub fn new() -> Self {
             let rent = Rent::default();
-            let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
+            let program_id =
+                Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
             let accounts = vec![
-                (Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap(), Account {
-                    lamports: 1009200,
-                    data: bincode::serialize(&rent).unwrap(),
-                    owner: Pubkey::from_str("Sysvar1111111111111111111111111111111111111").unwrap(),
-                    executable: false,
-                    rent_epoch: 0,
-                }),
+                (
+                    Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap(),
+                    Account {
+                        lamports: 1009200,
+                        data: bincode::serialize(&rent).unwrap(),
+                        owner: Pubkey::from_str("Sysvar1111111111111111111111111111111111111")
+                            .unwrap(),
+                        executable: false,
+                        rent_epoch: 0,
+                    },
+                ),
                 ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent),
                 ACTUAL_BALANCE2.account_with_pubkey(&program_id, &rent),
                 LEGACY_ACCOUNT.account_with_pubkey(&program_id, &rent),
-
                 ACTUAL_CONTRACT.account_with_pubkey(&program_id, &rent),
                 ACTUAL_CONTRACT.actual_storage_with_pubkey(&program_id, &rent),
                 ACTUAL_CONTRACT.legacy_storage_with_pubkey(&program_id, &rent),
                 ACTUAL_CONTRACT.outdate_storage_with_pubkey(&program_id, &rent),
-
                 ACTUAL_SUICIDE.account_with_pubkey(&program_id, &rent),
                 ACTUAL_SUICIDE.outdate_storage_with_pubkey(&program_id, &rent),
-
                 LEGACY_CONTRACT.account_with_pubkey(&program_id, &rent),
                 LEGACY_CONTRACT.legacy_storage_with_pubkey(&program_id, &rent),
                 LEGACY_CONTRACT.outdate_storage_with_pubkey(&program_id, &rent),
-
                 LEGACY_CONTRACT_NO_BALANCE.account_with_pubkey(&program_id, &rent),
                 LEGACY_SUICIDE.account_with_pubkey(&program_id, &rent),
                 LEGACY_SUICIDE.outdate_storage_with_pubkey(&program_id, &rent),
@@ -1776,14 +1887,18 @@ mod tests {
             }
         }
 
-        pub async fn build_account_storage(&self) -> EmulatorAccountStorage<'_,mock_rpc_client::MockRpcClient> {
+        pub async fn build_account_storage(
+            &self,
+        ) -> EmulatorAccountStorage<'_, mock_rpc_client::MockRpcClient> {
             EmulatorAccountStorage::new(
                 &self.mock_rpc,
                 self.program_id,
                 Some(self.chains.clone()),
                 self.block_overrides.clone(),
                 self.state_overrides.clone(),
-            ).await.unwrap()
+            )
+            .await
+            .unwrap()
         }
 
         pub fn balance_pubkey(&self, address: Address, chain_id: u64) -> Pubkey {
@@ -1810,37 +1925,45 @@ mod tests {
         }
 
         pub fn storage_rent(&self, count: usize) -> u64 {
-            self.rent.minimum_balance(StorageCell::required_account_size(count))
+            self.rent
+                .minimum_balance(StorageCell::required_account_size(count))
         }
 
         pub fn legacy_storage_rent(&self, count: usize) -> u64 {
-            self.rent.minimum_balance(LegacyStorage::required_account_size(count))
+            self.rent
+                .minimum_balance(LegacyStorage::required_account_size(count))
         }
 
         pub fn balance_rent(&self) -> u64 {
-            self.rent.minimum_balance(BalanceAccount::required_account_size())
+            self.rent
+                .minimum_balance(BalanceAccount::required_account_size())
         }
 
         pub fn legacy_rent(&self, code_len: Option<usize>) -> u64 {
             let data_length = code_len
-                .map(|len| 1 + LegacyEtherData::SIZE + 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT + len)
+                .map(|len| {
+                    1 + LegacyEtherData::SIZE + 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT + len
+                })
                 .unwrap_or(1 + LegacyEtherData::SIZE);
             self.rent.minimum_balance(data_length)
         }
 
         pub fn contract_rent(&self, code: &[u8]) -> u64 {
-            self.rent.minimum_balance(ContractAccount::required_account_size(code))
+            self.rent
+                .minimum_balance(ContractAccount::required_account_size(code))
         }
     }
-    
+
     impl<'rpc, T: Rpc> EmulatorAccountStorage<'rpc, T> {
         pub fn verify_used_accounts(&self, expected: &[(Pubkey, bool, bool)]) {
             let mut expected = expected.to_vec();
-            expected.sort_by_key(|(k,_,_)| *k);
-            let mut actual = self.used_accounts().iter()
+            expected.sort_by_key(|(k, _, _)| *k);
+            let mut actual = self
+                .used_accounts()
+                .iter()
                 .map(|v| (v.pubkey, v.is_writable, v.is_legacy))
                 .collect::<Vec<_>>();
-            actual.sort_by_key(|(k,_,_)| *k);
+            actual.sort_by_key(|(k, _, _)| *k);
             assert_eq!(actual, expected);
         }
 
@@ -1855,11 +1978,18 @@ mod tests {
         let fixture = Fixture::new();
         let storage = fixture.build_account_storage().await;
 
-        assert_eq!(storage.balance(MISSING_ADDRESS, LEGACY_CHAIN_ID).await, U256::ZERO);
+        assert_eq!(
+            storage.balance(MISSING_ADDRESS, LEGACY_CHAIN_ID).await,
+            U256::ZERO
+        );
         assert_eq!(storage.nonce(MISSING_ADDRESS, LEGACY_CHAIN_ID).await, 0);
 
         storage.verify_used_accounts(&[
-            (fixture.balance_pubkey(MISSING_ADDRESS, LEGACY_CHAIN_ID), false, false),
+            (
+                fixture.balance_pubkey(MISSING_ADDRESS, LEGACY_CHAIN_ID),
+                false,
+                false,
+            ),
             (fixture.legacy_pubkey(MISSING_ADDRESS), false, false),
         ]);
         storage.verify_rent_changes(0, 0);
@@ -1870,12 +2000,17 @@ mod tests {
         let fixture = Fixture::new();
         let storage = fixture.build_account_storage().await;
 
-        assert_eq!(storage.balance(MISSING_ADDRESS, EXTRA_CHAIN_ID).await, U256::ZERO);
+        assert_eq!(
+            storage.balance(MISSING_ADDRESS, EXTRA_CHAIN_ID).await,
+            U256::ZERO
+        );
         assert_eq!(storage.nonce(MISSING_ADDRESS, EXTRA_CHAIN_ID).await, 0);
 
-        storage.verify_used_accounts(&[
-            (fixture.balance_pubkey(MISSING_ADDRESS, EXTRA_CHAIN_ID), false, false),
-        ]);
+        storage.verify_used_accounts(&[(
+            fixture.balance_pubkey(MISSING_ADDRESS, EXTRA_CHAIN_ID),
+            false,
+            false,
+        )]);
         storage.verify_rent_changes(0, 0);
     }
 
@@ -1885,12 +2020,17 @@ mod tests {
         let storage = fixture.build_account_storage().await;
 
         let acc = &ACTUAL_BALANCE;
-        assert_eq!(storage.balance(acc.address, acc.chain_id).await, acc.balance);
+        assert_eq!(
+            storage.balance(acc.address, acc.chain_id).await,
+            acc.balance
+        );
         assert_eq!(storage.nonce(acc.address, acc.chain_id).await, acc.nonce);
 
-        storage.verify_used_accounts(&[
-            (fixture.balance_pubkey(acc.address, acc.chain_id), false, false),
-        ]);
+        storage.verify_used_accounts(&[(
+            fixture.balance_pubkey(acc.address, acc.chain_id),
+            false,
+            false,
+        )]);
         storage.verify_rent_changes(0, 0);
     }
 
@@ -1901,12 +2041,17 @@ mod tests {
 
         let acc = &ACTUAL_BALANCE2;
         assert_eq!(acc.chain_id, EXTRA_CHAIN_ID);
-        assert_eq!(storage.balance(acc.address, acc.chain_id).await, acc.balance);
+        assert_eq!(
+            storage.balance(acc.address, acc.chain_id).await,
+            acc.balance
+        );
         assert_eq!(storage.nonce(acc.address, acc.chain_id).await, acc.nonce);
 
-        storage.verify_used_accounts(&[
-            (fixture.balance_pubkey(acc.address, acc.chain_id), false, false),
-        ]);
+        storage.verify_used_accounts(&[(
+            fixture.balance_pubkey(acc.address, acc.chain_id),
+            false,
+            false,
+        )]);
         storage.verify_rent_changes(0, 0);
     }
 
@@ -1916,17 +2061,21 @@ mod tests {
         let storage = fixture.build_account_storage().await;
 
         let acc = &LEGACY_ACCOUNT;
-        assert_eq!(storage.balance(acc.address, LEGACY_CHAIN_ID).await, acc.balance);
+        assert_eq!(
+            storage.balance(acc.address, LEGACY_CHAIN_ID).await,
+            acc.balance
+        );
         assert_eq!(storage.nonce(acc.address, LEGACY_CHAIN_ID).await, acc.nonce);
 
         storage.verify_used_accounts(&[
-            (fixture.balance_pubkey(acc.address, LEGACY_CHAIN_ID), true, true),
+            (
+                fixture.balance_pubkey(acc.address, LEGACY_CHAIN_ID),
+                true,
+                true,
+            ),
             (fixture.legacy_pubkey(acc.address), true, true),
         ]);
-        storage.verify_rent_changes(
-            fixture.balance_rent(),
-            fixture.legacy_rent(None),
-        );
+        storage.verify_rent_changes(fixture.balance_rent(), fixture.legacy_rent(None));
     }
 
     #[tokio::test]
@@ -1937,20 +2086,37 @@ mod tests {
         let from = &ACTUAL_BALANCE;
         let amount = U256::new(10);
         assert_eq!(from.chain_id, LEGACY_CHAIN_ID);
-        assert_eq!(storage.transfer(from.address, MISSING_ADDRESS, from.chain_id, amount).await.is_ok(), true);
-
-        storage.verify_used_accounts(&[
-            (fixture.balance_pubkey(from.address, from.chain_id), true, false),
-            (fixture.balance_pubkey(MISSING_ADDRESS, LEGACY_CHAIN_ID), true, false),
-            (fixture.legacy_pubkey(MISSING_ADDRESS), false, false),
-        ]);
-        storage.verify_rent_changes(
-            fixture.balance_rent(),
-            0
+        assert_eq!(
+            storage
+                .transfer(from.address, MISSING_ADDRESS, from.chain_id, amount)
+                .await
+                .is_ok(),
+            true
         );
 
-        assert_eq!(storage.balance(from.address, from.chain_id).await, from.balance - amount);
-        assert_eq!(storage.balance(MISSING_ADDRESS, LEGACY_CHAIN_ID).await, amount);
+        storage.verify_used_accounts(&[
+            (
+                fixture.balance_pubkey(from.address, from.chain_id),
+                true,
+                false,
+            ),
+            (
+                fixture.balance_pubkey(MISSING_ADDRESS, LEGACY_CHAIN_ID),
+                true,
+                false,
+            ),
+            (fixture.legacy_pubkey(MISSING_ADDRESS), false, false),
+        ]);
+        storage.verify_rent_changes(fixture.balance_rent(), 0);
+
+        assert_eq!(
+            storage.balance(from.address, from.chain_id).await,
+            from.balance - amount
+        );
+        assert_eq!(
+            storage.balance(MISSING_ADDRESS, LEGACY_CHAIN_ID).await,
+            amount
+        );
     }
 
     #[tokio::test]
@@ -1961,19 +2127,36 @@ mod tests {
         let from = &ACTUAL_BALANCE2;
         let amount = U256::new(11);
         assert_eq!(from.chain_id, EXTRA_CHAIN_ID);
-        assert_eq!(storage.transfer(from.address, MISSING_ADDRESS, from.chain_id, amount).await.is_ok(), true);
-
-        storage.verify_used_accounts(&[
-            (fixture.balance_pubkey(from.address, from.chain_id), true, false),
-            (fixture.balance_pubkey(MISSING_ADDRESS, from.chain_id), true, false),
-        ]);
-        storage.verify_rent_changes(
-            fixture.balance_rent(),
-            0
+        assert_eq!(
+            storage
+                .transfer(from.address, MISSING_ADDRESS, from.chain_id, amount)
+                .await
+                .is_ok(),
+            true
         );
 
-        assert_eq!(storage.balance(from.address, from.chain_id).await, from.balance - amount);
-        assert_eq!(storage.balance(MISSING_ADDRESS, from.chain_id).await, amount);
+        storage.verify_used_accounts(&[
+            (
+                fixture.balance_pubkey(from.address, from.chain_id),
+                true,
+                false,
+            ),
+            (
+                fixture.balance_pubkey(MISSING_ADDRESS, from.chain_id),
+                true,
+                false,
+            ),
+        ]);
+        storage.verify_rent_changes(fixture.balance_rent(), 0);
+
+        assert_eq!(
+            storage.balance(from.address, from.chain_id).await,
+            from.balance - amount
+        );
+        assert_eq!(
+            storage.balance(MISSING_ADDRESS, from.chain_id).await,
+            amount
+        );
     }
 
     #[tokio::test]
@@ -1985,20 +2168,37 @@ mod tests {
         let to = &LEGACY_ACCOUNT;
         let amount = U256::new(10);
         assert_eq!(from.chain_id, LEGACY_CHAIN_ID);
-        assert_eq!(storage.transfer(from.address, to.address, from.chain_id, amount).await.is_ok(), true);
-
-        storage.verify_used_accounts(&[
-            (fixture.balance_pubkey(from.address, from.chain_id), true, false),
-            (fixture.balance_pubkey(to.address, LEGACY_CHAIN_ID), true, true),
-            (fixture.legacy_pubkey(to.address), true, true),
-        ]);
-        storage.verify_rent_changes(
-            fixture.balance_rent(),
-            fixture.legacy_rent(None)
+        assert_eq!(
+            storage
+                .transfer(from.address, to.address, from.chain_id, amount)
+                .await
+                .is_ok(),
+            true
         );
 
-        assert_eq!(storage.balance(from.address, from.chain_id).await, from.balance - amount);
-        assert_eq!(storage.balance(to.address, LEGACY_CHAIN_ID).await, to.balance + amount);
+        storage.verify_used_accounts(&[
+            (
+                fixture.balance_pubkey(from.address, from.chain_id),
+                true,
+                false,
+            ),
+            (
+                fixture.balance_pubkey(to.address, LEGACY_CHAIN_ID),
+                true,
+                true,
+            ),
+            (fixture.legacy_pubkey(to.address), true, true),
+        ]);
+        storage.verify_rent_changes(fixture.balance_rent(), fixture.legacy_rent(None));
+
+        assert_eq!(
+            storage.balance(from.address, from.chain_id).await,
+            from.balance - amount
+        );
+        assert_eq!(
+            storage.balance(to.address, LEGACY_CHAIN_ID).await,
+            to.balance + amount
+        );
     }
 
     #[tokio::test]
@@ -2006,14 +2206,23 @@ mod tests {
         let fixture = Fixture::new();
         let storage = fixture.build_account_storage().await;
 
-        assert_eq!(*storage.code(MISSING_ADDRESS).await, [0u8;0]);
-        assert_eq!(storage.storage(MISSING_ADDRESS, U256::ZERO).await, [0u8;32]);
-        storage.verify_used_accounts(&[
-            (fixture.contract_pubkey(MISSING_ADDRESS), false, false),
-        ]);
+        assert_eq!(*storage.code(MISSING_ADDRESS).await, [0u8; 0]);
+        assert_eq!(
+            storage.storage(MISSING_ADDRESS, U256::ZERO).await,
+            [0u8; 32]
+        );
+        storage.verify_used_accounts(&[(fixture.contract_pubkey(MISSING_ADDRESS), false, false)]);
         storage.verify_rent_changes(0, 0);
 
-        assert_eq!(storage.storage(MISSING_ADDRESS, U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128)).await, [0u8;32]);
+        assert_eq!(
+            storage
+                .storage(
+                    MISSING_ADDRESS,
+                    U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128)
+                )
+                .await,
+            [0u8; 32]
+        );
     }
 
     #[tokio::test]
@@ -2021,10 +2230,20 @@ mod tests {
         let fixture = Fixture::new();
         let storage = fixture.build_account_storage().await;
 
-        assert_eq!(*storage.code(LEGACY_CONTRACT.address).await, *LEGACY_CONTRACT.code);
-        assert_eq!(storage.storage(LEGACY_CONTRACT.address, U256::ZERO).await, [0u8;32]);
+        assert_eq!(
+            *storage.code(LEGACY_CONTRACT.address).await,
+            *LEGACY_CONTRACT.code
+        );
+        assert_eq!(
+            storage.storage(LEGACY_CONTRACT.address, U256::ZERO).await,
+            [0u8; 32]
+        );
         storage.verify_used_accounts(&[
-            (fixture.balance_pubkey(LEGACY_CONTRACT.address, LEGACY_CHAIN_ID), true, true),
+            (
+                fixture.balance_pubkey(LEGACY_CONTRACT.address, LEGACY_CHAIN_ID),
+                true,
+                true,
+            ),
             (fixture.contract_pubkey(LEGACY_CONTRACT.address), true, true),
         ]);
         storage.verify_rent_changes(
@@ -2040,9 +2259,16 @@ mod tests {
 
         let contract = &LEGACY_CONTRACT_NO_BALANCE;
         assert_eq!(*storage.code(contract.address).await, *contract.code);
-        assert_eq!(storage.storage(contract.address, U256::ZERO).await, [53u8;32]);
+        assert_eq!(
+            storage.storage(contract.address, U256::ZERO).await,
+            [53u8; 32]
+        );
         storage.verify_used_accounts(&[
-            (fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID), false, true),
+            (
+                fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
+                false,
+                true,
+            ),
             (fixture.contract_pubkey(contract.address), true, true),
         ]);
         storage.verify_rent_changes(
@@ -2057,11 +2283,12 @@ mod tests {
         let storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_SUICIDE;
-        assert_eq!(*storage.code(contract.address).await, [0u8;0]);
-        assert_eq!(storage.storage(contract.address, U256::ZERO).await, [0u8;32]);
-        storage.verify_used_accounts(&[
-            (fixture.contract_pubkey(contract.address), false, false),
-        ]);
+        assert_eq!(*storage.code(contract.address).await, [0u8; 0]);
+        assert_eq!(
+            storage.storage(contract.address, U256::ZERO).await,
+            [0u8; 32]
+        );
+        storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), false, false)]);
         storage.verify_rent_changes(0, 0);
     }
 
@@ -2071,15 +2298,22 @@ mod tests {
         let storage = fixture.build_account_storage().await;
 
         let contract = &LEGACY_SUICIDE;
-        assert_eq!(*storage.code(contract.address).await, [0u8;0]);
-        assert_eq!(storage.storage(contract.address, U256::ZERO).await, [0u8;32]);
+        assert_eq!(*storage.code(contract.address).await, [0u8; 0]);
+        assert_eq!(
+            storage.storage(contract.address, U256::ZERO).await,
+            [0u8; 32]
+        );
         storage.verify_used_accounts(&[
-            (fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID), true, true),
+            (
+                fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
+                true,
+                true,
+            ),
             (fixture.contract_pubkey(contract.address), true, true),
         ]);
         storage.verify_rent_changes(
             fixture.balance_rent() + fixture.contract_rent(contract.code),
-            fixture.legacy_rent(Some(contract.code.len()))
+            fixture.legacy_rent(Some(contract.code.len())),
         );
     }
 
@@ -2089,14 +2323,15 @@ mod tests {
         let mut storage = fixture.build_account_storage().await;
 
         let code = hex!("14643165").to_vec();
-        assert_eq!(storage.set_code(MISSING_ADDRESS, LEGACY_CHAIN_ID, code.clone()).await.is_ok(), true);
-        storage.verify_used_accounts(&[
-            (fixture.contract_pubkey(MISSING_ADDRESS), true, false),
-        ]);
-        storage.verify_rent_changes(
-            fixture.contract_rent(&code),
-            0
+        assert_eq!(
+            storage
+                .set_code(MISSING_ADDRESS, LEGACY_CHAIN_ID, code.clone())
+                .await
+                .is_ok(),
+            true
         );
+        storage.verify_used_accounts(&[(fixture.contract_pubkey(MISSING_ADDRESS), true, false)]);
+        storage.verify_rent_changes(fixture.contract_rent(&code), 0);
     }
 
     #[tokio::test]
@@ -2106,14 +2341,15 @@ mod tests {
 
         let code = hex!("14643165").to_vec();
         let acc = &ACTUAL_BALANCE;
-        assert_eq!(storage.set_code(acc.address, LEGACY_CHAIN_ID, code.clone()).await.is_ok(), true);
-        storage.verify_used_accounts(&[
-            (fixture.contract_pubkey(acc.address), true, false),
-        ]);
-        storage.verify_rent_changes(
-            fixture.contract_rent(&code),
-            0
+        assert_eq!(
+            storage
+                .set_code(acc.address, LEGACY_CHAIN_ID, code.clone())
+                .await
+                .is_ok(),
+            true
         );
+        storage.verify_used_accounts(&[(fixture.contract_pubkey(acc.address), true, false)]);
+        storage.verify_rent_changes(fixture.contract_rent(&code), 0);
     }
 
     #[tokio::test]
@@ -2124,12 +2360,17 @@ mod tests {
         let code = hex!("62345987").to_vec();
         let contract = &ACTUAL_CONTRACT;
         assert_eq!(
-            storage.set_code(contract.address, LEGACY_CHAIN_ID, code).await.unwrap_err().to_string(),
-            evm_loader::error::Error::AccountAlreadyInitialized(fixture.contract_pubkey(contract.address)).to_string()
+            storage
+                .set_code(contract.address, LEGACY_CHAIN_ID, code)
+                .await
+                .unwrap_err()
+                .to_string(),
+            evm_loader::error::Error::AccountAlreadyInitialized(
+                fixture.contract_pubkey(contract.address)
+            )
+            .to_string()
         );
-        storage.verify_used_accounts(&[
-            (fixture.contract_pubkey(contract.address), false, false),
-        ]);
+        storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), false, false)]);
         storage.verify_rent_changes(0, 0);
     }
 
@@ -2140,9 +2381,19 @@ mod tests {
 
         let code = hex!("37455846").to_vec();
         let contract = &LEGACY_ACCOUNT;
-        assert_eq!(storage.set_code(contract.address, LEGACY_CHAIN_ID, code.clone()).await.is_ok(), true);
+        assert_eq!(
+            storage
+                .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
+                .await
+                .is_ok(),
+            true
+        );
         storage.verify_used_accounts(&[
-            (fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID), true, true),
+            (
+                fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
+                true,
+                true,
+            ),
             (fixture.contract_pubkey(contract.address), true, true),
         ]);
         storage.verify_rent_changes(
@@ -2159,11 +2410,22 @@ mod tests {
         let code = hex!("13412971").to_vec();
         let contract = &LEGACY_CONTRACT;
         assert_eq!(
-            storage.set_code(contract.address, LEGACY_CHAIN_ID, code).await.unwrap_err().to_string(),
-            evm_loader::error::Error::AccountAlreadyInitialized(fixture.contract_pubkey(contract.address)).to_string()
+            storage
+                .set_code(contract.address, LEGACY_CHAIN_ID, code)
+                .await
+                .unwrap_err()
+                .to_string(),
+            evm_loader::error::Error::AccountAlreadyInitialized(
+                fixture.contract_pubkey(contract.address)
+            )
+            .to_string()
         );
         storage.verify_used_accounts(&[
-            (fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID), true, true),
+            (
+                fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
+                true,
+                true,
+            ),
             (fixture.contract_pubkey(contract.address), true, true),
         ]);
         storage.verify_rent_changes(
@@ -2181,12 +2443,17 @@ mod tests {
         let contract = &ACTUAL_SUICIDE;
         // TODO: Should we deploy new contract by the previous address?
         assert_eq!(
-            storage.set_code(contract.address, LEGACY_CHAIN_ID, code).await.unwrap_err().to_string(),
-            evm_loader::error::Error::AccountAlreadyInitialized(fixture.contract_pubkey(contract.address)).to_string()
+            storage
+                .set_code(contract.address, LEGACY_CHAIN_ID, code)
+                .await
+                .unwrap_err()
+                .to_string(),
+            evm_loader::error::Error::AccountAlreadyInitialized(
+                fixture.contract_pubkey(contract.address)
+            )
+            .to_string()
         );
-        storage.verify_used_accounts(&[
-            (fixture.contract_pubkey(contract.address), false, false),
-        ]);
+        storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), false, false)]);
         storage.verify_rent_changes(0, 0);
     }
 
@@ -2199,11 +2466,22 @@ mod tests {
         let contract = &LEGACY_SUICIDE;
         // TODO: Should we deploy new contract by the previous address?
         assert_eq!(
-            storage.set_code(contract.address, LEGACY_CHAIN_ID, code).await.unwrap_err().to_string(),
-            evm_loader::error::Error::AccountAlreadyInitialized(fixture.contract_pubkey(contract.address)).to_string()
+            storage
+                .set_code(contract.address, LEGACY_CHAIN_ID, code)
+                .await
+                .unwrap_err()
+                .to_string(),
+            evm_loader::error::Error::AccountAlreadyInitialized(
+                fixture.contract_pubkey(contract.address)
+            )
+            .to_string()
         );
         storage.verify_used_accounts(&[
-            (fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID), true, true),
+            (
+                fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
+                true,
+                true,
+            ),
             (fixture.contract_pubkey(contract.address), true, true),
         ]);
         storage.verify_rent_changes(
@@ -2217,10 +2495,17 @@ mod tests {
         let fixture = Fixture::new();
         let storage = fixture.build_account_storage().await;
 
-        assert_eq!(storage.storage(MISSING_ADDRESS, MISSING_STORAGE_INDEX).await, [0u8;32]);
-        storage.verify_used_accounts(&[
-            (fixture.storage_pubkey(MISSING_ADDRESS, MISSING_STORAGE_INDEX), false, false),
-        ]);
+        assert_eq!(
+            storage
+                .storage(MISSING_ADDRESS, MISSING_STORAGE_INDEX)
+                .await,
+            [0u8; 32]
+        );
+        storage.verify_used_accounts(&[(
+            fixture.storage_pubkey(MISSING_ADDRESS, MISSING_STORAGE_INDEX),
+            false,
+            false,
+        )]);
         storage.verify_rent_changes(0, 0);
     }
 
@@ -2230,10 +2515,17 @@ mod tests {
         let storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_CONTRACT;
-        assert_eq!(storage.storage(contract.address, MISSING_STORAGE_INDEX).await, [0u8;32]);
-        storage.verify_used_accounts(&[
-            (fixture.storage_pubkey(contract.address, MISSING_STORAGE_INDEX), false, false),
-        ]);
+        assert_eq!(
+            storage
+                .storage(contract.address, MISSING_STORAGE_INDEX)
+                .await,
+            [0u8; 32]
+        );
+        storage.verify_used_accounts(&[(
+            fixture.storage_pubkey(contract.address, MISSING_STORAGE_INDEX),
+            false,
+            false,
+        )]);
         storage.verify_rent_changes(0, 0);
     }
 
@@ -2243,10 +2535,17 @@ mod tests {
         let storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_CONTRACT;
-        assert_eq!(storage.storage(contract.address, ACTUAL_STORAGE_INDEX).await, contract.actual_storage.values[0].1);
-        storage.verify_used_accounts(&[
-            (fixture.storage_pubkey(contract.address, ACTUAL_STORAGE_INDEX), false, false),
-        ]);
+        assert_eq!(
+            storage
+                .storage(contract.address, ACTUAL_STORAGE_INDEX)
+                .await,
+            contract.actual_storage.values[0].1
+        );
+        storage.verify_used_accounts(&[(
+            fixture.storage_pubkey(contract.address, ACTUAL_STORAGE_INDEX),
+            false,
+            false,
+        )]);
         storage.verify_rent_changes(0, 0);
     }
 
@@ -2254,21 +2553,40 @@ mod tests {
     async fn test_modify_new_storage_for_actual_contract() {
         let fixture = Fixture::new();
         let mut storage = fixture.build_account_storage().await;
-        
+
         let contract = &ACTUAL_CONTRACT;
-        assert_eq!(storage.storage(contract.address, ACTUAL_STORAGE_INDEX+1).await, [0u8;32]);
+        assert_eq!(
+            storage
+                .storage(contract.address, ACTUAL_STORAGE_INDEX + 1)
+                .await,
+            [0u8; 32]
+        );
         storage.verify_rent_changes(0, 0);
 
-        let new_value = [0x01u8;32];
-        assert_eq!(storage.set_storage(contract.address, ACTUAL_STORAGE_INDEX+1, new_value.clone()).await.is_ok(), true);
-        assert_eq!(storage.storage(contract.address, ACTUAL_STORAGE_INDEX+1).await, new_value);
-        storage.verify_used_accounts(&[
-            (fixture.storage_pubkey(contract.address, ACTUAL_STORAGE_INDEX), true, false),
-        ]);
-        storage.verify_rent_changes(
-            fixture.storage_rent(2),
-            fixture.storage_rent(1),
+        let new_value = [0x01u8; 32];
+        assert_eq!(
+            storage
+                .set_storage(
+                    contract.address,
+                    ACTUAL_STORAGE_INDEX + 1,
+                    new_value.clone()
+                )
+                .await
+                .is_ok(),
+            true
         );
+        assert_eq!(
+            storage
+                .storage(contract.address, ACTUAL_STORAGE_INDEX + 1)
+                .await,
+            new_value
+        );
+        storage.verify_used_accounts(&[(
+            fixture.storage_pubkey(contract.address, ACTUAL_STORAGE_INDEX),
+            true,
+            false,
+        )]);
+        storage.verify_rent_changes(fixture.storage_rent(2), fixture.storage_rent(1));
     }
 
     #[tokio::test]
@@ -2277,16 +2595,26 @@ mod tests {
         let mut storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_CONTRACT;
-        let new_value = [0x02u8;32];
-        assert_eq!(storage.set_storage(contract.address, MISSING_STORAGE_INDEX, new_value.clone()).await.is_ok(), true);
-        assert_eq!(storage.storage(contract.address, MISSING_STORAGE_INDEX).await, new_value);
-        storage.verify_used_accounts(&[
-            (fixture.storage_pubkey(contract.address, MISSING_STORAGE_INDEX), true, false),
-        ]);
-        storage.verify_rent_changes(
-            fixture.storage_rent(1),
-            0,
+        let new_value = [0x02u8; 32];
+        assert_eq!(
+            storage
+                .set_storage(contract.address, MISSING_STORAGE_INDEX, new_value.clone())
+                .await
+                .is_ok(),
+            true
         );
+        assert_eq!(
+            storage
+                .storage(contract.address, MISSING_STORAGE_INDEX)
+                .await,
+            new_value
+        );
+        storage.verify_used_accounts(&[(
+            fixture.storage_pubkey(contract.address, MISSING_STORAGE_INDEX),
+            true,
+            false,
+        )]);
+        storage.verify_rent_changes(fixture.storage_rent(1), 0);
     }
 
     #[tokio::test]
@@ -2295,13 +2623,17 @@ mod tests {
         let mut storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_CONTRACT;
-        let new_value = [0x03u8;32];
+        let new_value = [0x03u8; 32];
         let index = U256::new(0);
-        assert_eq!(storage.set_storage(contract.address, index, new_value.clone()).await.is_ok(), true);
+        assert_eq!(
+            storage
+                .set_storage(contract.address, index, new_value.clone())
+                .await
+                .is_ok(),
+            true
+        );
         assert_eq!(storage.storage(contract.address, index).await, new_value);
-        storage.verify_used_accounts(&[
-            (fixture.contract_pubkey(contract.address), true, false),
-        ]);
+        storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), true, false)]);
         storage.verify_rent_changes(0, 0);
     }
 
@@ -2311,15 +2643,21 @@ mod tests {
         let storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_CONTRACT;
-        assert_eq!(storage.storage(contract.address, LEGACY_STORAGE_INDEX).await, contract.legacy_storage.values[0].1);
+        assert_eq!(
+            storage
+                .storage(contract.address, LEGACY_STORAGE_INDEX)
+                .await,
+            contract.legacy_storage.values[0].1
+        );
         storage.verify_used_accounts(&[
             (fixture.contract_pubkey(contract.address), false, true),
-            (fixture.storage_pubkey(contract.address, LEGACY_STORAGE_INDEX), true, true),
+            (
+                fixture.storage_pubkey(contract.address, LEGACY_STORAGE_INDEX),
+                true,
+                true,
+            ),
         ]);
-        storage.verify_rent_changes(
-            fixture.storage_rent(1),
-            fixture.legacy_storage_rent(1),
-        )
+        storage.verify_rent_changes(fixture.storage_rent(1), fixture.legacy_storage_rent(1))
     }
 
     #[tokio::test]
@@ -2328,15 +2666,21 @@ mod tests {
         let storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_CONTRACT;
-        assert_eq!(storage.storage(contract.address, OUTDATE_STORAGE_INDEX).await, [0u8;32]);
+        assert_eq!(
+            storage
+                .storage(contract.address, OUTDATE_STORAGE_INDEX)
+                .await,
+            [0u8; 32]
+        );
         storage.verify_used_accounts(&[
             (fixture.contract_pubkey(contract.address), false, true),
-            (fixture.storage_pubkey(contract.address, OUTDATE_STORAGE_INDEX), true, true),
+            (
+                fixture.storage_pubkey(contract.address, OUTDATE_STORAGE_INDEX),
+                true,
+                true,
+            ),
         ]);
-        storage.verify_rent_changes(
-            0,
-            fixture.legacy_storage_rent(1),
-        );
+        storage.verify_rent_changes(0, fixture.legacy_storage_rent(1));
     }
 
     #[tokio::test]
@@ -2345,10 +2689,17 @@ mod tests {
         let storage = fixture.build_account_storage().await;
 
         let contract = &LEGACY_CONTRACT;
-        assert_eq!(storage.storage(contract.address, MISSING_STORAGE_INDEX).await, [0u8;32]);
-        storage.verify_used_accounts(&[
-            (fixture.storage_pubkey(contract.address, MISSING_STORAGE_INDEX), false, false),
-        ]);
+        assert_eq!(
+            storage
+                .storage(contract.address, MISSING_STORAGE_INDEX)
+                .await,
+            [0u8; 32]
+        );
+        storage.verify_used_accounts(&[(
+            fixture.storage_pubkey(contract.address, MISSING_STORAGE_INDEX),
+            false,
+            false,
+        )]);
         storage.verify_rent_changes(0, 0);
     }
 
@@ -2358,11 +2709,24 @@ mod tests {
         let storage = fixture.build_account_storage().await;
 
         let contract = &LEGACY_CONTRACT;
-        assert_eq!(storage.storage(contract.address, LEGACY_STORAGE_INDEX).await, contract.legacy_storage.values[0].1);
+        assert_eq!(
+            storage
+                .storage(contract.address, LEGACY_STORAGE_INDEX)
+                .await,
+            contract.legacy_storage.values[0].1
+        );
         storage.verify_used_accounts(&[
             (fixture.contract_pubkey(contract.address), true, true),
-            (fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID), true, true),
-            (fixture.storage_pubkey(contract.address, LEGACY_STORAGE_INDEX), true, true),
+            (
+                fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
+                true,
+                true,
+            ),
+            (
+                fixture.storage_pubkey(contract.address, LEGACY_STORAGE_INDEX),
+                true,
+                true,
+            ),
         ]);
         storage.verify_rent_changes(
             fixture.balance_rent() + fixture.contract_rent(contract.code) + fixture.storage_rent(1),
@@ -2376,11 +2740,24 @@ mod tests {
         let storage = fixture.build_account_storage().await;
 
         let contract = &LEGACY_CONTRACT;
-        assert_eq!(storage.storage(contract.address, OUTDATE_STORAGE_INDEX).await, [0u8;32]);
+        assert_eq!(
+            storage
+                .storage(contract.address, OUTDATE_STORAGE_INDEX)
+                .await,
+            [0u8; 32]
+        );
         storage.verify_used_accounts(&[
             (fixture.contract_pubkey(contract.address), true, true),
-            (fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID), true, true),
-            (fixture.storage_pubkey(contract.address, OUTDATE_STORAGE_INDEX), true, true),
+            (
+                fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
+                true,
+                true,
+            ),
+            (
+                fixture.storage_pubkey(contract.address, OUTDATE_STORAGE_INDEX),
+                true,
+                true,
+            ),
         ]);
         storage.verify_rent_changes(
             fixture.balance_rent() + fixture.contract_rent(contract.code),
@@ -2394,10 +2771,17 @@ mod tests {
         let storage = fixture.build_account_storage().await;
 
         let contract = &LEGACY_SUICIDE;
-        assert_eq!(storage.storage(contract.address, MISSING_STORAGE_INDEX).await, [0u8;32]);
-        storage.verify_used_accounts(&[
-            (fixture.storage_pubkey(contract.address, MISSING_STORAGE_INDEX), false, false),
-        ]);
+        assert_eq!(
+            storage
+                .storage(contract.address, MISSING_STORAGE_INDEX)
+                .await,
+            [0u8; 32]
+        );
+        storage.verify_used_accounts(&[(
+            fixture.storage_pubkey(contract.address, MISSING_STORAGE_INDEX),
+            false,
+            false,
+        )]);
         storage.verify_rent_changes(0, 0);
     }
 
@@ -2407,11 +2791,24 @@ mod tests {
         let storage = fixture.build_account_storage().await;
 
         let contract = &LEGACY_SUICIDE;
-        assert_eq!(storage.storage(contract.address, OUTDATE_STORAGE_INDEX).await, [0u8;32]);
+        assert_eq!(
+            storage
+                .storage(contract.address, OUTDATE_STORAGE_INDEX)
+                .await,
+            [0u8; 32]
+        );
         storage.verify_used_accounts(&[
             (fixture.contract_pubkey(contract.address), true, true),
-            (fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID), true, true),
-            (fixture.storage_pubkey(contract.address, OUTDATE_STORAGE_INDEX), true, true),
+            (
+                fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
+                true,
+                true,
+            ),
+            (
+                fixture.storage_pubkey(contract.address, OUTDATE_STORAGE_INDEX),
+                true,
+                true,
+            ),
         ]);
         storage.verify_rent_changes(
             fixture.balance_rent() + fixture.contract_rent(contract.code),

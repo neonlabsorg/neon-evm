@@ -80,7 +80,9 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
             return Err(Error::InsufficientBalance(source, chain_id, value));
         }
 
-        self.backend.transfer(source, target, chain_id, value).await?;
+        self.backend
+            .transfer(source, target, chain_id, value)
+            .await?;
         Ok(())
     }
 
@@ -188,14 +190,16 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
     }
 
     fn revert_snapshot(&mut self) {
-        self.depth = self.depth
+        self.depth = self
+            .depth
             .checked_sub(1)
             .expect("Fatal Error: Inconsistent EVM Call Stack");
         self.backend.revert_snapshot();
     }
 
     fn commit_snapshot(&mut self) {
-        self.depth = self.depth
+        self.depth = self
+            .depth
             .checked_sub(1)
             .expect("Fatal Error: Inconsistent EVM Call Stack");
         self.backend.commit_snapshot();
@@ -232,7 +236,8 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         _emulated_internally: bool,
     ) -> Result<()> {
         self.backend
-            .execute_external_instruction(instruction, seeds, fee).await?;
+            .execute_external_instruction(instruction, seeds, fee)
+            .await?;
         Ok(())
     }
 }

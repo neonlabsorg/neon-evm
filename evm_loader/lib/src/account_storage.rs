@@ -312,7 +312,6 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         pubkey: Pubkey,
         account: &Account,
     ) -> NeonResult<&RefCell<AccountData>> {
-        println!("Add account: {:?} {:?}", pubkey, account);
         let mut account = account.clone();
         let info = account_info(&pubkey, &mut account);
         if *info.owner != self.program_id {
@@ -323,7 +322,6 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                 .insert(pubkey, Box::new(RefCell::new(account_data))))
         } else {
             let tag = evm_loader::account::tag(&self.program_id, &info)?;
-            println!(" - tag: {tag}");
             match tag {
                 evm_loader::account::TAG_ACCOUNT_BALANCE
                 | evm_loader::account::TAG_ACCOUNT_CONTRACT
@@ -352,7 +350,6 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     }
 
     fn add_empty_account(&self, pubkey: Pubkey) -> NeonResult<&RefCell<AccountData>> {
-        println!("Add empty account: {:?}", pubkey);
         let account_data = AccountData::new(pubkey);
         self.mark_account(pubkey, false, false);
         Ok(self
@@ -393,17 +390,14 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             Some(account) => self.add_account(pubkey, account).await,
             None => {
                 if chain_id == self.default_chain_id() {
-                    println!("Find account on legacy address");
                     let (legacy_pubkey, _) = address.find_solana_address(self.program_id());
                     if self.accounts.get(&legacy_pubkey).is_some() {
                         // We already have information about contract account (empty or filled with data).
                         // So the balance should be updated, but it is missed. So return the empty account.
-                        println!("Legacy account is already added");
                         self.add_empty_account(pubkey)
                     } else {
                         // We didn't process contract account and we doesn't have any information about it.
                         // So we can try to process account which can be a legacy.
-                        println!("Legacy account is not added");
                         match self._get_account_from_rpc(legacy_pubkey).await? {
                             Some(legacy_account) => {
                                 self.add_account(legacy_pubkey, legacy_account).await?;
@@ -515,12 +509,6 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         } else {
             let account_info = storage_data.into_account_info();
             let storage = StorageCell::from_account(self.program_id(), account_info)?;
-            println!(
-                "Storage: ({:?},{:?}) -> {:?}",
-                address,
-                index,
-                storage.cells()
-            );
             Ok(action(&storage))
         }
     }
@@ -807,6 +795,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         chain_id: u64,
         value: U256,
     ) -> evm_loader::error::Result<()> {
+        info!("mint {address}:{chain_id} {value}");
         let mut balance_data = self
             .get_balance_account(address, chain_id)
             .await
@@ -1106,20 +1095,42 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         chain_id: u64,
         code: Vec<u8>,
     ) -> evm_loader::error::Result<()> {
+        info!("set_code {address} -> {} bytes", code.len());
         {
             let mut account_data = self
                 .get_contract_account(address)
                 .await
                 .map_err(map_neon_error)?
                 .borrow_mut();
+            let pubkey = account_data.pubkey;
 
-            if account_data.is_busy() {
-                return Err(evm_loader::error::Error::AccountAlreadyInitialized(
-                    account_data.pubkey,
-                ));
-            };
-
-            self.create_ethereum_contract(&mut account_data, address, chain_id, 0, &code)?;
+            if account_data.is_empty() {
+                self.create_ethereum_contract(&mut account_data, address, chain_id, 0, &code)?;
+            } else {
+                let contract = ContractAccount::from_account(
+                    self.program_id(),
+                    account_data.into_account_info(),
+                )?;
+                if contract.code().len() > 0 {
+                    return Err(evm_loader::error::Error::AccountAlreadyInitialized(
+                        account_data.pubkey,
+                    ));
+                }
+                let new_account_data = RefCell::new(AccountData::new(pubkey));
+                {
+                    let mut new_account = new_account_data.borrow_mut();
+                    let mut new_contract = self.create_ethereum_contract(
+                        &mut new_account,
+                        address,
+                        chain_id,
+                        contract.generation(),
+                        &code,
+                    )?;
+                    let storage = *contract.storage();
+                    new_contract.set_storage_multiple_values(0, &storage);
+                }
+                *account_data = new_account_data.replace_with(|_| AccountData::new(pubkey));
+            }
         }
 
         let realloc = ContractAccount::required_account_size(&code)
@@ -1135,6 +1146,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         index: U256,
         value: [u8; 32],
     ) -> evm_loader::error::Result<()> {
+        info!("set_storage {address} -> {index} = {}", hex::encode(value));
         const STATIC_STORAGE_LIMIT: U256 = U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128);
 
         if index < STATIC_STORAGE_LIMIT {
@@ -1144,11 +1156,11 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
                 .map_err(map_neon_error)?
                 .borrow_mut();
 
-            let mut contract = ContractAccount::from_account(
-                self.program_id(),
-                contract_data.into_account_info(),
-            )?;
-
+            let mut contract = if contract_data.is_empty() {
+                self.create_ethereum_contract(&mut contract_data, address, 0, 0, &[])?
+            } else {
+                ContractAccount::from_account(self.program_id(), contract_data.into_account_info())?
+            };
             contract.set_storage_value(index.as_usize(), &value);
             self.mark_account(contract_data.pubkey, true, false);
         } else {
@@ -1174,6 +1186,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         address: Address,
         chain_id: u64,
     ) -> evm_loader::error::Result<()> {
+        info!("nonce increment {address} {chain_id}");
         let mut balance_data = self
             .get_balance_account(address, chain_id)
             .await
@@ -1205,6 +1218,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         chain_id: u64,
         value: U256,
     ) -> evm_loader::error::Result<()> {
+        info!("burn {address} {chain_id} {value}");
         let mut balance_data = self
             .get_balance_account(address, chain_id)
             .await
@@ -1229,11 +1243,13 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
     }
 
     fn snapshot(&mut self) {
+        info!("snapshot");
         self.call_stack.push(self.accounts.clone());
     }
 
     fn revert_snapshot(&mut self) {
-        self.call_stack.pop().expect("No snapshots to revert");
+        info!("revert_snapshot");
+        self.accounts = self.call_stack.pop().expect("No snapshots to revert");
 
         if self.execute_status.external_solana_calls {
             self.execute_status.reverts_before_solana_calls = true;
@@ -1243,7 +1259,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
     }
 
     fn commit_snapshot(&mut self) {
-        self.accounts = self.call_stack.pop().expect("No snapshots to commit");
+        self.call_stack.pop().expect("No snapshots to commit");
     }
 }
 
@@ -2444,17 +2460,16 @@ mod tests {
         // TODO: Should we deploy new contract by the previous address?
         assert_eq!(
             storage
-                .set_code(contract.address, LEGACY_CHAIN_ID, code)
+                .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
                 .await
-                .unwrap_err()
-                .to_string(),
-            evm_loader::error::Error::AccountAlreadyInitialized(
-                fixture.contract_pubkey(contract.address)
-            )
-            .to_string()
+                .is_ok(),
+            true,
         );
-        storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), false, false)]);
-        storage.verify_rent_changes(0, 0);
+        storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), true, false)]);
+        storage.verify_rent_changes(
+            fixture.contract_rent(&code),
+            fixture.contract_rent(contract.code),
+        );
     }
 
     #[tokio::test]
@@ -2467,14 +2482,10 @@ mod tests {
         // TODO: Should we deploy new contract by the previous address?
         assert_eq!(
             storage
-                .set_code(contract.address, LEGACY_CHAIN_ID, code)
+                .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
                 .await
-                .unwrap_err()
-                .to_string(),
-            evm_loader::error::Error::AccountAlreadyInitialized(
-                fixture.contract_pubkey(contract.address)
-            )
-            .to_string()
+                .is_ok(),
+            true,
         );
         storage.verify_used_accounts(&[
             (
@@ -2485,7 +2496,7 @@ mod tests {
             (fixture.contract_pubkey(contract.address), true, true),
         ]);
         storage.verify_rent_changes(
-            fixture.balance_rent() + fixture.contract_rent(contract.code),
+            fixture.balance_rent() + fixture.contract_rent(&code),
             fixture.legacy_rent(Some(contract.code.len())),
         );
     }

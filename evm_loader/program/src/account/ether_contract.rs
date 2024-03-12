@@ -203,7 +203,8 @@ impl<'a> ContractAccount<'a> {
     }
 
     #[inline]
-    fn storage(&self) -> Ref<Storage> {
+    #[must_use]
+    pub fn storage(&self) -> Ref<Storage> {
         let offset = self.storage_offset();
         super::section(&self.account, offset)
     }

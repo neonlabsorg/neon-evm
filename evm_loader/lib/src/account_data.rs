@@ -2,7 +2,7 @@ pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use solana_sdk::system_program;
 use solana_sdk::{account::Account, account_info::AccountInfo, pubkey::Pubkey};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct AccountData {
     original_length: u32,

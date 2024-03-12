@@ -45,8 +45,8 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         Ok(nonce)
     }
 
-    fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
-        self.backend.increment_nonce(address, chain_id)?;
+    async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
+        self.backend.increment_nonce(address, chain_id).await?;
         Ok(())
     }
 
@@ -80,12 +80,12 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
             return Err(Error::InsufficientBalance(source, chain_id, value));
         }
 
-        self.backend.transfer(source, target, chain_id, value)?;
+        self.backend.transfer(source, target, chain_id, value).await?;
         Ok(())
     }
 
     async fn burn(&mut self, source: Address, chain_id: u64, value: U256) -> Result<()> {
-        self.backend.burn(source, chain_id, value)?;
+        self.backend.burn(source, chain_id, value).await?;
         Ok(())
     }
 
@@ -101,7 +101,7 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         Ok(self.backend.code(from_address).await)
     }
 
-    fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
+    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
         if code.starts_with(&[0xEF]) {
             // https://eips.ethereum.org/EIPS/eip-3541
             return Err(Error::EVMObjectFormatNotSupported(address));
@@ -112,7 +112,7 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
             return Err(Error::ContractCodeSizeLimit(address, code.len()));
         }
 
-        self.backend.set_code(address, chain_id, code)?;
+        self.backend.set_code(address, chain_id, code).await?;
         Ok(())
     }
 
@@ -124,8 +124,8 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         Ok(self.backend.storage(from_address, from_index).await)
     }
 
-    fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
-        self.backend.set_storage(address, index, value)?;
+    async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
+        self.backend.set_storage(address, index, value).await?;
         Ok(())
     }
 
@@ -184,16 +184,21 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
 
     fn snapshot(&mut self) {
         self.depth += 1;
+        self.backend.snapshot();
     }
 
     fn revert_snapshot(&mut self) {
-        panic!("revert snapshot not implemented for SyncedExecutorState");
+        self.depth = self.depth
+            .checked_sub(1)
+            .expect("Fatal Error: Inconsistent EVM Call Stack");
+        self.backend.revert_snapshot();
     }
 
     fn commit_snapshot(&mut self) {
-        self.depth
+        self.depth = self.depth
             .checked_sub(1)
             .expect("Fatal Error: Inconsistent EVM Call Stack");
+        self.backend.commit_snapshot();
     }
 
     async fn precompile_extension(
@@ -219,7 +224,7 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         self.backend.contract_chain_id(contract).await
     }
 
-    fn queue_external_instruction(
+    async fn queue_external_instruction(
         &mut self,
         instruction: Instruction,
         seeds: Vec<Vec<Vec<u8>>>,
@@ -227,7 +232,7 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         _emulated_internally: bool,
     ) -> Result<()> {
         self.backend
-            .execute_external_instruction(instruction, seeds, fee)?;
+            .execute_external_instruction(instruction, seeds, fee).await?;
         Ok(())
     }
 }

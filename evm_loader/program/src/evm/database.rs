@@ -18,7 +18,7 @@ pub trait Database {
     async fn contract_chain_id(&self, address: Address) -> Result<u64>;
 
     async fn nonce(&self, address: Address, chain_id: u64) -> Result<u64>;
-    fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()>;
+    async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()>;
 
     async fn balance(&self, address: Address, chain_id: u64) -> Result<U256>;
     async fn transfer(
@@ -32,11 +32,11 @@ pub trait Database {
 
     async fn code_size(&self, address: Address) -> Result<usize>;
     async fn code(&self, address: Address) -> Result<Buffer>;
-    fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()>;
+    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()>;
     fn selfdestruct(&mut self, address: Address) -> Result<()>;
 
     async fn storage(&self, address: Address, index: U256) -> Result<[u8; 32]>;
-    fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
+    async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
 
     async fn block_hash(&self, number: U256) -> Result<[u8; 32]>;
     fn block_number(&self) -> Result<U256>;
@@ -53,7 +53,7 @@ pub trait Database {
     fn revert_snapshot(&mut self);
     fn commit_snapshot(&mut self);
 
-    fn queue_external_instruction(
+    async fn queue_external_instruction(
         &mut self,
         instruction: Instruction,
         seeds: Vec<Vec<Vec<u8>>>,
@@ -182,7 +182,7 @@ mod tests {
                 .unwrap_or_default())
         }
 
-        fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
+        async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
             unimplemented!();
         }
 
@@ -210,7 +210,7 @@ mod tests {
             unimplemented!();
         }
 
-        fn queue_external_instruction(
+        async fn queue_external_instruction(
             &mut self,
             instruction: Instruction,
             seeds: Vec<Vec<Vec<u8>>>,
@@ -250,7 +250,7 @@ mod tests {
                 .unwrap_or_default())
         }
 
-        fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
+        async fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
             unimplemented!();
         }
 
@@ -262,7 +262,7 @@ mod tests {
             unimplemented!();
         }
 
-        fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
+        async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
             unimplemented!();
         }
 

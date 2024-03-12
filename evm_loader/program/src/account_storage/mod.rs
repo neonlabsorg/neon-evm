@@ -98,22 +98,27 @@ pub trait AccountStorage {
     ) -> Result<()>;
 }
 
+#[maybe_async(?Send)]
 pub trait SyncedAccountStorage {
-    fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()>;
-    fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
-    fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()>;
-    fn transfer(
+    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()>;
+    async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
+    async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()>;
+    async fn transfer(
         &mut self,
         from_address: Address,
         to_address: Address,
         chain_id: u64,
         value: U256,
     ) -> Result<()>;
-    fn burn(&mut self, address: Address, chain_id: u64, value: U256) -> Result<()>;
-    fn execute_external_instruction(
+    async fn burn(&mut self, address: Address, chain_id: u64, value: U256) -> Result<()>;
+    async fn execute_external_instruction(
         &mut self,
         instruction: Instruction,
         seeds: Vec<Vec<Vec<u8>>>,
         fee: u64,
     ) -> Result<()>;
+
+    fn snapshot(&mut self);
+    fn revert_snapshot(&mut self);
+    fn commit_snapshot(&mut self);
 }

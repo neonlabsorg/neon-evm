@@ -57,7 +57,7 @@ pub async fn metaplex<State: Database>(
             let symbol = read_string(input, 64, 256)?;
             let uri = read_string(input, 96, 1024)?;
 
-            create_metadata(context, state, mint, name, symbol, uri)
+            create_metadata(context, state, mint, name, symbol, uri).await
         }
         [0x4a, 0xe8, 0xb6, 0x6b] => {
             // "createMasterEdition(bytes32,uint64)"
@@ -68,7 +68,7 @@ pub async fn metaplex<State: Database>(
             let mint = read_pubkey(input)?;
             let max_supply = read_u64(&input[32..])?;
 
-            create_master_edition(context, state, mint, Some(max_supply))
+            create_master_edition(context, state, mint, Some(max_supply)).await
         }
         [0xf7, 0xb6, 0x37, 0xbb] => {
             // "isInitialized(bytes32)"
@@ -142,7 +142,8 @@ fn read_string(input: &[u8], offset_position: usize, max_length: usize) -> Resul
     String::from_utf8(data).map_err(|_| Error::Custom("Invalid utf8 string".to_string()))
 }
 
-fn create_metadata<State: Database>(
+#[maybe_async]
+async fn create_metadata<State: Database>(
     context: &crate::evm::Context,
     state: &mut State,
     mint: Pubkey,
@@ -192,12 +193,13 @@ fn create_metadata<State: Database>(
     );
 
     let fee = state.rent().minimum_balance(MAX_METADATA_LEN) + CREATE_FEE;
-    state.queue_external_instruction(instruction, vec![seeds], fee, true)?;
+    state.queue_external_instruction(instruction, vec![seeds], fee, true).await?;
 
     Ok(metadata_pubkey.to_bytes().to_vec())
 }
 
-fn create_master_edition<State: Database>(
+#[maybe_async]
+async fn create_master_edition<State: Database>(
     context: &crate::evm::Context,
     state: &mut State,
     mint: Pubkey,
@@ -227,7 +229,7 @@ fn create_master_edition<State: Database>(
     );
 
     let fee = state.rent().minimum_balance(MAX_MASTER_EDITION_LEN) + CREATE_FEE;
-    state.queue_external_instruction(instruction, vec![seeds], fee, true)?;
+    state.queue_external_instruction(instruction, vec![seeds], fee, true).await?;
 
     Ok(edition_pubkey.to_bytes().to_vec())
 }

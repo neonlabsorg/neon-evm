@@ -300,7 +300,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         backend.snapshot();
 
-        backend.increment_nonce(target, chain_id)?;
+        backend.increment_nonce(target, chain_id).await?;
         backend
             .transfer(origin, target, chain_id, trx.value())
             .await?;

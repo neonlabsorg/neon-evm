@@ -115,7 +115,7 @@ pub async fn spl_token<State: Database>(
             }
 
             let account = read_pubkey(input)?;
-            close_account(context, state, account)
+            close_account(context, state, account).await
         }
         [0xa9, 0xc1, 0x58, 0x06] => {
             // approve(bytes32 source, bytes32 target, uint64 amount)
@@ -126,7 +126,7 @@ pub async fn spl_token<State: Database>(
             let source = read_pubkey(input)?;
             let target = read_pubkey(&input[32..])?;
             let amount = read_u64(&input[64..])?;
-            approve(context, state, source, target, amount)
+            approve(context, state, source, target, amount).await
         }
         [0xb7, 0x5c, 0x7d, 0xc6] => {
             // revoke(bytes32 source)
@@ -135,7 +135,7 @@ pub async fn spl_token<State: Database>(
             }
 
             let source = read_pubkey(input)?;
-            revoke(context, state, source)
+            revoke(context, state, source).await
         }
         [0x78, 0x42, 0x3b, 0xcf] => {
             // transfer(bytes32 source, bytes32 target, uint64 amount)
@@ -146,7 +146,7 @@ pub async fn spl_token<State: Database>(
             let source = read_pubkey(input)?;
             let target = read_pubkey(&input[32..])?;
             let amount = read_u64(&input[64..])?;
-            transfer(context, state, source, target, amount)
+            transfer(context, state, source, target, amount).await
         }
         [0x7c, 0x0e, 0xb8, 0x10] => {
             // transferWithSeed(bytes32,bytes32,bytes32,uint64)
@@ -159,7 +159,7 @@ pub async fn spl_token<State: Database>(
             let target = read_pubkey(&input[64..])?;
             let amount = read_u64(&input[96..])?;
 
-            transfer_with_seed(context, state, seed, source, target, amount)
+            transfer_with_seed(context, state, seed, source, target, amount).await
         }
         [0xc9, 0xd0, 0xe2, 0xfd] => {
             // mintTo(bytes32 mint, bytes32 account, uint64 amount)
@@ -170,7 +170,7 @@ pub async fn spl_token<State: Database>(
             let mint = read_pubkey(input)?;
             let account = read_pubkey(&input[32..])?;
             let amount = read_u64(&input[64..])?;
-            mint_to(context, state, mint, account, amount)
+            mint_to(context, state, mint, account, amount).await
         }
         [0xc0, 0x67, 0xee, 0xbb] => {
             // burn(bytes32 mint, bytes32 account, uint64 amount)
@@ -181,7 +181,7 @@ pub async fn spl_token<State: Database>(
             let mint = read_pubkey(input)?;
             let account = read_pubkey(&input[32..])?;
             let amount = read_u64(&input[64..])?;
-            burn(context, state, mint, account, amount)
+            burn(context, state, mint, account, amount).await
         }
         [0x44, 0xef, 0x32, 0x44] => {
             // freeze(bytes32 mint, bytes32 account)
@@ -191,7 +191,7 @@ pub async fn spl_token<State: Database>(
 
             let mint = read_pubkey(input)?;
             let account = read_pubkey(&input[32..])?;
-            freeze(context, state, mint, account)
+            freeze(context, state, mint, account).await
         }
         [0x3d, 0x71, 0x8c, 0x9a] => {
             // thaw(bytes32 mint, bytes32 account)
@@ -201,7 +201,7 @@ pub async fn spl_token<State: Database>(
 
             let mint = read_pubkey(input)?;
             let account = read_pubkey(&input[32..])?;
-            thaw(context, state, mint, account)
+            thaw(context, state, mint, account).await
         }
         [0xeb, 0x7d, 0xa7, 0x8c] => {
             // findAccount(bytes32 seed)
@@ -298,7 +298,7 @@ async fn initialize_mint<State: Database>(
         spl_token::state::Mint::LEN,
         &spl_token::ID,
         seeds,
-    )?;
+    ).await?;
 
     let initialize_mint = spl_token::instruction::initialize_mint(
         &spl_token::ID,
@@ -307,7 +307,7 @@ async fn initialize_mint<State: Database>(
         Some(&freeze_authority.unwrap_or(signer_pubkey)),
         decimals,
     )?;
-    state.queue_external_instruction(initialize_mint, vec![], 0, true)?;
+    state.queue_external_instruction(initialize_mint, vec![], 0, true).await?;
 
     Ok(mint_key.to_bytes().to_vec())
 }
@@ -352,7 +352,7 @@ async fn initialize_account<State: Database>(
         spl_token::state::Account::LEN,
         &spl_token::ID,
         seeds,
-    )?;
+    ).await?;
 
     let initialize_mint = spl_token::instruction::initialize_account2(
         &spl_token::ID,
@@ -360,12 +360,13 @@ async fn initialize_account<State: Database>(
         &mint,
         &owner.unwrap_or(signer_pubkey),
     )?;
-    state.queue_external_instruction(initialize_mint, vec![], 0, true)?;
+    state.queue_external_instruction(initialize_mint, vec![], 0, true).await?;
 
     Ok(account_key.to_bytes().to_vec())
 }
 
-fn close_account<State: Database>(
+#[maybe_async]
+async fn close_account<State: Database>(
     context: &crate::evm::Context,
     state: &mut State,
     account: Pubkey,
@@ -386,12 +387,13 @@ fn close_account<State: Database>(
         &signer_pubkey,
         &[],
     )?;
-    state.queue_external_instruction(close_account, vec![seeds], 0, true)?;
+    state.queue_external_instruction(close_account, vec![seeds], 0, true).await?;
 
     Ok(vec![])
 }
 
-fn approve<State: Database>(
+#[maybe_async]
+async fn approve<State: Database>(
     context: &crate::evm::Context,
     state: &mut State,
     source: Pubkey,
@@ -415,12 +417,13 @@ fn approve<State: Database>(
         &[],
         amount,
     )?;
-    state.queue_external_instruction(approve, vec![seeds], 0, true)?;
+    state.queue_external_instruction(approve, vec![seeds], 0, true).await?;
 
     Ok(vec![])
 }
 
-fn revoke<State: Database>(
+#[maybe_async]
+async fn revoke<State: Database>(
     context: &crate::evm::Context,
     state: &mut State,
     account: Pubkey,
@@ -435,12 +438,13 @@ fn revoke<State: Database>(
     ];
 
     let revoke = spl_token::instruction::revoke(&spl_token::ID, &account, &signer_pubkey, &[])?;
-    state.queue_external_instruction(revoke, vec![seeds], 0, true)?;
+    state.queue_external_instruction(revoke, vec![seeds], 0, true).await?;
 
     Ok(vec![])
 }
 
-fn transfer<State: Database>(
+#[maybe_async]
+async fn transfer<State: Database>(
     context: &crate::evm::Context,
     state: &mut State,
     source: Pubkey,
@@ -464,12 +468,13 @@ fn transfer<State: Database>(
         &[],
         amount,
     )?;
-    state.queue_external_instruction(transfer, vec![seeds], 0, true)?;
+    state.queue_external_instruction(transfer, vec![seeds], 0, true).await?;
 
     Ok(vec![])
 }
 
-fn transfer_with_seed<State: Database>(
+#[maybe_async]
+async fn transfer_with_seed<State: Database>(
     context: &crate::evm::Context,
     state: &mut State,
     seed: &[u8; 32],
@@ -501,12 +506,13 @@ fn transfer_with_seed<State: Database>(
         &[],
         amount,
     )?;
-    state.queue_external_instruction(transfer, vec![seeds], 0, true)?;
+    state.queue_external_instruction(transfer, vec![seeds], 0, true).await?;
 
     Ok(vec![])
 }
 
-fn mint_to<State: Database>(
+#[maybe_async]
+async fn mint_to<State: Database>(
     context: &crate::evm::Context,
     state: &mut State,
     mint: Pubkey,
@@ -530,12 +536,13 @@ fn mint_to<State: Database>(
         &[],
         amount,
     )?;
-    state.queue_external_instruction(mint_to, vec![seeds], 0, true)?;
+    state.queue_external_instruction(mint_to, vec![seeds], 0, true).await?;
 
     Ok(vec![])
 }
 
-fn burn<State: Database>(
+#[maybe_async]
+async fn burn<State: Database>(
     context: &crate::evm::Context,
     state: &mut State,
     mint: Pubkey,
@@ -560,12 +567,13 @@ fn burn<State: Database>(
         &[],
         amount
     )?;
-    state.queue_external_instruction(burn, vec![seeds], 0, true)?;
+    state.queue_external_instruction(burn, vec![seeds], 0, true).await?;
 
     Ok(vec![])
 }
 
-fn freeze<State: Database>(
+#[maybe_async]
+async fn freeze<State: Database>(
     context: &crate::evm::Context,
     state: &mut State,
     mint: Pubkey,
@@ -587,12 +595,13 @@ fn freeze<State: Database>(
         &signer_pubkey,
         &[],
     )?;
-    state.queue_external_instruction(freeze, vec![seeds], 0, true)?;
+    state.queue_external_instruction(freeze, vec![seeds], 0, true).await?;
 
     Ok(vec![])
 }
 
-fn thaw<State: Database>(
+#[maybe_async]
+async fn thaw<State: Database>(
     context: &crate::evm::Context,
     state: &mut State,
     mint: Pubkey,
@@ -615,7 +624,7 @@ fn thaw<State: Database>(
         &signer_pubkey,
         &[]
     )?;
-    state.queue_external_instruction(thaw, vec![seeds], 0, true)?;
+    state.queue_external_instruction(thaw, vec![seeds], 0, true).await?;
 
     Ok(vec![])
 }

@@ -97,7 +97,16 @@ impl<'a> BalanceAccount<'a> {
             rent,
         )?;
 
-        super::set_tag(&crate::ID, &account, TAG_ACCOUNT_BALANCE, Header::VERSION)?;
+        Self::initialize(account, &crate::ID, address, chain_id)
+    }
+
+    pub fn initialize(
+        account: AccountInfo<'a>,
+        program_id: &Pubkey,
+        address: Address,
+        chain_id: u64,
+    ) -> Result<Self> {
+        super::set_tag(program_id, &account, TAG_ACCOUNT_BALANCE, Header::VERSION)?;
         {
             let mut header = super::header_mut::<Header>(&account);
             header.address = address;

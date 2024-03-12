@@ -119,7 +119,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(nonce)
     }
 
-    fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
+    async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
         let increment = Action::EvmIncrementNonce { address, chain_id };
         self.actions.push(increment);
 
@@ -235,7 +235,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(self.backend.code(from_address).await)
     }
 
-    fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
+    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
         if code.starts_with(&[0xEF]) {
             // https://eips.ethereum.org/EIPS/eip-3541
             return Err(Error::EVMObjectFormatNotSupported(address));
@@ -280,7 +280,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(self.backend.storage(from_address, from_index).await)
     }
 
-    fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
+    async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
         let set_storage = Action::EvmSetStorage {
             address,
             index,
@@ -476,7 +476,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         self.backend.contract_chain_id(contract).await
     }
 
-    fn queue_external_instruction(
+    async fn queue_external_instruction(
         &mut self,
         instruction: Instruction,
         seeds: Vec<Vec<Vec<u8>>>,

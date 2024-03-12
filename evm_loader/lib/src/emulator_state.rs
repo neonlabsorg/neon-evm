@@ -14,7 +14,7 @@ use solana_sdk::instruction::Instruction;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::rent::Rent;
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Copy)]
 pub struct ExecuteStatus {
     pub external_solana_calls: bool,
     pub reverts_before_solana_calls: bool,
@@ -73,8 +73,8 @@ impl<'a, B: AccountStorage> Database for EmulatorState<'a, B> {
         self.inner_state.nonce(from_address, from_chain_id).await
     }
 
-    fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
-        self.inner_state.increment_nonce(address, chain_id)
+    async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
+        self.inner_state.increment_nonce(address, chain_id).await
     }
 
     async fn balance(&self, from_address: Address, from_chain_id: u64) -> Result<U256> {
@@ -105,8 +105,8 @@ impl<'a, B: AccountStorage> Database for EmulatorState<'a, B> {
         self.inner_state.code(from_address).await
     }
 
-    fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
-        self.inner_state.set_code(address, chain_id, code)
+    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
+        self.inner_state.set_code(address, chain_id, code).await
     }
 
     fn selfdestruct(&mut self, address: Address) -> Result<()> {
@@ -117,8 +117,8 @@ impl<'a, B: AccountStorage> Database for EmulatorState<'a, B> {
         self.inner_state.storage(from_address, from_index).await
     }
 
-    fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
-        self.inner_state.set_storage(address, index, value)
+    async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
+        self.inner_state.set_storage(address, index, value).await
     }
 
     async fn block_hash(&self, number: U256) -> Result<[u8; 32]> {
@@ -193,7 +193,7 @@ impl<'a, B: AccountStorage> Database for EmulatorState<'a, B> {
         self.inner_state.contract_chain_id(contract).await
     }
 
-    fn queue_external_instruction(
+    async fn queue_external_instruction(
         &mut self,
         instruction: Instruction,
         seeds: Vec<Vec<Vec<u8>>>,
@@ -205,6 +205,6 @@ impl<'a, B: AccountStorage> Database for EmulatorState<'a, B> {
         }
 
         self.inner_state
-            .queue_external_instruction(instruction, seeds, fee, emulated_internally)
+            .queue_external_instruction(instruction, seeds, fee, emulated_internally).await
     }
 }

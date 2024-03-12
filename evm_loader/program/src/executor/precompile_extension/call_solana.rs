@@ -238,7 +238,7 @@ pub async fn call_solana<State: Database>(
                 vec![bump_seed],
             ];
 
-            super::create_account(state, &account, space, &owner, seeds)?;
+            super::create_account(state, &account, space, &owner, seeds).await?;
             Ok(sol_address.to_bytes().to_vec())
         }
 
@@ -326,7 +326,7 @@ async fn execute_external_instruction<State: Database>(
                 &payer_pubkey,
                 required_lamports - payer.lamports,
             );
-            state.queue_external_instruction(transfer_instruction, vec![], 0, false)?;
+            state.queue_external_instruction(transfer_instruction, vec![], 0, false).await?;
         }
 
         state.queue_external_instruction(
@@ -334,7 +334,7 @@ async fn execute_external_instruction<State: Database>(
             vec![signer_seeds, payer_seeds.clone()],
             required_lamports,
             false,
-        )?;
+        ).await?;
 
         let payer = state.external_account(payer_pubkey).await?;
         if payer.lamports > 0 {
@@ -343,7 +343,7 @@ async fn execute_external_instruction<State: Database>(
                 &state.operator(),
                 payer.lamports,
             );
-            state.queue_external_instruction(transfer_instruction, vec![payer_seeds], 0, false)?;
+            state.queue_external_instruction(transfer_instruction, vec![payer_seeds], 0, false).await?;
         }
     } else {
         state.queue_external_instruction(
@@ -351,7 +351,7 @@ async fn execute_external_instruction<State: Database>(
             vec![signer_seeds],
             required_lamports,
             false,
-        )?;
+        ).await?;
     }
 
     let return_data = solana_program::program::get_return_data()

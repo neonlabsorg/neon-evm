@@ -141,18 +141,13 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
         Ok(())
     }
 
-    fn snapshot(&mut self) {
-        Ok(())
-    }
+    fn snapshot(&mut self) {}
 
     fn revert_snapshot(&mut self) {
         panic!("revert snapshot not implemented for ProgramAccountStorage");
-        Ok(())
     }
 
-    fn commit_snapshot(&mut self) {
-        Ok(())
-    }
+    fn commit_snapshot(&mut self) {}
 }
 
 impl<'a> ProgramAccountStorage<'a> {

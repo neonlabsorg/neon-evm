@@ -1,4 +1,6 @@
-use crate::account::{program, AccountsDB, BalanceAccount, Holder, Operator, Treasury};
+use crate::account::{
+    program, AccountsDB, BalanceAccount, Holder, Operator, StateAccount, Treasury,
+};
 use crate::debug::log_data;
 use crate::error::Result;
 use crate::gasometer::Gasometer;
@@ -44,7 +46,9 @@ pub fn process<'a>(
     let mut gasometer = Gasometer::new(U256::ZERO, accounts_db.operator())?;
     gasometer.record_solana_transaction_cost();
     gasometer.record_address_lookup_table(accounts);
+    // TODO: this is probably invalid as we implicitly write to holder more (via heap allocations).
     gasometer.record_write_to_holder(&trx);
 
+    StateAccount::init_heap(&accounts[0])?;
     super::transaction_execute::execute(accounts_db, gasometer, trx, origin)
 }

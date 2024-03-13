@@ -292,7 +292,11 @@ impl<'a> StateAccount<'a> {
     }
 
     /// Initializes the heap using the whole account data space right after the Header section.
-    fn init_heap(info: &AccountInfo<'a>) -> Result<()> {
+    /// After this, the persistent objects can be allocated in the account data.
+    ///
+    /// N.B. No ownership checks are performed, it's a caller's responsibility.
+    /// TODO: This piece of should be moved to mod.rs.
+    pub fn init_heap(info: &AccountInfo<'a>) -> Result<()> {
         let data = info.try_borrow_data()?;
         // Init the heap at the predefined address (right after the header with proper alignment).
         let heap_ptr = data.as_ptr().wrapping_add(HEAP_OBJECT_OFFSET).cast_mut();

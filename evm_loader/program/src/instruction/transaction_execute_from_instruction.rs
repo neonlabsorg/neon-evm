@@ -1,4 +1,4 @@
-use crate::account::{program, AccountsDB, BalanceAccount, Operator, Treasury};
+use crate::account::{program, AccountsDB, BalanceAccount, Operator, StateAccount, Treasury};
 use crate::debug::log_data;
 use crate::error::Result;
 use crate::gasometer::Gasometer;
@@ -18,10 +18,10 @@ pub fn process<'a>(
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
     let messsage = &instruction[4..];
 
-    let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[0])? };
-    let treasury = Treasury::from_account(program_id, treasury_index, &accounts[1])?;
-    let operator_balance = BalanceAccount::from_account(program_id, accounts[2].clone())?;
-    let system = program::System::from_account(&accounts[3])?;
+    let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1])? };
+    let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
+    let operator_balance = BalanceAccount::from_account(program_id, accounts[3].clone())?;
+    let system = program::System::from_account(&accounts[4])?;
 
     let trx = Transaction::from_rlp(messsage)?;
     let origin = trx.recover_caller_address()?;
@@ -30,7 +30,7 @@ pub fn process<'a>(
     log_data(&[b"MINER", operator_balance.address().as_bytes()]);
 
     let accounts_db = AccountsDB::new(
-        &accounts[4..],
+        &accounts[5..],
         operator,
         Some(operator_balance),
         Some(system),
@@ -40,6 +40,8 @@ pub fn process<'a>(
     let mut gasometer = Gasometer::new(U256::ZERO, accounts_db.operator())?;
     gasometer.record_solana_transaction_cost();
     gasometer.record_address_lookup_table(accounts);
+    // TODO: gasometer need to properly calculate the writes to holder.
 
+    StateAccount::init_heap(&accounts[0])?;
     super::transaction_execute::execute(accounts_db, gasometer, trx, origin)
 }

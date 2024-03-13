@@ -67,6 +67,7 @@ pub enum EvmInstruction {
     /// Execute Transaction from Instruction in single iteration
     ///
     /// Accounts:
+    ///  `[WRITE]` Holder
     ///  `[WRITE,SIGNER]` Operator
     ///  `[WRITE]` Treasury
     ///  `[WRITE]` Operator Balance
@@ -80,7 +81,7 @@ pub enum EvmInstruction {
     /// Execute Transaction from Account in single iteration
     ///
     /// Accounts:
-    ///  `[]` Holder
+    ///  `[WRITE]` Holder
     ///  `[WRITE,SIGNER]` Operator
     ///  `[WRITE]` Treasury
     ///  `[WRITE]` Operator Balance
@@ -194,7 +195,7 @@ impl EvmInstruction {
 
             0x30 => Self::AccountCreateBalance,              // 48
             0x31 => Self::Deposit,                           // 49
-            0x32 => Self::TransactionExecuteFromInstruction, // 50
+            0x38 => Self::TransactionExecuteFromInstruction, // 56
             0x33 => Self::TransactionExecuteFromAccount,     // 51
             0x34 => Self::TransactionStepFromInstruction,    // 52
             0x35 => Self::TransactionStepFromAccount,        // 53

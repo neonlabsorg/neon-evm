@@ -55,7 +55,10 @@ cfg_if::cfg_if! {
         fn state_account_heap() -> &'static mut Heap {
             const HEAP_PTR: *mut Heap = STATE_ACCOUNT_HEAP_START_ADDRESS as *mut Heap;
             let heap = unsafe { &mut *HEAP_PTR };
-            // Unlike SolanaAllocator, StateAccountAllocator do not init account heap here.It's account's responsibility to initialize it itself (likely during StateAccount creation), because account knows its size and thus can correctly specify heap size.
+            // Unlike SolanaAllocator, StateAccountAllocator do not init account heap here.
+            // It's account's responsibility to initialize it itself (likely during
+            // Holder/StateAccount creation), because account knows its size and thus can
+            // correctly specify heap size.
 
             heap
         }

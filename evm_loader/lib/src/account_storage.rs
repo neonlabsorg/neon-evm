@@ -1239,7 +1239,9 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         _seeds: Vec<Vec<Vec<u8>>>,
         _fee: u64,
     ) -> evm_loader::error::Result<()> {
-        unimplemented!();
+        Err(evm_loader::error::Error::Custom(
+            "unimplemented execute_external_instruction".to_string(),
+        ))
     }
 
     fn snapshot(&mut self) {

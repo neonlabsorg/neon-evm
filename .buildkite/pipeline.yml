@@ -1,7 +1,0 @@
-steps:
-
-  - label: "Dummy workflow"
-    commands:
-      - echo "Dummy step"
-    agents:
-      queue: "testing"

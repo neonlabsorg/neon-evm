@@ -38,6 +38,7 @@ fi
 export RUST_LOG=solana_runtime::system_instruction_processor=trace,solana_runtime::message_processor=debug,solana_bpf_loader=debug,solana_rbpf=debug
 solana-test-validator "${VALIDATOR_ARGS[@]}" > /dev/null &
 ./wait-for-solana.sh ${SOLANA_WAIT_TIMEOUT:-60}
+./deploy-multi-tokens.sh
 
 neon-cli --url http://localhost:8899 --evm_loader $EVM_LOADER \
   --commitment confirmed \

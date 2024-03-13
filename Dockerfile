@@ -49,6 +49,7 @@ COPY ci/wait-for-solana.sh \
     ci/wait-for-neon.sh \
     ci/solana-run-neon.sh \
     ci/deploy-evm.sh \
+    ci/deploy-multi-tokens.sh \
     ci/create-test-accounts.sh \
     ci/evm_loader-keypair.json \
     /opt/

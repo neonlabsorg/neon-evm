@@ -3374,6 +3374,7 @@ dependencies = [
  "evm-loader",
  "goblin 0.6.1",
  "hex",
+ "itertools 0.10.5",
  "lazy_static",
  "log",
  "neon-lib-interface",

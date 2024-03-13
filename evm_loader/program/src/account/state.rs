@@ -62,9 +62,10 @@ pub struct StateAccount<'a> {
 
 const BUFFER_OFFSET: usize = ACCOUNT_PREFIX_LEN + size_of::<Header>();
 // A valid offset for Heap object alignment in the real memory space.
-// This offset is valid when StateAccount goes first in the list of accounts of instruction.
+// This offset is valid when State/Holder goes first in the list of accounts of instruction.
+// 80 is chosen as a smallest offset which is bigger than any header (for state or holder).
 // P.S. Should be pub because Allocator needs to know the offset that points to the Heap.
-pub const HEAP_OBJECT_OFFSET: usize = BUFFER_OFFSET + 6;
+pub const HEAP_OBJECT_OFFSET: usize = 80;
 
 impl<'a> StateAccount<'a> {
     #[must_use]
@@ -153,7 +154,7 @@ impl<'a> StateAccount<'a> {
 
         Ok(Self {
             account: info,
-            data: ManuallyDrop::new(Boxx::into_inner(data)),
+            data: ManuallyDrop::new(unsafe { std::ptr::read(Boxx::into_raw(data)) }),
         })
     }
 
@@ -327,14 +328,16 @@ impl<'a> StateAccount<'a> {
 // Implementation of functional to save/restore persistent state of iterative transactions.
 impl<'a> StateAccount<'a> {
     pub fn alloc_executor_state(&self, data: Boxx<ExecutorStateData>) -> Result<()> {
+        let offset = self.leak_and_offset(data);
         let mut header = super::header_mut::<Header>(&self.account);
-        header.executor_state_offset = self.leak_and_offset(data);
+        header.executor_state_offset = offset;
         Ok(())
     }
 
     pub fn alloc_evm<B: Database, T: EventListener>(&self, evm: Boxx<Machine<B, T>>) -> Result<()> {
+        let offset = self.leak_and_offset(evm);
         let mut header = super::header_mut::<Header>(&self.account);
-        header.evm_machine_offset = self.leak_and_offset(evm);
+        header.evm_machine_offset = offset;
         Ok(())
     }
 

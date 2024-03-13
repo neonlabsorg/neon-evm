@@ -133,19 +133,22 @@ impl<'a> StateAccount<'a> {
             steps_executed: 0_u64,
         });
 
+        let data_offset = {
+            let account_data_ptr = info.data.borrow().as_ptr();
+            let data_obj_addr = std::ptr::addr_of!(*data).cast::<u8>();
+            let data_offset = unsafe { data_obj_addr.offset_from(account_data_ptr) };
+            #[allow(clippy::cast_sign_loss)]
+            let data_offset = data_offset as usize;
+            data_offset
+        };
+
         super::set_tag(program_id, &info, TAG_STATE, Header::VERSION)?;
         {
             // Set header
             let mut header = super::header_mut::<Header>(&info);
             header.executor_state_offset = 0;
             header.evm_machine_offset = 0;
-
-            let account_data_ptr = info.try_borrow_data()?.as_ptr();
-            let data_obj_addr = std::ptr::addr_of!(*data).cast::<u8>();
-            let offset = unsafe { data_obj_addr.offset_from(account_data_ptr) };
-            #[allow(clippy::cast_sign_loss)]
-            let offset = offset as usize;
-            header.data_offset = offset;
+            header.data_offset = data_offset;
         }
 
         Ok(Self {
@@ -297,7 +300,7 @@ impl<'a> StateAccount<'a> {
     /// N.B. No ownership checks are performed, it's a caller's responsibility.
     /// TODO: This piece of should be moved to mod.rs.
     pub fn init_heap(info: &AccountInfo<'a>) -> Result<()> {
-        let data = info.try_borrow_data()?;
+        let data = info.data.borrow();
         // Init the heap at the predefined address (right after the header with proper alignment).
         let heap_ptr = data.as_ptr().wrapping_add(HEAP_OBJECT_OFFSET).cast_mut();
         assert_eq!(heap_ptr.align_offset(align_of::<Heap>()), 0);

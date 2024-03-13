@@ -32,8 +32,8 @@ DOCKER_PASSWORD = os.environ.get("DHUBP")
 IMAGE_NAME = os.environ.get("IMAGE_NAME")
 RUN_LINK_REPO = os.environ.get("RUN_LINK_REPO")
 DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
-SOLANA_NODE_VERSION = 'v1.17.24'
-SOLANA_BPF_VERSION = 'v1.17.24'
+SOLANA_NODE_VERSION = 'v1.17.25'
+SOLANA_BPF_VERSION = 'v1.17.25'
 
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 docker_client = docker.APIClient()
@@ -41,6 +41,7 @@ NEON_TEST_IMAGE_NAME = f"{DOCKERHUB_ORG_NAME.lower()}/neon_tests"
 
 PROXY_ENDPOINT = os.environ.get("PROXY_ENDPOINT")
 NEON_TESTS_ENDPOINT = os.environ.get("NEON_TESTS_ENDPOINT")
+
 
 @click.group()
 def cli():
@@ -112,7 +113,7 @@ def run_tests(github_sha, neon_test_branch, base_ref_branch):
     if GithubClient.is_branch_exist(NEON_TESTS_ENDPOINT, neon_test_branch) \
             and neon_test_branch not in ('master', 'develop'):
         neon_test_image_tag = neon_test_branch
-    elif re.match(VERSION_BRANCH_TEMPLATE, base_ref_branch): # PR to version branch
+    elif re.match(VERSION_BRANCH_TEMPLATE, base_ref_branch):  # PR to version branch
         neon_test_image_tag = base_ref_branch
     else:
         neon_test_image_tag = 'latest'

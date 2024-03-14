@@ -27,7 +27,7 @@ jobs:
   build-neon-evm:
     runs-on: neon-evm-1
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -45,7 +45,7 @@ jobs:
     needs:
       - build-neon-evm
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Define base branch if the action is tag creation
@@ -82,7 +82,7 @@ jobs:
     needs:
       - build-neon-evm
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Trigger proxy build
@@ -103,7 +103,7 @@ jobs:
       - trigger-proxy-tests
       - run-neon-evm-tests
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Finalize image

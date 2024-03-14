@@ -193,7 +193,7 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
 
     github = GithubClient(token)
 
-    if head_ref_branch in github.get_branches_list(PROXY_ENDPOINT):
+    if GithubClient.is_branch_exist(PROXY_ENDPOINT, head_ref_branch):
         proxy_branch = head_ref_branch
     elif re.match(VERSION_BRANCH_TEMPLATE, base_ref_branch):
         proxy_branch = base_ref_branch

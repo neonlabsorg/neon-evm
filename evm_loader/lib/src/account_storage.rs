@@ -5,7 +5,7 @@ use evm_loader::types::Address;
 use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
 use solana_sdk::sysvar::slot_hashes;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::{
     cell::{RefCell, RefMut},
     convert::TryInto,
@@ -68,8 +68,7 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     accounts_cache: elsa::FrozenMap<Pubkey, Box<Option<Account>>>,
     used_accounts: elsa::FrozenMap<Pubkey, Box<RefCell<SolanaAccount>>>,
 
-    used_cells: HashMap<Address, HashSet<U256>>,
-    deployed_contracts: HashSet<Address>,
+    selfdestruct_contracts: HashSet<Address>,
 }
 
 impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
@@ -120,8 +119,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             rent,
             accounts_cache: elsa::FrozenMap::new(),
             used_accounts: elsa::FrozenMap::new(),
-            used_cells: HashMap::new(),
-            deployed_contracts: HashSet::new(),
+            selfdestruct_contracts: HashSet::new(),
         })
     }
 
@@ -1095,39 +1093,7 @@ fn map_neon_error(e: NeonError) -> evm_loader::error::Error {
 #[async_trait(?Send)]
 impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
     async fn selfdestruct(&mut self, address: Address) -> evm_loader::error::Result<()> {
-        if self.deployed_contracts.get(&address).is_none() {
-            return Err(evm_loader::error::Error::Custom(
-                "Selfdestruct: contract should be deployed in this transaction".to_string(),
-            ));
-        } else {
-            let mut contract_data = self
-                .get_contract_account(address)
-                .await
-                .map_err(map_neon_error)?
-                .borrow_mut();
-
-            let generation = {
-                let contract = ContractAccount::from_account(
-                    self.program_id(),
-                    contract_data.into_account_info(),
-                )?;
-                contract.generation()
-            };
-            *contract_data = AccountData::new(contract_data.pubkey);
-            if generation > 0 {
-                self.create_ethereum_contract(&mut contract_data, address, 0, generation, &[])?;
-            }
-        }
-        if let Some(used_cells) = self.used_cells.get(&address) {
-            for index in used_cells.iter() {
-                let mut storage_data = self
-                    .get_storage_account(address, *index)
-                    .await
-                    .map_err(map_neon_error)?
-                    .borrow_mut();
-                *storage_data = AccountData::new(storage_data.pubkey);
-            }
-        }
+        self.selfdestruct_contracts.insert(address);
 
         Ok(())
     }
@@ -1209,10 +1175,6 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         } else {
             let subindex = (index & 0xFF).as_u8();
             let index = index & !U256::new(0xFF);
-            self.used_cells
-                .entry(address)
-                .or_insert_with(HashSet::new)
-                .insert(index);
 
             let mut storage_data = self
                 .get_storage_account(address, index)

@@ -2,7 +2,7 @@ use crate::account::{program, AccountsDB, BalanceAccount, Operator, StateAccount
 use crate::debug::log_data;
 use crate::error::Result;
 use crate::gasometer::Gasometer;
-use crate::types::Transaction;
+use crate::types::{boxx::boxx, Transaction};
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
@@ -23,7 +23,11 @@ pub fn process<'a>(
     let operator_balance = BalanceAccount::from_account(program_id, accounts[3].clone())?;
     let system = program::System::from_account(&accounts[4])?;
 
-    let trx = Transaction::from_rlp(messsage)?;
+    {
+        StateAccount::init_heap(&accounts[0])?;
+    }
+
+    let trx = boxx(Transaction::from_rlp(messsage)?);
     let origin = trx.recover_caller_address()?;
 
     log_data(&[b"HASH", &trx.hash()]);
@@ -42,6 +46,6 @@ pub fn process<'a>(
     gasometer.record_address_lookup_table(accounts);
     // TODO: gasometer need to properly calculate the writes to holder.
 
-    StateAccount::init_heap(&accounts[0])?;
+
     super::transaction_execute::execute(accounts_db, gasometer, trx, origin)
 }

@@ -4,7 +4,7 @@ use crate::account::{
 use crate::debug::log_data;
 use crate::error::Result;
 use crate::gasometer::Gasometer;
-use crate::types::Transaction;
+use crate::types::{boxx::boxx, Transaction};
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
@@ -27,7 +27,10 @@ pub fn process<'a>(
     let system = program::System::from_account(&accounts[4])?;
 
     holder.validate_owner(&operator)?;
-    let trx = Transaction::from_rlp(&holder.transaction())?;
+    {
+        StateAccount::init_heap(&accounts[0])?;
+    }
+    let trx = boxx(Transaction::from_rlp(&holder.transaction())?);
     holder.validate_transaction(&trx)?;
 
     let origin = trx.recover_caller_address()?;
@@ -49,6 +52,6 @@ pub fn process<'a>(
     // TODO: this is probably invalid as we implicitly write to holder more (via heap allocations).
     gasometer.record_write_to_holder(&trx);
 
-    StateAccount::init_heap(&accounts[0])?;
+    
     super::transaction_execute::execute(accounts_db, gasometer, trx, origin)
 }

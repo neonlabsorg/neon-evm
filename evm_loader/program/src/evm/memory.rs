@@ -14,6 +14,7 @@ const MEMORY_ALIGN: usize = 1;
 
 static_assertions::const_assert!(MEMORY_ALIGN.is_power_of_two());
 
+#[repr(C)]
 pub struct Memory {
     data: *mut u8,
     capacity: usize,

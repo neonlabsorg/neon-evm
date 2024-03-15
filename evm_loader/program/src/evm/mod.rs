@@ -6,7 +6,6 @@ use std::{fmt::Display, marker::PhantomData, ops::Range};
 
 use ethnum::U256;
 use maybe_async::maybe_async;
-use serde::{Deserialize, Serialize};
 
 pub use buffer::Buffer;
 
@@ -16,7 +15,7 @@ use crate::{
     debug::log_data,
     error::{build_revert_message, Error, Result},
     evm::{opcode::Action, precompile::is_precompile_address},
-    types::{Address, Transaction},
+    types::{vector::into_vector, Address, Transaction, Vector},
 };
 use crate::{evm::tracing::EventListener, types::boxx::Boxx};
 
@@ -103,11 +102,12 @@ pub(crate) use begin_vm;
 pub(crate) use end_vm;
 pub(crate) use tracing_event;
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq)]
+#[repr(C)]
 pub enum ExitStatus {
     Stop,
-    Return(#[serde(with = "serde_bytes")] Vec<u8>),
-    Revert(#[serde(with = "serde_bytes")] Vec<u8>),
+    Return(Vector<u8>),
+    Revert(Vector<u8>),
     Suicide,
     StepLimit,
 }
@@ -140,29 +140,31 @@ impl ExitStatus {
     #[must_use]
     pub fn into_result(self) -> Option<Vec<u8>> {
         match self {
-            ExitStatus::Return(v) | ExitStatus::Revert(v) => Some(v),
+            ExitStatus::Return(v) | ExitStatus::Revert(v) => Some(v.to_vec()),
             ExitStatus::Stop | ExitStatus::Suicide | ExitStatus::StepLimit => None,
         }
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[repr(C)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Reason {
     Call,
     Create,
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone)]
+#[repr(C)]
 pub struct Context {
     pub caller: Address,
     pub contract: Address,
     pub contract_chain_id: u64,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub value: U256,
 
     pub code_address: Option<Address>,
 }
 
+#[repr(C)]
 pub struct Machine<B: Database, T: EventListener> {
     origin: Address,
     chain_id: u64,
@@ -372,7 +374,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             let value = Self::precompile(&self.context.contract, &self.call_data).unwrap();
             backend.commit_snapshot();
 
-            ExitStatus::Return(value)
+            ExitStatus::Return(into_vector(value))
         } else {
             loop {
                 step += 1;
@@ -396,8 +398,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                     Action::Continue => self.pc += 1,
                     Action::Jump(target) => self.pc = target,
                     Action::Stop => break ExitStatus::Stop,
-                    Action::Return(value) => break ExitStatus::Return(value),
-                    Action::Revert(value) => break ExitStatus::Revert(value),
+                    Action::Return(value) => break ExitStatus::Return(into_vector(value)),
+                    Action::Revert(value) => break ExitStatus::Revert(into_vector(value)),
                     Action::Suicide => break ExitStatus::Suicide,
                     Action::Noop => {}
                 };

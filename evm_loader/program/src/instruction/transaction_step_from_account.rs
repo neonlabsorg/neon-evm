@@ -7,6 +7,7 @@ use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
 use crate::instruction::transaction_step::{do_begin, do_continue};
+use crate::types::boxx::boxx;
 use crate::types::Transaction;
 use arrayref::array_ref;
 use ethnum::U256;
@@ -57,13 +58,15 @@ pub fn process_inner<'a>(
 
     match tag {
         TAG_HOLDER | TAG_HOLDER_DEPRECATED => {
+            {
+                StateAccount::init_heap(holder_or_storage)?;
+            }
             let mut trx = {
                 let holder = Holder::from_account(program_id, holder_or_storage.clone())?;
                 holder.validate_owner(accounts_db.operator())?;
 
                 let message = holder.transaction();
-                let trx = Transaction::from_rlp(&message)?;
-
+                let trx = boxx(Transaction::from_rlp(&message)?);
                 holder.validate_transaction(&trx)?;
 
                 trx

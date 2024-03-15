@@ -12,6 +12,7 @@ use crate::{error::Error, types::Address};
 const ELEMENT_SIZE: usize = 32;
 const STACK_SIZE: usize = ELEMENT_SIZE * 128;
 
+#[repr(C)]
 pub struct Stack {
     begin: *mut u8,
     end: *mut u8,

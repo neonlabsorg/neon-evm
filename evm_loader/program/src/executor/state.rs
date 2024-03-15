@@ -21,6 +21,7 @@ use super::cache::{cache_get_or_insert_account, cache_get_or_insert_balance, Cac
 use super::OwnedAccountInfo;
 
 // Persistent part of ExecutorState.
+#[repr(C)]
 pub struct ExecutorStateData {
     cache: RefCell<Cache>,
     actions: Vector<Action>,

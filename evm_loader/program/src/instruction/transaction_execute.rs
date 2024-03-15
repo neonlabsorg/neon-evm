@@ -7,12 +7,13 @@ use crate::evm::Machine;
 use crate::executor::{ExecutorState, ExecutorStateData};
 use crate::gasometer::Gasometer;
 use crate::instruction::transaction_step::log_return_value;
+use crate::types::boxx::Boxx;
 use crate::types::{Address, Transaction};
 
 pub fn execute(
     accounts: AccountsDB<'_>,
     mut gasometer: Gasometer,
-    trx: Transaction,
+    trx: Boxx<Transaction>,
     origin: Address,
 ) -> Result<()> {
     let chain_id = trx.chain_id().unwrap_or(crate::config::DEFAULT_CHAIN_ID);

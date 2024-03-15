@@ -5,7 +5,7 @@ pub type Vector<T> = allocator_api2::vec::Vec<T, StateAccountAllocator>;
 #[macro_export]
 macro_rules! vector {
     () => (
-        allocator_api2::vec::Vec::new_in($crate::allocator::acc_allocator())
+        allocator_api2::vec::Vec::with_capacity_in(1, $crate::allocator::acc_allocator())
     );
     ($elem:expr; $n:expr) => (
         allocator_api2::vec::from_elem_in($elem, $n, $crate::allocator::acc_allocator())
@@ -26,4 +26,9 @@ pub fn into_vector<T>(v: Vec<T>) -> Vector<T> {
         ret.push(item);
     }
     ret
+}
+
+#[must_use]
+pub fn vect<T>() -> Vector<T> {
+    Vector::with_capacity_in(1,acc_allocator())
 }

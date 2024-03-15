@@ -7,7 +7,7 @@ use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
 use crate::instruction::transaction_step::{do_begin, do_continue};
-use crate::types::Transaction;
+use crate::types::{boxx::boxx, Transaction};
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
@@ -50,7 +50,10 @@ pub fn process<'a>(
 
     match tag {
         TAG_HOLDER | TAG_STATE_FINALIZED => {
-            let trx = Transaction::from_rlp(message)?;
+            {
+                StateAccount::init_heap(&storage_info)?;
+            }
+            let trx = boxx(Transaction::from_rlp(message)?);
             let origin = trx.recover_caller_address()?;
 
             log_data(&[b"HASH", &trx.hash()]);

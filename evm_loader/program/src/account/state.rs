@@ -1,8 +1,8 @@
 use std::cell::{Ref, RefMut};
 use std::mem::{align_of, size_of, ManuallyDrop};
-use std::ptr;
 
 use crate::account_storage::AccountStorage;
+use crate::allocator::acc_allocator;
 use crate::config::DEFAULT_CHAIN_ID;
 use crate::error::{Error, Result};
 
@@ -65,7 +65,8 @@ const BUFFER_OFFSET: usize = ACCOUNT_PREFIX_LEN + size_of::<Header>();
 // This offset is valid when State/Holder goes first in the list of accounts of instruction.
 // 80 is chosen as a smallest offset which is bigger than any header (for state or holder).
 // P.S. Should be pub because Allocator needs to know the offset that points to the Heap.
-pub const HEAP_OBJECT_OFFSET: usize = 80;
+// TODO FIX!!!!!!!!!!!!!!!
+pub const HEAP_OBJECT_OFFSET: usize = 8000;
 
 impl<'a> StateAccount<'a> {
     #[must_use]
@@ -93,7 +94,7 @@ impl<'a> StateAccount<'a> {
         info: AccountInfo<'a>,
         accounts: &AccountsDB<'a>,
         origin: Address,
-        transaction: Transaction,
+        transaction: Boxx<Transaction>,
     ) -> Result<Self> {
         let owner = match super::tag(program_id, &info)? {
             TAG_HOLDER => {
@@ -111,7 +112,7 @@ impl<'a> StateAccount<'a> {
         };
 
         // Initialize the heap before any allocations.
-        Self::init_heap(&info)?;
+        //Self::init_heap(&info)?;
 
         // todo: get revision from account
         let revisions_it = accounts.into_iter().map(|account| {
@@ -127,7 +128,7 @@ impl<'a> StateAccount<'a> {
 
         let data = boxx(Data {
             owner,
-            transaction,
+            transaction: unsafe { std::ptr::read(Boxx::into_raw(transaction)) },
             origin,
             revisions,
             gas_used: U256::ZERO,
@@ -358,26 +359,27 @@ impl<'a> StateAccount<'a> {
     }
 
     #[must_use]
-    pub fn read_evm<B: Database, T: EventListener>(&self) -> ManuallyDrop<Machine<B, T>> {
+    pub fn read_evm<B: Database, T: EventListener>(&self) -> ManuallyDrop<Boxx<Machine<B, T>>> {
         let header = super::header::<Header>(&self.account);
         assert!(header.evm_machine_offset > HEAP_OBJECT_OFFSET);
         self.map_obj(header.evm_machine_offset)
     }
 
     #[must_use]
-    pub fn read_executor_state(&self) -> ManuallyDrop<ExecutorStateData> {
+    pub fn read_executor_state(&self) -> ManuallyDrop<Boxx<ExecutorStateData>> {
         let header = super::header::<Header>(&self.account);
         assert!(header.executor_state_offset > HEAP_OBJECT_OFFSET);
         self.map_obj(header.executor_state_offset)
     }
 
-    fn map_obj<T>(&self, offset: usize) -> ManuallyDrop<T> {
+    fn map_obj<T>(&self, offset: usize) -> ManuallyDrop<Boxx<T>> {
         let data = self.account.data.borrow().as_ptr();
         unsafe {
-            let ptr = data.add(offset);
+            let ptr = data.add(offset) as *mut u8;
             assert_eq!(ptr.align_offset(align_of::<T>()), 0);
             let data_ptr = ptr.cast::<T>();
-            ManuallyDrop::new(ptr::read(data_ptr))
+            
+            ManuallyDrop::new(Boxx::from_raw_in(data_ptr, acc_allocator()))
         }
     }
 }

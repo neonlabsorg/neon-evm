@@ -2,9 +2,13 @@ use std::ops::{Deref, Range};
 
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
+use crate::types::vector::{into_vector, vect};
+use crate::types::Vector;
+
 #[cfg_attr(test, derive(Debug, PartialEq))]
+#[repr(C)]
 enum Inner {
-    Owned(Vec<u8>),
+    Owned(Vector<u8>),
     Account {
         key: Pubkey,
         range: Range<usize>,
@@ -17,6 +21,7 @@ enum Inner {
 }
 
 #[cfg_attr(test, derive(Debug))]
+#[repr(C)]
 pub struct Buffer {
     // We maintain a ptr and len to be able to construct a slice without having to discriminate
     // inner. This means we should not allow mutation of inner after the construction of a buffer.
@@ -69,7 +74,7 @@ impl Buffer {
 
     #[must_use]
     pub fn from_vec(v: Vec<u8>) -> Self {
-        Self::new(Inner::Owned(v))
+        Self::new(Inner::Owned(into_vector(v)))
     }
 
     #[must_use]
@@ -79,7 +84,7 @@ impl Buffer {
 
     #[must_use]
     pub fn empty() -> Self {
-        Buffer::new(Inner::Owned(Vec::default()))
+        Buffer::new(Inner::Owned(vect()))
     }
 
     #[must_use]
@@ -236,7 +241,7 @@ impl<'de> serde::Deserialize<'de> for Buffer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::executor::OwnedAccountInfo;
+    use crate::{executor::OwnedAccountInfo, types::vector};
     use solana_program::account_info::IntoAccountInfo;
 
     macro_rules! assert_slice_ptr_eq {
@@ -267,7 +272,7 @@ mod tests {
             OwnedAccountInfo {
                 key: Pubkey::default(),
                 lamports: 0,
-                data,
+                data: into_vector(data),
                 owner: Pubkey::default(),
                 rent_epoch: 0,
                 is_signer: false,

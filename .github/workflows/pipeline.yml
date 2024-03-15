@@ -77,7 +77,7 @@ jobs:
           --github_sha=${GITHUB_SHA} \
           --neon_test_branch=${{ steps.neon_test_branch.outputs.value }} \
           --base_ref_branch=${{ github.base_ref }}
-      - name: canceling the build if job failed
+      - name: Cancel the build if job failed
         if: "failure()"
         uses: "andymckay/cancel-action@0.4"
   trigger-proxy-tests:
@@ -99,7 +99,7 @@ jobs:
           --labels='${{ toJson(github.event.pull_request.labels.*.name) }}' \
           --pr_url="${{ github.api_url }}/repos/${{ github.repository }}/issues" \
           --pr_number="${{ github.event.pull_request.number }}"
-      - name: canceling the build if job failed
+      - name: Cancel the build if job failed
         if: "failure()"
         uses: "andymckay/cancel-action@0.4"
   finalize-image:

@@ -118,6 +118,8 @@ pub trait SyncedAccountStorage {
         fee: u64,
     ) -> Result<()>;
 
+    async fn selfdestruct(&mut self, address: Address) -> Result<()>;
+
     fn snapshot(&mut self);
     fn revert_snapshot(&mut self);
     fn commit_snapshot(&mut self);

@@ -1485,7 +1485,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend
             .transfer(self.context.contract, address, chain_id, value)
             .await?;
-        backend.selfdestruct(self.context.contract)?;
+        backend.selfdestruct(self.context.contract).await?;
 
         backend.commit_snapshot();
         log_data(&[b"EXIT", b"SELFDESTRUCT"]);

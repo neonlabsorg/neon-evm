@@ -118,8 +118,8 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         Ok(())
     }
 
-    fn selfdestruct(&mut self, _address: Address) -> Result<()> {
-        Err(Error::Custom("Selfdestruct is not supported".to_string()))
+    async fn selfdestruct(&mut self, address: Address) -> Result<()> {
+        self.backend.selfdestruct(address).await
     }
 
     async fn storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {

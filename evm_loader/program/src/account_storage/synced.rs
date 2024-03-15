@@ -141,6 +141,10 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
         Ok(())
     }
 
+    fn selfdestruct(&mut self, _address: Address) -> Result<()> {
+        panic!("Selfdestruct not implemented for ProgramAccountStorage");
+    }
+
     fn snapshot(&mut self) {}
 
     fn revert_snapshot(&mut self) {

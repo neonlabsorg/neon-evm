@@ -23,9 +23,9 @@ class GithubClient():
             f"{self.proxy_endpoint}/actions/workflows/pipeline.yml/runs?branch={proxy_branch}", headers=self.headers)
         return int(response.json()["total_count"])
 
-    def run_proxy_dispatches(self, proxy_branch, github_ref, github_sha, test_set, initial_pr):
+    def run_proxy_dispatches(self, proxy_branch, github_ref, github_sha, full_test_suite, initial_pr):
         data = {"ref": proxy_branch,
-                "inputs": {"test_set": test_set,
+                "inputs": {"full_test_suite": full_test_suite,
                            "neon_evm_commit": github_sha,
                            "neon_evm_branch": github_ref,
                            "initial_pr": initial_pr}

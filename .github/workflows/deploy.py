@@ -172,24 +172,22 @@ def stop_containers(project_name):
 @click.option('--github_ref')
 @click.option('--github_sha')
 @click.option('--token')
-@click.option('--is_draft')
 @click.option('--labels')
 @click.option('--pr_url')
 @click.option('--pr_number')
-def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sha, token, is_draft, labels,
+def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sha, token, labels,
                          pr_url, pr_number):
     is_develop_branch = github_ref in ['refs/heads/develop', 'refs/heads/master']
     is_tag_creating = 'refs/tags/' in github_ref
     is_version_branch = re.match(VERSION_BRANCH_TEMPLATE, github_ref.replace("refs/heads/", "")) is not None
-    is_FTS_labeled_not_draft = 'fullTestSuit' in labels and is_draft != "true"
-    is_extended_FTS_labeled_not_draft = 'extendedFullTestSuit' in labels and is_draft != "true"
+    is_FTS_labeled = 'fullTestSuit' in labels
 
-    if is_extended_FTS_labeled_not_draft:
-        test_set = "extendedFullTestSuite"
-    elif is_develop_branch or is_tag_creating or is_version_branch or is_FTS_labeled_not_draft:
-        test_set = "fullTestSuite"
+
+    if is_develop_branch or is_tag_creating or is_version_branch or is_FTS_labeled:
+        full_test_suite = True
     else:
-        test_set = "basic"
+        full_test_suite = False
+
 
     github = GithubClient(token)
 
@@ -210,7 +208,7 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
 
     runs_before = github.get_proxy_runs_list(proxy_branch)
     runs_count_before = github.get_proxy_runs_count(proxy_branch)
-    github.run_proxy_dispatches(proxy_branch, github_ref, github_sha, test_set, initial_pr)
+    github.run_proxy_dispatches(proxy_branch, github_ref, github_sha, full_test_suite, initial_pr)
     wait_condition(lambda: github.get_proxy_runs_count(proxy_branch) > runs_count_before)
 
     runs_after = github.get_proxy_runs_list(proxy_branch)

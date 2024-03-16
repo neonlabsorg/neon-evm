@@ -1,5 +1,7 @@
 #![allow(clippy::needless_pass_by_ref_mut)]
 
+use std::mem::ManuallyDrop;
+
 /// <https://ethereum.github.io/yellowpaper/paper.pdf>
 use ethnum::{I256, U256};
 use maybe_async::maybe_async;
@@ -1384,7 +1386,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             return Ok(Action::Return(return_data));
         }
 
-        let returned = self.join();
+        let mut returned = self.join();
         match returned.reason {
             Reason::Call => {
                 self.memory.write_range(&self.return_range, &return_data)?;
@@ -1397,6 +1399,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 self.stack.push_address(&address)?;
             }
         }
+        
+        unsafe{ ManuallyDrop::drop(&mut returned) };
 
         Ok(Action::Continue)
     }
@@ -1431,7 +1435,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             return Ok(Action::Revert(return_data));
         }
 
-        let returned = self.join();
+        let mut returned = self.join();
         match returned.reason {
             Reason::Call => {
                 self.memory.write_range(&self.return_range, &return_data)?;
@@ -1443,6 +1447,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         }
 
         self.return_data = Buffer::from_vec(return_data);
+
+        unsafe {ManuallyDrop::drop(&mut returned);}
 
         Ok(Action::Continue)
     }
@@ -1480,7 +1486,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             return Ok(Action::Suicide);
         }
 
-        let returned = self.join();
+        let mut returned = self.join();
         match returned.reason {
             Reason::Call => {
                 self.memory.write_range(&self.return_range, &[])?;
@@ -1490,6 +1496,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 self.stack.push_zero()?;
             }
         }
+
+        unsafe {ManuallyDrop::drop(&mut returned);}
 
         Ok(Action::Continue)
     }
@@ -1506,7 +1514,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             return Ok(Action::Stop);
         }
 
-        let returned = self.join();
+        let mut returned = self.join();
         match returned.reason {
             Reason::Call => {
                 self.memory.write_range(&self.return_range, &[])?;
@@ -1516,6 +1524,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 self.stack.push_zero()?;
             }
         }
+
+        unsafe {ManuallyDrop::drop(&mut returned);}
 
         Ok(Action::Continue)
     }

@@ -2,7 +2,7 @@
 #![allow(clippy::type_repetition_in_bounds)]
 #![allow(clippy::unsafe_derive_deserialize)]
 
-use std::{fmt::Display, marker::PhantomData, ops::Range};
+use std::{fmt::Display, marker::PhantomData, mem::ManuallyDrop, ops::Range};
 
 use ethnum::U256;
 use maybe_async::maybe_async;
@@ -442,14 +442,14 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         self.parent = Some(crate::types::boxx::boxx(other));
     }
 
-    fn join(&mut self) -> Self {
+    fn join(&mut self) -> ManuallyDrop<Boxx<Self>> {
         assert!(self.parent.is_some());
 
-        let mut other = Boxx::into_inner(self.parent.take().unwrap());
-        core::mem::swap(self, &mut other);
-
+        let mut other = self.parent.take().unwrap();
+        core::mem::swap(self, other.as_mut());
         self.tracer = other.tracer.take();
 
-        other
+        ManuallyDrop::new(other)
     }
 }
+

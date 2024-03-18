@@ -25,7 +25,7 @@ class GithubClient():
 
     def run_proxy_dispatches(self, proxy_branch, github_ref, github_sha, full_test_suite, initial_pr):
         data = {"ref": proxy_branch,
-                "inputs": {"full_test_suite": full_test_suite,
+                "inputs": {"full_test_suite": f"{full_test_suite}".lower(),
                            "neon_evm_commit": github_sha,
                            "neon_evm_branch": github_ref,
                            "initial_pr": initial_pr}
@@ -35,7 +35,7 @@ class GithubClient():
         click.echo(f"Sent data: {data}")
         click.echo(f"Status code: {response.status_code}")
         if response.status_code != 204:
-            raise RuntimeError("proxy-model.py action is not triggered")
+            raise RuntimeError("proxy-model.py action is not triggered, error: {response.text}")
 
     @staticmethod
     def is_branch_exist(endpoint, branch):

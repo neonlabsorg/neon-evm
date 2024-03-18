@@ -57,7 +57,7 @@ pub struct StateAccount<'a> {
     account: AccountInfo<'a>,
     // ManuallyDrop to ensure Data is not dropped when StateAccount
     // is being dropped (between iterations).
-    data: ManuallyDrop<Data>,
+    data: ManuallyDrop<Boxx<Data>>,
 }
 
 const BUFFER_OFFSET: usize = ACCOUNT_PREFIX_LEN + size_of::<Header>();
@@ -78,14 +78,13 @@ impl<'a> StateAccount<'a> {
         super::validate_tag(program_id, account, TAG_STATE)?;
 
         let header = super::header::<Header>(account);
-        let data = unsafe {
-            let ptr = account.data.borrow().as_ptr().add(header.data_offset);
-            #[allow(clippy::cast_ptr_alignment)]
-            std::ptr::read(ptr.cast::<Data>())
+        let data_ptr = unsafe {
+            let data_offset = header.data_offset;
+            account.data.borrow().as_ptr().add(header.data_offset).cast::<Data>().cast_mut()
         };
         Ok(Self {
             account: account.clone(),
-            data: ManuallyDrop::new(data),
+            data: ManuallyDrop::new(unsafe{Boxx::from_raw_in(data_ptr, acc_allocator())}),
         })
     }
 
@@ -155,7 +154,7 @@ impl<'a> StateAccount<'a> {
 
         Ok(Self {
             account: info,
-            data: ManuallyDrop::new(unsafe { std::ptr::read(Boxx::into_raw(data)) }),
+            data: ManuallyDrop::new(data),
         })
     }
 

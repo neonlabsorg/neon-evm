@@ -46,6 +46,5 @@ pub fn process<'a>(
     gasometer.record_address_lookup_table(accounts);
     // TODO: gasometer need to properly calculate the writes to holder.
 
-
     super::transaction_execute::execute(accounts_db, gasometer, trx, origin)
 }

@@ -19,6 +19,9 @@ use crate::{
     types::Address,
 };
 
+#[cfg(not(target_os = "solana"))]
+use crate::types::vector::into_vector;
+
 #[derive(Eq, PartialEq)]
 pub enum Action {
     Continue,
@@ -1379,7 +1382,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         end_vm!(
             self,
             backend,
-            super::ExitStatus::Return(return_data.clone())
+            super::ExitStatus::Return(into_vector(return_data.clone()))
         );
 
         if self.parent.is_none() {
@@ -1399,8 +1402,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 self.stack.push_address(&address)?;
             }
         }
-        
-        unsafe{ ManuallyDrop::drop(&mut returned) };
+
+        unsafe { ManuallyDrop::drop(&mut returned) };
 
         Ok(Action::Continue)
     }
@@ -1428,7 +1431,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         end_vm!(
             self,
             backend,
-            super::ExitStatus::Revert(return_data.clone())
+            super::ExitStatus::Revert(into_vector(return_data.clone()))
         );
 
         if self.parent.is_none() {
@@ -1448,7 +1451,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         self.return_data = Buffer::from_vec(return_data);
 
-        unsafe {ManuallyDrop::drop(&mut returned);}
+        unsafe {
+            ManuallyDrop::drop(&mut returned);
+        }
 
         Ok(Action::Continue)
     }
@@ -1497,7 +1502,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             }
         }
 
-        unsafe {ManuallyDrop::drop(&mut returned);}
+        unsafe {
+            ManuallyDrop::drop(&mut returned);
+        }
 
         Ok(Action::Continue)
     }
@@ -1525,7 +1532,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             }
         }
 
-        unsafe {ManuallyDrop::drop(&mut returned);}
+        unsafe {
+            ManuallyDrop::drop(&mut returned);
+        }
 
         Ok(Action::Continue)
     }

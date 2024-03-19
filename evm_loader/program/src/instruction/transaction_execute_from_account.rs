@@ -52,6 +52,5 @@ pub fn process<'a>(
     // TODO: this is probably invalid as we implicitly write to holder more (via heap allocations).
     gasometer.record_write_to_holder(&trx);
 
-    
     super::transaction_execute::execute(accounts_db, gasometer, trx, origin)
 }

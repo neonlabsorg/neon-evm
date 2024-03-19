@@ -6,7 +6,10 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use crate::{
     account_storage::AccountStorage,
-    types::{vector::{into_vector, vect}, Address, TreeMap, Vector},
+    types::{
+        vector::{into_vector, vect},
+        Address, TreeMap, Vector,
+    },
 };
 
 #[derive(Clone)]

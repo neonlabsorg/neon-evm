@@ -8,7 +8,8 @@ use crate::{
 };
 
 use super::{
-    vector::{into_vector, vect}, Address, Vector
+    vector::{into_vector, vect},
+    Address, Vector,
 };
 
 #[repr(transparent)]

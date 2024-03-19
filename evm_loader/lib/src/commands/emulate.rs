@@ -2,6 +2,7 @@ use evm_loader::account::ContractAccount;
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::error::build_revert_message;
 use evm_loader::executor::ExecutorStateData;
+use evm_loader::types::vector::into_vector;
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -39,7 +40,7 @@ pub struct EmulateResponse {
 
 impl EmulateResponse {
     pub fn revert<E: ToString>(e: E) -> Self {
-        let revert_message = build_revert_message(&e.to_string());
+        let revert_message = into_vector(build_revert_message(&e.to_string()));
         let exit_status = ExitStatus::Revert(revert_message);
         Self {
             exit_status: exit_status.to_string(),

@@ -30,5 +30,5 @@ pub fn into_vector<T>(v: Vec<T>) -> Vector<T> {
 
 #[must_use]
 pub fn vect<T>() -> Vector<T> {
-    Vector::with_capacity_in(1,acc_allocator())
+    Vector::with_capacity_in(1, acc_allocator())
 }

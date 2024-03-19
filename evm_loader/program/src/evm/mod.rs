@@ -452,4 +452,3 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         ManuallyDrop::new(other)
     }
 }
-

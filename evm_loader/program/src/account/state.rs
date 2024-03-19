@@ -79,12 +79,19 @@ impl<'a> StateAccount<'a> {
 
         let header = super::header::<Header>(account);
         let data_ptr = unsafe {
-            let data_offset = header.data_offset;
-            account.data.borrow().as_ptr().add(header.data_offset).cast::<Data>().cast_mut()
+            // Data is more-strictly aligned, but it's safe because we previously initiated it at the exact address.
+            #[allow(clippy::cast_ptr_alignment)]
+            account
+                .data
+                .borrow()
+                .as_ptr()
+                .add(header.data_offset)
+                .cast::<Data>()
+                .cast_mut()
         };
         Ok(Self {
             account: account.clone(),
-            data: ManuallyDrop::new(unsafe{Boxx::from_raw_in(data_ptr, acc_allocator())}),
+            data: ManuallyDrop::new(unsafe { Boxx::from_raw_in(data_ptr, acc_allocator()) }),
         })
     }
 
@@ -374,10 +381,10 @@ impl<'a> StateAccount<'a> {
     fn map_obj<T>(&self, offset: usize) -> ManuallyDrop<Boxx<T>> {
         let data = self.account.data.borrow().as_ptr();
         unsafe {
-            let ptr = data.add(offset) as *mut u8;
+            let ptr = data.add(offset).cast_mut();
             assert_eq!(ptr.align_offset(align_of::<T>()), 0);
             let data_ptr = ptr.cast::<T>();
-            
+
             ManuallyDrop::new(Boxx::from_raw_in(data_ptr, acc_allocator()))
         }
     }

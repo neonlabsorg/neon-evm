@@ -188,7 +188,6 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
     else:
         full_test_suite = False
 
-
     github = GithubClient(token)
 
     if GithubClient.is_branch_exist(PROXY_ENDPOINT, head_ref_branch):
@@ -208,7 +207,8 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
 
     runs_before = github.get_proxy_runs_list(proxy_branch)
     runs_count_before = github.get_proxy_runs_count(proxy_branch)
-    github.run_proxy_dispatches(proxy_branch, github_ref, github_sha, full_test_suite, initial_pr)
+    neon_evm_branch = head_ref_branch if head_ref_branch else github_ref
+    github.run_proxy_dispatches(proxy_branch, neon_evm_branch, github_sha, full_test_suite, initial_pr)
     wait_condition(lambda: github.get_proxy_runs_count(proxy_branch) > runs_count_before)
 
     runs_after = github.get_proxy_runs_list(proxy_branch)

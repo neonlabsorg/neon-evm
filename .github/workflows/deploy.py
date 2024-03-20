@@ -32,8 +32,8 @@ DOCKER_PASSWORD = os.environ.get("DHUBP")
 IMAGE_NAME = os.environ.get("IMAGE_NAME")
 RUN_LINK_REPO = os.environ.get("RUN_LINK_REPO")
 DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
-SOLANA_NODE_VERSION = 'v1.17.26'
-SOLANA_BPF_VERSION = 'v1.17.26'
+SOLANA_NODE_VERSION = 'v1.17.27'
+SOLANA_BPF_VERSION = 'v1.17.27'
 
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 docker_client = docker.APIClient()
@@ -181,7 +181,6 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
     is_tag_creating = 'refs/tags/' in github_ref
     is_version_branch = re.match(VERSION_BRANCH_TEMPLATE, github_ref.replace("refs/heads/", "")) is not None
     is_FTS_labeled = 'fullTestSuit' in labels
-
 
     if is_develop_branch or is_tag_creating or is_version_branch or is_FTS_labeled:
         full_test_suite = True

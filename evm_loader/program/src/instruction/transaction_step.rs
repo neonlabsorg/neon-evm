@@ -62,6 +62,8 @@ pub fn do_continue<'a>(
 
     let account_storage = ProgramAccountStorage::new(accounts)?;
     let (mut backend, mut evm) = if reset {
+        storage.reset_steps_executed();
+
         let mut backend = ExecutorState::new(&account_storage);
         let evm = Machine::new(storage.trx(), storage.trx_origin(), &mut backend, None)?;
         (backend, evm)
@@ -97,6 +99,13 @@ fn finalize<'a>(
     mut gasometer: Gasometer,
 ) -> Result<()> {
     debug_print!("finalize");
+
+    storage.increment_steps_executed(steps_executed)?;
+    log_data(&[
+        b"STEPS",
+        &steps_executed.to_le_bytes(),
+        &storage.steps_executed().to_le_bytes(),
+    ]);
 
     if steps_executed > 0 {
         accounts.transfer_treasury_payment()?;

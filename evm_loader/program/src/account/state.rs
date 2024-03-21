@@ -33,6 +33,8 @@ struct Data {
     /// Ethereum transaction gas used and paid
     #[serde(with = "ethnum::serde::bytes::le")]
     pub gas_used: U256,
+    /// Steps executed in the transaction
+    pub steps_executed: u64,
 }
 
 #[repr(C, packed)]
@@ -112,6 +114,7 @@ impl<'a> StateAccount<'a> {
             origin,
             revisions,
             gas_used: U256::ZERO,
+            steps_executed: 0_u64,
         };
 
         super::set_tag(program_id, &info, TAG_STATE, Header::VERSION)?;
@@ -288,5 +291,24 @@ impl<'a> StateAccount<'a> {
 
         let unused_gas = self.gas_available();
         self.consume_gas(unused_gas, origin)
+    }
+
+    #[must_use]
+    pub fn steps_executed(&self) -> u64 {
+        self.data.steps_executed
+    }
+
+    pub fn reset_steps_executed(&mut self) {
+        self.data.steps_executed = 0;
+    }
+
+    pub fn increment_steps_executed(&mut self, steps: u64) -> Result<()> {
+        self.data.steps_executed = self
+            .data
+            .steps_executed
+            .checked_add(steps)
+            .ok_or(Error::IntegerOverflow)?;
+
+        Ok(())
     }
 }

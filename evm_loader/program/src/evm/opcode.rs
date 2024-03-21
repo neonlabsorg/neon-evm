@@ -1194,6 +1194,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         let context = Context {
             value,
             code_address: Some(address),
+            caller: self.context.contract,
             ..self.context
         };
 

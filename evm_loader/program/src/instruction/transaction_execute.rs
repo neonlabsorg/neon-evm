@@ -25,16 +25,22 @@ pub fn execute(
 
     account_storage.origin(origin, &trx)?.increment_nonce()?;
 
-    let (exit_reason, apply_state) = {
+    let (exit_reason, apply_state, steps_executed) = {
         let mut backend = ExecutorState::new(&account_storage);
 
         let mut evm = Machine::new(&trx, origin, &mut backend, None::<NoopEventListener>)?;
-        let (result, _, _) = evm.execute(u64::MAX, &mut backend)?;
+        let (result, steps_executed, _) = evm.execute(u64::MAX, &mut backend)?;
 
         let actions = backend.into_actions();
 
-        (result, actions)
+        (result, actions, steps_executed)
     };
+
+    log_data(&[
+        b"STEPS",
+        &steps_executed.to_le_bytes(), // Iteration steps
+        &steps_executed.to_le_bytes(), // Total steps is the same as iteration steps
+    ]);
 
     let allocate_result = account_storage.allocate(&apply_state)?;
     if allocate_result != AllocateResult::Ready {

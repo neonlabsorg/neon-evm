@@ -34,6 +34,13 @@ pub enum Action {
         #[serde(with = "bytes_32")]
         value: [u8; 32],
     },
+    EvmSetTransientStorage {
+        address: Address,
+        #[serde(with = "ethnum::serde::bytes::le")]
+        index: U256,
+        #[serde(with = "bytes_32")]
+        value: [u8; 32],
+    },
     EvmIncrementNonce {
         address: Address,
         chain_id: u64,
@@ -70,6 +77,7 @@ pub fn filter_selfdestruct(actions: Vec<Action>) -> Vec<Action> {
                 | Action::Burn { .. } => true,
                 // We remove EvmSetStorage|EvmIncrementNonce|EvmSetCode if account is scheduled for destroy
                 Action::EvmSetStorage { address, .. }
+                | Action::EvmSetTransientStorage { address, .. }
                 | Action::EvmSetCode { address, .. }
                 | Action::EvmIncrementNonce { address, .. } => {
                     !accounts_to_destroy.contains(address)

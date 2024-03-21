@@ -823,6 +823,34 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         Ok(Action::Continue)
     }
 
+    /// reads a (u)int256 from transient storage
+    #[maybe_async]
+    pub async fn opcode_tload(&mut self, backend: &mut B) -> Result<Action> {
+        let index = self.stack.pop_u256()?;
+        let value = backend
+            .transient_storage(self.context.contract, index)
+            .await?;
+
+        self.stack.push_array(&value)?;
+
+        Ok(Action::Continue)
+    }
+
+    /// writes a (u)int256 to transient storage
+    #[maybe_async]
+    pub async fn opcode_tstore(&mut self, backend: &mut B) -> Result<Action> {
+        if self.is_static {
+            return Err(Error::StaticModeViolation(self.context.contract));
+        }
+
+        let index = self.stack.pop_u256()?;
+        let value = *self.stack.pop_array()?;
+
+        backend.set_transient_storage(self.context.contract, index, value)?;
+
+        Ok(Action::Continue)
+    }
+
     /// unconditional jump
     #[maybe_async]
     pub async fn opcode_jump(&mut self, _backend: &mut B) -> Result<Action> {

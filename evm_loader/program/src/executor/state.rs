@@ -362,6 +362,39 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
+    async fn transient_storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
+        for action in self.actions.iter().rev() {
+            if let Action::EvmSetTransientStorage {
+                address,
+                index,
+                value,
+            } = action
+            {
+                if (&from_address == address) && (&from_index == index) {
+                    return Ok(*value);
+                }
+            }
+        }
+
+        Ok(<[u8; 32]>::default())
+    }
+
+    fn set_transient_storage(
+        &mut self,
+        address: Address,
+        index: U256,
+        value: [u8; 32],
+    ) -> Result<()> {
+        let set_storage = Action::EvmSetTransientStorage {
+            address,
+            index,
+            value,
+        };
+        self.actions.push(set_storage);
+
+        Ok(())
+    }
+
     async fn block_hash(&self, number: U256) -> Result<[u8; 32]> {
         // geth:
         //  - checks the overflow

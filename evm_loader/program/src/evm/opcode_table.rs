@@ -140,6 +140,9 @@ opcode_table![
         0x5A, GAS, Self::opcode_gas;
         0x5B, JUMPDEST, Self::opcode_jumpdest;
 
+        0x5C, TLOAD, Self::opcode_tload;
+        0x5D, TSTORE, Self::opcode_tstore;
+
         0x5F, PUSH0, Self::opcode_push_0;
         0x60, PUSH1, Self::opcode_push_1;
         0x61, PUSH2, Self::opcode_push_2_31::<2>;

@@ -99,6 +99,9 @@ impl<'a> ProgramAccountStorage<'a> {
                         .or_insert_with(|| HashMap::with_capacity(64))
                         .insert(index, value);
                 }
+                Action::EvmSetTransientStorage { .. } => {
+                    // do nothing, transient storage is discarded at the end of the transaction
+                }
                 Action::EvmIncrementNonce { address, chain_id } => {
                     let mut account = self.create_balance_account(address, chain_id)?;
                     account.increment_nonce()?;

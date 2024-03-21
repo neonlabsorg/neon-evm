@@ -1,4 +1,7 @@
-use crate::account::{program, AccountsDB, BalanceAccount, Operator, StateAccount, Treasury};
+use crate::account::{
+    init_heap, program, write_heap_offset, AccountsDB, BalanceAccount, Operator, Treasury,
+    MIN_HEAP_OFFSET,
+};
 use crate::debug::log_data;
 use crate::error::Result;
 use crate::gasometer::Gasometer;
@@ -24,7 +27,8 @@ pub fn process<'a>(
     let system = program::System::from_account(&accounts[4])?;
 
     {
-        StateAccount::init_heap(&accounts[0])?;
+        let actual_heap_offset = init_heap(&accounts[0], MIN_HEAP_OFFSET);
+        write_heap_offset(&accounts[0], actual_heap_offset);
     }
 
     let trx = boxx(Transaction::from_rlp(messsage)?);

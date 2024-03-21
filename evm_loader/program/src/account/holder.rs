@@ -15,6 +15,7 @@ pub struct Header {
     pub owner: Pubkey,
     pub transaction_hash: [u8; 32],
     pub transaction_len: usize,
+    pub heap_offset: usize,
 }
 
 impl AccountHeader for Header {
@@ -26,7 +27,11 @@ pub struct Holder<'a> {
 }
 
 const HEADER_OFFSET: usize = ACCOUNT_PREFIX_LEN;
-const BUFFER_OFFSET: usize = HEADER_OFFSET + size_of::<Header>();
+pub const BUFFER_OFFSET: usize = HEADER_OFFSET + size_of::<Header>();
+// Offset of the Header.heap_offset from the start of account data.
+// Should be public to be accessible from allocator.
+// SHOULD BE ADJUSTED IN CASE HEADER IS CHANGED.
+pub const HEAP_OFFSET_OFFSET: usize = HEADER_OFFSET + 0x48;
 
 impl<'a> Holder<'a> {
     pub fn from_account(program_id: &Pubkey, account: AccountInfo<'a>) -> Result<Self> {
@@ -100,6 +105,7 @@ impl<'a> Holder<'a> {
             let mut header = self.header_mut();
             header.transaction_hash.fill(0);
             header.transaction_len = 0;
+            header.heap_offset = 0;
         }
         {
             let mut buffer = self.buffer_mut();
@@ -176,6 +182,23 @@ impl<'a> Holder<'a> {
                 trx.hash(),
             ));
         }
+
+        Ok(())
+    }
+
+    /// Initializes the heap using the whole account data space right after the bytes
+    /// occupied by the transaction in the buffer. Also, writes the offset of the heap object
+    /// into the separate field in the header. After this, the persistent objects
+    /// can be allocated into the account data.
+    ///
+    /// N.B. No ownership checks are performed, it's a caller's responsibility.
+    /// TODO: This piece of should be moved to mod.rs.
+    pub fn init_heap(&mut self) -> Result<()> {
+        let buffer_end = self.transaction_len() + BUFFER_OFFSET;
+        let actual_heap_offset = crate::account::init_heap(&self.account, buffer_end);
+
+        // Write the actual heap offset into the header. This memory cell is used by the allocator.
+        self.header_mut().heap_offset = actual_heap_offset;
 
         Ok(())
     }

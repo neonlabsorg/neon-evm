@@ -47,14 +47,16 @@ cfg_if::cfg_if! {
         /* factual_data_len */ size_of::<u64>();
 
         #[allow(clippy::cast_possible_truncation)] // HEAP_START_ADDRESS < usize::max
-        // Configure StateAccount heap start address by offsetting the start to take into account the tag, header and correct alignment.
-        const STATE_ACCOUNT_HEAP_START_ADDRESS: usize = 0x400000000u64 as usize + FIRST_ACCOUNT_DATA_OFFSET + crate::account::STATE_ACCOUNT_HEAP_OFFSET;
-        const_assert_eq!(STATE_ACCOUNT_HEAP_START_ADDRESS % align_of::<Heap>(), 0);
+        // Configure State/Holder Account heap: the offset of the heap object is at HEAP_OBJECT_PTR address.
+        const STATE_ACCOUNT_DATA_ADDRESS: usize = 0x400000000u64 as usize + FIRST_ACCOUNT_DATA_OFFSET;
+        const HEAP_OBJECT_PTR: usize = STATE_ACCOUNT_DATA_ADDRESS + crate::account::HEAP_OFFSET_PTR;
 
         #[inline]
         fn state_account_heap() -> &'static mut Heap {
-            const HEAP_PTR: *mut Heap = STATE_ACCOUNT_HEAP_START_ADDRESS as *mut Heap;
-            let heap = unsafe { &mut *HEAP_PTR };
+            let heap_object_offset_ptr = HEAP_OBJECT_PTR as *const usize;
+            let heap_object_offset = unsafe {std::ptr::read_unaligned(heap_object_offset_ptr)};
+            let heap_ptr: *mut Heap = (STATE_ACCOUNT_DATA_ADDRESS + heap_object_offset) as *mut Heap;
+            let heap = unsafe { &mut *heap_ptr };
             // Unlike SolanaAllocator, StateAccountAllocator do not init account heap here.
             // It's account's responsibility to initialize it itself (likely during
             // Holder/StateAccount creation), because account knows its size and thus can

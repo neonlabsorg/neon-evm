@@ -58,11 +58,9 @@ pub fn process_inner<'a>(
 
     match tag {
         TAG_HOLDER | TAG_HOLDER_DEPRECATED => {
-            {
-                StateAccount::init_heap(holder_or_storage)?;
-            }
             let mut trx = {
-                let holder = Holder::from_account(program_id, holder_or_storage.clone())?;
+                let mut holder = Holder::from_account(program_id, holder_or_storage.clone())?;
+                holder.init_heap()?;
                 holder.validate_owner(accounts_db.operator())?;
 
                 let message = holder.transaction();

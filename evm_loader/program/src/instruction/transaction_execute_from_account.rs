@@ -1,6 +1,4 @@
-use crate::account::{
-    program, AccountsDB, BalanceAccount, Holder, Operator, StateAccount, Treasury,
-};
+use crate::account::{program, AccountsDB, BalanceAccount, Holder, Operator, Treasury};
 use crate::debug::log_data;
 use crate::error::Result;
 use crate::gasometer::Gasometer;
@@ -19,7 +17,7 @@ pub fn process<'a>(
 
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
 
-    let holder = Holder::from_account(program_id, accounts[0].clone())?;
+    let mut holder = Holder::from_account(program_id, accounts[0].clone())?;
 
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1])? };
     let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
@@ -27,9 +25,8 @@ pub fn process<'a>(
     let system = program::System::from_account(&accounts[4])?;
 
     holder.validate_owner(&operator)?;
-    {
-        StateAccount::init_heap(&accounts[0])?;
-    }
+    holder.init_heap()?;
+
     let trx = boxx(Transaction::from_rlp(&holder.transaction())?);
     holder.validate_transaction(&trx)?;
 

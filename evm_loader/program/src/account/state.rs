@@ -48,6 +48,7 @@ struct Header {
     pub executor_state_offset: usize,
     pub evm_machine_offset: usize,
     pub data_offset: usize,
+    pub heap_offset: usize,
 }
 impl AccountHeader for Header {
     const VERSION: u8 = 0;
@@ -61,12 +62,6 @@ pub struct StateAccount<'a> {
 }
 
 const BUFFER_OFFSET: usize = ACCOUNT_PREFIX_LEN + size_of::<Header>();
-// A valid offset for Heap object alignment in the real memory space.
-// This offset is valid when State/Holder goes first in the list of accounts of instruction.
-// 80 is chosen as a smallest offset which is bigger than any header (for state or holder).
-// P.S. Should be pub because Allocator needs to know the offset that points to the Heap.
-// TODO FIX!!!!!!!!!!!!!!!
-pub const HEAP_OBJECT_OFFSET: usize = 8000;
 
 impl<'a> StateAccount<'a> {
     #[must_use]
@@ -157,6 +152,7 @@ impl<'a> StateAccount<'a> {
             header.executor_state_offset = 0;
             header.evm_machine_offset = 0;
             header.data_offset = data_offset;
+            header.heap_offset = 0;
         }
 
         Ok(Self {
@@ -303,14 +299,40 @@ impl<'a> StateAccount<'a> {
     }
 
     /// Initializes the heap using the whole account data space right after the Header section.
+    /// Also, writes the offset of the heap object at the special address.
     /// After this, the persistent objects can be allocated in the account data.
     ///
     /// N.B. No ownership checks are performed, it's a caller's responsibility.
     /// TODO: This piece of should be moved to mod.rs.
     pub fn init_heap(info: &AccountInfo<'a>) -> Result<()> {
-        let data = info.data.borrow();
-        // Init the heap at the predefined address (right after the header with proper alignment).
-        let heap_ptr = data.as_ptr().wrapping_add(HEAP_OBJECT_OFFSET).cast_mut();
+        let (heap_ptr, heap_object_offset) = {
+            // Locate heap object after Holder's header.
+            let mut heap_object_offset = 100;
+            let data = info.data.borrow();
+            let mut heap_ptr = data.as_ptr().wrapping_add(heap_object_offset);
+
+            // Calculate alignment and offset the heap pointer.
+            let padding = heap_ptr.align_offset(align_of::<Heap>());
+            heap_ptr = heap_ptr.wrapping_add(padding);
+            assert_eq!(heap_ptr.align_offset(align_of::<Heap>()), 0);
+            heap_object_offset += padding;
+            (heap_ptr, heap_object_offset)
+        };
+
+        // Write the actual heap offset at the HEAP_OFFSET_PTR address.
+        // This address is used by the allocator.
+        {
+            let data = info.data.borrow();
+            #[allow(clippy::cast_ptr_alignment)]
+            let offset_ptr = data
+                .as_ptr()
+                .wrapping_add(crate::account::HEAP_OFFSET_PTR)
+                .cast::<usize>()
+                .cast_mut();
+            unsafe { std::ptr::write_unaligned(offset_ptr, heap_object_offset) };
+        }
+
+        let heap_ptr = heap_ptr.cast_mut();
         assert_eq!(heap_ptr.align_offset(align_of::<Heap>()), 0);
         unsafe {
             // First, zero out underlying bytes of the future heap representation.
@@ -320,7 +342,7 @@ impl<'a> StateAccount<'a> {
             // Size is equal to account data length minus the length of prefix.
             let heap_size = info
                 .data_len()
-                .saturating_sub(HEAP_OBJECT_OFFSET + size_of::<Heap>());
+                .saturating_sub(heap_object_offset + size_of::<Heap>());
             // Cast to reference and init.
             // Zeroed memory is a valid representation of the Heap and hence we can safely do it.
             // That's a safety reason we zeroed the memory above.
@@ -367,14 +389,12 @@ impl<'a> StateAccount<'a> {
     #[must_use]
     pub fn read_evm<B: Database, T: EventListener>(&self) -> ManuallyDrop<Boxx<Machine<B, T>>> {
         let header = super::header::<Header>(&self.account);
-        assert!(header.evm_machine_offset > HEAP_OBJECT_OFFSET);
         self.map_obj(header.evm_machine_offset)
     }
 
     #[must_use]
     pub fn read_executor_state(&self) -> ManuallyDrop<Boxx<ExecutorStateData>> {
         let header = super::header::<Header>(&self.account);
-        assert!(header.executor_state_offset > HEAP_OBJECT_OFFSET);
         self.map_obj(header.executor_state_offset)
     }
 

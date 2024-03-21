@@ -1,7 +1,7 @@
 use crate::account::legacy::{TAG_HOLDER_DEPRECATED, TAG_STATE_FINALIZED_DEPRECATED};
 use crate::account::{
-    program, AccountsDB, AccountsStatus, BalanceAccount, Operator, StateAccount, Treasury,
-    TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
+    init_heap, program, write_heap_offset, AccountsDB, AccountsStatus, BalanceAccount, Operator,
+    StateAccount, Treasury, MIN_HEAP_OFFSET, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::debug::log_data;
 use crate::error::{Error, Result};
@@ -51,7 +51,8 @@ pub fn process<'a>(
     match tag {
         TAG_HOLDER | TAG_STATE_FINALIZED => {
             {
-                StateAccount::init_heap(&storage_info)?;
+                let actual_heap_offset = init_heap(&accounts[0], MIN_HEAP_OFFSET);
+                write_heap_offset(&accounts[0], actual_heap_offset);
             }
             let trx = boxx(Transaction::from_rlp(message)?);
             let origin = trx.recover_caller_address()?;

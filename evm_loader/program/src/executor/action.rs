@@ -33,9 +33,7 @@ pub enum Action {
     },
     EvmSetTransientStorage {
         address: Address,
-        #[serde(with = "ethnum::serde::bytes::le")]
         index: U256,
-        #[serde(with = "bytes_32")]
         value: [u8; 32],
     },
     EvmIncrementNonce {

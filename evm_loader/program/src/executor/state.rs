@@ -357,7 +357,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn transient_storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
-        for action in self.actions.iter().rev() {
+        for action in self.data.actions.iter().rev() {
             if let Action::EvmSetTransientStorage {
                 address,
                 index,
@@ -384,7 +384,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             index,
             value,
         };
-        self.actions.push(set_storage);
+        self.data.actions.push(set_storage);
 
         Ok(())
     }

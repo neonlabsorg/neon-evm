@@ -279,6 +279,14 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
                         self.gas = self.gas.saturating_add(gas);
                     }
                 }
+                Action::EvmSetTransientStorage {
+                    address,
+                    index,
+                    value,
+                } => {
+                    let value = hex::encode(value);
+                    info!("set transient storage {address} -> {index} = {value}");
+                }
                 Action::EvmIncrementNonce { address, chain_id } => {
                     info!("nonce increment {address}");
 

@@ -46,6 +46,8 @@ pub struct GetHolderResponse {
 
     #[serde_as(as = "Option<Vec<DisplayFromStr>>")]
     pub accounts: Option<Vec<Pubkey>>,
+
+    pub steps_executed: u64,
 }
 
 impl GetHolderResponse {
@@ -119,6 +121,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 tx: Some(state.trx().hash()),
                 chain_id: state.trx().chain_id(),
                 accounts: Some(accounts),
+                steps_executed: state.steps_executed(),
             })
         }
         _ => Err(ProgramError::InvalidAccountData.into()),

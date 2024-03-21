@@ -1,7 +1,7 @@
 use std::alloc::{GlobalAlloc, Layout};
 use std::ops::Range;
 
-use solana_program::program_memory::{sol_memcpy, sol_memset};
+use solana_program::program_memory::{sol_memcpy, sol_memmove, sol_memset};
 
 use crate::error::Error;
 
@@ -209,6 +209,30 @@ impl Memory {
     pub fn read_buffer(&mut self, offset: usize, length: usize) -> Result<Buffer, Error> {
         let slice = self.read(offset, length)?;
         Ok(Buffer::from_slice(slice))
+    }
+
+    pub fn copy_within(
+        &mut self,
+        source: usize,
+        destination: usize,
+        length: usize,
+    ) -> Result<(), Error> {
+        if length == 0_usize {
+            return Ok(());
+        }
+
+        // If length > 0 and (src + length or dst + length) is beyond the current memory length, the memory is extended
+        self.realloc(std::cmp::max(source, destination), length)?;
+
+        // SAFETY: self.realloc ensures that the memory is large enough to perform the memmove without out of bounds access
+        unsafe {
+            let src_ptr: *mut u8 = self.data.add(source);
+            let dest_ptr: *mut u8 = self.data.add(destination);
+
+            sol_memmove(dest_ptr, src_ptr, length);
+        }
+
+        Ok(())
     }
 }
 

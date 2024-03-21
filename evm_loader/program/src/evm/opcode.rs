@@ -797,6 +797,18 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         Ok(Action::Continue)
     }
 
+    /// copying memory areas
+    #[maybe_async]
+    pub async fn opcode_mcopy(&mut self, _backend: &mut B) -> Result<Action> {
+        let target = self.stack.pop_usize()?;
+        let source = self.stack.pop_usize()?;
+        let length = self.stack.pop_usize()?;
+
+        self.memory.copy_within(source, target, length)?;
+
+        Ok(Action::Continue)
+    }
+
     /// reads a (u)int256 from storage
     #[maybe_async]
     pub async fn opcode_sload(&mut self, backend: &mut B) -> Result<Action> {

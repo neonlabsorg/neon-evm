@@ -19,7 +19,7 @@ solana-transaction-status = "=1.17.27"
 solana-program-test = "=1.17.27"
 spl-token = { version = "~4.0", default-features = false, features = ["no-entrypoint"] }
 spl-associated-token-account = { version = "~2.3", default-features = false, features = ["no-entrypoint"] }
-bs58 = "0.5.0"
+bs58 = "0.5.1"
 base64 = "0.22"
 hex = { version = "0.4", features = ["serde"] }
 serde = "1.0"

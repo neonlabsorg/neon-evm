@@ -905,9 +905,9 @@ checksum = "771fe0050b883fcc3ea2359b1a96bcfbc090b7116eae7c3c512c7a083fdf23d3"
 
 [[package]]
 name = "bs58"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5353f36341f7451062466f0b755b96ac3a9547e4d7f6b70d603fc721a7d7896"
+checksum = "bf88ba1141d185c399bee5288d850d63b8369520c1eafc32a0430b5b6c287bf4"
 dependencies = [
  "tinyvec",
 ]
@@ -2037,7 +2037,7 @@ dependencies = [
 name = "evm-loader-macro"
 version = "1.0.0"
 dependencies = [
- "bs58 0.5.0",
+ "bs58 0.5.1",
  "itertools 0.12.1",
  "proc-macro2",
  "quote",
@@ -3364,7 +3364,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.0",
  "bincode",
- "bs58 0.5.0",
+ "bs58 0.5.1",
  "build-info",
  "build-info-build",
  "clap 2.34.0",

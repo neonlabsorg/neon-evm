@@ -2922,9 +2922,9 @@ dependencies = [
 
 [[package]]
 name = "jsonrpsee-types"
-version = "0.22.2"
+version = "0.22.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3467fd35feeee179f71ab294516bdf3a81139e7aeebdd860e46897c12e1a3368"
+checksum = "1e53c72de6cd2ad6ac1aa6e848206ef8b736f92ed02354959130373dfa5b3cbd"
 dependencies = [
  "anyhow",
  "beef",
@@ -3440,7 +3440,7 @@ dependencies = [
  "jsonrpc-v2",
  "jsonrpsee-core",
  "jsonrpsee-http-client",
- "jsonrpsee-types 0.22.2",
+ "jsonrpsee-types 0.22.3",
  "neon-lib",
  "serde",
  "serde_json",

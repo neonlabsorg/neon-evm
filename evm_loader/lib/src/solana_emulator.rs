@@ -1,21 +1,55 @@
-use solana_sdk::account::AccountSharedData;
-use solana_sdk::bpf_loader_upgradeable;
+use solana_sdk::account::WritableAccount;
+use solana_sdk::bpf_loader_upgradeable::{self, UpgradeableLoaderState};
+use solana_sdk::{account::AccountSharedData, system_instruction::MAX_PERMITTED_DATA_LENGTH};
+
+use log::info;
+use maybe_async::maybe_async;
 use solana_sdk::rent::Rent;
-use std::cell::RefCell;
-use std::collections::BTreeMap;
 use tokio::sync::{Mutex, MutexGuard, OnceCell};
 
 use crate::rpc::Rpc;
 use crate::NeonError;
-use evm_loader::{account_storage::AccountStorage, executor::OwnedAccountInfo};
-use solana_program_test::{processor, ProgramTest, ProgramTestContext};
+use solana_program_test::{processor, BanksClientError, ProgramTest, ProgramTestContext};
 use solana_sdk::{
-    account::Account,
+    account::{Account, ReadableAccount},
     account_info::AccountInfo,
     instruction::{AccountMeta, Instruction},
+    message::Message,
+    program_error::ProgramError,
     pubkey,
     pubkey::Pubkey,
+    signature::Signer,
+    transaction::{Transaction, TransactionError},
 };
+
+#[maybe_async(?Send)]
+pub trait ProgramCache {
+    type Error: std::error::Error;
+
+    async fn get_account(&self, pubkey: Pubkey) -> Result<Option<Account>, Self::Error>;
+
+    async fn get_programdata(
+        &self,
+        programdata_pubkey: Pubkey,
+    ) -> evm_loader::error::Result<Vec<u8>> {
+        info!("ProgramData pubkey: {:?}", programdata_pubkey);
+        let programdata = self
+            .get_account(programdata_pubkey)
+            .await
+            .map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?
+            .ok_or(ProgramError::UninitializedAccount)?;
+        if programdata.owner == bpf_loader_upgradeable::ID {
+            if let UpgradeableLoaderState::ProgramData { .. } =
+                bincode::deserialize(&programdata.data)?
+            {
+                return Ok(programdata.data
+                    [UpgradeableLoaderState::size_of_programdata_metadata()..]
+                    .to_vec());
+            }
+        }
+        Err(solana_sdk::program_error::ProgramError::InvalidAccountData.into())
+    }
+}
 
 /// SolanaEmulator
 /// Note:
@@ -23,7 +57,7 @@ use solana_sdk::{
 /// 2. Get list of activated features from solana cluster (this list can't be changed after initialization)
 pub struct SolanaEmulator {
     pub program_id: Pubkey,
-    pub emulator_context: RefCell<ProgramTestContext>,
+    pub emulator_context: ProgramTestContext,
     pub evm_loader_program: Account,
 }
 
@@ -60,8 +94,6 @@ fn process_emulator_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> solana_sdk::entrypoint::ProgramResult {
-    use solana_sdk::program_error::ProgramError;
-
     let seeds: Vec<Vec<Vec<u8>>> = bincode::deserialize(&accounts[0].data.borrow())
         .map_err(|_| ProgramError::InvalidAccountData)?;
     let seeds = seeds
@@ -142,78 +174,142 @@ impl SolanaEmulator {
 
         Ok(Self {
             program_id,
-            emulator_context: RefCell::new(emulator_context),
+            emulator_context,
             evm_loader_program,
         })
     }
 
-    pub async fn emulate_solana_call<B: AccountStorage>(
-        &self,
-        backend: &B,
-        instruction: &Instruction,
-        accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
-        seeds: &[Vec<Vec<u8>>],
+    pub fn payer(&self) -> Pubkey {
+        self.emulator_context.payer.pubkey()
+    }
+
+    async fn set_programdata(
+        &mut self,
+        program_id: Pubkey,
+        programdata_address: Pubkey,
+        programdata: &mut Vec<u8>,
     ) -> evm_loader::error::Result<()> {
-        use bpf_loader_upgradeable::UpgradeableLoaderState;
-        use solana_sdk::signature::Signer;
+        if self
+            .emulator_context
+            .banks_client
+            .get_account(program_id)
+            .await
+            .map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?
+            .is_none()
+        {
+            // Deploy new program
+            let mut program_account = AccountSharedData::new_data(
+                Rent::default().minimum_balance(programdata.len()),
+                &UpgradeableLoaderState::Program {
+                    programdata_address,
+                },
+                &bpf_loader_upgradeable::ID,
+            )?;
+            program_account.set_executable(true);
 
-        let mut emulator_context = self.emulator_context.borrow_mut();
+            let mut programdata_data = bincode::serialize(&UpgradeableLoaderState::ProgramData {
+                slot: 0,
+                upgrade_authority_address: Some(self.payer()),
+            })?;
+            programdata_data.append(programdata);
+            let mut programdata_account = AccountSharedData::new(
+                Rent::default().minimum_balance(programdata_data.len()),
+                programdata_data.len(),
+                &bpf_loader_upgradeable::ID,
+            );
+            programdata_account.set_data(programdata_data);
 
-        let mut append_account_to_emulator = |account: &OwnedAccountInfo| {
-            use solana_sdk::account::WritableAccount;
-            let mut shared_account =
-                AccountSharedData::new(account.lamports, account.data.len(), &account.owner);
-            shared_account.set_data_from_slice(&account.data);
-            shared_account.set_executable(account.executable);
-            emulator_context.set_account(&account.key, &shared_account);
-        };
+            self.emulator_context
+                .set_account(&program_id, &program_account);
+            self.emulator_context
+                .set_account(&programdata_address, &programdata_account);
+        } else {
+            // Upgrade program
+            // let mut program_buffer = bincode::serialize(
+            //     &UpgradeableLoaderState::Buffer {
+            //         authority_address: Some(self.get_pubkey())
+            //     }
+            // )?;
+            // program_buffer.append(programdata);
+            // self.emulator_context.set_account(&BUFFER_PUBKEY, &Account {
+            //     lamports: Rent::default().minimum_balance(program_buffer.len()),
+            //     data: program_buffer,
+            //     owner: solana_sdk::bpf_loader_upgradeable::ID,
+            //     executable: false,
+            //     rent_epoch: 0,
+            // }.into());
 
-        append_account_to_emulator(&OwnedAccountInfo {
-            is_signer: false,
-            is_writable: false,
-            lamports: self.evm_loader_program.lamports,
-            data: self.evm_loader_program.data.clone(),
-            owner: self.evm_loader_program.owner,
-            executable: true,
-            rent_epoch: self.evm_loader_program.rent_epoch,
-            key: self.program_id,
-        });
+            // self.process_transaction(&[
+            //     bpf_loader_upgradeable::upgrade(
+            //         &program_id,
+            //         &BUFFER_PUBKEY,
+            //         &self.get_pubkey(),
+            //         &self.get_pubkey(),
+            //     ),
+            // ]).await?;
+        }
+        Ok(())
+    }
 
-        for (index, m) in instruction.accounts.iter().enumerate() {
-            let account = accounts
-                .get(&m.pubkey)
-                .expect("Missing pubkey in accounts map");
-            append_account_to_emulator(account);
-            log::debug!("{} {}: {:?}", index, m.pubkey, to_account(account));
+    async fn set_account<'a, B: ProgramCache>(
+        &mut self,
+        program_cache: &B,
+        pubkey: &Pubkey,
+        account: &AccountSharedData,
+    ) -> evm_loader::error::Result<()> {
+        if *pubkey == self.payer() {
+            return Err(evm_loader::error::Error::InvalidAccountForCall(*pubkey));
         }
 
-        let program = match accounts.get(&instruction.program_id) {
-            Some(account) => account.clone(),
-            None => backend.clone_solana_account(&instruction.program_id).await,
-        };
-        append_account_to_emulator(&program);
-        log::debug!(
-            "program {}: {:?}",
-            instruction.program_id,
-            to_account(&program)
-        );
-
-        if bpf_loader_upgradeable::check_id(&program.owner) {
+        if solana_sdk::bpf_loader_upgradeable::check_id(account.owner()) {
             if let UpgradeableLoaderState::Program {
                 programdata_address,
-            } = bincode::deserialize(program.data.as_slice()).unwrap()
+            } = account
+                .deserialize_data()
+                .map_err(|_| evm_loader::error::Error::AccountInvalidData(*pubkey))?
             {
-                let program_data = match accounts.get(&programdata_address) {
-                    Some(account) => account.clone(),
-                    None => backend.clone_solana_account(&programdata_address).await,
-                };
-                append_account_to_emulator(&program_data);
-                log::debug!(
-                    "programData {}: {:?}",
-                    programdata_address,
-                    to_account(&program_data)
-                );
-            };
+                let mut programdata = program_cache.get_programdata(programdata_address).await?;
+                self.set_programdata(*pubkey, programdata_address, &mut programdata)
+                    .await?;
+                info!("set_programdata: {:?}", pubkey);
+                return Ok(());
+            }
+        }
+
+        self.emulator_context.set_account(pubkey, account);
+        Ok(())
+    }
+
+    async fn prepare_transaction(
+        &mut self,
+        instructions: &[Instruction],
+    ) -> evm_loader::error::Result<Transaction> {
+        self.emulator_context
+            .get_new_latest_blockhash()
+            .await
+            .map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?;
+
+        let mut trx = Transaction::new_unsigned(Message::new(instructions, Some(&self.payer())));
+
+        trx.try_sign(
+            &[&self.emulator_context.payer],
+            self.emulator_context.last_blockhash,
+        )
+        .map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?;
+
+        Ok(trx)
+    }
+
+    pub async fn emulate_solana_call<'a, B: ProgramCache>(
+        &mut self,
+        program_cache: &B,
+        instruction: &Instruction,
+        accounts: &[AccountInfo<'a>],
+        seeds: &[Vec<Vec<u8>>],
+    ) -> evm_loader::error::Result<()> {
+        for account in accounts {
+            self.set_account(program_cache, account.key, &from_account_info(account))
+                .await?;
         }
 
         let signers = seeds
@@ -225,79 +321,96 @@ impl SolanaEmulator {
             })
             .collect::<Vec<_>>();
 
-        let seeds_data = bincode::serialize(seeds).expect("Serialize seeds");
-        append_account_to_emulator(&OwnedAccountInfo {
-            key: SEEDS_PUBKEY,
-            is_signer: false,
-            is_writable: false,
-            lamports: Rent::default().minimum_balance(seeds_data.len()),
-            data: seeds_data,
-            owner: self.program_id,
-            executable: false,
-            rent_epoch: 0,
-        });
+        self.set_account(
+            program_cache,
+            &SEEDS_PUBKEY,
+            &AccountSharedData::new_data(
+                Rent::default().minimum_balance(MAX_PERMITTED_DATA_LENGTH as usize),
+                &seeds,
+                &self.program_id,
+            )?,
+        )
+        .await?;
 
         let mut accounts_meta = vec![
-            AccountMeta {
-                pubkey: SEEDS_PUBKEY,
-                is_signer: false,
-                is_writable: false,
-            },
-            AccountMeta {
-                pubkey: instruction.program_id,
-                is_signer: false,
-                is_writable: false,
-            },
+            AccountMeta::new_readonly(SEEDS_PUBKEY, false),
+            AccountMeta::new_readonly(instruction.program_id, false),
         ];
         accounts_meta.extend(instruction.accounts.iter().map(|m| AccountMeta {
             pubkey: m.pubkey,
-            is_signer: if signers.contains(&m.pubkey) {
-                false
-            } else {
-                m.is_signer
-            },
+            is_signer: !signers.contains(&m.pubkey) && m.is_signer,
             is_writable: m.is_writable,
         }));
 
-        // Prepare transaction to execute on emulator
-        let mut trx =
-            solana_sdk::transaction::Transaction::new_unsigned(solana_sdk::message::Message::new(
-                &[solana_sdk::instruction::Instruction::new_with_bytes(
-                    self.program_id,
-                    &instruction.data,
-                    accounts_meta,
-                )],
-                Some(&emulator_context.payer.pubkey()),
-            ));
-        trx.try_sign(&[&emulator_context.payer], emulator_context.last_blockhash)
-            .map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?;
+        let emulate_trx = self
+            .prepare_transaction(&[Instruction::new_with_bytes(
+                self.program_id,
+                &instruction.data,
+                accounts_meta,
+            )])
+            .await?;
+        match self
+            .emulator_context
+            .banks_client
+            .process_transaction(emulate_trx)
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(BanksClientError::SimulationError { err, .. })
+            | Err(BanksClientError::TransactionError(err)) => match err {
+                TransactionError::InstructionError(_, err) => {
+                    Err(evm_loader::error::Error::ExternalCallFailed(
+                        instruction.program_id,
+                        err.to_string(),
+                    ))
+                }
+                _ => Err(evm_loader::error::Error::Custom(err.to_string())),
+            },
+            Err(err) => Err(evm_loader::error::Error::Custom(err.to_string())),
+        }?;
 
-        let result = emulator_context.banks_client.process_transaction(trx).await;
-        log::info!("Emulation result: {:?}", result);
-        result.map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?;
-        let next_slot = emulator_context.banks_client.get_root_slot().await.unwrap() + 1;
-        emulator_context
+        let next_slot = self
+            .emulator_context
+            .banks_client
+            .get_root_slot()
+            .await
+            .unwrap()
+            + 1;
+        self.emulator_context
             .warp_to_slot(next_slot)
             .expect("Warp to next slot");
 
         // Update writable accounts
-        for (index, m) in instruction.accounts.iter().enumerate() {
-            if m.is_writable {
-                let account = emulator_context
-                    .banks_client
-                    .get_account(m.pubkey)
-                    .await
-                    .unwrap()
-                    .unwrap_or_default();
+        let payer = self.payer();
+        for pubkey in instruction.accounts.iter().filter_map(|m| {
+            if m.is_writable && m.pubkey != payer {
+                Some(m.pubkey)
+            } else {
+                None
+            }
+        }) {
+            let account = self
+                .emulator_context
+                .banks_client
+                .get_account(pubkey)
+                .await
+                .unwrap()
+                .unwrap_or_default();
 
-                accounts.entry(m.pubkey).and_modify(|a| {
-                    log::debug!("{} {}: Modify {:?}", index, m.pubkey, account);
-                    a.lamports = account.lamports;
-                    a.data = account.data.to_vec();
-                    a.owner = account.owner;
-                    a.executable = account.executable;
-                    a.rent_epoch = account.rent_epoch;
-                });
+            let original = accounts
+                .iter()
+                .find(|a| a.key == &pubkey)
+                .expect("Missing pubkey in accounts map");
+
+            **original.try_borrow_mut_lamports()? = account.lamports;
+            if original.data_len() != account.data.len() {
+                original.realloc(account.data.len(), true)?;
+            }
+            original
+                .try_borrow_mut_data()?
+                .copy_from_slice(account.data.as_slice());
+            if *original.owner != account.owner {
+                original.assign(&account.owner);
             }
         }
 
@@ -305,13 +418,10 @@ impl SolanaEmulator {
     }
 }
 
-// Creates new instance of `Account` from `OwnedAccountInfo`
-fn to_account(account: &OwnedAccountInfo) -> Account {
-    Account {
-        lamports: account.lamports,
-        data: account.data.clone(),
-        owner: account.owner,
-        executable: account.executable,
-        rent_epoch: account.rent_epoch,
-    }
+fn from_account_info(account: &AccountInfo) -> AccountSharedData {
+    let mut acc = AccountSharedData::new(account.lamports(), 0, account.owner);
+    acc.set_data(account.data.as_ref().borrow().to_vec());
+    acc.set_executable(account.executable);
+    acc.set_rent_epoch(account.rent_epoch);
+    acc
 }

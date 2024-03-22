@@ -127,7 +127,7 @@ impl BuildConfigSimulator for CallDbClient {
         let program_data = self.read_program_data_from_account(program_id).await?;
 
         let mut emulator = get_solana_emulator().await;
-        let program_test_context = emulator.emulator_context.get_mut();
+        let program_test_context = &mut emulator.emulator_context;
         set_program_account(program_test_context, program_id, program_data);
 
         program_test_context.get_new_latest_blockhash().await?;
@@ -250,7 +250,7 @@ impl ConfigSimulator<'_> {
             ConfigSimulator::ProgramTestContext(_, solana_emulator) => {
                 solana_emulator
                     .emulator_context
-                    .get_mut()
+                    //.get_mut()
                     .simulate_solana_instruction(instruction)
                     .await
             }

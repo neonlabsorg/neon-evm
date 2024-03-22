@@ -1,5 +1,7 @@
 pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
+// use solana_sdk::account::{ReadableAccount, WritableAccount};
 use solana_sdk::system_program;
+// use solana_sdk::clock::Epoch;
 use solana_sdk::{account::Account, account_info::AccountInfo, pubkey::Pubkey};
 
 #[derive(Clone, Debug)]
@@ -10,6 +12,8 @@ pub struct AccountData {
     pub lamports: u64,
     data: Vec<u8>,
     pub owner: Pubkey,
+    executable: bool,
+    rent_epoch: u64,
 }
 
 use solana_sdk::account_info::IntoAccountInfo;
@@ -23,6 +27,8 @@ impl AccountData {
             lamports: 0,
             data: vec![0u8; 8 + MAX_PERMITTED_DATA_INCREASE],
             owner: system_program::ID,
+            executable: false,
+            rent_epoch: 0,
         }
     }
 
@@ -46,6 +52,8 @@ impl AccountData {
             lamports: account.lamports,
             data,
             owner: account.owner,
+            executable: account.executable,
+            rent_epoch: account.rent_epoch,
         }
     }
 
@@ -99,8 +107,8 @@ impl AccountData {
             &mut self.lamports,
             &mut self.data[8..8 + length],
             &self.owner,
-            false,
-            0,
+            self.executable,
+            self.rent_epoch,
         )
     }
 }
@@ -114,6 +122,48 @@ impl<'a> IntoAccountInfo<'a> for &'a mut AccountData {
         )
     }
 }
+
+/*impl ReadableAccount for AccountData {
+    fn lamports(&self) -> u64 {self.lamports}
+    fn data(&self) -> &[u8] {self.data()}
+    fn owner(&self) -> &Pubkey {&self.owner}
+    fn executable(&self) -> bool {self.executable}
+    fn rent_epoch(&self) -> u64 {self.rent_epoch}
+}*/
+
+/*impl WritableAccount for AccountData {
+    fn set_lamports(&mut self, lamports: u64) {
+        self.lamports = lamports;
+    }
+
+    fn set_owner(&mut self, owner: Pubkey) {
+        self.owner = owner;
+    }
+
+    fn set_executable(&mut self, executable: bool) {
+        self.executable = executable;
+    }
+
+    fn set_rent_epoch(&mut self, rent_epoch: u64) {
+        self.rent_epoch = rent_epoch;
+    }
+
+    fn data_as_mut_slice(&mut self) -> &mut [u8] {
+        self.data_mut()
+    }
+
+    fn copy_into_owner_from_slice(&mut self, source: &[u8]) {
+    }
+
+    fn create(
+        lamports: u64,
+        data: Vec<u8>,
+        owner: Pubkey,
+        executable: bool,
+        rent_epoch: Epoch,
+    ) -> Self {
+    }
+}*/
 
 #[cfg(test)]
 mod tests {

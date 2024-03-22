@@ -181,6 +181,9 @@ pub enum Error {
 
     #[error("Call for external Solana programs not available in this mode")]
     UnavalableExternalSolanaCall,
+
+    #[error("External call {0}: {1}")]
+    ExternalCallFailed(Pubkey, String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

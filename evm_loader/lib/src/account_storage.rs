@@ -22,7 +22,7 @@ pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use evm_loader::{
     account::{BalanceAccount, ContractAccount, StorageCell, StorageCellAddress},
     config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
-    executor::{Action, OwnedAccountInfo},
+    executor::OwnedAccountInfo,
 };
 use log::{debug, info, trace};
 use serde::{Deserialize, Serialize};
@@ -60,6 +60,7 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     pub execute_status: ExecuteStatus,
     rpc: &'rpc T,
     program_id: Pubkey,
+    operator: Pubkey,
     chains: Vec<ChainInfo>,
     block_number: u64,
     block_timestamp: i64,
@@ -108,6 +109,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             accounts: elsa::FrozenMap::new(),
             call_stack: vec![],
             program_id,
+            operator: get_solana_emulator().await.payer(),
             chains,
             gas: 0,
             realloc_iterations: 0,
@@ -302,6 +304,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             self.create_ethereum_storage(&mut storage_data)?;
 
             storage_data.expand(StorageCell::required_account_size(cells.len()));
+            storage_data.lamports = self.rent.minimum_balance(storage_data.get_length());
             let mut storage =
                 StorageCell::from_account(&self.program_id, storage_data.into_account_info())?;
             storage.cells_mut().copy_from_slice(&cells);
@@ -365,7 +368,12 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         pubkey: Pubkey,
         is_writable: bool,
     ) -> NeonResult<&RefCell<AccountData>> {
+        if pubkey == self.operator() {
+            return Err(evm_loader::error::Error::InvalidAccountForCall(pubkey).into());
+        }
+
         self.mark_account(pubkey, is_writable, false);
+
         if let Some(account) = self.accounts.get(&pubkey) {
             return Ok(account);
         }
@@ -525,6 +533,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         let required_len = BalanceAccount::required_account_size();
         account_data.assign(self.program_id)?;
         account_data.expand(required_len);
+        account_data.lamports = self.rent.minimum_balance(account_data.get_length());
 
         BalanceAccount::initialize(
             account_data.into_account_info(),
@@ -559,6 +568,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         let required_len = ContractAccount::required_account_size(code);
         account_data.assign(self.program_id)?;
         account_data.expand(required_len);
+        account_data.lamports = self.rent.minimum_balance(account_data.get_length());
 
         ContractAccount::initialize(
             account_data.into_account_info(),
@@ -577,6 +587,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         self.mark_account(account_data.pubkey, true, false);
         account_data.assign(self.program_id)?;
         account_data.expand(StorageCell::required_account_size(0));
+        account_data.lamports = self.rent.minimum_balance(account_data.get_length());
 
         StorageCell::initialize(account_data.into_account_info(), &self.program_id)
     }
@@ -590,206 +601,6 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         } else {
             StorageCell::from_account(&self.program_id, account_data.into_account_info())
         }
-    }
-
-    pub async fn apply_actions(&mut self, _actions: Vec<Action>) -> Result<(), NeonError> {
-        info!("apply_actions");
-
-        // let mut new_balance_accounts = HashSet::new();
-
-        // for action in actions {
-        //     #[allow(clippy::match_same_arms)]
-        //     match action {
-        //         Action::Transfer {
-        //             source,
-        //             target,
-        //             chain_id,
-        //             value,
-        //         } => {
-        //             info!("neon transfer {value} from {source} to {target}");
-
-        //             self.use_balance_account(source, chain_id, true).await?;
-
-        //             let (key, target) =
-        //                 self.use_balance_account(target, chain_id, true).await?;
-        //             let legacy: Option<Account> = None;
-        //             if target.is_none() && legacy.is_none() {
-        //                 new_balance_accounts.insert(key);
-        //             }
-        //         }
-        //         Action::Burn {
-        //             source,
-        //             value,
-        //             chain_id,
-        //         } => {
-        //             info!("neon withdraw {value} from {source}");
-
-        //             self.use_balance_account(source, chain_id, true).await?;
-        //         }
-        //         Action::EvmSetStorage {
-        //             address,
-        //             index,
-        //             value,
-        //         } => {
-        //             info!("set storage {address} -> {index} = {}", hex::encode(value));
-
-        //             if index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u64) {
-        //                 self.use_contract_account(address, true).await?;
-        //             } else {
-        //                 let index = index & !U256::new(0xFF);
-        //                 let (_, account) = self.use_storage_cell(address, index, true).await?;
-
-        //                 let cell_size = StorageCell::required_account_size(1);
-        //                 let empty_size = StorageCell::required_account_size(0);
-
-        //                 let gas = if account.is_none() {
-        //                     self.rent.minimum_balance(cell_size)
-        //                 } else {
-        //                     let existing_value = self.storage(address, index).await;
-        //                     if existing_value == [0_u8; 32] {
-        //                         self.rent
-        //                             .minimum_balance(cell_size)
-        //                             .saturating_sub(self.rent.minimum_balance(empty_size))
-        //                     } else {
-        //                         0
-        //                     }
-        //                 };
-
-        //                 self.gas = self.gas.saturating_add(gas);
-        //             }
-        //         }
-        //         Action::EvmIncrementNonce { address, chain_id } => {
-        //             info!("nonce increment {address}");
-
-        //             let legacy: Option<Account> = None;
-        //             let (key, account) =
-        //                 self.use_balance_account(address, chain_id, true).await?;
-        //             if account.is_none() && legacy.is_none() {
-        //                 new_balance_accounts.insert(key);
-        //             }
-        //         }
-        //         Action::EvmSetCode {
-        //             address,
-        //             code,
-        //             chain_id: _,
-        //         } => {
-        //             info!("set code {address} -> {} bytes", code.len());
-        //             self.use_contract_account(address, true).await?;
-
-        //             let space = ContractAccount::required_account_size(&code);
-        //             self.gas = self.gas.saturating_add(self.rent.minimum_balance(space));
-        //         }
-        //         Action::EvmSelfDestruct { address } => {
-        //             info!("selfdestruct {address}");
-        //         }
-        //         Action::ExternalInstruction {
-        //             program_id,
-        //             accounts,
-        //             fee,
-        //             ..
-        //         } => {
-        //             info!("external call {program_id}");
-
-        //             self.use_account(program_id, false).await?;
-
-        //             for account in accounts {
-        //                 self.use_account(account.pubkey, account.is_writable)
-        //                     .await?;
-        //             }
-
-        //             self.gas = self.gas.saturating_add(fee);
-        //         }
-        //     }
-        // }
-
-        // self.gas = self.gas.saturating_add(
-        //     self.rent
-        //         .minimum_balance(BalanceAccount::required_account_size())
-        //         .saturating_mul(new_balance_accounts.len() as u64),
-        // );
-
-        Ok(())
-    }
-
-    pub async fn mark_legacy_accounts(&mut self) -> Result<(), NeonError> {
-        unimplemented!();
-        /*
-        let mut cache = self.accounts.borrow_mut();
-        let mut additional_balances = Vec::new();
-
-        for (key, account) in cache.iter_mut() {
-            let Some(account_data) = account.data.as_mut() else {
-                continue;
-            };
-
-            let info = account_info(key, account_data);
-            if info.owner != self.program_id() {
-                continue;
-            }
-
-            let Ok(tag) = evm_loader::account::tag(self.program_id(), &info) else {
-                continue;
-            };
-
-            if tag == TAG_STORAGE_CELL_DEPRECATED {
-                account.is_writable = true;
-                account.is_legacy = true;
-            }
-
-            if tag == TAG_ACCOUNT_CONTRACT_DEPRECATED {
-                account.is_writable = true;
-                account.is_legacy = true;
-
-                let legacy_data = LegacyEtherData::from_account(self.program_id(), &info)?;
-                additional_balances.push(legacy_data.address);
-
-                if (legacy_data.code_size > 0) || (legacy_data.generation > 0) {
-                    // This is a contract, we need additional gas for conversion
-                    let lamports = self
-                        .rent
-                        .minimum_balance(BalanceAccount::required_account_size());
-                    self.gas = self.gas.saturating_add(lamports);
-                }
-            }
-
-            if !account.is_writable {
-                continue;
-            }
-
-            let required_header_realloc = match tag {
-                TAG_ACCOUNT_CONTRACT => {
-                    let contract = ContractAccount::from_account(self.program_id(), info)?;
-                    contract.required_header_realloc()
-                }
-                TAG_STORAGE_CELL => {
-                    let cell = StorageCell::from_account(self.program_id(), info)?;
-                    cell.required_header_realloc()
-                }
-                _ => 0,
-            };
-
-            let header_realloc_lamports = self
-                .rent
-                .minimum_balance(required_header_realloc)
-                .saturating_sub(self.rent.minimum_balance(0));
-
-            self.gas = self.gas.saturating_add(header_realloc_lamports);
-        }
-
-        for a in additional_balances {
-            let (pubkey, _) = a.find_balance_address(self.program_id(), self.default_chain_id());
-            let account = SolanaAccount {
-                pubkey,
-                is_writable: true,
-                is_legacy: false,
-                data: None,
-            };
-
-            //accounts.insert(pubkey, account);
-        }
-
-        Ok(())
-        */
     }
 
     async fn mint(
@@ -822,37 +633,33 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             .collect::<Vec<_>>()
     }
 
-    pub fn get_changes_in_rent(&self) -> i64 {
+    pub fn get_changes_in_rent(&self) -> evm_loader::error::Result<i64> {
         let accounts = self.accounts.clone();
 
         let mut changes_in_rent = 0i64;
         for (pubkey, account) in accounts.into_map().iter() {
-            let original_rent = self.accounts_cache.get(pubkey).map_or_else(
-                || 0,
-                |v| {
-                    v.as_ref().map_or_else(
-                        || 0,
-                        |v| {
-                            if v.owner != system_program::ID {
-                                self.rent.minimum_balance(v.data.len())
-                            } else {
-                                0
-                            }
-                        },
-                    )
-                },
-            );
+            if *pubkey == system_program::ID {
+                continue;
+            }
+
+            let (original_rent, original_size) =
+                self.accounts_cache.get(pubkey).map_or((0, 0), |v| {
+                    v.as_ref().map_or((0, 0), |v| (v.lamports, v.data.len()))
+                });
             let new_acc = account.borrow();
-            let new_rent = if new_acc.is_empty() {
-                0
-            } else {
-                self.rent.minimum_balance(new_acc.get_length())
-            };
+            let new_rent = new_acc.lamports;
+            let new_size = new_acc.get_length();
+            info!("Changes in rent: {pubkey} {original_rent} -> {new_rent} | {original_size} -> {new_size}");
+
+            if new_acc.is_busy() && new_rent < self.rent.minimum_balance(new_acc.get_length()) {
+                info!("Account {pubkey} is not rent exempt");
+                return Err(solana_sdk::program_error::ProgramError::AccountNotRentExempt.into());
+            }
 
             changes_in_rent += new_rent as i64 - original_rent as i64;
         }
 
-        changes_in_rent
+        Ok(changes_in_rent)
     }
 }
 
@@ -865,7 +672,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
 
     fn operator(&self) -> Pubkey {
         info!("operator");
-        FAKE_OPERATOR
+        self.operator
     }
 
     fn block_number(&self) -> U256 {
@@ -1033,9 +840,9 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     async fn clone_solana_account(&self, address: &Pubkey) -> OwnedAccountInfo {
         info!("clone_solana_account {}", address);
 
-        if address == &FAKE_OPERATOR {
+        if *address == self.operator() {
             OwnedAccountInfo {
-                key: FAKE_OPERATOR,
+                key: self.operator(),
                 is_signer: true,
                 is_writable: false,
                 lamports: 100 * 1_000_000_000,
@@ -1072,22 +879,34 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
 
     async fn emulate_solana_call(
         &self,
-        program_id: &Pubkey,
-        instruction_data: &[u8],
-        meta: &[AccountMeta],
-        accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
-        seeds: &[Vec<Vec<u8>>],
+        _program_id: &Pubkey,
+        _instruction_data: &[u8],
+        _meta: &[AccountMeta],
+        _accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+        _seeds: &[Vec<Vec<u8>>],
     ) -> evm_loader::error::Result<()> {
-        let instruction = Instruction::new_with_bytes(*program_id, instruction_data, meta.to_vec());
-        let solana_emulator = get_solana_emulator().await;
-        solana_emulator
-            .emulate_solana_call(self, &instruction, accounts, seeds)
-            .await
+        // let instruction = Instruction::new_with_bytes(*program_id, instruction_data, meta.to_vec());
+        // let solana_emulator = get_solana_emulator().await;
+        // solana_emulator
+        //     .emulate_solana_call(self, &instruction, accounts, seeds)
+        //     .await
+        unimplemented!()
     }
 }
 
 fn map_neon_error(e: NeonError) -> evm_loader::error::Error {
     evm_loader::error::Error::Custom(e.to_string())
+}
+
+#[async_trait(?Send)]
+impl<T: Rpc> crate::solana_emulator::ProgramCache for EmulatorAccountStorage<'_, T> {
+    type Error = client_error::ClientError;
+
+    async fn get_account(&self, pubkey: Pubkey) -> Result<Option<Account>, Self::Error> {
+        self._get_account_from_rpc(pubkey)
+            .await
+            .map(|acc| acc.cloned())
+    }
 }
 
 #[async_trait(?Send)]
@@ -1185,6 +1004,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             let mut storage = self.get_or_create_ethereum_storage(&mut storage_data)?;
             storage.update(subindex, &value)?;
             self.mark_account(storage_data.pubkey, true, false);
+            storage_data.lamports = self.rent.minimum_balance(storage_data.get_length());
         }
 
         Ok(())
@@ -1245,13 +1065,43 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
 
     async fn execute_external_instruction(
         &mut self,
-        _instruction: Instruction,
-        _seeds: Vec<Vec<Vec<u8>>>,
+        instruction: Instruction,
+        seeds: Vec<Vec<Vec<u8>>>,
         _fee: u64,
     ) -> evm_loader::error::Result<()> {
-        Err(evm_loader::error::Error::Custom(
-            "unimplemented execute_external_instruction".to_string(),
-        ))
+        info!("execute_external_instruction: {instruction:?}");
+        info!("operator -> {}", self.operator);
+
+        let mut accounts = vec![];
+        let mut added_accounts: HashSet<Pubkey> = HashSet::new();
+        let base_accounts = [AccountMeta::new_readonly(instruction.program_id, false)];
+        for meta in base_accounts
+            .iter()
+            .chain(instruction.accounts.iter())
+            .filter(|meta| meta.pubkey != self.operator)
+        {
+            if added_accounts.contains(&meta.pubkey) {
+                continue;
+            }
+            let account = self
+                .use_account(meta.pubkey, meta.is_writable)
+                .await
+                .map_err(map_neon_error)?;
+            accounts.push(account.borrow_mut());
+            added_accounts.insert(meta.pubkey);
+        }
+        let accounts_info = accounts
+            .iter_mut()
+            .map(|v| v.into_account_info())
+            .collect::<Vec<_>>();
+
+        let result = get_solana_emulator()
+            .await
+            .emulate_solana_call(self, &instruction, &accounts_info, &seeds)
+            .await;
+
+        info!("execute_external_instruction result {result:?}");
+        result
     }
 
     fn snapshot(&mut self) {
@@ -1292,6 +1142,7 @@ pub fn account_info<'a>(key: &'a Pubkey, account: &'a mut Account) -> AccountInf
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::solana_emulator;
     use crate::tracing::AccountOverride;
     use hex_literal::hex;
     use std::collections::HashMap;
@@ -1480,6 +1331,7 @@ mod tests {
             let mut account_data = AccountData::new(cell_pubkey);
             account_data.assign(*program_id).unwrap();
             account_data.expand(StorageCell::required_account_size(self.values.len()));
+            account_data.lamports = rent.minimum_balance(account_data.get_length());
             let mut storage =
                 StorageCell::initialize(account_data.into_account_info(), program_id).unwrap();
             for (cell, (index, value)) in storage.cells_mut().iter_mut().zip(self.values.iter()) {
@@ -1625,6 +1477,7 @@ mod tests {
             let mut account_data = AccountData::new(pubkey);
             account_data.assign(*program_id).unwrap();
             account_data.expand(BalanceAccount::required_account_size());
+            account_data.lamports = rent.minimum_balance(account_data.get_length());
 
             let mut balance = BalanceAccount::initialize(
                 account_data.into_account_info(),
@@ -1667,6 +1520,7 @@ mod tests {
             let mut account_data = AccountData::new(pubkey);
             account_data.assign(*program_id).unwrap();
             account_data.expand(ContractAccount::required_account_size(self.code));
+            account_data.lamports = rent.minimum_balance(account_data.get_length());
 
             let mut contract = ContractAccount::initialize(
                 account_data.into_account_info(),
@@ -1861,7 +1715,7 @@ mod tests {
     }
 
     impl Fixture {
-        pub fn new() -> Self {
+        pub async fn new() -> Self {
             let rent = Rent::default();
             let program_id =
                 Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
@@ -1894,6 +1748,9 @@ mod tests {
                 LEGACY_SUICIDE.outdate_storage_with_pubkey(&program_id, &rent),
             ];
 
+            let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts);
+            solana_emulator::init_solana_emulator(program_id, &rpc_client).await;
+
             Self {
                 program_id,
                 chains: vec![
@@ -1909,7 +1766,7 @@ mod tests {
                     },
                 ],
                 rent,
-                mock_rpc: mock_rpc_client::MockRpcClient::new(&accounts),
+                mock_rpc: rpc_client,
                 block_overrides: None,
                 state_overrides: None,
             }
@@ -1997,13 +1854,13 @@ mod tests {
 
         pub fn verify_rent_changes(&self, added_rent: u64, removed_rent: u64) {
             let changes = added_rent as i64 - removed_rent as i64;
-            assert_eq!(self.get_changes_in_rent(), changes);
+            assert_eq!(self.get_changes_in_rent().unwrap(), changes);
         }
     }
 
     #[tokio::test]
     async fn test_read_balance_missing_account() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         assert_eq!(
@@ -2025,7 +1882,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_balance_missing_account_extra_chain() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         assert_eq!(
@@ -2044,7 +1901,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_balance_actual_account() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let acc = &ACTUAL_BALANCE;
@@ -2064,7 +1921,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_balance_actual_account_extra_chain() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let acc = &ACTUAL_BALANCE2;
@@ -2085,7 +1942,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_balance_legacy_account() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let acc = &LEGACY_ACCOUNT;
@@ -2108,7 +1965,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_modify_actual_and_missing_account() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let mut storage = fixture.build_account_storage().await;
 
         let from = &ACTUAL_BALANCE;
@@ -2149,7 +2006,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_modify_actual_and_missing_account_extra_chain() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let mut storage = fixture.build_account_storage().await;
 
         let from = &ACTUAL_BALANCE2;
@@ -2189,7 +2046,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_modify_actual_and_legacy_account() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let mut storage = fixture.build_account_storage().await;
 
         let from = &ACTUAL_BALANCE;
@@ -2231,7 +2088,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_missing_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         assert_eq!(*storage.code(MISSING_ADDRESS).await, [0u8; 0]);
@@ -2255,7 +2112,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_legacy_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         assert_eq!(
@@ -2282,7 +2139,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_legacy_contract_no_balance() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let contract = &LEGACY_CONTRACT_NO_BALANCE;
@@ -2307,7 +2164,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_actual_suicide_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_SUICIDE;
@@ -2322,7 +2179,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_legacy_suicide_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let contract = &LEGACY_SUICIDE;
@@ -2347,7 +2204,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_deploy_at_missing_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let mut storage = fixture.build_account_storage().await;
 
         let code = hex!("14643165").to_vec();
@@ -2364,7 +2221,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_deploy_at_actual_balance() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let mut storage = fixture.build_account_storage().await;
 
         let code = hex!("14643165").to_vec();
@@ -2382,7 +2239,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_deploy_at_actual_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let mut storage = fixture.build_account_storage().await;
 
         let code = hex!("62345987").to_vec();
@@ -2404,7 +2261,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_deploy_at_legacy_account() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let mut storage = fixture.build_account_storage().await;
 
         let code = hex!("37455846").to_vec();
@@ -2432,7 +2289,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_deploy_at_legacy_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let mut storage = fixture.build_account_storage().await;
 
         let code = hex!("13412971").to_vec();
@@ -2464,7 +2321,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_deploy_at_actual_suicide() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let mut storage = fixture.build_account_storage().await;
 
         let code = hex!("13412971").to_vec();
@@ -2486,7 +2343,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_deploy_at_legacy_suicide() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let mut storage = fixture.build_account_storage().await;
 
         let code = hex!("13412971").to_vec();
@@ -2515,7 +2372,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_missing_storage_for_missing_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         assert_eq!(
@@ -2534,7 +2391,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_missing_storage_for_actual_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_CONTRACT;
@@ -2554,7 +2411,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_actual_storage_for_actual_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_CONTRACT;
@@ -2574,7 +2431,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_modify_new_storage_for_actual_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let mut storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_CONTRACT;
@@ -2614,7 +2471,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_modify_missing_storage_for_actual_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let mut storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_CONTRACT;
@@ -2642,7 +2499,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_modify_internal_storage_for_actual_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let mut storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_CONTRACT;
@@ -2662,7 +2519,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_legacy_storage_for_actual_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_CONTRACT;
@@ -2685,7 +2542,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_outdate_storage_for_actual_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let contract = &ACTUAL_CONTRACT;
@@ -2708,7 +2565,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_missing_storage_for_legacy_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let contract = &LEGACY_CONTRACT;
@@ -2728,7 +2585,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_legacy_storage_for_legacy_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let contract = &LEGACY_CONTRACT;
@@ -2759,7 +2616,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_outdate_storage_for_legacy_contract() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let contract = &LEGACY_CONTRACT;
@@ -2790,7 +2647,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_missing_storage_for_legacy_suicide() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let contract = &LEGACY_SUICIDE;
@@ -2810,7 +2667,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_outdate_storage_for_legacy_suicide() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let storage = fixture.build_account_storage().await;
 
         let contract = &LEGACY_SUICIDE;

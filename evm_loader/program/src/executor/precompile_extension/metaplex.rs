@@ -184,12 +184,12 @@ async fn create_metadata<State: Database>(
                 share: 100,
             },
         ]),
-        0,     // Seller Fee
-        true,  // Update Authority == Mint Authority
-        false, // Is Mutable
-        None,  // Collection
-        None,  // Uses
-        None,  // Collection Details
+        0,    // Seller Fee
+        true, // Update Authority == Mint Authority
+        true, // Is Mutable
+        None, // Collection
+        None, // Uses
+        None, // Collection Details
     );
 
     let fee = state.rent().minimum_balance(MAX_METADATA_LEN) + CREATE_FEE;

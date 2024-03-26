@@ -10,13 +10,13 @@ thiserror = "1.0"
 anyhow = "1.0"
 bincode = "1.3.1"
 evm-loader = { path = "../program", default-features = false, features = ["log", "async-trait"] }
-solana-sdk = "=1.17.27"
-solana-client = "=1.17.27"
-solana-clap-utils = "=1.17.27"
-solana-cli-config = "=1.17.27"
-solana-cli = "=1.17.27"
-solana-transaction-status = "=1.17.27"
-solana-program-test = "=1.17.27"
+solana-sdk.workspace = true
+solana-client.workspace = true
+solana-clap-utils.workspace = true
+solana-cli-config.workspace = true
+solana-cli.workspace = true
+solana-transaction-status.workspace = true
+solana-program-test.workspace = true
 spl-token = { version = "~4.0", default-features = false, features = ["no-entrypoint"] }
 spl-associated-token-account = { version = "~2.3", default-features = false, features = ["no-entrypoint"] }
 bs58 = "0.5.1"

@@ -111,17 +111,17 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
             })
         }
         TAG_STATE => {
-            let state = StateAccount::from_account(program_id, &info)?;
-            let accounts = state.accounts().copied().collect();
+            let (owner, hash, chain_id, accounts, steps) =
+                StateAccount::get_state_account_view(program_id, &info)?;
 
             Ok(GetHolderResponse {
                 status: Status::Active,
                 len: Some(data_len),
-                owner: Some(state.owner()),
-                tx: Some(state.trx().hash()),
-                chain_id: state.trx().chain_id(),
+                owner: Some(owner),
+                tx: Some(hash),
+                chain_id,
                 accounts: Some(accounts),
-                steps_executed: state.steps_executed(),
+                steps_executed: steps,
             })
         }
         _ => Err(ProgramError::InvalidAccountData.into()),

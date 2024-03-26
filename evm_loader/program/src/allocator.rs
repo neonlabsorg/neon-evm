@@ -7,12 +7,30 @@ use std::{
 
 use linked_list_allocator::Heap;
 use solana_program::entrypoint::HEAP_START_ADDRESS;
+use solana_program::pubkey::Pubkey;
 use static_assertions::{const_assert, const_assert_eq};
 
 // Solana heap constants.
 #[allow(clippy::cast_possible_truncation)] // HEAP_START_ADDRESS < usize::max
 const SOLANA_HEAP_START_ADDRESS: usize = HEAP_START_ADDRESS as usize;
 const SOLANA_HEAP_SIZE: usize = 256 * 1024;
+
+// Holder account heap constants.
+pub const FIRST_ACCOUNT_DATA_OFFSET: usize =
+    /* number of accounts */
+    size_of::<u64>() +
+    /* duplication marker */ size_of::<u8>() +
+    /* is signer? */ size_of::<u8>() +
+    /* is writable? */ size_of::<u8>() +
+    /* is executable? */ size_of::<u8>() +
+    /* original_data_len */ size_of::<u32>() +
+    /* key */ size_of::<Pubkey>() +
+    /* owner */ size_of::<Pubkey>() +
+    /* lamports */ size_of::<u64>() +
+    /* factual_data_len */ size_of::<u64>();
+#[allow(clippy::cast_possible_truncation)]
+pub const STATE_ACCOUNT_DATA_ADDRESS: usize =
+    0x0004_0000_0000_u64 as usize + FIRST_ACCOUNT_DATA_OFFSET;
 
 const_assert!(HEAP_START_ADDRESS < (usize::MAX as u64));
 const_assert_eq!(SOLANA_HEAP_START_ADDRESS % align_of::<Heap>(), 0);
@@ -30,25 +48,9 @@ pub fn acc_allocator() -> StateAccountAllocator {
 // For non-Solana case, it uses standard System allocator.
 cfg_if::cfg_if! {
     if #[cfg(target_os = "solana")] {
-        use solana_program::pubkey::Pubkey;
-
-        // Holder account heap constants.
-        const FIRST_ACCOUNT_DATA_OFFSET: usize =
-        /* number of accounts */
-        size_of::<u64>() +
-        /* duplication marker */ size_of::<u8>() +
-        /* is signer? */ size_of::<u8>() +
-        /* is writable? */ size_of::<u8>() +
-        /* is executable? */ size_of::<u8>() +
-        /* original_data_len */ size_of::<u32>() +
-        /* key */ size_of::<Pubkey>() +
-        /* owner */ size_of::<Pubkey>() +
-        /* lamports */ size_of::<u64>() +
-        /* factual_data_len */ size_of::<u64>();
 
         #[allow(clippy::cast_possible_truncation)] // HEAP_START_ADDRESS < usize::max
         // Configure State/Holder Account heap: the offset of the heap object is at HEAP_OBJECT_PTR address.
-        const STATE_ACCOUNT_DATA_ADDRESS: usize = 0x400000000u64 as usize + FIRST_ACCOUNT_DATA_OFFSET;
         const HEAP_OBJECT_PTR: usize = STATE_ACCOUNT_DATA_ADDRESS + crate::account::HEAP_OFFSET_PTR;
 
         #[inline]

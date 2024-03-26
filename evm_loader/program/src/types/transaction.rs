@@ -77,6 +77,7 @@ impl TransactionEnvelope {
 }
 
 #[derive(Debug)]
+#[repr(C)]
 pub struct LegacyTx {
     pub nonce: u64,
     pub gas_price: U256,
@@ -158,6 +159,7 @@ impl rlp::Decodable for LegacyTx {
 }
 
 #[derive(Debug)]
+#[repr(C)]
 pub struct AccessListTx {
     pub nonce: u64,
     pub gas_price: U256,
@@ -255,12 +257,14 @@ impl rlp::Decodable for AccessListTx {
 // struct DynamicFeeTx {}
 
 #[derive(Debug)]
+#[repr(C, usize)]
 pub enum TransactionPayload {
     Legacy(LegacyTx),
     AccessList(AccessListTx),
 }
 
 #[derive(Debug)]
+#[repr(C)]
 pub struct Transaction {
     pub transaction: TransactionPayload,
     pub byte_len: usize,

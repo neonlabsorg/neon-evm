@@ -8,6 +8,7 @@ use std::{
 use super::Vector;
 use crate::allocator::acc_allocator;
 
+#[repr(C)]
 pub struct TreeMap<K, V> {
     keys: Vector<K>,
     values: Vector<V>,

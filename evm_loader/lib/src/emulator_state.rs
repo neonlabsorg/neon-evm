@@ -109,10 +109,6 @@ impl<'a, B: AccountStorage> Database for EmulatorState<'a, B> {
         self.inner_state.set_code(address, chain_id, code)
     }
 
-    fn selfdestruct(&mut self, address: Address) -> Result<()> {
-        self.inner_state.selfdestruct(address)
-    }
-
     async fn storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
         self.inner_state.storage(from_address, from_index).await
     }

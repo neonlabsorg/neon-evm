@@ -69,8 +69,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 
     pub fn into_actions(self) -> Vec<Action> {
         assert!(self.stack.is_empty());
-
-        crate::executor::action::filter_selfdestruct(self.actions)
+        self.actions
     }
 
     pub fn exit_status(&self) -> Option<&ExitStatus> {
@@ -323,13 +322,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             code,
         };
         self.actions.push(set_code);
-
-        Ok(())
-    }
-
-    fn selfdestruct(&mut self, address: Address) -> Result<()> {
-        let suicide = Action::EvmSelfDestruct { address };
-        self.actions.push(suicide);
 
         Ok(())
     }

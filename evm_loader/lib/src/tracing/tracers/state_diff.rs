@@ -161,7 +161,7 @@ impl EventListener for StateDiffTracer {
                     | opcode_table::EXTCODEHASH
                     | opcode_table::EXTCODESIZE
                     | opcode_table::BALANCE
-                    | opcode_table::SELFDESTRUCT
+                    | opcode_table::SENDALL
                         if !stack.is_empty() =>
                     {
                         let address = Address::from(*array_ref!(stack[stack.len() - 1], 12, 20));

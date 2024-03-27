@@ -193,8 +193,8 @@ impl<'a> Holder<'a> {
     ///
     /// N.B. No ownership checks are performed, it's a caller's responsibility.
     /// TODO: This piece of should be moved to mod.rs.
-    pub fn init_heap(&mut self) -> Result<()> {
-        let buffer_end = self.transaction_len() + BUFFER_OFFSET;
+    pub fn init_heap(&mut self, transaction_offset: usize) -> Result<()> {
+        let buffer_end = BUFFER_OFFSET + transaction_offset;
         let actual_heap_offset = crate::account::init_heap(&self.account, buffer_end);
 
         // Write the actual heap offset into the header. This memory cell is used by the allocator.

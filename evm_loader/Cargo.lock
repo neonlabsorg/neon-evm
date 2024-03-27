@@ -3191,6 +3191,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with 3.3.0",
+ "solana-banks-interface",
  "solana-clap-utils",
  "solana-cli",
  "solana-cli-config",

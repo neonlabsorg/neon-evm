@@ -105,6 +105,7 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
         instruction: Instruction,
         seeds: Vec<Vec<Vec<u8>>>,
         _fee: u64,
+        _emulated_internally: bool,
     ) -> Result<()> {
         let seeds = seeds
             .iter()

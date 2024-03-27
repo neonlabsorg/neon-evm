@@ -57,6 +57,9 @@ pub trait AccountStorage {
     /// Get return data from Solana
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)>;
 
+    /// Set return data to Solana
+    fn set_return_data(&self, data: &[u8]);
+
     /// Get account nonce
     async fn nonce(&self, address: Address, chain_id: u64) -> u64;
     /// Get account balance
@@ -116,6 +119,7 @@ pub trait SyncedAccountStorage {
         instruction: Instruction,
         seeds: Vec<Vec<Vec<u8>>>,
         fee: u64,
+        emulated_internally: bool,
     ) -> Result<()>;
 
     async fn selfdestruct(&mut self, address: Address) -> Result<()>;

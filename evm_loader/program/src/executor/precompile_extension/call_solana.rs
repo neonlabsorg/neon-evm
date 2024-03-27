@@ -244,7 +244,7 @@ pub async fn call_solana<State: Database>(
 
         // "cff5c1a5": "getReturnData()",
         [0xcf, 0xf5, 0xc1, 0xa5] => {
-            let return_value = match solana_program::program::get_return_data() {
+            let return_value = match state.return_data() {
                 Some((program, data)) => {
                     let data_len = (data.len() + 31) & (!31);
                     let mut result = vec![0_u8; 32 + 32 + 32 + data_len];
@@ -295,7 +295,7 @@ async fn execute_external_instruction<State: Database>(
     log::info!("instruction: {:?}", instruction);
 
     let called_program = instruction.program_id;
-    solana_program::program::set_return_data(&[]);
+    state.set_return_data(&[]);
 
     for meta in &instruction.accounts {
         if meta.pubkey == state.operator() {
@@ -357,7 +357,8 @@ async fn execute_external_instruction<State: Database>(
             .await?;
     }
 
-    let return_data = solana_program::program::get_return_data()
+    let return_data = state
+        .return_data()
         .and_then(|(program, data)| {
             if program == called_program {
                 Some(data)

@@ -177,6 +177,10 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         self.backend.return_data()
     }
 
+    fn set_return_data(&mut self, data: &[u8]) {
+        self.backend.set_return_data(data);
+    }
+
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
         F: FnOnce(&solana_program::account_info::AccountInfo) -> R,
@@ -233,10 +237,10 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         instruction: Instruction,
         seeds: Vec<Vec<Vec<u8>>>,
         fee: u64,
-        _emulated_internally: bool,
+        emulated_internally: bool,
     ) -> Result<()> {
         self.backend
-            .execute_external_instruction(instruction, seeds, fee)
+            .execute_external_instruction(instruction, seeds, fee, emulated_internally)
             .await?;
         Ok(())
     }

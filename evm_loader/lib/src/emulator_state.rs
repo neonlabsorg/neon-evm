@@ -145,6 +145,10 @@ impl<'a, B: AccountStorage> Database for EmulatorState<'a, B> {
         self.inner_state.return_data()
     }
 
+    fn set_return_data(&mut self, data: &[u8]) {
+        self.inner_state.set_return_data(data)
+    }
+
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
         F: FnOnce(&solana_sdk::account_info::AccountInfo) -> R,

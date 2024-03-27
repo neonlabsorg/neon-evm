@@ -1,10 +1,12 @@
 use async_trait::async_trait;
+use elsa::FrozenMap;
 use evm_loader::account::legacy::{LegacyEtherData, LegacyStorageData};
 use evm_loader::account_storage::find_slot_hash;
 use evm_loader::types::Address;
 use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
 use solana_sdk::sysvar::slot_hashes;
+use solana_sdk::transaction_context::TransactionReturnData;
 use std::collections::{BTreeMap, HashSet};
 use std::{
     cell::{RefCell, RefMut},
@@ -52,8 +54,8 @@ pub struct SolanaAccount {
 
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
-    accounts: elsa::FrozenMap<Pubkey, Box<RefCell<AccountData>>>,
-    call_stack: Vec<elsa::FrozenMap<Pubkey, Box<RefCell<AccountData>>>>,
+    accounts: FrozenMap<Pubkey, Box<RefCell<AccountData>>>,
+    call_stack: Vec<FrozenMap<Pubkey, Box<RefCell<AccountData>>>>,
 
     pub gas: u64,
     pub realloc_iterations: u64,
@@ -66,8 +68,9 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     block_timestamp: i64,
     rent: Rent,
     _state_overrides: Option<AccountOverrides>,
-    accounts_cache: elsa::FrozenMap<Pubkey, Box<Option<Account>>>,
-    used_accounts: elsa::FrozenMap<Pubkey, Box<RefCell<SolanaAccount>>>,
+    accounts_cache: FrozenMap<Pubkey, Box<Option<Account>>>,
+    used_accounts: FrozenMap<Pubkey, Box<RefCell<SolanaAccount>>>,
+    return_data: RefCell<Option<TransactionReturnData>>,
 
     selfdestruct_contracts: HashSet<Address>,
 }
@@ -106,7 +109,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         info!("Rent: {rent:?}");
 
         Ok(Self {
-            accounts: elsa::FrozenMap::new(),
+            accounts: FrozenMap::new(),
             call_stack: vec![],
             program_id,
             operator: get_solana_emulator().await.payer(),
@@ -119,8 +122,9 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             block_timestamp,
             _state_overrides: state_overrides,
             rent,
-            accounts_cache: elsa::FrozenMap::new(),
-            used_accounts: elsa::FrozenMap::new(),
+            accounts_cache: FrozenMap::new(),
+            used_accounts: FrozenMap::new(),
+            return_data: RefCell::new(None),
             selfdestruct_contracts: HashSet::new(),
         })
     }
@@ -691,8 +695,18 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
 
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
         info!("return_data");
-        // TODO: implement return_data() method with SyncedAccountStorage implementation
-        unimplemented!();
+        self.return_data
+            .borrow()
+            .as_ref()
+            .map(|data| (data.program_id, data.data.clone()))
+    }
+
+    fn set_return_data(&self, data: &[u8]) {
+        info!("set_return_data");
+        *self.return_data.borrow_mut() = Some(TransactionReturnData {
+            program_id: self.program_id,
+            data: data.to_vec(),
+        });
     }
 
     async fn block_hash(&self, slot: u64) -> [u8; 32] {
@@ -1068,40 +1082,50 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         instruction: Instruction,
         seeds: Vec<Vec<Vec<u8>>>,
         _fee: u64,
+        emulated_internally: bool,
     ) -> evm_loader::error::Result<()> {
         info!("execute_external_instruction: {instruction:?}");
         info!("operator -> {}", self.operator);
+        self.execute_status.external_solana_calls |= !emulated_internally;
 
-        let mut accounts = vec![];
-        let mut added_accounts: HashSet<Pubkey> = HashSet::new();
-        let base_accounts = [AccountMeta::new_readonly(instruction.program_id, false)];
-        for meta in base_accounts
-            .iter()
-            .chain(instruction.accounts.iter())
-            .filter(|meta| meta.pubkey != self.operator)
-        {
-            if added_accounts.contains(&meta.pubkey) {
-                continue;
+        let result = {
+            let mut accounts = vec![];
+            let mut added_accounts: HashSet<Pubkey> = HashSet::new();
+            let base_accounts = [AccountMeta::new_readonly(instruction.program_id, false)];
+            for meta in base_accounts
+                .iter()
+                .chain(instruction.accounts.iter())
+                .filter(|meta| meta.pubkey != self.operator)
+            {
+                if added_accounts.contains(&meta.pubkey) {
+                    continue;
+                }
+                let account = self
+                    .use_account(meta.pubkey, meta.is_writable)
+                    .await
+                    .map_err(map_neon_error)?;
+                accounts.push(account.borrow_mut());
+                added_accounts.insert(meta.pubkey);
             }
-            let account = self
-                .use_account(meta.pubkey, meta.is_writable)
-                .await
-                .map_err(map_neon_error)?;
-            accounts.push(account.borrow_mut());
-            added_accounts.insert(meta.pubkey);
-        }
-        let accounts_info = accounts
-            .iter_mut()
-            .map(|v| v.into_account_info())
-            .collect::<Vec<_>>();
+            let accounts_info = accounts
+                .iter_mut()
+                .map(|v| v.into_account_info())
+                .collect::<Vec<_>>();
 
-        let result = get_solana_emulator()
-            .await
-            .emulate_solana_call(self, &instruction, &accounts_info, &seeds)
-            .await;
+            get_solana_emulator()
+                .await
+                .emulate_solana_call(self, &instruction, &accounts_info, &seeds)
+                .await
+        };
 
         info!("execute_external_instruction result {result:?}");
-        result
+        if let Ok(meta) = result.as_ref() {
+            if let Some(return_data) = meta.as_ref().and_then(|v| v.return_data.clone()) {
+                *self.return_data.borrow_mut() = Some(return_data);
+            }
+        }
+
+        result.map(|_| ())
     }
 
     fn snapshot(&mut self) {

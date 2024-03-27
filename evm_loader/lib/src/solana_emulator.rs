@@ -1,26 +1,31 @@
-use solana_sdk::account::WritableAccount;
-use solana_sdk::bpf_loader_upgradeable::{self, UpgradeableLoaderState};
-use solana_sdk::{account::AccountSharedData, system_instruction::MAX_PERMITTED_DATA_LENGTH};
-
-use log::info;
-use maybe_async::maybe_async;
-use solana_sdk::rent::Rent;
-use tokio::sync::{Mutex, MutexGuard, OnceCell};
-
-use crate::rpc::Rpc;
-use crate::NeonError;
-use solana_program_test::{processor, BanksClientError, ProgramTest, ProgramTestContext};
+use solana_banks_interface::TransactionMetadata;
+use solana_program_test::{
+    processor, BanksClientError, BanksTransactionResultWithMetadata, ProgramTest,
+    ProgramTestContext,
+};
 use solana_sdk::{
+    account::AccountSharedData,
+    account::WritableAccount,
     account::{Account, ReadableAccount},
     account_info::AccountInfo,
+    bpf_loader_upgradeable::{self, UpgradeableLoaderState},
     instruction::{AccountMeta, Instruction},
     message::Message,
     program_error::ProgramError,
     pubkey,
     pubkey::Pubkey,
+    rent::Rent,
     signature::Signer,
+    system_instruction::MAX_PERMITTED_DATA_LENGTH,
     transaction::{Transaction, TransactionError},
 };
+
+use log::info;
+use maybe_async::maybe_async;
+use tokio::sync::{Mutex, MutexGuard, OnceCell};
+
+use crate::rpc::Rpc;
+use crate::NeonError;
 
 #[maybe_async(?Send)]
 pub trait ProgramCache {
@@ -306,7 +311,7 @@ impl SolanaEmulator {
         instruction: &Instruction,
         accounts: &[AccountInfo<'a>],
         seeds: &[Vec<Vec<u8>>],
-    ) -> evm_loader::error::Result<()> {
+    ) -> evm_loader::error::Result<Option<TransactionMetadata>> {
         for account in accounts {
             self.set_account(program_cache, account.key, &from_account_info(account))
                 .await?;
@@ -349,14 +354,21 @@ impl SolanaEmulator {
                 accounts_meta,
             )])
             .await?;
-        match self
+
+        let trx_metadata = match self
             .emulator_context
             .banks_client
-            .process_transaction(emulate_trx)
+            .process_transaction_with_metadata(emulate_trx)
             .await
         {
-            Ok(_) => Ok(()),
-            Err(BanksClientError::SimulationError { err, .. })
+            Ok(BanksTransactionResultWithMetadata {
+                result: Ok(()),
+                metadata,
+            }) => Ok(metadata),
+            Ok(BanksTransactionResultWithMetadata {
+                result: Err(err), ..
+            })
+            | Err(BanksClientError::SimulationError { err, .. })
             | Err(BanksClientError::TransactionError(err)) => match err {
                 TransactionError::InstructionError(_, err) => {
                     Err(evm_loader::error::Error::ExternalCallFailed(
@@ -414,7 +426,7 @@ impl SolanaEmulator {
             }
         }
 
-        Ok(())
+        Ok(trx_metadata)
     }
 }
 

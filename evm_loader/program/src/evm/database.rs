@@ -43,6 +43,7 @@ pub trait Database {
     fn block_timestamp(&self) -> Result<U256>;
     fn rent(&self) -> &Rent;
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)>;
+    fn set_return_data(&mut self, data: &[u8]);
 
     async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo>;
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
@@ -288,6 +289,10 @@ mod tests {
         }
 
         fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
+            unimplemented!();
+        }
+
+        fn set_return_data(&mut self, data: &[u8]) {
             unimplemented!();
         }
 

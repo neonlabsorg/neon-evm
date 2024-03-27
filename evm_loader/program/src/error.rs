@@ -181,6 +181,9 @@ pub enum Error {
 
     #[error("Call for external Solana programs not available in this mode")]
     UnavalableExternalSolanaCall,
+
+    #[error("Program not allowed to call itself")]
+    RecursiveCall,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

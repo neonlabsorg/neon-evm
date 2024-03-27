@@ -33,7 +33,7 @@ pub async fn call_solana<State: Database>(
     address: &Address,
     input: &[u8],
     context: &crate::evm::Context,
-    _is_static: bool,
+    is_static: bool,
 ) -> Result<Vec<u8>> {
     if context.value != 0 {
         return Err(Error::Custom("CallSolana: value != 0".to_string()));
@@ -54,6 +54,10 @@ pub async fn call_solana<State: Database>(
     match selector {
         // "c549a7af": "execute(uint64,bytes)",
         [0xc5, 0x49, 0xa7, 0xaf] => {
+            if is_static {
+                return Err(Error::StaticModeViolation(*address));
+            }
+
             let required_lamports = read_u64(&input[0..])?;
             let offset = read_usize(&input[32..])?;
             let instruction: Instruction =
@@ -80,6 +84,10 @@ pub async fn call_solana<State: Database>(
 
         // "32607450": "executeWithSeed(uint64,bytes32,bytes)",
         [0x32, 0x60, 0x74, 0x50] => {
+            if is_static {
+                return Err(Error::StaticModeViolation(*address));
+            }
+
             let required_lamports = read_u64(&input[0..])?;
             let salt = read_salt(&input[32..])?;
             let offset = read_usize(&input[64..])?;
@@ -107,6 +115,10 @@ pub async fn call_solana<State: Database>(
 
         // "aeed7f1e": "execute(uint64,(bytes32,(bytes32,bool,bool)[],bytes))",
         [0xae, 0xed, 0x7f, 0x1e] => {
+            if is_static {
+                return Err(Error::StaticModeViolation(*address));
+            }
+
             let required_lamports = read_u64(&input[0..])?;
             let instruction_offset = read_usize(&input[32..])?;
             let instruction = read_instruction(&input[instruction_offset..])?;
@@ -132,6 +144,10 @@ pub async fn call_solana<State: Database>(
 
         // "add378af": "executeWithSeed(uint64,bytes32,(bytes32,(bytes32,bool,bool)[],bytes))",
         [0xad, 0xd3, 0x78, 0xaf] => {
+            if is_static {
+                return Err(Error::StaticModeViolation(*address));
+            }
+
             let required_lamports = read_u64(&input[0..])?;
             let salt = read_salt(&input[32..])?;
             let instruction_offset = read_usize(&input[64..])?;
@@ -215,6 +231,10 @@ pub async fn call_solana<State: Database>(
 
         // "cfd51d32": "createResource(bytes32,uint64,uint64,bytes32)"
         [0xcf, 0xd5, 0x1d, 0x32] => {
+            if is_static {
+                return Err(Error::StaticModeViolation(*address));
+            }
+
             let salt = read_salt(&input[0..])?;
             let space = read_usize(&input[32..])?;
             let _lamports = read_u64(&input[64..])?;
@@ -296,6 +316,10 @@ async fn execute_external_instruction<State: Database>(
 
     let called_program = instruction.program_id;
     solana_program::program::set_return_data(&[]);
+
+    if called_program == *state.program_id() {
+        return Err(Error::RecursiveCall);
+    }
 
     for meta in &instruction.accounts {
         if meta.pubkey == state.operator() {

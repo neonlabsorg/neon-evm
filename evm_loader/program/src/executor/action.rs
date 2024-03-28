@@ -1,10 +1,7 @@
 use ethnum::U256;
 use solana_program::{instruction::AccountMeta, pubkey::Pubkey};
 
-use crate::types::{
-    vector::{into_vector, Vector},
-    Address,
-};
+use crate::types::{vector::Vector, Address};
 
 #[derive(Debug, Clone)]
 pub enum Action {

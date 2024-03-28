@@ -63,7 +63,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     #[must_use]
     pub fn into_actions(&self) -> Vector<Action> {
         assert!(self.data.stack.is_empty());
-        self.data.actions
+        self.data.actions.clone()
     }
 
     #[must_use]

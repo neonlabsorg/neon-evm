@@ -55,7 +55,7 @@ ethnum = { version = "1.5", default-features = false, features = ["serde"] }
 cfg-if = { version = "1.0" }
 log = { version = "0.4", default-features = false, optional = true }
 maybe-async = "0.2.10"
-async-trait = { version = "0.1.78", optional = true }
+async-trait = { version = "0.1.79", optional = true }
 
 [target.'cfg(target_os = "solana")'.dependencies.maybe-async]
 version = "0.2.7"

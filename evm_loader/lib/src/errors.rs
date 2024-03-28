@@ -105,8 +105,6 @@ pub enum NeonError {
     EarlySlot(u64, u64),
     #[error("Json Error. {0}")]
     SerdeJson(#[from] serde_json::Error),
-    #[error("BanksClient Error. {0}")]
-    BanksClientError(#[from] Box<solana_program_test::BanksClientError>),
     #[error("Transaction Error. {0}")]
     TransactionError(#[from] TransactionError),
     #[error("Bincode Error. {0}")]
@@ -123,6 +121,8 @@ pub enum NeonError {
     IncorrectLibMethod,
     #[error("strum parse error {0:?}")]
     StrumParseError(#[from] strum::ParseError),
+    #[error("Solana Simulator error {0:?}")]
+    SolanaSimulatorError(#[from] crate::solana_simulator::Error),
 }
 
 impl NeonError {
@@ -159,7 +159,6 @@ impl NeonError {
             NeonError::ClickHouse(_) => 252,
             NeonError::EarlySlot(_, _) => 253,
             NeonError::SerdeJson(_) => 254,
-            NeonError::BanksClientError(_) => 255,
             NeonError::TransactionError(_) => 256,
             NeonError::BincodeError(_) => 257,
             NeonError::FromUtf8Error(_) => 258,
@@ -169,6 +168,7 @@ impl NeonError {
             NeonError::LoadingDBConfigError => 262,
             NeonError::IncorrectLibMethod => 263,
             NeonError::StrumParseError(_) => 264,
+            NeonError::SolanaSimulatorError(_) => 265,
         }
     }
 }

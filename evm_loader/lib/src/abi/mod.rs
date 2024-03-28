@@ -4,6 +4,7 @@ mod get_config;
 mod get_contract;
 mod get_holder;
 mod get_storage_at;
+mod simulate_solana;
 pub mod state;
 mod trace;
 
@@ -111,6 +112,9 @@ async fn dispatch(method_str: &str, params_str: &str) -> Result<String, NeonErro
             .await
             .map(|v| serde_json::to_string(&v).unwrap()),
         LibMethod::Trace => trace::execute(&rpc, config, params_str)
+            .await
+            .map(|v| serde_json::to_string(&v).unwrap()),
+        LibMethod::SimulateSolana => simulate_solana::execute(&rpc, config, params_str)
             .await
             .map(|v| serde_json::to_string(&v).unwrap()),
         // _ => Err(NeonError::IncorrectLibMethod),

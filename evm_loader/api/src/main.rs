@@ -27,6 +27,7 @@ use crate::api_server::handlers::get_config::get_config;
 use crate::api_server::handlers::get_contract::get_contract;
 use crate::api_server::handlers::get_holder::get_holder_account_data;
 use crate::api_server::handlers::get_storage_at::get_storage_at;
+use crate::api_server::handlers::simulate_solana::simulate_solana;
 use crate::api_server::handlers::trace::trace;
 use crate::build_info::get_build_info;
 pub use config::Config;
@@ -77,6 +78,7 @@ async fn main() -> NeonApiResult<()> {
                 .service(get_config)
                 .service(get_holder_account_data)
                 .service(trace)
+                .service(simulate_solana)
                 .wrap(RequestIdentifier::with_uuid()),
         )
     })

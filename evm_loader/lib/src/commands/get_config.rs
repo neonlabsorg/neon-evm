@@ -1,28 +1,18 @@
 use async_trait::async_trait;
 use base64::Engine;
 use enum_dispatch::enum_dispatch;
+use solana_sdk::signer::Signer;
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use solana_program_test::{ProgramTest, ProgramTestContext};
-use solana_sdk::{
-    account::{Account, AccountSharedData},
-    account_utils::StateMut,
-    bpf_loader, bpf_loader_deprecated,
-    bpf_loader_upgradeable::{self, UpgradeableLoaderState},
-    instruction::Instruction,
-    pubkey::Pubkey,
-    rent::Rent,
-    signer::Signer,
-    transaction::Transaction,
-};
+use solana_sdk::{instruction::Instruction, pubkey::Pubkey, transaction::Transaction};
 
-use crate::{rpc::Rpc, NeonError, NeonResult};
+use crate::solana_simulator::SolanaSimulator;
+use crate::NeonResult;
 
 use crate::rpc::{CallDbClient, CloneRpcClient};
 use serde_with::{serde_as, DisplayFromStr};
 use solana_client::rpc_config::RpcSimulateTransactionConfig;
-use tokio::sync::{Mutex, MutexGuard, OnceCell};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Status {
@@ -51,69 +41,6 @@ pub struct GetConfigResponse {
     pub config: BTreeMap<String, String>,
 }
 
-impl CallDbClient {
-    async fn read_program_data_from_account(&self, program_id: Pubkey) -> NeonResult<Vec<u8>> {
-        let Some(account) = self.get_account(&program_id).await?.value else {
-            return Err(NeonError::AccountNotFound(program_id));
-        };
-
-        if account.owner == bpf_loader::id() || account.owner == bpf_loader_deprecated::id() {
-            return Ok(account.data);
-        }
-
-        if account.owner != bpf_loader_upgradeable::id() {
-            return Err(NeonError::AccountIsNotBpf(program_id));
-        }
-
-        if let Ok(UpgradeableLoaderState::Program {
-            programdata_address: address,
-        }) = account.state()
-        {
-            let Some(programdata_account) = self.get_account(&address).await?.value else {
-                return Err(NeonError::AssociatedPdaNotFound(address, program_id));
-            };
-
-            let offset = UpgradeableLoaderState::size_of_programdata_metadata();
-            let program_data = &programdata_account.data[offset..];
-
-            Ok(program_data.to_vec())
-        } else {
-            Err(NeonError::AccountIsNotUpgradeable(program_id))
-        }
-    }
-}
-
-async fn program_test_context() -> MutexGuard<'static, ProgramTestContext> {
-    static PROGRAM_TEST_CONTEXT: OnceCell<Mutex<ProgramTestContext>> = OnceCell::const_new();
-
-    async fn init_program_test_context() -> Mutex<ProgramTestContext> {
-        Mutex::new(ProgramTest::default().start_with_context().await)
-    }
-
-    PROGRAM_TEST_CONTEXT
-        .get_or_init(init_program_test_context)
-        .await
-        .lock()
-        .await
-}
-
-fn set_program_account(
-    program_test_context: &mut ProgramTestContext,
-    program_id: Pubkey,
-    program_data: Vec<u8>,
-) {
-    program_test_context.set_account(
-        &program_id,
-        &AccountSharedData::from(Account {
-            lamports: Rent::default().minimum_balance(program_data.len()).max(1),
-            data: program_data,
-            owner: bpf_loader::id(),
-            executable: true,
-            rent_epoch: 0,
-        }),
-    );
-}
-
 pub enum ConfigSimulator<'r> {
     CloneRpcClient {
         program_id: Pubkey,
@@ -121,7 +48,7 @@ pub enum ConfigSimulator<'r> {
     },
     ProgramTestContext {
         program_id: Pubkey,
-        program_test: MutexGuard<'static, ProgramTestContext>,
+        simulator: SolanaSimulator,
     },
 }
 
@@ -144,23 +71,28 @@ impl BuildConfigSimulator for CloneRpcClient {
 #[async_trait(?Send)]
 impl BuildConfigSimulator for CallDbClient {
     async fn build_config_simulator(&self, program_id: Pubkey) -> NeonResult<ConfigSimulator> {
-        let program_data = self.read_program_data_from_account(program_id).await?;
-
-        let mut program_test = program_test_context().await;
-
-        set_program_account(&mut program_test, program_id, program_data);
-        program_test.get_new_latest_blockhash().await?;
+        let mut simulator = SolanaSimulator::new(self).await?;
+        simulator.sync_accounts(self, &[program_id]).await?;
 
         Ok(ConfigSimulator::ProgramTestContext {
             program_id,
-            program_test,
+            simulator,
         })
     }
 }
 
-impl CloneRpcClient {
+#[async_trait(?Send)]
+trait ConfigInstructionSimulator {
     async fn simulate_solana_instruction(
-        &self,
+        &mut self,
+        instruction: Instruction,
+    ) -> NeonResult<Vec<String>>;
+}
+
+#[async_trait(?Send)]
+impl ConfigInstructionSimulator for &CloneRpcClient {
+    async fn simulate_solana_instruction(
+        &mut self,
         instruction: Instruction,
     ) -> NeonResult<Vec<String>> {
         let tx = Transaction::new_with_payer(&[instruction], Some(&self.key_for_config));
@@ -185,37 +117,22 @@ impl CloneRpcClient {
 }
 
 #[async_trait(?Send)]
-trait SolanaInstructionSimulator {
-    async fn simulate_solana_instruction(
-        &mut self,
-        instruction: Instruction,
-    ) -> NeonResult<Vec<String>>;
-}
-
-#[async_trait(?Send)]
-impl SolanaInstructionSimulator for ProgramTestContext {
+impl ConfigInstructionSimulator for SolanaSimulator {
     async fn simulate_solana_instruction(
         &mut self,
         instruction: Instruction,
     ) -> NeonResult<Vec<String>> {
-        let tx = Transaction::new_signed_with_payer(
-            &[instruction],
-            Some(&self.payer.pubkey()),
-            &[&self.payer],
-            self.last_blockhash,
-        );
+        let payer_pubkey = self.payer().pubkey();
 
-        // TODO: Fix failure to simulate transaction
-        // it can come from old NeonEVM program without chain_id support for old tx, when it should return default chain_id info
-        let result = self
-            .banks_client
-            .simulate_transaction(tx)
-            .await
-            .map_err(|e| NeonError::from(Box::new(e)))?;
+        let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer_pubkey));
+        transaction.message.recent_blockhash = self.blockhash();
 
-        result.result.unwrap()?;
+        let r = self.simulate_legacy_transaction(transaction)?;
+        if let Err(e) = r.result {
+            return Err(e.into());
+        }
 
-        Ok(result.simulation_details.unwrap().logs)
+        Ok(r.logs)
     }
 }
 
@@ -266,8 +183,8 @@ impl ConfigSimulator<'_> {
             ConfigSimulator::CloneRpcClient { rpc, .. } => {
                 rpc.simulate_solana_instruction(instruction).await
             }
-            ConfigSimulator::ProgramTestContext { program_test, .. } => {
-                program_test.simulate_solana_instruction(instruction).await
+            ConfigSimulator::ProgramTestContext { simulator, .. } => {
+                simulator.simulate_solana_instruction(instruction).await
             }
         }
     }

@@ -7,6 +7,7 @@ pub mod config;
 pub mod errors;
 pub mod rpc;
 
+pub mod solana_simulator;
 pub mod tracing;
 pub mod types;
 
@@ -43,4 +44,6 @@ pub enum LibMethod {
     GetHolder,
     #[strum(serialize = "trace")]
     Trace,
+    #[strum(serialize = "simulate_solana")]
+    SimulateSolana,
 }

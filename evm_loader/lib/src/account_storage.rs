@@ -306,9 +306,6 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
                     let space = ContractAccount::required_account_size(&code);
                     self.gas = self.gas.saturating_add(self.rent.minimum_balance(space));
                 }
-                Action::EvmSelfDestruct { address } => {
-                    info!("selfdestruct {address}");
-                }
                 Action::ExternalInstruction {
                     program_id,
                     accounts,

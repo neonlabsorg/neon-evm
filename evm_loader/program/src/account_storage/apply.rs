@@ -117,10 +117,6 @@ impl<'a> ProgramAccountStorage<'a> {
                         Some(&self.keys),
                     )?;
                 }
-                Action::EvmSelfDestruct { address: _ } => {
-                    // EIP-6780: SELFDESTRUCT only in the same transaction
-                    // do nothing, balance was already transfered
-                }
                 Action::ExternalInstruction {
                     program_id,
                     accounts,

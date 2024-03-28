@@ -202,5 +202,5 @@ opcode_table![
         0xFD, "REVERT", Self::opcode_revert;
         0xFE, "INVALID", Self::opcode_invalid;
 
-        0xFF, "SELFDESTRUCT", Self::opcode_selfdestruct;
+        0xFF, "SENDALL", Self::opcode_sendall;
 ];

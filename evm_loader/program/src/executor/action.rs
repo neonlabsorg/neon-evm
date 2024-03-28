@@ -45,39 +45,4 @@ pub enum Action {
         #[serde(with = "serde_bytes")]
         code: Vec<u8>,
     },
-    EvmSelfDestruct {
-        address: Address,
-    },
-}
-
-pub fn filter_selfdestruct(actions: Vec<Action>) -> Vec<Action> {
-    // Find all the account addresses which are scheduled to EvmSelfDestruct
-    let accounts_to_destroy: std::collections::HashSet<_> = actions
-        .iter()
-        .filter_map(|action| match action {
-            Action::EvmSelfDestruct { address } => Some(*address),
-            _ => None,
-        })
-        .collect();
-
-    actions
-        .into_iter()
-        .filter(|action| {
-            match action {
-                // We always apply ExternalInstruction for Solana accounts
-                // and NeonTransfer + NeonWithdraw
-                Action::ExternalInstruction { .. }
-                | Action::Transfer { .. }
-                | Action::Burn { .. } => true,
-                // We remove EvmSetStorage|EvmIncrementNonce|EvmSetCode if account is scheduled for destroy
-                Action::EvmSetStorage { address, .. }
-                | Action::EvmSetCode { address, .. }
-                | Action::EvmIncrementNonce { address, .. } => {
-                    !accounts_to_destroy.contains(address)
-                }
-                // SelfDestruct is only aplied to contracts deployed in the current transaction
-                Action::EvmSelfDestruct { .. } => false,
-            }
-        })
-        .collect()
 }

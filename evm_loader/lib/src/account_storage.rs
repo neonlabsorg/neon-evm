@@ -71,8 +71,6 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     accounts_cache: FrozenMap<Pubkey, Box<Option<Account>>>,
     used_accounts: FrozenMap<Pubkey, Box<RefCell<SolanaAccount>>>,
     return_data: RefCell<Option<TransactionReturnData>>,
-
-    selfdestruct_contracts: HashSet<Address>,
 }
 
 impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
@@ -125,7 +123,6 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             accounts_cache: FrozenMap::new(),
             used_accounts: FrozenMap::new(),
             return_data: RefCell::new(None),
-            selfdestruct_contracts: HashSet::new(),
         })
     }
 
@@ -925,12 +922,6 @@ impl<T: Rpc> crate::solana_emulator::ProgramCache for EmulatorAccountStorage<'_,
 
 #[async_trait(?Send)]
 impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
-    async fn selfdestruct(&mut self, address: Address) -> evm_loader::error::Result<()> {
-        self.selfdestruct_contracts.insert(address);
-
-        Ok(())
-    }
-
     async fn set_code(
         &mut self,
         address: Address,

@@ -122,8 +122,6 @@ pub trait SyncedAccountStorage {
         emulated_internally: bool,
     ) -> Result<()>;
 
-    async fn selfdestruct(&mut self, address: Address) -> Result<()>;
-
     fn snapshot(&mut self);
     fn revert_snapshot(&mut self);
     fn commit_snapshot(&mut self);

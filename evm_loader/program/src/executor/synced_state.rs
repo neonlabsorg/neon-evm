@@ -118,10 +118,6 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         Ok(())
     }
 
-    async fn selfdestruct(&mut self, address: Address) -> Result<()> {
-        self.backend.selfdestruct(address).await
-    }
-
     async fn storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
         Ok(self.backend.storage(from_address, from_index).await)
     }

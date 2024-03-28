@@ -1198,6 +1198,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         let context = Context {
             value,
             code_address: Some(address),
+            caller: self.context.contract,
             ..self.context
         };
 
@@ -1473,7 +1474,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Halt execution, destroys the contract and send all funds to address
     #[maybe_async]
-    pub async fn opcode_selfdestruct(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_sendall(&mut self, backend: &mut B) -> Result<Action> {
         if self.is_static {
             return Err(Error::StaticModeViolation(self.context.contract));
         }
@@ -1485,10 +1486,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend
             .transfer(self.context.contract, address, chain_id, value)
             .await?;
-        backend.selfdestruct(self.context.contract).await?;
 
         backend.commit_snapshot();
-        log_data(&[b"EXIT", b"SELFDESTRUCT"]);
+        log_data(&[b"EXIT", b"SENDALL"]);
 
         if self.parent.is_none() {
             return Ok(Action::Suicide);

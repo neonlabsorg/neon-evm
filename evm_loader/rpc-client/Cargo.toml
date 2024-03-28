@@ -12,7 +12,7 @@ jsonrpc-v2 = "0.13.0"
 neon-lib = { path = "../lib" }
 thiserror = "1.0.58"
 async-trait = "0.1.78"
-jsonrpsee-core = "0.20.2"
+jsonrpsee-core = "0.22.3"
 jsonrpsee-http-client = "0.20.2"
 jsonrpsee-types = "0.22.3"
 tokio = { version = "1", features = ["full"] }

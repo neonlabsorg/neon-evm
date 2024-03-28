@@ -2887,6 +2887,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonrpsee-core"
+version = "0.22.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71962a1c49af43adf81d337e4ebc93f3c915faf6eccaa14d74e255107dfd7723"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "beef",
+ "jsonrpsee-types 0.22.3",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "jsonrpsee-http-client"
 version = "0.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2895,7 +2911,7 @@ dependencies = [
  "async-trait",
  "hyper",
  "hyper-rustls",
- "jsonrpsee-core",
+ "jsonrpsee-core 0.20.3",
  "jsonrpsee-types 0.20.3",
  "serde",
  "serde_json",
@@ -3438,7 +3454,7 @@ dependencies = [
  "async-trait",
  "build-info",
  "jsonrpc-v2",
- "jsonrpsee-core",
+ "jsonrpsee-core 0.22.3",
  "jsonrpsee-http-client",
  "jsonrpsee-types 0.22.3",
  "neon-lib",

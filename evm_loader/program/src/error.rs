@@ -182,7 +182,10 @@ pub enum Error {
     #[error("Call for external Solana programs not available in this mode")]
     UnavalableExternalSolanaCall,
 
-    #[error("External call {0}: {1}")]
+    #[error("Program not allowed to call itself")]
+    RecursiveCall,
+
+    #[error("External call fails {0}: {1}")]
     ExternalCallFailed(Pubkey, String),
 }
 

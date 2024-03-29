@@ -322,8 +322,8 @@ async fn execute_external_instruction<State: Database>(
     }
 
     for meta in &instruction.accounts {
-        if meta.pubkey == state.operator() {
-            return Err(Error::InvalidAccountForCall(state.operator()));
+        if meta.pubkey == state.operator() || meta.pubkey == *state.program_id() {
+            return Err(Error::InvalidAccountForCall(meta.pubkey));
         }
     }
 

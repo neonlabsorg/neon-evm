@@ -123,48 +123,6 @@ impl<'a> IntoAccountInfo<'a> for &'a mut AccountData {
     }
 }
 
-/*impl ReadableAccount for AccountData {
-    fn lamports(&self) -> u64 {self.lamports}
-    fn data(&self) -> &[u8] {self.data()}
-    fn owner(&self) -> &Pubkey {&self.owner}
-    fn executable(&self) -> bool {self.executable}
-    fn rent_epoch(&self) -> u64 {self.rent_epoch}
-}*/
-
-/*impl WritableAccount for AccountData {
-    fn set_lamports(&mut self, lamports: u64) {
-        self.lamports = lamports;
-    }
-
-    fn set_owner(&mut self, owner: Pubkey) {
-        self.owner = owner;
-    }
-
-    fn set_executable(&mut self, executable: bool) {
-        self.executable = executable;
-    }
-
-    fn set_rent_epoch(&mut self, rent_epoch: u64) {
-        self.rent_epoch = rent_epoch;
-    }
-
-    fn data_as_mut_slice(&mut self) -> &mut [u8] {
-        self.data_mut()
-    }
-
-    fn copy_into_owner_from_slice(&mut self, source: &[u8]) {
-    }
-
-    fn create(
-        lamports: u64,
-        data: Vec<u8>,
-        owner: Pubkey,
-        executable: bool,
-        rent_epoch: Epoch,
-    ) -> Self {
-    }
-}*/
-
 #[cfg(test)]
 mod tests {
     use super::*;

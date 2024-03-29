@@ -350,14 +350,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
                 data,
                 accounts: meta,
                 emulated_internally,
-                seeds,
                 ..
             } = action
             {
                 if !emulated_internally {
-                    self.backend
-                        .emulate_solana_call(program_id, data, meta, &mut accounts, seeds)
-                        .await?;
+                    unreachable!();
                 }
 
                 match program_id {

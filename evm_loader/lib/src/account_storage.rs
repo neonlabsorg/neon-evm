@@ -7,7 +7,7 @@ use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
 use solana_sdk::sysvar::slot_hashes;
 use solana_sdk::transaction_context::TransactionReturnData;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::{
     cell::{RefCell, RefMut},
     convert::TryInto,
@@ -15,7 +15,6 @@ use std::{
 };
 
 use crate::account_data::AccountData;
-use crate::emulator_state::ExecuteStatus;
 use crate::solana_emulator::get_solana_emulator;
 use crate::NeonResult;
 use crate::{rpc::Rpc, NeonError};
@@ -42,6 +41,13 @@ use crate::tracing::{AccountOverrides, BlockOverrides};
 use serde_with::{serde_as, DisplayFromStr};
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
+
+#[derive(Default, Clone, Copy)]
+pub struct ExecuteStatus {
+    pub external_solana_calls: bool,
+    pub reverts_before_solana_calls: bool,
+    pub reverts_after_solana_calls: bool,
+}
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -886,22 +892,6 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         let mut account_data = account.borrow_mut();
         let info = account_data.into_account_info();
         action(&info)
-    }
-
-    async fn emulate_solana_call(
-        &self,
-        _program_id: &Pubkey,
-        _instruction_data: &[u8],
-        _meta: &[AccountMeta],
-        _accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
-        _seeds: &[Vec<Vec<u8>>],
-    ) -> evm_loader::error::Result<()> {
-        // let instruction = Instruction::new_with_bytes(*program_id, instruction_data, meta.to_vec());
-        // let solana_emulator = get_solana_emulator().await;
-        // solana_emulator
-        //     .emulate_solana_call(self, &instruction, accounts, seeds)
-        //     .await
-        unimplemented!()
     }
 }
 

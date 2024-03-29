@@ -4,10 +4,8 @@ use crate::types::Address;
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::{
-    account_info::AccountInfo, instruction::AccountMeta, instruction::Instruction, pubkey::Pubkey,
-    rent::Rent,
+    account_info::AccountInfo, instruction::Instruction, pubkey::Pubkey, rent::Rent,
 };
-use std::collections::BTreeMap;
 #[cfg(target_os = "solana")]
 use {crate::account::AccountsDB, solana_program::clock::Clock};
 
@@ -89,16 +87,6 @@ pub trait AccountStorage {
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
         F: FnOnce(&AccountInfo) -> R;
-
-    /// Emulate solana call
-    async fn emulate_solana_call(
-        &self,
-        program_id: &Pubkey,
-        data: &[u8],
-        meta: &[AccountMeta],
-        accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
-        seeds: &[Vec<Vec<u8>>],
-    ) -> Result<()>;
 }
 
 #[maybe_async(?Send)]

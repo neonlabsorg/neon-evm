@@ -1,13 +1,11 @@
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::executor::OwnedAccountInfo;
 use crate::types::Address;
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
-use solana_program::instruction::AccountMeta;
 use solana_program::{pubkey::Pubkey, rent::Rent, sysvar::slot_hashes};
-use std::collections::BTreeMap;
 use std::convert::TryInto;
 
 impl<'a> AccountStorage for ProgramAccountStorage<'a> {
@@ -131,18 +129,5 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     {
         let info = self.accounts.get(address);
         action(info)
-    }
-
-    fn emulate_solana_call(
-        &self,
-        _program_id: &Pubkey,
-        _data: &[u8],
-        _meta: &[AccountMeta],
-        _accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
-        _seeds: &[Vec<Vec<u8>>],
-    ) -> Result<()> {
-        Err(Error::Custom(
-            "emulate_solana_call not implemented".to_string(),
-        ))
     }
 }

@@ -347,10 +347,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         step_limit: u64,
         backend: &mut B,
     ) -> Result<(ExitStatus, u64, Option<T>)> {
-        assert!(self.execution_code.is_initialized());
-        assert!(self.call_data.is_initialized());
-        assert!(self.return_data.is_initialized());
-
         let mut step = 0_u64;
 
         begin_vm!(

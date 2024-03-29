@@ -14,10 +14,6 @@ enum Inner {
         range: Range<usize>,
         data: *const u8,
     },
-    AccountUninit {
-        key: Pubkey,
-        range: Range<usize>,
-    },
 }
 
 #[cfg_attr(test, derive(Debug))]
@@ -45,7 +41,6 @@ impl Buffer {
                 let ptr = unsafe { data.add(range.start) };
                 (ptr, range.len())
             }
-            Inner::AccountUninit { .. } => (std::ptr::null(), 0),
         };
 
         Buffer { ptr, len, inner }
@@ -88,13 +83,8 @@ impl Buffer {
     }
 
     #[must_use]
-    pub fn is_initialized(&self) -> bool {
-        !matches!(self.inner, Inner::AccountUninit { .. })
-    }
-
-    #[must_use]
     pub fn uninit_data(&self) -> Option<(Pubkey, Range<usize>)> {
-        if let Inner::AccountUninit { key, range } = &self.inner {
+        if let Inner::Account { key, range, .. } = &self.inner {
             Some((*key, range.clone()))
         } else {
             None
@@ -134,10 +124,6 @@ impl Clone for Buffer {
                 key: *key,
                 range: range.clone(),
                 data: *data,
-            }),
-            Inner::AccountUninit { key, range } => Self::new(Inner::AccountUninit {
-                key: *key,
-                range: range.clone(),
             }),
         }
     }
@@ -219,14 +205,5 @@ mod tests {
             &*unsafe { Buffer::from_account(&account_info.into_account_info(), 0..expected.1) },
             expected
         );
-    }
-
-    #[test]
-    #[should_panic(expected = "assertion failed: !self.ptr.is_null()")]
-    fn test_deref_account_uninit() {
-        let _: &[u8] = &Buffer::new(Inner::AccountUninit {
-            key: Pubkey::default(),
-            range: 0..0,
-        });
     }
 }

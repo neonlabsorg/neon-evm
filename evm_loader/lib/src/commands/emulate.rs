@@ -82,7 +82,38 @@ pub async fn execute<T: Tracer>(
 
     let step_limit = emulate_request.step_limit.unwrap_or(100000);
 
-    emulate_trx(emulate_request.tx, &mut storage, step_limit, tracer).await
+    let result = emulate_trx(emulate_request.tx.clone(), &mut storage, step_limit, tracer).await?;
+
+    if storage.is_timestamp_used() {
+        let mut storage2 = EmulatorAccountStorage::new_from_other(&storage, 5, 3);
+        if let Ok(result2) = emulate_trx(
+            emulate_request.tx,
+            &mut storage2,
+            step_limit,
+            Option::<T>::None,
+        )
+        .await
+        {
+            let response = &result.0;
+            let response2 = &result2.0;
+
+            let emul_response = EmulateResponse {
+                exit_status: response.exit_status.to_string(),
+                external_solana_calls: response.external_solana_calls,
+                reverts_before_solana_calls: response.reverts_before_solana_calls,
+                reverts_after_solana_calls: response.reverts_after_solana_calls,
+                steps_executed: response.steps_executed.max(response2.steps_executed),
+                used_gas: response.used_gas.max(response2.used_gas),
+                solana_accounts: response2.solana_accounts.clone(),
+                result: response.result.clone(),
+                iterations: response.iterations.max(response2.iterations),
+            };
+
+            return Ok((emul_response, result.1));
+        }
+    }
+
+    Ok(result)
 }
 
 async fn emulate_trx<T: Tracer>(

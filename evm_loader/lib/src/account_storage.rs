@@ -53,9 +53,9 @@ pub struct ExecuteStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SolanaAccount {
     #[serde_as(as = "DisplayFromStr")]
-    pubkey: Pubkey,
-    is_writable: bool,
-    is_legacy: bool,
+    pub pubkey: Pubkey,
+    pub is_writable: bool,
+    pub is_legacy: bool,
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -72,6 +72,7 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     chains: Vec<ChainInfo>,
     block_number: u64,
     block_timestamp: i64,
+    timestamp_used: RefCell<bool>,
     rent: Rent,
     _state_overrides: Option<AccountOverrides>,
     accounts_cache: FrozenMap<Pubkey, Box<Option<Account>>>,
@@ -124,12 +125,35 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             rpc,
             block_number,
             block_timestamp,
+            timestamp_used: RefCell::new(false),
             _state_overrides: state_overrides,
             rent,
             accounts_cache: FrozenMap::new(),
             used_accounts: FrozenMap::new(),
             return_data: RefCell::new(None),
         })
+    }
+
+    pub fn new_from_other(other: &Self, block_shift: u64, timestamp_shift: i64) -> Self {
+        Self {
+            accounts: FrozenMap::new(),
+            call_stack: vec![],
+            program_id: other.program_id,
+            operator: other.operator,
+            chains: other.chains.clone(),
+            gas: 0,
+            realloc_iterations: 0,
+            execute_status: ExecuteStatus::default(),
+            rpc: other.rpc,
+            block_number: other.block_number.saturating_add(block_shift),
+            block_timestamp: other.block_timestamp.saturating_add(timestamp_shift),
+            timestamp_used: RefCell::new(false),
+            rent: other.rent,
+            _state_overrides: other._state_overrides.clone(),
+            accounts_cache: other.accounts_cache.clone(),
+            used_accounts: other.used_accounts.clone(),
+            return_data: RefCell::new(None),
+        }
     }
 
     pub async fn with_accounts(
@@ -668,6 +692,10 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
 
         Ok(changes_in_rent)
     }
+
+    pub fn is_timestamp_used(&self) -> bool {
+        *self.timestamp_used.borrow()
+    }
 }
 
 #[async_trait(?Send)]
@@ -689,6 +717,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
 
     fn block_timestamp(&self) -> U256 {
         info!("block_timestamp");
+        *self.timestamp_used.borrow_mut() = true;
         self.block_timestamp.try_into().unwrap()
     }
 

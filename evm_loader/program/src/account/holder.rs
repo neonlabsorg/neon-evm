@@ -193,6 +193,7 @@ impl<'a> Holder<'a> {
     ///
     /// N.B. No ownership checks are performed, it's a caller's responsibility.
     /// TODO: This piece of should be moved to mod.rs.
+    /// TODO: Check why `transaction_offset` is always 0
     pub fn init_heap(&mut self, transaction_offset: usize) -> Result<()> {
         let actual_heap_offset =
             crate::account::init_heap(&self.account, MIN_HEAP_OFFSET + transaction_offset);

@@ -1,7 +1,4 @@
-use crate::account::{
-    program, AccountsDB, BalanceAccount, Holder, Operator, Treasury,
-    
-};
+use crate::account::{program, AccountsDB, BalanceAccount, Holder, Operator, Treasury};
 use crate::debug::log_data;
 use crate::error::Result;
 use crate::gasometer::Gasometer;

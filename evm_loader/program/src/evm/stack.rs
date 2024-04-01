@@ -7,6 +7,7 @@ use std::{
 
 use ethnum::{I256, U256};
 
+use crate::allocator::acc_allocator;
 use crate::{error::Error, types::Address};
 
 const ELEMENT_SIZE: usize = 32;
@@ -23,7 +24,7 @@ impl Stack {
     pub fn new() -> Self {
         let (begin, end) = unsafe {
             let layout = Layout::from_size_align_unchecked(STACK_SIZE, ELEMENT_SIZE);
-            let begin = crate::allocator::STATE_ACCOUNT_ALLOCATOR.alloc(layout);
+            let begin = acc_allocator().alloc(layout);
             if begin.is_null() {
                 std::alloc::handle_alloc_error(layout);
             }
@@ -260,7 +261,7 @@ impl Drop for Stack {
     fn drop(&mut self) {
         unsafe {
             let layout = Layout::from_size_align_unchecked(STACK_SIZE, ELEMENT_SIZE);
-            crate::allocator::STATE_ACCOUNT_ALLOCATOR.dealloc(self.begin, layout);
+            acc_allocator().dealloc(self.begin, layout);
         }
     }
 }

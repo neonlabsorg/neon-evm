@@ -1,6 +1,6 @@
 use crate::account::{
-    init_heap, program, write_heap_offset, AccountsDB, BalanceAccount, Holder, Operator, Treasury,
-    MIN_HEAP_OFFSET,
+    program, AccountsDB, BalanceAccount, Holder, Operator, Treasury,
+    
 };
 use crate::debug::log_data;
 use crate::error::Result;
@@ -28,7 +28,7 @@ pub fn process<'a>(
     let system = program::System::from_account(&accounts[4])?;
 
     holder.validate_owner(&operator)?;
-    holder.init_heap(0);
+    holder.init_heap(0)?;
 
     let trx = boxx(Transaction::from_rlp(messsage)?);
     let origin = trx.recover_caller_address()?;

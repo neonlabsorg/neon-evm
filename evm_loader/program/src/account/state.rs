@@ -2,7 +2,7 @@ use core::slice;
 use std::cell::{Ref, RefMut};
 use std::cmp::{max, min};
 use std::mem::{align_of, size_of, ManuallyDrop};
-use std::ptr::{addr_of, read_unaligned, write_unaligned};
+use std::ptr::{addr_of, read_unaligned};
 
 use crate::account_storage::AccountStorage;
 use crate::allocator::acc_allocator;
@@ -16,7 +16,6 @@ use crate::executor::ExecutorStateData;
 use crate::types::boxx::{boxx, Boxx};
 use crate::types::{AccessListTx, Address, LegacyTx, Transaction, TreeMap};
 use ethnum::U256;
-use linked_list_allocator::Heap;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use super::{
@@ -400,61 +399,6 @@ impl<'a> StateAccount<'a> {
             .checked_add(steps)
             .ok_or(Error::IntegerOverflow)?;
 
-        Ok(())
-    }
-
-    /// Initializes the heap using the whole account data space right after the Header section.
-    /// Also, writes the offset of the heap object at the special address.
-    /// After this, the persistent objects can be allocated in the account data.
-    ///
-    /// N.B. No ownership checks are performed, it's a caller's responsibility.
-    /// TODO: This piece of should be moved to mod.rs.
-    pub fn init_heap(info: &AccountInfo<'a>) -> Result<()> {
-        let (heap_ptr, heap_object_offset) = {
-            // Locate heap object after Holder's header.
-            let mut heap_object_offset = 100;
-            let data = info.data.borrow();
-            let mut heap_ptr = data.as_ptr().wrapping_add(heap_object_offset);
-
-            // Calculate alignment and offset the heap pointer.
-            let padding = heap_ptr.align_offset(align_of::<Heap>());
-            heap_ptr = heap_ptr.wrapping_add(padding);
-            assert_eq!(heap_ptr.align_offset(align_of::<Heap>()), 0);
-            heap_object_offset += padding;
-            (heap_ptr, heap_object_offset)
-        };
-
-        // Write the actual heap offset at the HEAP_OFFSET_PTR address.
-        // This address is used by the allocator.
-        {
-            let data = info.data.borrow();
-            #[allow(clippy::cast_ptr_alignment)]
-            let offset_ptr = data
-                .as_ptr()
-                .wrapping_add(crate::account::HEAP_OFFSET_PTR)
-                .cast::<usize>()
-                .cast_mut();
-            unsafe { write_unaligned(offset_ptr, heap_object_offset) };
-        }
-
-        let heap_ptr = heap_ptr.cast_mut();
-        assert_eq!(heap_ptr.align_offset(align_of::<Heap>()), 0);
-        unsafe {
-            // First, zero out underlying bytes of the future heap representation.
-            heap_ptr.write_bytes(0, size_of::<Heap>());
-            // Calculate the bottom of the heap, right after the Heap object.
-            let heap_bottom = heap_ptr.add(size_of::<Heap>());
-            // Size is equal to account data length minus the length of prefix.
-            let heap_size = info
-                .data_len()
-                .saturating_sub(heap_object_offset + size_of::<Heap>());
-            // Cast to reference and init.
-            // Zeroed memory is a valid representation of the Heap and hence we can safely do it.
-            // That's a safety reason we zeroed the memory above.
-            #[allow(clippy::cast_ptr_alignment)]
-            let heap = &mut *(heap_ptr.cast::<Heap>());
-            heap.init(heap_bottom, heap_size);
-        };
         Ok(())
     }
 }

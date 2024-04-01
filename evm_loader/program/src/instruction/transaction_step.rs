@@ -103,7 +103,6 @@ fn allocate_or_reinit_state(
             &mut evm_backend,
             None,
         )?);
-        //storage.alloc(state_data, evm)?;
         storage.alloc_evm(evm)?;
         storage.alloc_executor_state(state_data)?;
     } else {

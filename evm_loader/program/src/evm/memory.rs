@@ -42,26 +42,6 @@ impl Memory {
         }
     }
 
-    pub fn from_buffer(v: &[u8]) -> Self {
-        let capacity = v.len().next_power_of_two().max(MEMORY_CAPACITY);
-
-        unsafe {
-            let layout = Layout::from_size_align_unchecked(capacity, MEMORY_ALIGN);
-            let data = crate::allocator::STATE_ACCOUNT_ALLOCATOR.alloc_zeroed(layout);
-            if data.is_null() {
-                std::alloc::handle_alloc_error(layout);
-            }
-
-            std::ptr::copy_nonoverlapping(v.as_ptr(), data, v.len());
-
-            Self {
-                data,
-                capacity,
-                size: v.len(),
-            }
-        }
-    }
-
     #[cfg(not(target_os = "solana"))]
     pub fn to_vec(&self) -> Vec<u8> {
         let slice = unsafe { std::slice::from_raw_parts(self.data, self.size) };
@@ -247,45 +227,5 @@ impl Drop for Memory {
             let layout = Layout::from_size_align_unchecked(self.capacity, MEMORY_ALIGN);
             crate::allocator::STATE_ACCOUNT_ALLOCATOR.dealloc(self.data, layout);
         }
-    }
-}
-
-impl serde::Serialize for Memory {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let data = unsafe { std::slice::from_raw_parts(self.data, self.capacity) };
-        serializer.serialize_bytes(&data[..self.size()])
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Memory {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct BytesVisitor;
-
-        impl<'de> serde::de::Visitor<'de> for BytesVisitor {
-            type Value = Memory;
-
-            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                f.write_str("EVM Memory")
-            }
-
-            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                if v.len() % 32 != 0 {
-                    return Err(E::invalid_length(v.len(), &self));
-                }
-
-                Ok(Memory::from_buffer(v))
-            }
-        }
-
-        deserializer.deserialize_bytes(BytesVisitor)
     }
 }

@@ -1996,14 +1996,11 @@ dependencies = [
  "ripemd",
  "rlp",
  "serde",
- "serde_bytes",
- "serde_json",
  "solana-program",
  "spl-associated-token-account",
  "spl-token",
  "static_assertions",
  "thiserror",
- "tokio",
 ]
 
 [[package]]

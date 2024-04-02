@@ -8,7 +8,6 @@ pub use tree_map::TreeMap;
 pub use vector::Vector;
 
 mod address;
-pub mod serde;
 mod transaction;
 pub mod tree_map;
 #[macro_use]

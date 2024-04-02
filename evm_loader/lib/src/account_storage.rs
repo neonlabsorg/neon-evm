@@ -18,7 +18,6 @@ use std::{
 
 use crate::account_data::AccountData;
 use crate::solana_simulator::SolanaSimulator;
-// use crate::solana_emulator::get_solana_emulator;
 use crate::NeonResult;
 use crate::{rpc::Rpc, NeonError};
 use ethnum::U256;

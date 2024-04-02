@@ -1195,11 +1195,14 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             .await
             .map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?;
 
+        let mut trx = Transaction::new_unsigned(Message::new(
+            &[instruction],
+            Some(&solana_simulator.payer().pubkey()),
+        ));
+        trx.message.recent_blockhash = solana_simulator.blockhash();
+
         let result = solana_simulator
-            .simulate_legacy_transaction(Transaction::new_unsigned(Message::new(
-                &[instruction],
-                Some(&solana_simulator.payer().pubkey()),
-            )))
+            .simulate_legacy_transaction(trx)
             .map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?;
         result.result.map_err(|e| {
             evm_loader::error::Error::ExternalCallFailed(called_program, e.to_string())

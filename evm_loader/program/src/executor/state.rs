@@ -13,7 +13,7 @@ use crate::error::{Error, Result};
 use crate::evm::database::Database;
 use crate::evm::{Context, ExitStatus};
 use crate::types::tree_map::TreeMap;
-use crate::types::vector::{into_vector, Vector};
+use crate::types::vector::{Vector, VectorVecExt};
 use crate::types::Address;
 
 use super::action::Action;
@@ -97,8 +97,8 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     ) {
         let action = Action::ExternalInstruction {
             program_id: instruction.program_id,
-            data: into_vector(instruction.data),
-            accounts: into_vector(instruction.accounts),
+            data: instruction.data.into_vector(),
+            accounts: instruction.accounts.into_vector(),
             seeds,
             fee,
         };
@@ -108,7 +108,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 
     #[maybe_async]
     pub async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
-        let metas = self
+        let metas: Vec<_> = self
             .data
             .actions
             .iter()
@@ -121,7 +121,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
             })
             .flatten()
             .collect();
-        let metas = into_vector(metas);
+        let metas = metas.into_vector();
 
         if !metas.iter().any(|m| (m.pubkey == address) && m.is_writable) {
             let account =
@@ -321,7 +321,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         let set_code = Action::EvmSetCode {
             address,
             chain_id,
-            code: into_vector(code),
+            code: code.into_vector(),
         };
         self.data.actions.push(set_code);
 

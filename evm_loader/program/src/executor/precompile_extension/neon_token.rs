@@ -6,7 +6,7 @@ use maybe_async::maybe_async;
 use solana_program::{account_info::IntoAccountInfo, program_pack::Pack, pubkey::Pubkey};
 use spl_associated_token_account::get_associated_token_address;
 
-use crate::types::vector::into_vector;
+use crate::types::vector::VectorSliceExt;
 use crate::vector;
 
 use crate::{
@@ -140,7 +140,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
             spl_amount.as_u64(),
             mint_data.decimals,
         )?;
-        let transfer_seeds = vector![into_vector(b"Deposit".to_vec()), vector![bump_seed]];
+        let transfer_seeds = vector![b"Deposit".to_vector(), vector![bump_seed]];
         self.queue_external_instruction(transfer, transfer_seeds, 0);
 
         self.burn(source, chain_id, value);

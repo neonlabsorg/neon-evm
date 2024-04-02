@@ -1,7 +1,6 @@
 pub mod tracer_ch_common;
 mod tracer_ch_db;
 
-use evm_loader::types::vector::into_vector;
 pub use evm_loader::types::Address;
 use evm_loader::types::{StorageKey, Transaction};
 use evm_loader::{
@@ -15,6 +14,7 @@ pub use tracer_ch_db::ClickHouseDb as TracerDb;
 use crate::tracing::TraceCallConfig;
 
 use ethnum::U256;
+use evm_loader::types::vector::VectorVecExt;
 use serde::{Deserialize, Serialize};
 use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
 
@@ -63,7 +63,7 @@ impl TxParams {
         let payload = if let Some(access_list) = self.access_list {
             let access_list: Vec<_> = access_list
                 .into_iter()
-                .map(|a| (a.address, into_vector(a.storage_keys)))
+                .map(|a| (a.address, a.storage_keys.into_vector()))
                 .collect();
 
             let access_list_tx = AccessListTx {
@@ -72,9 +72,9 @@ impl TxParams {
                 gas_limit: self.gas_limit.unwrap_or(U256::MAX),
                 target: self.to,
                 value: self.value.unwrap_or_default(),
-                call_data: into_vector(self.data.unwrap_or_default()),
+                call_data: self.data.unwrap_or_default().into_vector(),
                 chain_id: U256::from(chain_id),
-                access_list: into_vector(access_list),
+                access_list: access_list.into_vector(),
                 r: U256::ZERO,
                 s: U256::ZERO,
                 recovery_id: 0,
@@ -87,7 +87,7 @@ impl TxParams {
                 gas_limit: self.gas_limit.unwrap_or(U256::MAX),
                 target: self.to,
                 value: self.value.unwrap_or_default(),
-                call_data: into_vector(self.data.unwrap_or_default()),
+                call_data: self.data.unwrap_or_default().into_vector(),
                 chain_id: self.chain_id.map(U256::from),
                 v: U256::ZERO,
                 r: U256::ZERO,

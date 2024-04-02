@@ -1,4 +1,4 @@
-use crate::{error::Result, types::vector::into_vector};
+use crate::error::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
 use mpl_token_metadata::{
     accounts::{MasterEdition, Metadata},
@@ -13,6 +13,7 @@ use solana_program::{account_info::IntoAccountInfo, program_pack::Pack};
 use std::collections::BTreeMap;
 
 use crate::executor::OwnedAccountInfo;
+use crate::types::vector::VectorVecExt;
 use solana_program::pubkey::Pubkey;
 
 pub fn emulate(
@@ -83,7 +84,7 @@ fn create_metadata_accounts_v3(
 
     let metadata_account = accounts.get_mut(metadata_account_key).unwrap();
     metadata_account.owner = MPL_TOKEN_METADATA_ID;
-    metadata_account.data = into_vector(metadata.try_to_vec()?);
+    metadata_account.data = metadata.try_to_vec()?.into_vector();
     metadata_account.lamports = rent.minimum_balance(metadata_account.data.len());
 
     Ok(())
@@ -137,7 +138,7 @@ fn create_master_edition_v3(
     {
         let edition_account = accounts.get_mut(edition_account_key).unwrap();
         edition_account.owner = MPL_TOKEN_METADATA_ID;
-        edition_account.data = into_vector(edition.try_to_vec()?);
+        edition_account.data = edition.try_to_vec()?.into_vector();
         edition_account.lamports = rent.minimum_balance(edition_account.data.len());
     }
     // Metadata Account

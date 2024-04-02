@@ -2,8 +2,9 @@ use std::ops::{Deref, Range};
 
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-use crate::types::vector::{into_vector, vect};
+use crate::types::vector::VectorVecExt;
 use crate::types::Vector;
+use crate::vector;
 
 #[cfg_attr(test, derive(Debug, PartialEq))]
 #[repr(C)]
@@ -69,17 +70,17 @@ impl Buffer {
 
     #[must_use]
     pub fn from_vec(v: Vec<u8>) -> Self {
-        Self::new(Inner::Owned(into_vector(v)))
+        Self::new(Inner::Owned(v.into_vector()))
     }
 
     #[must_use]
     pub fn from_slice(v: &[u8]) -> Self {
-        Self::from_vec(v.to_vec())
+        Self::from_vec(v.to_vec()) // todo optimize this
     }
 
     #[must_use]
     pub fn empty() -> Self {
-        Buffer::new(Inner::Owned(vect()))
+        Buffer::new(Inner::Owned(vector![]))
     }
 
     #[must_use]

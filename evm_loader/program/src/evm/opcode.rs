@@ -12,15 +12,14 @@ use super::{
     end_vm, tracing_event, Context, Machine, Reason,
 };
 use crate::evm::tracing::EventListener;
+#[cfg(not(target_os = "solana"))]
+use crate::types::vector::VectorVecExt;
 use crate::{
     debug::log_data,
     error::{Error, Result},
     evm::Buffer,
     types::Address,
 };
-
-#[cfg(not(target_os = "solana"))]
-use crate::types::vector::into_vector;
 
 #[derive(Eq, PartialEq)]
 pub enum Action {
@@ -1372,7 +1371,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend: &mut B,
     ) -> Result<Action> {
         if self.reason == Reason::Create {
-            let code = std::mem::take(&mut return_data);
+            let code = std::mem::take(&mut return_data); // todo fix this
             backend.set_code(self.context.contract, self.chain_id, code)?;
         }
 
@@ -1382,7 +1381,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         end_vm!(
             self,
             backend,
-            super::ExitStatus::Return(into_vector(return_data.clone()))
+            super::ExitStatus::Return(return_data.clone().into_vector())
         );
 
         if self.parent.is_none() {
@@ -1431,7 +1430,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         end_vm!(
             self,
             backend,
-            super::ExitStatus::Revert(into_vector(return_data.clone()))
+            super::ExitStatus::Revert(return_data.clone().into_vector())
         );
 
         if self.parent.is_none() {

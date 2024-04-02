@@ -1,11 +1,12 @@
 use crate::allocator::{acc_allocator, StateAccountAllocator};
+use allocator_api2::SliceExt;
 
 pub type Vector<T> = allocator_api2::vec::Vec<T, StateAccountAllocator>;
 
 #[macro_export]
 macro_rules! vector {
     () => (
-        allocator_api2::vec::Vec::with_capacity_in(1, $crate::allocator::acc_allocator())
+        allocator_api2::vec::Vec::new_in($crate::allocator::acc_allocator())
     );
     ($elem:expr; $n:expr) => (
         allocator_api2::vec::from_elem_in($elem, $n, $crate::allocator::acc_allocator())
@@ -19,16 +20,31 @@ macro_rules! vector {
     );
 }
 
-#[must_use]
-pub fn into_vector<T>(v: Vec<T>) -> Vector<T> {
-    let mut ret = Vector::with_capacity_in(v.len(), acc_allocator());
-    for item in v {
-        ret.push(item);
-    }
-    ret
+pub trait VectorVecExt<T> {
+    fn into_vector(self) -> Vector<T>;
 }
 
-#[must_use]
-pub fn vect<T>() -> Vector<T> {
-    Vector::with_capacity_in(1, acc_allocator())
+impl<T> VectorVecExt<T> for Vec<T> {
+    fn into_vector(self) -> Vector<T> {
+        let mut ret = Vector::with_capacity_in(self.len(), acc_allocator());
+        for item in self {
+            ret.push(item);
+        }
+        ret
+    }
+}
+
+pub trait VectorSliceExt<T> {
+    fn to_vector(&self) -> Vector<T>
+    where
+        T: Clone;
+}
+
+impl<T> VectorSliceExt<T> for [T] {
+    fn to_vector(&self) -> Vector<T>
+    where
+        T: Clone,
+    {
+        SliceExt::to_vec_in(self, acc_allocator())
+    }
 }

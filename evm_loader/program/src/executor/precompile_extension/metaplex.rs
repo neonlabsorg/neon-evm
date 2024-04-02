@@ -12,13 +12,14 @@ use mpl_token_metadata::{
 };
 use solana_program::pubkey::Pubkey;
 
+use crate::types::vector::VectorSliceExt;
 use crate::vector;
 use crate::{
     account::ACCOUNT_SEED_VERSION,
     account_storage::AccountStorage,
     error::{Error, Result},
     executor::ExecutorState,
-    types::{vector::into_vector, Address},
+    types::Address,
 };
 
 // TODO: Use solana-program-test in the emulator to calculate fee
@@ -192,7 +193,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
 
         let seeds = vector![
             vector![ACCOUNT_SEED_VERSION],
-            into_vector(signer.as_bytes().to_vec()),
+            signer.as_bytes().to_vector(),
             vector![bump_seed],
         ];
 
@@ -244,7 +245,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
 
         let seeds = vector![
             vector![ACCOUNT_SEED_VERSION],
-            into_vector(signer.as_bytes().to_vec()),
+            signer.as_bytes().to_vector(),
             vector![bump_seed],
         ];
 

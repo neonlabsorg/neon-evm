@@ -15,7 +15,7 @@ use crate::{
     debug::log_data,
     error::{build_revert_message, Error, Result},
     evm::{opcode::Action, precompile::is_precompile_address},
-    types::{vector::into_vector, Address, Transaction, Vector},
+    types::{Address, Transaction, Vector},
 };
 use crate::{evm::tracing::EventListener, types::boxx::Boxx};
 
@@ -97,6 +97,7 @@ macro_rules! begin_step {
     };
 }
 
+use crate::types::vector::VectorVecExt;
 pub(crate) use begin_step;
 pub(crate) use begin_vm;
 pub(crate) use end_vm;
@@ -370,7 +371,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             let value = Self::precompile(&self.context.contract, &self.call_data).unwrap();
             backend.commit_snapshot();
 
-            ExitStatus::Return(into_vector(value))
+            ExitStatus::Return(value.into_vector())
         } else {
             loop {
                 step += 1;
@@ -394,8 +395,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                     Action::Continue => self.pc += 1,
                     Action::Jump(target) => self.pc = target,
                     Action::Stop => break ExitStatus::Stop,
-                    Action::Return(value) => break ExitStatus::Return(into_vector(value)),
-                    Action::Revert(value) => break ExitStatus::Revert(into_vector(value)),
+                    Action::Return(value) => break ExitStatus::Return(value.into_vector()),
+                    Action::Revert(value) => break ExitStatus::Revert(value.into_vector()),
                     Action::Suicide => break ExitStatus::Suicide,
                     Action::Noop => {}
                 };

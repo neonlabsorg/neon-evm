@@ -4,12 +4,11 @@ use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
+use crate::types::vector::VectorSliceExt;
 use crate::{
     account_storage::AccountStorage,
-    types::{
-        vector::{into_vector, vect},
-        Address, TreeMap, Vector,
-    },
+    types::{Address, TreeMap, Vector},
+    vector,
 };
 
 #[derive(Clone)]
@@ -35,9 +34,9 @@ impl OwnedAccountInfo {
             data: if info.executable || (info.owner == program_id) {
                 // This is only used to emulate external programs
                 // They don't use data in our accounts
-                vect()
+                vector![]
             } else {
-                into_vector(info.data.borrow().to_vec())
+                info.data.borrow().to_vector()
             },
             owner: *info.owner,
             executable: info.executable,

@@ -17,7 +17,7 @@ use crate::{
 
 use crate::vector;
 
-use crate::types::vector::{into_vector, Vector};
+use crate::types::vector::{Vector, VectorSliceExt};
 
 // [0xa9, 0xc1, 0x58, 0x06] : "approve(bytes32,bytes32,uint64)",
 // [0xc0, 0x67, 0xee, 0xbb] : "burn(bytes32,bytes32,uint64)",
@@ -319,9 +319,9 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
 
         let seeds: Vector<Vector<u8>> = vector![
             vector![ACCOUNT_SEED_VERSION],
-            into_vector(b"ContractData".to_vec()),
-            into_vector(signer.as_bytes().to_vec()),
-            into_vector(seed.to_vec()),
+            b"ContractData".to_vector(),
+            signer.as_bytes().to_vector(),
+            seed.to_vector(),
             vector![bump_seed],
         ];
 
@@ -367,9 +367,9 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
 
         let seeds: Vector<Vector<u8>> = vector![
             vector![ACCOUNT_SEED_VERSION],
-            into_vector(b"ContractData".to_vec()),
-            into_vector(signer.as_bytes().to_vec()),
-            into_vector(seed.to_vec()),
+            b"ContractData".to_vector(),
+            signer.as_bytes().to_vector(),
+            seed.to_vector(),
             vector![bump_seed],
         ];
 
@@ -392,7 +392,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
 
         let seeds = vector![
             vector![ACCOUNT_SEED_VERSION],
-            into_vector(signer.as_bytes().to_vec()),
+            signer.as_bytes().to_vector(),
             vector![bump_seed],
         ];
 
@@ -420,7 +420,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
 
         let seeds = vector![
             vector![ACCOUNT_SEED_VERSION],
-            into_vector(signer.as_bytes().to_vec()),
+            signer.as_bytes().to_vector(),
             vector![bump_seed],
         ];
 
@@ -443,7 +443,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
 
         let seeds = vector![
             vector![ACCOUNT_SEED_VERSION],
-            into_vector(signer.as_bytes().to_vec()),
+            signer.as_bytes().to_vector(),
             vector![bump_seed],
         ];
 
@@ -465,7 +465,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
 
         let seeds = vector![
             vector![ACCOUNT_SEED_VERSION],
-            into_vector(signer.as_bytes().to_vec()),
+            signer.as_bytes().to_vector(),
             vector![bump_seed],
         ];
 
@@ -501,9 +501,9 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
 
         let seeds = vector![
             vector![ACCOUNT_SEED_VERSION],
-            into_vector(b"AUTH".to_vec()),
-            into_vector(context.caller.as_bytes().to_vec()),
-            into_vector(seed.to_vec()),
+            b"AUTH".to_vector(),
+            context.caller.as_bytes().to_vector(),
+            seed.to_vector(),
             vector![signer_seed],
         ];
 
@@ -532,7 +532,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
 
         let seeds = vector![
             vector![ACCOUNT_SEED_VERSION],
-            into_vector(signer.as_bytes().to_vec()),
+            signer.as_bytes().to_vector(),
             vector![bump_seed],
         ];
 
@@ -561,7 +561,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
 
         let seeds = vector![
             vector![ACCOUNT_SEED_VERSION],
-            into_vector(signer.as_bytes().to_vec()),
+            signer.as_bytes().to_vector(),
             vector![bump_seed],
         ];
 
@@ -589,7 +589,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
 
         let seeds = vector![
             vector![ACCOUNT_SEED_VERSION],
-            into_vector(signer.as_bytes().to_vec()),
+            signer.as_bytes().to_vector(),
             vector![bump_seed],
         ];
 
@@ -616,7 +616,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
 
         let seeds = vector![
             vector![ACCOUNT_SEED_VERSION],
-            into_vector(signer.as_bytes().to_vec()),
+            signer.as_bytes().to_vector(),
             vector![bump_seed],
         ];
 

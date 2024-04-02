@@ -5,7 +5,6 @@ use evm_loader::account::legacy::{
 };
 use evm_loader::account::{TAG_ACCOUNT_CONTRACT, TAG_STORAGE_CELL};
 use evm_loader::account_storage::find_slot_hash;
-use evm_loader::types::vector::into_vector;
 use evm_loader::types::{Address, Vector};
 use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
@@ -29,6 +28,7 @@ use solana_sdk::{account::Account, account_info::AccountInfo, pubkey, pubkey::Pu
 
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
 use crate::tracing::{AccountOverride, AccountOverrides, BlockOverrides};
+use evm_loader::types::vector::VectorVecExt;
 use serde_with::{serde_as, DisplayFromStr};
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
@@ -744,7 +744,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
                 is_signer: true,
                 is_writable: false,
                 lamports: 100 * 1_000_000_000,
-                data: into_vector(vec![]),
+                data: vec![].into_vector(),
                 owner: system_program::ID,
                 executable: false,
                 rent_epoch: 0,

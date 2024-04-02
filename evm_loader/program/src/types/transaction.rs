@@ -3,14 +3,12 @@ use maybe_async::maybe_async;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 
+use crate::types::vector::VectorVecExt;
 use crate::{
-    account_storage::AccountStorage, config::GAS_LIMIT_MULTIPLIER_NO_CHAINID, error::Error,
+    account_storage::AccountStorage, config::GAS_LIMIT_MULTIPLIER_NO_CHAINID, error::Error, vector,
 };
 
-use super::{
-    vector::{into_vector, vect},
-    Address, Vector,
-};
+use super::{Address, Vector};
 
 #[repr(transparent)]
 #[derive(
@@ -119,7 +117,7 @@ impl rlp::Decodable for LegacyTx {
             }
         };
         let value: U256 = u256(&rlp.at(4)?)?;
-        let call_data = into_vector(rlp.val_at(5)?);
+        let call_data = rlp.val_at::<Vec<_>>(5)?.into_vector();
         let v: U256 = u256(&rlp.at(6)?)?;
         let r: U256 = u256(&rlp.at(7)?)?;
         let s: U256 = u256(&rlp.at(8)?)?;
@@ -203,10 +201,10 @@ impl rlp::Decodable for AccessListTx {
         };
 
         let value: U256 = u256(&rlp.at(5)?)?;
-        let call_data = into_vector(rlp.val_at(6)?);
+        let call_data = rlp.val_at::<Vec<_>>(6)?.into_vector();
 
         let rlp_access_list = rlp.at(7)?;
-        let mut access_list = vect();
+        let mut access_list = vector![];
 
         for entry in &rlp_access_list {
             // Check if entry is a list
@@ -215,7 +213,7 @@ impl rlp::Decodable for AccessListTx {
                 let address: Address = entry.at(0)?.as_val()?;
 
                 // Get storage keys from second element
-                let mut storage_keys: Vector<StorageKey> = vect();
+                let mut storage_keys: Vector<StorageKey> = vector![];
 
                 for key in &entry.at(1)? {
                     storage_keys.push(key.as_val()?);

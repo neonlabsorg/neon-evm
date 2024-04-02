@@ -3,11 +3,13 @@ use elsa::FrozenMap;
 use evm_loader::account::legacy::{LegacyEtherData, LegacyStorageData};
 use evm_loader::account_storage::find_slot_hash;
 use evm_loader::types::Address;
+use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
+use solana_sdk::clock::Clock;
+use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
 use solana_sdk::sysvar::slot_hashes;
 use solana_sdk::transaction_context::TransactionReturnData;
-use std::collections::HashSet;
 use std::{
     cell::{RefCell, RefMut},
     convert::TryInto,
@@ -15,7 +17,8 @@ use std::{
 };
 
 use crate::account_data::AccountData;
-use crate::solana_emulator::get_solana_emulator;
+use crate::solana_simulator::SolanaSimulator;
+// use crate::solana_emulator::get_solana_emulator;
 use crate::NeonResult;
 use crate::{rpc::Rpc, NeonError};
 use ethnum::U256;
@@ -27,11 +30,12 @@ use evm_loader::{
 };
 use log::{debug, info, trace};
 use serde::{Deserialize, Serialize};
-use solana_client::client_error;
+use solana_client::client_error::{self, Result as ClientResult};
 use solana_sdk::{
     account::Account,
     account_info::{AccountInfo, IntoAccountInfo},
-    instruction::{AccountMeta, Instruction},
+    clock::{Slot, UnixTimestamp},
+    instruction::Instruction,
     pubkey,
     pubkey::Pubkey,
 };
@@ -80,6 +84,65 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     return_data: RefCell<Option<TransactionReturnData>>,
 }
 
+#[async_trait(?Send)]
+impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
+    async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>> {
+        let account = if *key == self.operator {
+            Some(Account {
+                lamports: 100 * 1_000_000_000,
+                data: vec![],
+                owner: system_program::ID,
+                executable: false,
+                rent_epoch: 0,
+            })
+        } else if let Some(account) = self.accounts.get(key) {
+            let acc = &*account.borrow();
+            Some(acc.into())
+        } else {
+            self._get_account_from_rpc(*key).await?.cloned()
+        };
+
+        Ok(Response {
+            context: RpcResponseContext {
+                slot: self.block_number,
+                api_version: None,
+            },
+            value: account,
+        })
+    }
+
+    async fn get_account_with_commitment(
+        &self,
+        _key: &Pubkey,
+        _commitment: CommitmentConfig,
+    ) -> RpcResult<Option<Account>> {
+        unimplemented!();
+    }
+
+    async fn get_multiple_accounts(
+        &self,
+        pubkeys: &[Pubkey],
+    ) -> ClientResult<Vec<Option<Account>>> {
+        // TODO: Optimize this!!!
+        let mut result = vec![];
+        for key in pubkeys {
+            let account = self.get_account(key).await?.value;
+            result.push(account);
+        }
+        Ok(result)
+    }
+
+    async fn get_block_time(&self, _slot: Slot) -> ClientResult<UnixTimestamp> {
+        // Ok(self.block_timestamp)
+        unimplemented!();
+    }
+
+    async fn get_slot(&self) -> ClientResult<Slot> {
+        //Ok(self.block_number)
+        unimplemented!();
+    }
+}
+
 impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
     pub async fn new(
         rpc: &'rpc T,
@@ -117,7 +180,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             accounts: FrozenMap::new(),
             call_stack: vec![],
             program_id,
-            operator: get_solana_emulator().await.payer(),
+            operator: FAKE_OPERATOR,
             chains,
             gas: 0,
             realloc_iterations: 0,
@@ -928,16 +991,16 @@ fn map_neon_error(e: NeonError) -> evm_loader::error::Error {
     evm_loader::error::Error::Custom(e.to_string())
 }
 
-#[async_trait(?Send)]
-impl<T: Rpc> crate::solana_emulator::ProgramCache for EmulatorAccountStorage<'_, T> {
-    type Error = client_error::ClientError;
+// #[async_trait(?Send)]
+// impl<T: Rpc> crate::solana_emulator::ProgramCache for EmulatorAccountStorage<'_, T> {
+//     type Error = client_error::ClientError;
 
-    async fn get_account(&self, pubkey: Pubkey) -> Result<Option<Account>, Self::Error> {
-        self._get_account_from_rpc(pubkey)
-            .await
-            .map(|acc| acc.cloned())
-    }
-}
+//     async fn get_account(&self, pubkey: Pubkey) -> Result<Option<Account>, Self::Error> {
+//         self._get_account_from_rpc(pubkey)
+//             .await
+//             .map(|acc| acc.cloned())
+//     }
+// }
 
 #[async_trait(?Send)]
 impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
@@ -1090,52 +1153,72 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
     async fn execute_external_instruction(
         &mut self,
         instruction: Instruction,
-        seeds: Vec<Vec<Vec<u8>>>,
+        _seeds: Vec<Vec<Vec<u8>>>,
         _fee: u64,
         emulated_internally: bool,
     ) -> evm_loader::error::Result<()> {
+        use solana_sdk::{message::Message, signature::Signer, transaction::Transaction};
+
         info!("execute_external_instruction: {instruction:?}");
         info!("operator -> {}", self.operator);
+        let called_program = instruction.program_id;
         self.execute_status.external_solana_calls |= !emulated_internally;
 
-        let result = {
-            let mut accounts = vec![];
-            let mut added_accounts: HashSet<Pubkey> = HashSet::new();
-            let base_accounts = [AccountMeta::new_readonly(instruction.program_id, false)];
-            for meta in base_accounts
-                .iter()
-                .chain(instruction.accounts.iter())
-                .filter(|meta| meta.pubkey != self.operator)
-            {
-                if added_accounts.contains(&meta.pubkey) {
-                    continue;
-                }
-                let account = self
-                    .use_account(meta.pubkey, meta.is_writable)
+        let mut solana_simulator = SolanaSimulator::new(self)
+            .await
+            .map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?;
+
+        let clock = Clock {
+            slot: self.block_number,
+            epoch_start_timestamp: self.block_timestamp,
+            epoch: 0,
+            leader_schedule_epoch: 0,
+            unix_timestamp: self.block_timestamp,
+        };
+        solana_simulator.set_sysvar(&clock);
+
+        let mut accounts = Vec::new();
+        accounts.push(instruction.program_id);
+        self.mark_account(instruction.program_id, false, false);
+
+        for meta in instruction.accounts.iter() {
+            if meta.pubkey != self.operator {
+                self.use_account(meta.pubkey, meta.is_writable)
                     .await
                     .map_err(map_neon_error)?;
-                accounts.push(account.borrow_mut());
-                added_accounts.insert(meta.pubkey);
             }
-            let accounts_info = accounts
-                .iter_mut()
-                .map(|v| v.into_account_info())
-                .collect::<Vec<_>>();
-
-            get_solana_emulator()
-                .await
-                .emulate_solana_call(self, &instruction, &accounts_info, &seeds)
-                .await
-        };
-
-        info!("execute_external_instruction result {result:?}");
-        if let Ok(meta) = result.as_ref() {
-            if let Some(return_data) = meta.as_ref().and_then(|v| v.return_data.clone()) {
-                *self.return_data.borrow_mut() = Some(return_data);
-            }
+            accounts.push(meta.pubkey);
         }
 
-        result.map(|_| ())
+        solana_simulator
+            .sync_accounts(self, &accounts)
+            .await
+            .map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?;
+
+        let result = solana_simulator
+            .simulate_legacy_transaction(Transaction::new_unsigned(Message::new(
+                &[instruction],
+                Some(&solana_simulator.payer().pubkey()),
+            )))
+            .map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?;
+        result.result.map_err(|e| {
+            evm_loader::error::Error::ExternalCallFailed(called_program, e.to_string())
+        })?;
+
+        if let Some(return_data) = result.return_data {
+            *self.return_data.borrow_mut() = Some(return_data);
+        }
+
+        for (pubkey, account) in result.post_simulation_accounts.iter() {
+            let mut account_data = self
+                .accounts
+                .get(pubkey)
+                .expect("Account {pubkey} not found")
+                .borrow_mut();
+            *account_data = AccountData::new_from_account(*pubkey, account);
+        }
+
+        Ok(())
     }
 
     fn snapshot(&mut self) {
@@ -1176,7 +1259,6 @@ pub fn account_info<'a>(key: &'a Pubkey, account: &'a mut Account) -> AccountInf
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solana_emulator;
     use crate::tracing::AccountOverride;
     use hex_literal::hex;
     use std::collections::HashMap;
@@ -1783,7 +1865,6 @@ mod tests {
             ];
 
             let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts);
-            solana_emulator::init_solana_emulator(program_id, &rpc_client).await;
 
             Self {
                 program_id,

@@ -32,7 +32,7 @@ use crate::{
 
 #[maybe_async]
 pub async fn query_account<State: Database>(
-    state: &mut State,
+    state: &State,
     address: &Address,
     input: &[u8],
     context: &crate::evm::Context,
@@ -102,7 +102,7 @@ pub async fn query_account<State: Database>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_owner<State: Database>(state: &mut State, address: &Pubkey) -> Result<Vec<u8>> {
+async fn account_owner<State: Database>(state: &State, address: &Pubkey) -> Result<Vec<u8>> {
     let owner = state
         .map_solana_account(address, |info| info.owner.to_bytes())
         .await;
@@ -112,7 +112,7 @@ async fn account_owner<State: Database>(state: &mut State, address: &Pubkey) -> 
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_lamports<State: Database>(state: &mut State, address: &Pubkey) -> Result<Vec<u8>> {
+async fn account_lamports<State: Database>(state: &State, address: &Pubkey) -> Result<Vec<u8>> {
     let lamports: U256 = state
         .map_solana_account(address, |info| **info.lamports.borrow())
         .await
@@ -125,10 +125,7 @@ async fn account_lamports<State: Database>(state: &mut State, address: &Pubkey) 
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_rent_epoch<State: Database>(
-    state: &mut State,
-    address: &Pubkey,
-) -> Result<Vec<u8>> {
+async fn account_rent_epoch<State: Database>(state: &State, address: &Pubkey) -> Result<Vec<u8>> {
     let epoch: U256 = state
         .map_solana_account(address, |info| info.rent_epoch)
         .await
@@ -142,7 +139,7 @@ async fn account_rent_epoch<State: Database>(
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
 async fn account_is_executable<State: Database>(
-    state: &mut State,
+    state: &State,
     address: &Pubkey,
 ) -> Result<Vec<u8>> {
     let executable: U256 = state
@@ -157,10 +154,7 @@ async fn account_is_executable<State: Database>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_data_length<State: Database>(
-    state: &mut State,
-    address: &Pubkey,
-) -> Result<Vec<u8>> {
+async fn account_data_length<State: Database>(state: &State, address: &Pubkey) -> Result<Vec<u8>> {
     let length: U256 = state
         .map_solana_account(address, |info| info.data.borrow().len())
         .await
@@ -174,7 +168,7 @@ async fn account_data_length<State: Database>(
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
 async fn account_data<State: Database>(
-    state: &mut State,
+    state: &State,
     address: &Pubkey,
     offset: usize,
     length: usize,
@@ -198,7 +192,7 @@ async fn account_data<State: Database>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_info<State: Database>(state: &mut State, address: &Pubkey) -> Result<Vec<u8>> {
+async fn account_info<State: Database>(state: &State, address: &Pubkey) -> Result<Vec<u8>> {
     fn to_solidity_account_value(info: &AccountInfo) -> Vec<u8> {
         let mut buffer = [0_u8; 5 * 32];
         let (key, _, lamports, owner, _, executable, _, rent_epoch) =

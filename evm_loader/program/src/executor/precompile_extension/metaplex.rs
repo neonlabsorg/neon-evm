@@ -226,7 +226,9 @@ async fn create_metadata<State: Database>(
         .instruction();
 
     let fee = state.rent().minimum_balance(MAX_METADATA_LEN) + CREATE_FEE;
-    state.queue_external_instruction(instruction, vec![seeds], fee, true).await?;
+    state
+        .queue_external_instruction(instruction, vec![seeds], fee, true)
+        .await?;
 
     Ok(metadata_pubkey.to_bytes().to_vec())
 }
@@ -266,7 +268,9 @@ async fn create_master_edition<State: Database>(
     let instruction = instruction_builder.instruction();
 
     let fee = state.rent().minimum_balance(MAX_MASTER_EDITION_LEN) + CREATE_FEE;
-    state.queue_external_instruction(instruction, vec![seeds], fee, true).await?;
+    state
+        .queue_external_instruction(instruction, vec![seeds], fee, true)
+        .await?;
 
     Ok(edition_pubkey.to_bytes().to_vec())
 }
@@ -274,7 +278,7 @@ async fn create_master_edition<State: Database>(
 #[maybe_async]
 async fn is_initialized<State: Database>(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &State,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let is_initialized = metadata(context, state, mint)
@@ -287,7 +291,7 @@ async fn is_initialized<State: Database>(
 #[maybe_async]
 async fn is_nft<State: Database>(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &State,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let is_nft = metadata(context, state, mint).await?.map_or_else(
@@ -301,7 +305,7 @@ async fn is_nft<State: Database>(
 #[maybe_async]
 async fn uri<State: Database>(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &State,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let uri = metadata(context, state, mint)
@@ -314,7 +318,7 @@ async fn uri<State: Database>(
 #[maybe_async]
 async fn token_name<State: Database>(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &State,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let token_name = metadata(context, state, mint)
@@ -327,7 +331,7 @@ async fn token_name<State: Database>(
 #[maybe_async]
 async fn symbol<State: Database>(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &State,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let symbol = metadata(context, state, mint)
@@ -340,7 +344,7 @@ async fn symbol<State: Database>(
 #[maybe_async]
 async fn metadata<State: Database>(
     _context: &crate::evm::Context,
-    state: &mut State,
+    state: &State,
     mint: Pubkey,
 ) -> Result<Option<Metadata>> {
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);

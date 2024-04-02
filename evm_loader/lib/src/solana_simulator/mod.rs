@@ -13,6 +13,7 @@ use solana_sdk::{
     hash::Hash,
     pubkey::Pubkey,
     signature::Keypair,
+    sysvar::{Sysvar, SysvarId},
     transaction::{
         MessageHash, SanitizedTransaction, TransactionVerificationMode, VersionedTransaction,
     },
@@ -129,6 +130,13 @@ impl SolanaSimulator {
 
     pub fn replace_blockhash(&mut self, blockhash: &Hash) {
         self.bank().register_recent_blockhash(blockhash);
+    }
+
+    pub fn set_sysvar<T>(&self, sysvar: &T)
+    where
+        T: Sysvar + SysvarId,
+    {
+        self.bank().set_sysvar_for_tests(sysvar);
     }
 
     pub fn set_program_account(&mut self, pubkey: &Pubkey, data: Vec<u8>) {

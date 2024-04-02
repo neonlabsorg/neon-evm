@@ -656,7 +656,7 @@ async fn thaw<State: Database>(
 #[allow(clippy::unnecessary_wraps)]
 fn find_account<State: Database>(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &State,
     seed: &[u8],
 ) -> Result<Vec<u8>> {
     let signer = context.caller;
@@ -677,7 +677,7 @@ fn find_account<State: Database>(
 #[maybe_async]
 async fn is_system_account<State: Database>(
     _context: &crate::evm::Context,
-    state: &mut State,
+    state: &State,
     account: Pubkey,
 ) -> Result<Vec<u8>> {
     let account = state.external_account(account).await?;
@@ -694,7 +694,7 @@ async fn is_system_account<State: Database>(
 #[maybe_async]
 async fn get_account<State: Database>(
     _context: &crate::evm::Context,
-    state: &mut State,
+    state: &State,
     account: Pubkey,
 ) -> Result<Vec<u8>> {
     let account = state.external_account(account).await?;
@@ -729,7 +729,7 @@ async fn get_account<State: Database>(
 #[maybe_async]
 async fn get_mint<State: Database>(
     _context: &crate::evm::Context,
-    state: &mut State,
+    state: &State,
     account: Pubkey,
 ) -> Result<Vec<u8>> {
     let account = state.external_account(account).await?;

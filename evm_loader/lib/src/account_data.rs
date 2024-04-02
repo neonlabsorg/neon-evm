@@ -2,7 +2,11 @@ pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 // use solana_sdk::account::{ReadableAccount, WritableAccount};
 use solana_sdk::system_program;
 // use solana_sdk::clock::Epoch;
-use solana_sdk::{account::Account, account_info::AccountInfo, pubkey::Pubkey};
+use solana_sdk::{
+    account::{Account, ReadableAccount},
+    account_info::AccountInfo,
+    pubkey::Pubkey,
+};
 
 #[derive(Clone, Debug)]
 #[repr(C)]
@@ -12,8 +16,8 @@ pub struct AccountData {
     pub lamports: u64,
     data: Vec<u8>,
     pub owner: Pubkey,
-    executable: bool,
-    rent_epoch: u64,
+    pub executable: bool,
+    pub rent_epoch: u64,
 }
 
 use solana_sdk::account_info::IntoAccountInfo;
@@ -40,20 +44,21 @@ impl AccountData {
         self.get_length() != 0 || self.owner != system_program::ID
     }
 
-    pub fn new_from_account(pubkey: Pubkey, account: &Account) -> Self {
-        let mut data = vec![0u8; account.data.len() + 8 + MAX_PERMITTED_DATA_INCREASE];
+    pub fn new_from_account<T: ReadableAccount>(pubkey: Pubkey, account: &T) -> Self {
+        let account_data = account.data();
+        let mut data = vec![0u8; account_data.len() + 8 + MAX_PERMITTED_DATA_INCREASE];
         let ptr_length = data.as_mut_ptr() as *mut _ as *mut u64;
-        unsafe { *ptr_length = account.data.len() as u64 };
-        data[8..8 + account.data.len()].copy_from_slice(&account.data);
+        unsafe { *ptr_length = account_data.len() as u64 };
+        data[8..8 + account_data.len()].copy_from_slice(account_data);
 
         Self {
-            original_length: account.data.len() as u32,
+            original_length: account_data.len() as u32,
             pubkey,
-            lamports: account.lamports,
+            lamports: account.lamports(),
             data,
-            owner: account.owner,
-            executable: account.executable,
-            rent_epoch: account.rent_epoch,
+            owner: *account.owner(),
+            executable: account.executable(),
+            rent_epoch: account.rent_epoch(),
         }
     }
 
@@ -120,6 +125,18 @@ impl<'a> IntoAccountInfo<'a> for &'a mut AccountData {
         AccountInfo::new(
             pubkey, false, false, lamports, data, owner, executable, rent_epoch,
         )
+    }
+}
+
+impl<'a> From<&'a AccountData> for Account {
+    fn from(val: &'a AccountData) -> Self {
+        Account {
+            lamports: val.lamports,
+            data: val.data().to_vec(),
+            owner: val.owner,
+            executable: val.executable,
+            rent_epoch: val.rent_epoch,
+        }
     }
 }
 

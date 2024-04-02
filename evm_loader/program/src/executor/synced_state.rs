@@ -17,13 +17,17 @@ use super::OwnedAccountInfo;
 pub struct SyncedExecutorState<'a, B: AccountStorage> {
     pub backend: &'a mut B,
     depth: usize,
-    transient_storage: BTreeMap::<Address, BTreeMap::<U256, [u8; 32]>>,
+    transient_storage: BTreeMap<Address, BTreeMap<U256, [u8; 32]>>,
 }
 
 impl<'a, B: AccountStorage + SyncedAccountStorage> SyncedExecutorState<'a, B> {
     #[must_use]
     pub fn new(backend: &'a mut B) -> Self {
-        Self { backend, depth: 0, transient_storage: BTreeMap::new() }
+        Self {
+            backend,
+            depth: 0,
+            transient_storage: BTreeMap::new(),
+        }
     }
 }
 
@@ -139,7 +143,12 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         Ok([0; 32])
     }
 
-    fn set_transient_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
+    fn set_transient_storage(
+        &mut self,
+        address: Address,
+        index: U256,
+        value: [u8; 32],
+    ) -> Result<()> {
         if let Some(storage) = self.transient_storage.get_mut(&address) {
             storage.insert(index, value);
         } else {

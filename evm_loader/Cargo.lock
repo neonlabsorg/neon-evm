@@ -73,7 +73,7 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "tokio",
- "tokio-util",
+ "tokio-util 0.7.7",
  "tracing",
 ]
 
@@ -111,7 +111,7 @@ dependencies = [
  "sha1",
  "smallvec",
  "tokio",
- "tokio-util",
+ "tokio-util 0.7.7",
  "tracing",
  "zstd 0.13.0",
 ]
@@ -1153,6 +1153,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrono-humanize"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "799627e6b4d27827a814e837b9d8a504832086081806d45b1afa34dc982b023b"
+dependencies = [
+ "chrono",
+]
+
+[[package]]
 name = "cipher"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1821,10 +1830,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "educe"
+version = "0.4.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f0042ff8246a363dbe77d2ceedb073339e85a804b9a47636c6e016a9a32c05f"
+dependencies = [
+ "enum-ordinalize",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "either"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11157ac094ffbdde99aa67b23417ebdd801842852b500e395a45a9c0aac03e4a"
+
+[[package]]
+name = "elsa"
+version = "1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d98e71ae4df57d214182a2e5cb90230c0192c6ddfcaa05c36453d46a54713e10"
+dependencies = [
+ "stable_deref_trait",
+]
 
 [[package]]
 name = "encode_unicode"
@@ -1856,6 +1886,19 @@ version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eecf8589574ce9b895052fa12d69af7a233f99e6107f5cb8dd1044f2a17bfdcb"
 dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.55",
+]
+
+[[package]]
+name = "enum-ordinalize"
+version = "3.1.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bf1fa3f06bbff1ea5b1a9c7b14aa992a39657db60a2759457328d7e058f49ee"
+dependencies = [
+ "num-bigint 0.4.4",
+ "num-traits",
  "proc-macro2",
  "quote",
  "syn 2.0.55",
@@ -1992,6 +2035,8 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "solana-program",
+ "solana-program-test",
+ "solana-sdk",
  "spl-associated-token-account",
  "spl-token",
  "static_assertions",
@@ -2349,7 +2394,7 @@ dependencies = [
  "indexmap 2.2.3",
  "slab",
  "tokio",
- "tokio-util",
+ "tokio-util 0.7.7",
  "tracing",
 ]
 
@@ -2457,6 +2502,12 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 dependencies = [
  "serde",
 ]
+
+[[package]]
+name = "hex-literal"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
 
 [[package]]
 name = "hidapi"
@@ -3321,11 +3372,13 @@ dependencies = [
  "build-info-build",
  "clap 2.34.0",
  "clickhouse",
+ "elsa",
  "enum_dispatch",
  "ethnum",
  "evm-loader",
  "goblin 0.6.1",
  "hex",
+ "hex-literal",
  "lazy_static",
  "log",
  "neon-lib-interface",
@@ -3684,6 +3737,25 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "opentelemetry"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6105e89802af13fdf48c49d7646d3b533a70e536d818aae7e78ba0433d01acb8"
+dependencies = [
+ "async-trait",
+ "crossbeam-channel",
+ "futures-channel",
+ "futures-executor",
+ "futures-util",
+ "js-sys",
+ "lazy_static",
+ "percent-encoding",
+ "pin-project",
+ "rand 0.8.5",
+ "thiserror",
 ]
 
 [[package]]
@@ -4328,7 +4400,7 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tokio-rustls",
- "tokio-util",
+ "tokio-util 0.7.7",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -5029,6 +5101,54 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-banks-client"
+version = "1.17.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0de7daee8af1a4555236d6537ce9d5c10bc945f65e6468382699ad91d020a592"
+dependencies = [
+ "borsh 0.10.3",
+ "futures",
+ "solana-banks-interface",
+ "solana-program",
+ "solana-sdk",
+ "tarpc",
+ "thiserror",
+ "tokio",
+ "tokio-serde",
+]
+
+[[package]]
+name = "solana-banks-interface"
+version = "1.17.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cab9eec320b5202c44693cdfdda3b674c92d95def8b0fe5ff2857108d5a81918"
+dependencies = [
+ "serde",
+ "solana-sdk",
+ "tarpc",
+]
+
+[[package]]
+name = "solana-banks-server"
+version = "1.17.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbaf48c1c27ae104b7aefdac5f2a024007cb24f01d1f50e3ea4a97588dc29056"
+dependencies = [
+ "bincode",
+ "crossbeam-channel",
+ "futures",
+ "solana-accounts-db",
+ "solana-banks-interface",
+ "solana-client",
+ "solana-runtime",
+ "solana-sdk",
+ "solana-send-transaction-service",
+ "tarpc",
+ "tokio",
+ "tokio-serde",
+]
+
+[[package]]
 name = "solana-bpf-loader-program"
 version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5528,6 +5648,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-program-test"
+version = "1.17.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3756bfd3a7e55711c7042fbd63b27651f16ae9a2e780cc2c6d7128cefb0fb763"
+dependencies = [
+ "assert_matches",
+ "async-trait",
+ "base64 0.21.7",
+ "bincode",
+ "chrono-humanize",
+ "crossbeam-channel",
+ "log",
+ "serde",
+ "solana-accounts-db",
+ "solana-banks-client",
+ "solana-banks-interface",
+ "solana-banks-server",
+ "solana-bpf-loader-program",
+ "solana-logger",
+ "solana-program-runtime",
+ "solana-runtime",
+ "solana-sdk",
+ "solana-vote-program",
+ "solana_rbpf",
+ "test-case",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "solana-pubsub-client"
 version = "1.17.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5819,6 +5969,22 @@ name = "solana-security-txt"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "468aa43b7edb1f9b7b7b686d5c3aeb6630dc1708e86e31343499dd5c4d775183"
+
+[[package]]
+name = "solana-send-transaction-service"
+version = "1.17.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e01a0ac42573098147bf1d1dc8d4455fa2756757cd58435ffc75951e3d4858c1"
+dependencies = [
+ "crossbeam-channel",
+ "log",
+ "solana-client",
+ "solana-measure",
+ "solana-metrics",
+ "solana-runtime",
+ "solana-sdk",
+ "solana-tpu-client",
+]
 
 [[package]]
 name = "solana-stake-program"
@@ -6303,6 +6469,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "stable_deref_trait"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6425,6 +6597,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "tarpc"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c38a012bed6fb9681d3bf71ffaa4f88f3b4b9ed3198cda6e4c8462d24d4bb80"
+dependencies = [
+ "anyhow",
+ "fnv",
+ "futures",
+ "humantime",
+ "opentelemetry",
+ "pin-project",
+ "rand 0.8.5",
+ "serde",
+ "static_assertions",
+ "tarpc-plugins",
+ "thiserror",
+ "tokio",
+ "tokio-serde",
+ "tokio-util 0.6.10",
+ "tracing",
+ "tracing-opentelemetry",
+]
+
+[[package]]
+name = "tarpc-plugins"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ee42b4e559f17bce0385ebf511a7beb67d5cc33c12c96b7f4e9789919d9c10f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6443,6 +6650,39 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be55cf8942feac5c765c2c993422806843c9a9a45d4d5c407ad6dd2ea95eb9b6"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "test-case"
+version = "3.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb2550dd13afcd286853192af8601920d959b14c401fcece38071d53bf0768a8"
+dependencies = [
+ "test-case-macros",
+]
+
+[[package]]
+name = "test-case-core"
+version = "3.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adcb7fd841cd518e279be3d5a3eb0636409487998a4aff22f3de87b81e88384f"
+dependencies = [
+ "cfg-if",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.55",
+]
+
+[[package]]
+name = "test-case-macros"
+version = "3.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c89e72a01ed4c579669add59014b9a524d609c0c88c6a585ce37485879f6ffb"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.55",
+ "test-case-core",
 ]
 
 [[package]]
@@ -6618,6 +6858,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-serde"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "911a61637386b789af998ee23f50aa30d5fd7edcec8d6d3dedae5e5815205466"
+dependencies = [
+ "bincode",
+ "bytes",
+ "educe",
+ "futures-core",
+ "futures-sink",
+ "pin-project",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "tokio-stream"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6641,6 +6897,21 @@ dependencies = [
  "tokio-rustls",
  "tungstenite",
  "webpki-roots 0.25.2",
+]
+
+[[package]]
+name = "tokio-util"
+version = "0.6.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36943ee01a6d67977dd3f84a5a1d2efeb4ada3a1ae771cadfaa535d9d9fc6507"
+dependencies = [
+ "bytes",
+ "futures-core",
+ "futures-sink",
+ "log",
+ "pin-project-lite",
+ "slab",
+ "tokio",
 ]
 
 [[package]]
@@ -6794,6 +7065,19 @@ dependencies = [
  "log",
  "once_cell",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-opentelemetry"
+version = "0.17.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fbbe89715c1dbbb790059e2565353978564924ee85017b5fff365c872ff6721f"
+dependencies = [
+ "once_cell",
+ "opentelemetry",
+ "tracing",
+ "tracing-core",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -7155,7 +7439,7 @@ dependencies = [
  "tiny-keccak",
  "tokio",
  "tokio-stream",
- "tokio-util",
+ "tokio-util 0.7.7",
  "url",
  "web3-async-native-tls",
 ]

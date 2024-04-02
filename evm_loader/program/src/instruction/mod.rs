@@ -169,6 +169,32 @@ pub enum EvmInstruction {
     ///  20..28 - chain id in little endian
     AccountCreateBalance,
 
+    /// Execute Transaction from Instruction in a single iteration with a call to Solana programs
+    ///
+    /// Accounts:
+    ///  `[WRITE,SIGNER]` Operator
+    ///  `[WRITE]` Treasury
+    ///  `[WRITE]` Operator Balance
+    ///  `[]` System program
+    ///  `[WRITE?]` Other accounts
+    /// Instruction data:
+    ///  0..4 - treasury index in little-endian
+    ///  4..  - transaction data
+    TransactionExecuteFromInstructionWithSolanaCall,
+
+    /// Execute Transaction from Account in a single iteration
+    ///
+    /// Accounts:
+    ///  `[]` Holder
+    ///  `[WRITE,SIGNER]` Operator
+    ///  `[WRITE]` Treasury
+    ///  `[WRITE]` Operator Balance
+    ///  `[]` System program
+    ///  `[WRITE?]` Other accounts
+    /// Instruction data:
+    ///  0..4 - treasury index in little-endian
+    TransactionExecuteFromAccountWithSolanaCall,
+
     ConfigGetChainCount,
     ConfigGetChainInfo,
     ConfigGetEnvironment,
@@ -200,6 +226,8 @@ impl EvmInstruction {
             0x35 => Self::TransactionStepFromAccount,        // 53
             0x36 => Self::TransactionStepFromAccountNoChainId, // 54
             0x37 => Self::Cancel,                            // 55
+            0x38 => Self::TransactionExecuteFromInstructionWithSolanaCall, // 56
+            0x39 => Self::TransactionExecuteFromAccountWithSolanaCall, // 57
 
             0xA0 => Self::ConfigGetChainCount, // 160
             0xA1 => Self::ConfigGetChainInfo,
@@ -232,7 +260,9 @@ pub mod neon_tokens_deposit;
 pub mod transaction_cancel;
 pub mod transaction_execute;
 pub mod transaction_execute_from_account;
+pub mod transaction_execute_from_account_solana_call;
 pub mod transaction_execute_from_instruction;
+pub mod transaction_execute_from_instruction_solana_call;
 pub mod transaction_step;
 pub mod transaction_step_from_account;
 pub mod transaction_step_from_account_no_chainid;

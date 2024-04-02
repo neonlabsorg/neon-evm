@@ -16,6 +16,7 @@ use crate::types::Address;
 
 use super::action::Action;
 use super::cache::{cache_get_or_insert_account, cache_get_or_insert_balance, Cache};
+use super::precompile_extension::PrecompiledContracts;
 use super::OwnedAccountInfo;
 
 /// Represents the state of executor abstracted away from a self.backend.
@@ -83,106 +84,23 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     pub fn call_depth(&self) -> usize {
         self.stack.len()
     }
-
-    pub fn burn(&mut self, source: Address, chain_id: u64, value: U256) {
-        let burn = Action::Burn {
-            source,
-            chain_id,
-            value,
-        };
-        self.actions.push(burn);
-    }
-
-    pub fn queue_external_instruction(
-        &mut self,
-        instruction: Instruction,
-        seeds: Vec<Vec<u8>>,
-        fee: u64,
-    ) {
-        let action = Action::ExternalInstruction {
-            program_id: instruction.program_id,
-            data: instruction.data,
-            accounts: instruction.accounts,
-            seeds,
-            fee,
-        };
-
-        self.actions.push(action);
-    }
-
-    #[maybe_async]
-    pub async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
-        let metas = self
-            .actions
-            .iter()
-            .filter_map(|a| {
-                if let Action::ExternalInstruction { accounts, .. } = a {
-                    Some(accounts)
-                } else {
-                    None
-                }
-            })
-            .flatten()
-            .collect::<Vec<_>>();
-
-        if !metas.iter().any(|m| (m.pubkey == address) && m.is_writable) {
-            let account = cache_get_or_insert_account(&self.cache, address, self.backend).await;
-            return Ok(account);
-        }
-
-        let mut accounts = BTreeMap::<Pubkey, OwnedAccountInfo>::new();
-
-        for m in metas {
-            let account = cache_get_or_insert_account(&self.cache, m.pubkey, self.backend).await;
-            accounts.insert(account.key, account);
-        }
-
-        for action in &self.actions {
-            if let Action::ExternalInstruction {
-                program_id,
-                data,
-                accounts: meta,
-                ..
-            } = action
-            {
-                match program_id {
-                    program_id if solana_program::system_program::check_id(program_id) => {
-                        crate::external_programs::system::emulate(data, meta, &mut accounts)?;
-                    }
-                    program_id if spl_token::check_id(program_id) => {
-                        crate::external_programs::spl_token::emulate(data, meta, &mut accounts)?;
-                    }
-                    program_id if spl_associated_token_account::check_id(program_id) => {
-                        crate::external_programs::spl_associated_token::emulate(
-                            data,
-                            meta,
-                            &mut accounts,
-                            self.rent(),
-                        )?;
-                    }
-                    program_id if &MPL_TOKEN_METADATA_ID == program_id => {
-                        crate::external_programs::metaplex::emulate(
-                            data,
-                            meta,
-                            &mut accounts,
-                            self.rent(),
-                        )?;
-                    }
-                    _ => {
-                        return Err(Error::Custom(format!(
-                            "Unknown external program: {program_id}"
-                        )));
-                    }
-                }
-            }
-        }
-
-        Ok(accounts[&address].clone())
-    }
 }
 
 #[maybe_async(?Send)]
 impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
+    fn program_id(&self) -> &Pubkey {
+        self.backend.program_id()
+    }
+    fn operator(&self) -> Pubkey {
+        self.backend.operator()
+    }
+    fn chain_id_to_token(&self, chain_id: u64) -> Pubkey {
+        self.backend.chain_id_to_token(chain_id)
+    }
+    fn contract_pubkey(&self, address: Address) -> (Pubkey, u8) {
+        self.backend.contract_pubkey(address)
+    }
+
     async fn nonce(&self, from_address: Address, from_chain_id: u64) -> Result<u64> {
         let mut nonce = self.backend.nonce(from_address, from_chain_id).await;
         let mut increment = 0_u64;
@@ -200,7 +118,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(nonce)
     }
 
-    fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
+    async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
         let increment = Action::EvmIncrementNonce { address, chain_id };
         self.actions.push(increment);
 
@@ -277,8 +195,19 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
+    async fn burn(&mut self, source: Address, chain_id: u64, value: U256) -> Result<()> {
+        let burn = Action::Burn {
+            source,
+            chain_id,
+            value,
+        };
+        self.actions.push(burn);
+
+        Ok(())
+    }
+
     async fn code_size(&self, from_address: Address) -> Result<usize> {
-        if self.is_precompile_extension(&from_address) {
+        if PrecompiledContracts::is_precompile_extension(&from_address) {
             return Ok(1); // This is required in order to make a normal call to an extension contract
         }
 
@@ -305,7 +234,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(self.backend.code(from_address).await)
     }
 
-    fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
+    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
         if code.starts_with(&[0xEF]) {
             // https://eips.ethereum.org/EIPS/eip-3541
             return Err(Error::EVMObjectFormatNotSupported(address));
@@ -343,7 +272,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(self.backend.storage(from_address, from_index).await)
     }
 
-    fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
+    async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
         let set_storage = Action::EvmSetStorage {
             address,
             index,
@@ -422,12 +351,90 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(cache.block_timestamp)
     }
 
+    async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
+        let metas = self
+            .actions
+            .iter()
+            .filter_map(|a| {
+                if let Action::ExternalInstruction { accounts, .. } = a {
+                    Some(accounts)
+                } else {
+                    None
+                }
+            })
+            .flatten()
+            .collect::<Vec<_>>();
+
+        if !metas.iter().any(|m| (m.pubkey == address) && m.is_writable) {
+            let account = cache_get_or_insert_account(&self.cache, address, self.backend).await;
+            return Ok(account);
+        }
+
+        let mut accounts = BTreeMap::<Pubkey, OwnedAccountInfo>::new();
+
+        for m in metas {
+            let account = cache_get_or_insert_account(&self.cache, m.pubkey, self.backend).await;
+            accounts.insert(account.key, account);
+        }
+
+        for action in &self.actions {
+            if let Action::ExternalInstruction {
+                program_id,
+                data,
+                accounts: meta,
+                emulated_internally,
+                ..
+            } = action
+            {
+                if !emulated_internally {
+                    unreachable!();
+                }
+
+                match program_id {
+                    program_id if solana_program::system_program::check_id(program_id) => {
+                        crate::external_programs::system::emulate(data, meta, &mut accounts)?;
+                    }
+                    program_id if spl_token::check_id(program_id) => {
+                        crate::external_programs::spl_token::emulate(data, meta, &mut accounts)?;
+                    }
+                    program_id if spl_associated_token_account::check_id(program_id) => {
+                        crate::external_programs::spl_associated_token::emulate(
+                            data,
+                            meta,
+                            &mut accounts,
+                            self.rent(),
+                        )?;
+                    }
+                    program_id if &MPL_TOKEN_METADATA_ID == program_id => {
+                        crate::external_programs::metaplex::emulate(
+                            data,
+                            meta,
+                            &mut accounts,
+                            self.rent(),
+                        )?;
+                    }
+                    _ => {
+                        return Err(Error::Custom(format!(
+                            "Unknown external program for emulate: {program_id}"
+                        )));
+                    }
+                }
+            }
+        }
+
+        Ok(accounts[&address].clone())
+    }
+
     fn rent(&self) -> &Rent {
         self.backend.rent()
     }
 
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
         self.backend.return_data()
+    }
+
+    fn set_return_data(&mut self, data: &[u8]) {
+        self.backend.set_return_data(data);
     }
 
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
@@ -468,7 +475,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         data: &[u8],
         is_static: bool,
     ) -> Option<Result<Vec<u8>>> {
-        self.call_precompile_extension(context, address, data, is_static)
+        PrecompiledContracts::call_precompile_extension(self, context, address, data, is_static)
             .await
     }
 
@@ -493,5 +500,30 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         }
 
         self.backend.contract_chain_id(contract).await
+    }
+
+    async fn queue_external_instruction(
+        &mut self,
+        instruction: Instruction,
+        seeds: Vec<Vec<Vec<u8>>>,
+        fee: u64,
+        emulated_internally: bool,
+    ) -> Result<()> {
+        #[cfg(target_os = "solana")]
+        if !emulated_internally {
+            return Err(Error::UnavalableExternalSolanaCall);
+        }
+
+        let action = Action::ExternalInstruction {
+            program_id: instruction.program_id,
+            data: instruction.data,
+            accounts: instruction.accounts,
+            seeds,
+            fee,
+            emulated_internally,
+        };
+
+        self.actions.push(action);
+        Ok(())
     }
 }

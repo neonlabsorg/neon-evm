@@ -3,12 +3,11 @@ use crate::executor::OwnedAccountInfo;
 use crate::types::Address;
 use ethnum::U256;
 use maybe_async::maybe_async;
-use solana_program::account_info::AccountInfo;
+use solana_program::{
+    account_info::AccountInfo, instruction::Instruction, pubkey::Pubkey, rent::Rent,
+};
 #[cfg(target_os = "solana")]
 use {crate::account::AccountsDB, solana_program::clock::Clock};
-
-use solana_program::pubkey::Pubkey;
-use solana_program::rent::Rent;
 
 #[cfg(target_os = "solana")]
 mod apply;
@@ -16,6 +15,9 @@ mod apply;
 mod backend;
 #[cfg(target_os = "solana")]
 mod base;
+#[cfg(target_os = "solana")]
+mod synced;
+
 mod block_hash;
 pub use block_hash::find_slot_hash;
 
@@ -28,6 +30,7 @@ pub struct ProgramAccountStorage<'a> {
     rent: Rent,
     accounts: AccountsDB<'a>,
     keys: keys_cache::KeysCache,
+    synced_modified_contracts: std::collections::HashSet<Pubkey>,
 }
 
 /// Account storage
@@ -51,6 +54,9 @@ pub trait AccountStorage {
 
     /// Get return data from Solana
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)>;
+
+    /// Set return data to Solana
+    fn set_return_data(&self, data: &[u8]);
 
     /// Get account nonce
     async fn nonce(&self, address: Address, chain_id: u64) -> u64;
@@ -81,4 +87,30 @@ pub trait AccountStorage {
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
         F: FnOnce(&AccountInfo) -> R;
+}
+
+#[maybe_async(?Send)]
+pub trait SyncedAccountStorage {
+    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()>;
+    async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
+    async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()>;
+    async fn transfer(
+        &mut self,
+        from_address: Address,
+        to_address: Address,
+        chain_id: u64,
+        value: U256,
+    ) -> Result<()>;
+    async fn burn(&mut self, address: Address, chain_id: u64, value: U256) -> Result<()>;
+    async fn execute_external_instruction(
+        &mut self,
+        instruction: Instruction,
+        seeds: Vec<Vec<Vec<u8>>>,
+        fee: u64,
+        emulated_internally: bool,
+    ) -> Result<()>;
+
+    fn snapshot(&mut self);
+    fn revert_snapshot(&mut self);
+    fn commit_snapshot(&mut self);
 }

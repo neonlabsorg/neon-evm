@@ -138,18 +138,29 @@ impl<'a> ContractAccount<'a> {
         );
 
         let account = accounts.get(&pubkey).clone();
+        Self::initialize(account, &crate::ID, address, chain_id, generation, code)
+    }
 
-        super::validate_tag(&crate::ID, &account, TAG_EMPTY)?;
-        super::set_tag(&crate::ID, &account, TAG_ACCOUNT_CONTRACT, Header::VERSION)?;
+    pub fn initialize(
+        account: AccountInfo<'a>,
+        program_id: &Pubkey,
+        address: Address,
+        chain_id: u64,
+        generation: u32,
+        code: &[u8],
+    ) -> Result<Self> {
+        super::validate_tag(program_id, &account, TAG_EMPTY)?;
+        super::set_tag(program_id, &account, TAG_ACCOUNT_CONTRACT, Header::VERSION)?;
 
-        let mut contract = Self { account };
         {
-            let mut header = super::header_mut::<Header>(&contract.account);
+            let mut header = super::header_mut::<Header>(&account);
             header.v0.address = address;
             header.v0.chain_id = chain_id;
             header.v0.generation = generation;
             header.revision = 1;
         }
+
+        let mut contract = Self::from_account(program_id, account)?;
         {
             let mut contract_code = contract.code_mut();
             contract_code.copy_from_slice(code);
@@ -192,7 +203,8 @@ impl<'a> ContractAccount<'a> {
     }
 
     #[inline]
-    fn storage(&self) -> Ref<Storage> {
+    #[must_use]
+    pub fn storage(&self) -> Ref<Storage> {
         let offset = self.storage_offset();
         super::section(&self.account, offset)
     }

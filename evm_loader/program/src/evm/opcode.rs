@@ -830,7 +830,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         let index = self.stack.pop_u256()?;
         let value = *self.stack.pop_array()?;
 
-        backend.set_storage(self.context.contract, index, value)?;
+        backend.set_storage(self.context.contract, index, value).await?;
 
         Ok(Action::Continue)
     }
@@ -1096,7 +1096,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             return Err(Error::NonceOverflow(self.context.contract));
         }
 
-        backend.increment_nonce(self.context.contract, chain_id)?;
+        backend.increment_nonce(self.context.contract, chain_id).await?;
 
         self.return_data = Buffer::empty();
         self.return_range = 0..0;
@@ -1131,7 +1131,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             return Err(Error::DeployToExistingAccount(address, self.context.caller));
         }
 
-        backend.increment_nonce(address, chain_id)?;
+        backend.increment_nonce(address, chain_id).await?;
         backend
             .transfer(self.context.caller, address, chain_id, value)
             .await?;
@@ -1368,7 +1368,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     ) -> Result<Action> {
         if self.reason == Reason::Create {
             let code = std::mem::take(&mut return_data);
-            backend.set_code(self.context.contract, self.chain_id, code)?;
+            backend.set_code(self.context.contract, self.chain_id, code).await?;
         }
 
         backend.commit_snapshot();

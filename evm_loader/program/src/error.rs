@@ -178,6 +178,18 @@ pub enum Error {
     That's why you have to use iterative transaction for the deployment."
     )]
     AccountSpaceAllocationFailure,
+
+    #[error("Invalid account for call {0}")]
+    InvalidAccountForCall(Pubkey),
+
+    #[error("Call for external Solana programs not available in this mode")]
+    UnavalableExternalSolanaCall,
+
+    #[error("Program not allowed to call itself")]
+    RecursiveCall,
+
+    #[error("External call fails {0}: {1}")]
+    ExternalCallFailed(Pubkey, String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

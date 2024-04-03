@@ -1,31 +1,28 @@
 use async_trait::async_trait;
 use elsa::FrozenMap;
-use evm_loader::account::legacy::{LegacyEtherData, LegacyStorageData};
-use evm_loader::account_storage::find_slot_hash;
-use evm_loader::types::Address;
 use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
-use solana_sdk::clock::Clock;
-use solana_sdk::commitment_config::CommitmentConfig;
-use solana_sdk::rent::Rent;
-use solana_sdk::system_program;
-use solana_sdk::sysvar::slot_hashes;
-use solana_sdk::transaction_context::TransactionReturnData;
+use std::collections::HashSet;
 use std::{
     cell::{RefCell, RefMut},
     convert::TryInto,
     rc::Rc,
 };
 
-use crate::account_data::AccountData;
-use crate::solana_simulator::SolanaSimulator;
-use crate::NeonResult;
-use crate::{rpc::Rpc, NeonError};
+use crate::{
+    account_data::AccountData, rpc::Rpc, solana_simulator::SolanaSimulator, NeonError, NeonResult,
+};
 use ethnum::U256;
 pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use evm_loader::{
-    account::{BalanceAccount, ContractAccount, StorageCell, StorageCellAddress},
+    account::{
+        legacy::{LegacyEtherData, LegacyStorageData},
+        BalanceAccount, ContractAccount, StorageCell, StorageCellAddress,
+    },
+    account_storage::find_slot_hash,
     config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
+    error::Error as EvmLoaderError,
     executor::OwnedAccountInfo,
+    types::Address,
 };
 use log::{debug, info, trace};
 use serde::{Deserialize, Serialize};
@@ -33,10 +30,16 @@ use solana_client::client_error::{self, Result as ClientResult};
 use solana_sdk::{
     account::Account,
     account_info::{AccountInfo, IntoAccountInfo},
-    clock::{Slot, UnixTimestamp},
+    clock::{Clock, Slot, UnixTimestamp},
+    commitment_config::CommitmentConfig,
     instruction::Instruction,
+    program_error::ProgramError,
     pubkey,
-    pubkey::Pubkey,
+    pubkey::{Pubkey, PubkeyError},
+    rent::Rent,
+    system_program,
+    sysvar::slot_hashes,
+    transaction_context::TransactionReturnData,
 };
 
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
@@ -462,7 +465,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         is_writable: bool,
     ) -> NeonResult<&RefCell<AccountData>> {
         if pubkey == self.operator() {
-            return Err(evm_loader::error::Error::InvalidAccountForCall(pubkey).into());
+            return Err(EvmLoaderError::InvalidAccountForCall(pubkey).into());
         }
 
         self.mark_account(pubkey, is_writable, false);
@@ -746,7 +749,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
 
             if new_acc.is_busy() && new_rent < self.rent.minimum_balance(new_acc.get_length()) {
                 info!("Account {pubkey} is not rent exempt");
-                return Err(solana_sdk::program_error::ProgramError::AccountNotRentExempt.into());
+                return Err(ProgramError::AccountNotRentExempt.into());
             }
 
             changes_in_rent += new_rent as i64 - original_rent as i64;
@@ -877,9 +880,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     }
 
     async fn contract_chain_id(&self, address: Address) -> evm_loader::error::Result<u64> {
-        use evm_loader::error::Error;
-
-        let default_value = Err(Error::Custom(std::format!(
+        let default_value = Err(EvmLoaderError::Custom(std::format!(
             "Account {address} - invalid tag"
         )));
 
@@ -986,20 +987,9 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     }
 }
 
-fn map_neon_error(e: NeonError) -> evm_loader::error::Error {
-    evm_loader::error::Error::Custom(e.to_string())
+fn map_neon_error(e: NeonError) -> EvmLoaderError {
+    EvmLoaderError::Custom(e.to_string())
 }
-
-// #[async_trait(?Send)]
-// impl<T: Rpc> crate::solana_emulator::ProgramCache for EmulatorAccountStorage<'_, T> {
-//     type Error = client_error::ClientError;
-
-//     async fn get_account(&self, pubkey: Pubkey) -> Result<Option<Account>, Self::Error> {
-//         self._get_account_from_rpc(pubkey)
-//             .await
-//             .map(|acc| acc.cloned())
-//     }
-// }
 
 #[async_trait(?Send)]
 impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
@@ -1026,7 +1016,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
                     account_data.into_account_info(),
                 )?;
                 if contract.code().len() > 0 {
-                    return Err(evm_loader::error::Error::AccountAlreadyInitialized(
+                    return Err(EvmLoaderError::AccountAlreadyInitialized(
                         account_data.pubkey,
                     ));
                 }
@@ -1152,20 +1142,20 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
     async fn execute_external_instruction(
         &mut self,
         instruction: Instruction,
-        _seeds: Vec<Vec<Vec<u8>>>,
+        seeds: Vec<Vec<Vec<u8>>>,
         _fee: u64,
         emulated_internally: bool,
     ) -> evm_loader::error::Result<()> {
         use solana_sdk::{message::Message, signature::Signer, transaction::Transaction};
 
         info!("execute_external_instruction: {instruction:?}");
-        info!("operator -> {}", self.operator);
+        info!("Operator: {}", self.operator);
         let called_program = instruction.program_id;
         self.execute_status.external_solana_calls |= !emulated_internally;
 
         let mut solana_simulator = SolanaSimulator::new(self)
             .await
-            .map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?;
+            .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
 
         let clock = Clock {
             slot: self.block_number,
@@ -1176,6 +1166,17 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         };
         solana_simulator.set_sysvar(&clock);
 
+        let signers = seeds
+            .iter()
+            .map(|s| {
+                let seed = s.iter().map(|s| s.as_slice()).collect::<Vec<_>>();
+                let signer = Pubkey::create_program_address(&seed, &self.program_id)?;
+                Ok(signer)
+            })
+            .collect::<Result<HashSet<_>, PubkeyError>>()?;
+
+        info!("Signers: {signers:?}");
+
         let mut accounts = Vec::new();
         accounts.push(instruction.program_id);
         self.mark_account(instruction.program_id, false, false);
@@ -1185,6 +1186,9 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
                 self.use_account(meta.pubkey, meta.is_writable)
                     .await
                     .map_err(map_neon_error)?;
+                if meta.is_signer && !signers.contains(&meta.pubkey) {
+                    return Err(ProgramError::MissingRequiredSignature.into());
+                }
             }
             accounts.push(meta.pubkey);
         }
@@ -1192,32 +1196,47 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         solana_simulator
             .sync_accounts(self, &accounts)
             .await
-            .map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?;
+            .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
 
         let mut trx = Transaction::new_unsigned(Message::new(
-            &[instruction],
+            &[instruction.clone()],
             Some(&solana_simulator.payer().pubkey()),
         ));
         trx.message.recent_blockhash = solana_simulator.blockhash();
 
         let result = solana_simulator
             .simulate_legacy_transaction(trx)
-            .map_err(|e| evm_loader::error::Error::Custom(e.to_string()))?;
-        result.result.map_err(|e| {
-            evm_loader::error::Error::ExternalCallFailed(called_program, e.to_string())
-        })?;
+            .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
+        result
+            .result
+            .map_err(|e| EvmLoaderError::ExternalCallFailed(called_program, e.to_string()))?;
 
         if let Some(return_data) = result.return_data {
             *self.return_data.borrow_mut() = Some(return_data);
         }
 
-        for (pubkey, account) in result.post_simulation_accounts.iter() {
+        for meta in instruction.accounts.iter() {
+            if meta.pubkey == self.operator {
+                continue;
+            }
+            let account = result
+                .post_simulation_accounts
+                .iter()
+                .find(|(pubkey, _)| *pubkey == meta.pubkey)
+                .map(|(_, account)| account)
+                .ok_or_else(|| {
+                    EvmLoaderError::Custom(format!("Account {} not found", meta.pubkey))
+                })?;
+
             let mut account_data = self
                 .accounts
-                .get(pubkey)
-                .expect("Account {pubkey} not found")
+                .get(&meta.pubkey)
+                .ok_or_else(|| {
+                    EvmLoaderError::Custom(format!("Account data {} not found", meta.pubkey))
+                })?
                 .borrow_mut();
-            *account_data = AccountData::new_from_account(*pubkey, account);
+
+            *account_data = AccountData::new_from_account(meta.pubkey, account);
         }
 
         Ok(())
@@ -2367,10 +2386,8 @@ mod tests {
                 .await
                 .unwrap_err()
                 .to_string(),
-            evm_loader::error::Error::AccountAlreadyInitialized(
-                fixture.contract_pubkey(contract.address)
-            )
-            .to_string()
+            EvmLoaderError::AccountAlreadyInitialized(fixture.contract_pubkey(contract.address))
+                .to_string()
         );
         storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), false, false)]);
         storage.verify_rent_changes(0, 0);
@@ -2417,10 +2434,8 @@ mod tests {
                 .await
                 .unwrap_err()
                 .to_string(),
-            evm_loader::error::Error::AccountAlreadyInitialized(
-                fixture.contract_pubkey(contract.address)
-            )
-            .to_string()
+            EvmLoaderError::AccountAlreadyInitialized(fixture.contract_pubkey(contract.address))
+                .to_string()
         );
         storage.verify_used_accounts(&[
             (

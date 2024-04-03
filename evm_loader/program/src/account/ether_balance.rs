@@ -1,5 +1,6 @@
 use std::mem::size_of;
 
+use crate::pda_seeds::with_balance_account_seeds;
 use crate::{
     account::{TAG_ACCOUNT_CONTRACT, TAG_EMPTY},
     account_storage::KeysCache,
@@ -10,9 +11,7 @@ use crate::{
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, system_program};
 
-use super::{
-    AccountHeader, AccountsDB, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION, TAG_ACCOUNT_BALANCE,
-};
+use super::{AccountHeader, AccountsDB, ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_BALANCE};
 
 #[repr(C, packed)]
 pub struct HeaderV0 {
@@ -103,25 +102,19 @@ impl<'a> BalanceAccount<'a> {
             }
         }
 
-        // Create a new account
-        let program_seeds: &[&[u8]] = &[
-            &[ACCOUNT_SEED_VERSION],
-            address.as_bytes(),
-            &U256::from(chain_id).to_be_bytes(),
-            &[bump_seed],
-        ];
-
         let system = accounts.system();
         let operator = accounts.operator();
 
-        system.create_pda_account(
-            &crate::ID,
-            operator,
-            &account,
-            program_seeds,
-            ACCOUNT_PREFIX_LEN + size_of::<Header>(),
-            rent,
-        )?;
+        with_balance_account_seeds(&address, chain_id, &[bump_seed], |seeds| {
+            system.create_pda_account(
+                &crate::ID,
+                operator,
+                &account,
+                seeds,
+                ACCOUNT_PREFIX_LEN + size_of::<Header>(),
+                rent,
+            )
+        })?;
 
         Self::initialize(account, &crate::ID, address, chain_id)
     }

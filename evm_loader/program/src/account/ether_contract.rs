@@ -1,3 +1,4 @@
+use crate::pda_seeds::contract_account_seeds;
 use crate::{
     account::TAG_EMPTY,
     account_storage::KeysCache,
@@ -15,9 +16,7 @@ use std::{
 
 use crate::config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 
-use super::{
-    AccountHeader, AccountsDB, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION, TAG_ACCOUNT_CONTRACT,
-};
+use super::{AccountHeader, AccountsDB, ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_CONTRACT};
 
 #[derive(Eq, PartialEq)]
 pub enum AllocateResult {
@@ -103,9 +102,15 @@ impl<'a> ContractAccount<'a> {
         let operator = accounts.operator();
 
         if system_program::check_id(info.owner) {
-            let seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], address.as_bytes(), &[bump_seed]];
             let space = required_size.min(MAX_PERMITTED_DATA_INCREASE);
-            system.create_pda_account(&crate::ID, operator, info, seeds, space, rent)?;
+            system.create_pda_account(
+                &crate::ID,
+                operator,
+                info,
+                &contract_account_seeds(&address, &[bump_seed]),
+                space,
+                rent,
+            )?;
         } else if crate::check_id(info.owner) {
             super::validate_tag(&crate::ID, info, TAG_EMPTY)?;
 

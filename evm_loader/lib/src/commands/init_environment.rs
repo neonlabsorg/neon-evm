@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::NeonResult;
 
 use crate::rpc::CloneRpcClient;
+use evm_loader::pda_seeds::AUTHORITY_SEEDS;
 use {
     crate::{
         commands::{
@@ -202,7 +203,7 @@ pub async fn execute(
     executor.checkpoint(config.commitment).await?;
 
     //====================== Create 'Deposit' NEON-token balance ======================================================
-    let (deposit_authority, _) = Pubkey::find_program_address(&[b"Deposit"], &config.evm_loader);
+    let (deposit_authority, _) = Pubkey::find_program_address(AUTHORITY_SEEDS, &config.evm_loader);
     let chains = super::get_config::read_chains(client, config.evm_loader).await?;
     for chain in chains {
         let pool = get_associated_token_address(&deposit_authority, &chain.token);

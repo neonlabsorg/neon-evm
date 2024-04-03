@@ -1,5 +1,6 @@
-use crate::config::TREASURY_POOL_SEED;
 use crate::error::{Error, Result};
+use crate::pda_seeds::main_treasury_seeds;
+use crate::pda_seeds::with_treasury_seeds;
 use solana_program::{account_info::AccountInfo, program_pack::Pack, pubkey::Pubkey};
 use std::ops::Deref;
 
@@ -29,10 +30,9 @@ impl<'a> Treasury<'a> {
 
     #[must_use]
     pub fn address(program_id: &Pubkey, index: u32) -> (Pubkey, u8) {
-        Pubkey::find_program_address(
-            &[TREASURY_POOL_SEED.as_bytes(), &index.to_le_bytes()],
-            program_id,
-        )
+        with_treasury_seeds(index, &[], |seeds| {
+            Pubkey::find_program_address(seeds, program_id)
+        })
     }
 
     #[must_use]
@@ -73,7 +73,7 @@ impl<'a> MainTreasury<'a> {
 
     #[must_use]
     pub fn address(program_id: &Pubkey) -> (Pubkey, u8) {
-        Pubkey::find_program_address(&[TREASURY_POOL_SEED.as_bytes()], program_id)
+        Pubkey::find_program_address(&main_treasury_seeds(&[]), program_id)
     }
 
     #[must_use]

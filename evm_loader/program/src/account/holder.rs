@@ -3,7 +3,7 @@ use solana_program::pubkey::Pubkey;
 use std::cell::{Ref, RefMut};
 use std::mem::size_of;
 
-use crate::account::TAG_STATE_FINALIZED;
+use crate::account::{MIN_HEAP_OFFSET, TAG_STATE_FINALIZED};
 use crate::error::{Error, Result};
 use crate::types::Transaction;
 
@@ -194,8 +194,8 @@ impl<'a> Holder<'a> {
     /// N.B. No ownership checks are performed, it's a caller's responsibility.
     /// TODO: This piece of should be moved to mod.rs.
     pub fn init_heap(&mut self, transaction_offset: usize) -> Result<()> {
-        let buffer_end = BUFFER_OFFSET + transaction_offset;
-        let actual_heap_offset = crate::account::init_heap(&self.account, buffer_end);
+        let actual_heap_offset =
+            crate::account::init_heap(&self.account, MIN_HEAP_OFFSET + transaction_offset);
 
         // Write the actual heap offset into the header. This memory cell is used by the allocator.
         self.header_mut().heap_offset = actual_heap_offset;

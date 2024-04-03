@@ -205,6 +205,7 @@ pub fn write_heap_offset(account: &AccountInfo, actual_heap_offset: usize) {
     unsafe { std::ptr::write_unaligned(offset_ptr, actual_heap_offset) };
 }
 
+// TODO Maybe move to state_account_allocator
 // Init heap.
 #[must_use]
 pub fn init_heap(account: &AccountInfo, min_heap_object_offset: usize) -> usize {

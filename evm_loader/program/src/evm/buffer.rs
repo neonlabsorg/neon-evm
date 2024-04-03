@@ -2,7 +2,7 @@ use std::ops::{Deref, Range};
 
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-use crate::types::vector::VectorVecExt;
+use crate::types::vector::VectorSliceExt;
 use crate::types::Vector;
 use crate::vector;
 
@@ -69,18 +69,19 @@ impl Buffer {
     }
 
     #[must_use]
-    pub fn from_vec(v: Vec<u8>) -> Self {
-        Self::new(Inner::Owned(v.into_vector()))
+    pub fn from_vector(data: Vector<u8>) -> Self {
+        Self::new(Inner::Owned(data))
     }
 
+    // todo check usages
     #[must_use]
     pub fn from_slice(v: &[u8]) -> Self {
-        Self::from_vec(v.to_vec()) // todo optimize this
+        Self::from_vector(v.to_vector())
     }
 
     #[must_use]
     pub fn empty() -> Self {
-        Buffer::new(Inner::Owned(vector![]))
+        Self::from_vector(vector![])
     }
 
     #[must_use]
@@ -151,24 +152,18 @@ mod tests {
         }};
     }
 
-    impl Buffer {
-        fn with_persistent_vector(data: Vector<u8>) -> Self {
-            Self::new(Inner::Owned(data))
-        }
-    }
-
     #[test]
     fn test_deref_owned_empty() {
         let data = vector![];
         let expected = (data.as_ptr(), data.len());
-        assert_slice_ptr_eq!(&*Buffer::with_persistent_vector(data), expected);
+        assert_slice_ptr_eq!(&*Buffer::from_vector(data), expected);
     }
 
     #[test]
     fn test_deref_owned_non_empty() {
         let data = vector![1];
         let expected = (data.as_ptr(), data.len());
-        assert_slice_ptr_eq!(&*Buffer::with_persistent_vector(data), expected);
+        assert_slice_ptr_eq!(&*Buffer::from_vector(data), expected);
     }
 
     impl OwnedAccountInfo {

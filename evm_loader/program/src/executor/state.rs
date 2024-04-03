@@ -307,7 +307,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(self.backend.code(from_address).await)
     }
 
-    fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
+    fn set_code(&mut self, address: Address, chain_id: u64, code: Vector<u8>) -> Result<()> {
         if code.starts_with(&[0xEF]) {
             // https://eips.ethereum.org/EIPS/eip-3541
             return Err(Error::EVMObjectFormatNotSupported(address));
@@ -321,7 +321,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         let set_code = Action::EvmSetCode {
             address,
             chain_id,
-            code: code.into_vector(),
+            code,
         };
         self.data.actions.push(set_code);
 
@@ -471,7 +471,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         address: &Address,
         data: &[u8],
         is_static: bool,
-    ) -> Option<Result<Vec<u8>>> {
+    ) -> Option<Result<Vector<u8>>> {
         self.call_precompile_extension(context, address, data, is_static)
             .await
     }

@@ -3,6 +3,7 @@
 
 use std::{array::TryFromSliceError, num::TryFromIntError, str::Utf8Error};
 
+use crate::allocator::acc_allocator;
 use ethnum::U256;
 use solana_program::{
     program_error::ProgramError,
@@ -11,7 +12,7 @@ use solana_program::{
 };
 use thiserror::Error;
 
-use crate::types::Address;
+use crate::types::{Address, Vector};
 
 /// Errors that may be returned by the EVM Loader program.
 #[derive(Error, Debug)]
@@ -287,7 +288,7 @@ pub fn print_revert_message(msg: &[u8]) {
 }
 
 #[must_use]
-pub fn build_revert_message(msg: &str) -> Vec<u8> {
+pub fn build_revert_message(msg: &str) -> Vector<u8> {
     let data_len = if msg.len() % 32 == 0 {
         std::cmp::max(msg.len(), 32)
     } else {
@@ -295,7 +296,7 @@ pub fn build_revert_message(msg: &str) -> Vec<u8> {
     };
 
     let capacity = 4 + 32 + 32 + data_len;
-    let mut result = Vec::with_capacity(capacity);
+    let mut result = Vector::with_capacity_in(capacity, acc_allocator());
     result.extend_from_slice(&[0x08, 0xc3, 0x79, 0xa0]); // Error(string) function selector
 
     let offset = U256::new(0x20);

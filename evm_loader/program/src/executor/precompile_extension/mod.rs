@@ -1,3 +1,4 @@
+use crate::types::Vector;
 use crate::{account_storage::AccountStorage, error::Result, evm::Context, types::Address};
 use maybe_async::maybe_async;
 
@@ -42,7 +43,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         address: &Address,
         input: &[u8],
         is_static: bool,
-    ) -> Option<Result<Vec<u8>>> {
+    ) -> Option<Result<Vector<u8>>> {
         match *address {
             Self::SYSTEM_ACCOUNT_QUERY => {
                 Some(self.query_account(address, input, context, is_static).await)

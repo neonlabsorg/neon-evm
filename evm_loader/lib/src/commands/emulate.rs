@@ -17,7 +17,6 @@ use crate::{
     errors::NeonError,
     NeonResult,
 };
-use evm_loader::types::vector::VectorVecExt;
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
@@ -40,7 +39,7 @@ pub struct EmulateResponse {
 
 impl EmulateResponse {
     pub fn revert<E: ToString>(e: E) -> Self {
-        let revert_message = build_revert_message(&e.to_string()).into_vector();
+        let revert_message = build_revert_message(&e.to_string());
         let exit_status = ExitStatus::Revert(revert_message);
         Self {
             exit_status: exit_status.to_string(),

@@ -9,6 +9,7 @@ use spl_associated_token_account::get_associated_token_address;
 use crate::types::vector::VectorSliceExt;
 use crate::vector;
 
+use crate::types::Vector;
 use crate::{
     account::token,
     account_storage::AccountStorage,
@@ -31,7 +32,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         input: &[u8],
         context: &crate::evm::Context,
         is_static: bool,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         debug_print!("neon_token({})", hex::encode(input));
 
         if &context.contract != address {
@@ -57,7 +58,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
 
             self.withdraw(source, chain_id, destination, value).await?;
 
-            let mut output = vec![0_u8; 32];
+            let mut output = vector![0_u8; 32];
             output[31] = 1; // return true
 
             return Ok(output);

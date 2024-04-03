@@ -76,7 +76,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         input: &[u8],
         context: &crate::evm::Context,
         is_static: bool,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         if context.value != 0 {
             return Err(Error::Custom("SplToken: value != 0".to_string()));
         }
@@ -298,7 +298,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         decimals: u8,
         mint_authority: Option<Pubkey>,
         freeze_authority: Option<Pubkey>,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let signer = context.caller;
         let (signer_pubkey, _) = self.backend.contract_pubkey(signer);
 
@@ -336,7 +336,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         )?;
         self.queue_external_instruction(initialize_mint, vector![], 0);
 
-        Ok(mint_key.to_bytes().to_vec())
+        Ok(mint_key.to_bytes().to_vector())
     }
 
     #[maybe_async]
@@ -346,7 +346,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         seed: &[u8],
         mint: Pubkey,
         owner: Option<Pubkey>,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let signer = context.caller;
         let (signer_pubkey, _) = self.backend.contract_pubkey(signer);
 
@@ -383,10 +383,14 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         )?;
         self.queue_external_instruction(initialize_mint, vector![], 0);
 
-        Ok(account_key.to_bytes().to_vec())
+        Ok(account_key.to_bytes().to_vector())
     }
 
-    fn close_account(&mut self, context: &crate::evm::Context, account: Pubkey) -> Result<Vec<u8>> {
+    fn close_account(
+        &mut self,
+        context: &crate::evm::Context,
+        account: Pubkey,
+    ) -> Result<Vector<u8>> {
         let signer = context.caller;
         let (signer_pubkey, bump_seed) = self.backend.contract_pubkey(signer);
 
@@ -405,7 +409,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         )?;
         self.queue_external_instruction(close_account, seeds, 0);
 
-        Ok(vec![])
+        Ok(vector![])
     }
 
     fn approve(
@@ -414,7 +418,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         source: Pubkey,
         target: Pubkey,
         amount: u64,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let signer = context.caller;
         let (signer_pubkey, bump_seed) = self.backend.contract_pubkey(signer);
 
@@ -434,10 +438,10 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         )?;
         self.queue_external_instruction(approve, seeds, 0);
 
-        Ok(vec![])
+        Ok(vector![])
     }
 
-    fn revoke(&mut self, context: &crate::evm::Context, account: Pubkey) -> Result<Vec<u8>> {
+    fn revoke(&mut self, context: &crate::evm::Context, account: Pubkey) -> Result<Vector<u8>> {
         let signer = context.caller;
         let (signer_pubkey, bump_seed) = self.backend.contract_pubkey(signer);
 
@@ -450,7 +454,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         let revoke = spl_token::instruction::revoke(&spl_token::ID, &account, &signer_pubkey, &[])?;
         self.queue_external_instruction(revoke, seeds, 0);
 
-        Ok(vec![])
+        Ok(vector![])
     }
 
     fn transfer(
@@ -459,7 +463,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         source: Pubkey,
         target: Pubkey,
         amount: u64,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let signer = context.caller;
         let (signer_pubkey, bump_seed) = self.backend.contract_pubkey(signer);
 
@@ -479,7 +483,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         )?;
         self.queue_external_instruction(transfer, seeds, 0);
 
-        Ok(vec![])
+        Ok(vector![])
     }
 
     fn transfer_with_seed(
@@ -489,7 +493,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         source: Pubkey,
         target: Pubkey,
         amount: u64,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let seeds: &[&[u8]] = &[
             &[ACCOUNT_SEED_VERSION],
             b"AUTH",
@@ -517,7 +521,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         )?;
         self.queue_external_instruction(transfer, seeds, 0);
 
-        Ok(vec![])
+        Ok(vector![])
     }
 
     fn mint_to(
@@ -526,7 +530,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         mint: Pubkey,
         target: Pubkey,
         amount: u64,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let signer = context.caller;
         let (signer_pubkey, bump_seed) = self.backend.contract_pubkey(signer);
 
@@ -546,7 +550,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         )?;
         self.queue_external_instruction(mint_to, seeds, 0);
 
-        Ok(vec![])
+        Ok(vector![])
     }
 
     fn burn_spl_token(
@@ -555,7 +559,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         mint: Pubkey,
         source: Pubkey,
         amount: u64,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let signer = context.caller;
         let (signer_pubkey, bump_seed) = self.backend.contract_pubkey(signer);
 
@@ -575,7 +579,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         )?;
         self.queue_external_instruction(burn, seeds, 0);
 
-        Ok(vec![])
+        Ok(vector![])
     }
 
     fn freeze(
@@ -583,7 +587,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         context: &crate::evm::Context,
         mint: Pubkey,
         target: Pubkey,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let signer = context.caller;
         let (signer_pubkey, bump_seed) = self.backend.contract_pubkey(signer);
 
@@ -602,7 +606,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         )?;
         self.queue_external_instruction(freeze, seeds, 0);
 
-        Ok(vec![])
+        Ok(vector![])
     }
 
     fn thaw(
@@ -610,7 +614,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         context: &crate::evm::Context,
         mint: Pubkey,
         target: Pubkey,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let signer = context.caller;
         let (signer_pubkey, bump_seed) = self.backend.contract_pubkey(signer);
 
@@ -629,11 +633,11 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         )?;
         self.queue_external_instruction(thaw, seeds, 0);
 
-        Ok(vec![])
+        Ok(vector![])
     }
 
     #[allow(clippy::unnecessary_wraps)]
-    fn find_account(&mut self, context: &crate::evm::Context, seed: &[u8]) -> Result<Vec<u8>> {
+    fn find_account(&mut self, context: &crate::evm::Context, seed: &[u8]) -> Result<Vector<u8>> {
         let signer = context.caller;
 
         let (account_key, _) = Pubkey::find_program_address(
@@ -646,7 +650,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
             self.backend.program_id(),
         );
 
-        Ok(account_key.to_bytes().to_vec())
+        Ok(account_key.to_bytes().to_vector())
     }
 
     #[maybe_async]
@@ -654,15 +658,15 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         &mut self,
         _context: &crate::evm::Context,
         account: Pubkey,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let account = self.external_account(account).await?;
         if system_program::check_id(&account.owner) {
-            let mut result = vec![0_u8; 32];
+            let mut result = vector![0_u8; 32];
             result[31] = 1; // return true
 
             Ok(result)
         } else {
-            Ok(vec![0_u8; 32])
+            Ok(vector![0_u8; 32])
         }
     }
 
@@ -671,7 +675,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         &mut self,
         _context: &crate::evm::Context,
         account: Pubkey,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let account = self.external_account(account).await?;
         let token = if spl_token::check_id(&account.owner) {
             spl_token::state::Account::unpack(&account.data)?
@@ -698,7 +702,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
             .unwrap_or_default();
         state[31] = token.state as u8;
 
-        Ok(result.to_vec())
+        Ok(result.to_vector())
     }
 
     #[maybe_async]
@@ -706,7 +710,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         &mut self,
         _context: &crate::evm::Context,
         account: Pubkey,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let account = self.external_account(account).await?;
         let mint = if spl_token::check_id(&account.owner) {
             spl_token::state::Mint::unpack(&account.data)?
@@ -734,6 +738,6 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
             .map(Pubkey::to_bytes)
             .unwrap_or_default();
 
-        Ok(result.to_vec())
+        Ok(result.to_vector())
     }
 }

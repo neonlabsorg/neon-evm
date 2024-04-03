@@ -13,6 +13,7 @@ use mpl_token_metadata::{
 use solana_program::pubkey::Pubkey;
 
 use crate::types::vector::VectorSliceExt;
+use crate::types::Vector;
 use crate::vector;
 use crate::{
     account::ACCOUNT_SEED_VERSION,
@@ -112,7 +113,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         input: &[u8],
         context: &crate::evm::Context,
         is_static: bool,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         if context.value != 0 {
             return Err(Error::Custom("Metaplex: value != 0".to_string()));
         }
@@ -187,7 +188,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         name: String,
         symbol: String,
         uri: String,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let signer = context.caller;
         let (signer_pubkey, bump_seed) = self.backend.contract_pubkey(signer);
 
@@ -231,7 +232,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         let fee = self.backend.rent().minimum_balance(MAX_METADATA_LEN) + CREATE_FEE;
         self.queue_external_instruction(instruction, seeds, fee);
 
-        Ok(metadata_pubkey.to_bytes().to_vec())
+        Ok(metadata_pubkey.to_bytes().to_vector())
     }
 
     fn create_master_edition(
@@ -239,7 +240,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         context: &crate::evm::Context,
         mint: Pubkey,
         max_supply: Option<u64>,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let signer = context.caller;
         let (signer_pubkey, bump_seed) = self.backend.contract_pubkey(signer);
 
@@ -270,7 +271,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         let fee = self.backend.rent().minimum_balance(MAX_MASTER_EDITION_LEN) + CREATE_FEE;
         self.queue_external_instruction(instruction, seeds, fee);
 
-        Ok(edition_pubkey.to_bytes().to_vec())
+        Ok(edition_pubkey.to_bytes().to_vector())
     }
 
     #[maybe_async]
@@ -278,7 +279,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
         &mut self,
         context: &crate::evm::Context,
         mint: Pubkey,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vector<u8>> {
         let is_initialized = self
             .metadata(context, mint)
             .await?
@@ -288,7 +289,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
     }
 
     #[maybe_async]
-    async fn is_nft(&mut self, context: &crate::evm::Context, mint: Pubkey) -> Result<Vec<u8>> {
+    async fn is_nft(&mut self, context: &crate::evm::Context, mint: Pubkey) -> Result<Vector<u8>> {
         let is_nft = self.metadata(context, mint).await?.map_or_else(
             || false,
             |m| m.token_standard == Some(TokenStandard::NonFungible),
@@ -298,7 +299,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
     }
 
     #[maybe_async]
-    async fn uri(&mut self, context: &crate::evm::Context, mint: Pubkey) -> Result<Vec<u8>> {
+    async fn uri(&mut self, context: &crate::evm::Context, mint: Pubkey) -> Result<Vector<u8>> {
         let uri = self
             .metadata(context, mint)
             .await?
@@ -308,7 +309,11 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
     }
 
     #[maybe_async]
-    async fn token_name(&mut self, context: &crate::evm::Context, mint: Pubkey) -> Result<Vec<u8>> {
+    async fn token_name(
+        &mut self,
+        context: &crate::evm::Context,
+        mint: Pubkey,
+    ) -> Result<Vector<u8>> {
         let token_name = self
             .metadata(context, mint)
             .await?
@@ -318,7 +323,7 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
     }
 
     #[maybe_async]
-    async fn symbol(&mut self, context: &crate::evm::Context, mint: Pubkey) -> Result<Vec<u8>> {
+    async fn symbol(&mut self, context: &crate::evm::Context, mint: Pubkey) -> Result<Vector<u8>> {
         let symbol = self
             .metadata(context, mint)
             .await?
@@ -348,13 +353,13 @@ impl<B: AccountStorage> ExecutorState<'_, B> {
     }
 }
 
-fn to_solidity_bool(v: bool) -> Vec<u8> {
-    let mut result = vec![0_u8; 32];
+fn to_solidity_bool(v: bool) -> Vector<u8> {
+    let mut result = vector![0_u8; 32];
     result[31] = u8::from(v);
     result
 }
 
-fn to_solidity_string(s: &str) -> Vec<u8> {
+fn to_solidity_string(s: &str) -> Vector<u8> {
     // String encoding
     // 32 bytes - offset
     // 32 bytes - length
@@ -366,7 +371,7 @@ fn to_solidity_string(s: &str) -> Vec<u8> {
         ((s.len() / 32) + 1) * 32
     };
 
-    let mut result = vec![0_u8; 32 + 32 + data_len];
+    let mut result = vector![0_u8; 32 + 32 + data_len];
 
     result[31] = 0x20; // offset - 32 bytes
 

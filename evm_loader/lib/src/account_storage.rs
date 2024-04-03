@@ -686,7 +686,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
 
         let code_override = self.account_override(address, |a| a.code.clone());
         if let Some(code_override) = code_override {
-            return Buffer::from_vec(code_override.0);
+            return Buffer::from_vector(code_override.0.into_vector());
         }
 
         let code = self
@@ -698,7 +698,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
             )
             .await;
 
-        Buffer::from_vec(code)
+        Buffer::from_vector(code.into_vector())
     }
 
     async fn storage(&self, address: Address, index: U256) -> [u8; 32] {

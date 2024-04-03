@@ -1,4 +1,5 @@
 use super::{Buffer, Context};
+use crate::types::Vector;
 use crate::{error::Result, types::Address};
 use ethnum::U256;
 use maybe_async::maybe_async;
@@ -23,7 +24,7 @@ pub trait Database {
     ) -> Result<()>;
     async fn code_size(&self, address: Address) -> Result<usize>;
     async fn code(&self, address: Address) -> Result<Buffer>;
-    fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()>;
+    fn set_code(&mut self, address: Address, chain_id: u64, code: Vector<u8>) -> Result<()>;
 
     async fn storage(&self, address: Address, index: U256) -> Result<[u8; 32]>;
     fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
@@ -56,7 +57,7 @@ pub trait Database {
         address: &Address,
         data: &[u8],
         is_static: bool,
-    ) -> Option<Result<Vec<u8>>>;
+    ) -> Option<Result<Vector<u8>>>;
 }
 
 /// Provides convenience methods that can be implemented in terms of `Database`.

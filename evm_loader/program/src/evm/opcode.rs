@@ -12,8 +12,8 @@ use super::{
     end_vm, tracing_event, Context, Machine, Reason,
 };
 use crate::evm::tracing::EventListener;
-#[cfg(not(target_os = "solana"))]
-use crate::types::vector::VectorVecExt;
+use crate::types::vector::VectorSliceExt;
+use crate::types::Vector;
 use crate::{
     debug::log_data,
     error::{Error, Result},
@@ -26,8 +26,8 @@ pub enum Action {
     Continue,
     Jump(usize),
     Stop,
-    Return(Vec<u8>),
-    Revert(Vec<u8>),
+    Return(Vector<u8>),
+    Revert(Vector<u8>),
     Suicide,
     Noop,
 }
@@ -1358,7 +1358,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let return_data = self.memory.read(offset, length)?.to_vec();
+        let return_data = self.memory.read(offset, length)?.to_vector();
 
         self.opcode_return_impl(return_data, backend).await
     }
@@ -1367,12 +1367,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     #[maybe_async]
     pub async fn opcode_return_impl(
         &mut self,
-        mut return_data: Vec<u8>,
+        return_data: Vector<u8>,
         backend: &mut B,
     ) -> Result<Action> {
         if self.reason == Reason::Create {
-            let code = std::mem::take(&mut return_data); // todo fix this
-            backend.set_code(self.context.contract, self.chain_id, code)?;
+            backend.set_code(self.context.contract, self.chain_id, return_data.clone())?;
         }
 
         backend.commit_snapshot();
@@ -1381,7 +1380,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         end_vm!(
             self,
             backend,
-            super::ExitStatus::Return(return_data.clone().into_vector())
+            super::ExitStatus::Return(return_data.clone())
         );
 
         if self.parent.is_none() {
@@ -1394,7 +1393,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 self.memory.write_range(&self.return_range, &return_data)?;
                 self.stack.push_bool(true)?; // success
 
-                self.return_data = Buffer::from_vec(return_data);
+                self.return_data = Buffer::from_vector(return_data);
             }
             Reason::Create => {
                 let address = returned.context.contract;
@@ -1413,7 +1412,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let return_data = self.memory.read(offset, length)?.to_vec();
+        let return_data = self.memory.read(offset, length)?.to_vector();
 
         self.opcode_revert_impl(return_data, backend).await
     }
@@ -1421,7 +1420,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     #[maybe_async]
     pub async fn opcode_revert_impl(
         &mut self,
-        return_data: Vec<u8>,
+        return_data: Vector<u8>,
         backend: &mut B,
     ) -> Result<Action> {
         backend.revert_snapshot();
@@ -1430,7 +1429,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         end_vm!(
             self,
             backend,
-            super::ExitStatus::Revert(return_data.clone().into_vector())
+            super::ExitStatus::Revert(return_data.clone())
         );
 
         if self.parent.is_none() {
@@ -1448,7 +1447,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             }
         }
 
-        self.return_data = Buffer::from_vec(return_data);
+        self.return_data = Buffer::from_vector(return_data);
 
         unsafe {
             ManuallyDrop::drop(&mut returned);

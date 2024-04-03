@@ -97,7 +97,6 @@ macro_rules! begin_step {
     };
 }
 
-use crate::types::vector::VectorVecExt;
 pub(crate) use begin_step;
 pub(crate) use begin_vm;
 pub(crate) use end_vm;
@@ -371,7 +370,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             let value = Self::precompile(&self.context.contract, &self.call_data).unwrap();
             backend.commit_snapshot();
 
-            ExitStatus::Return(value.into_vector())
+            ExitStatus::Return(value)
         } else {
             loop {
                 step += 1;
@@ -395,8 +394,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                     Action::Continue => self.pc += 1,
                     Action::Jump(target) => self.pc = target,
                     Action::Stop => break ExitStatus::Stop,
-                    Action::Return(value) => break ExitStatus::Return(value.into_vector()),
-                    Action::Revert(value) => break ExitStatus::Revert(value.into_vector()),
+                    Action::Return(value) => break ExitStatus::Return(value),
+                    Action::Revert(value) => break ExitStatus::Revert(value),
                     Action::Suicide => break ExitStatus::Suicide,
                     Action::Noop => {}
                 };

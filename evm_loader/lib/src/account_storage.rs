@@ -1150,21 +1150,19 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
 
         info!("execute_external_instruction: {instruction:?}");
         info!("Operator: {}", self.operator);
-        let called_program = instruction.program_id;
         self.execute_status.external_solana_calls |= !emulated_internally;
 
         let mut solana_simulator = SolanaSimulator::new(self)
             .await
             .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
 
-        let clock = Clock {
+        solana_simulator.set_sysvar(&Clock {
             slot: self.block_number,
             epoch_start_timestamp: self.block_timestamp,
             epoch: 0,
             leader_schedule_epoch: 0,
             unix_timestamp: self.block_timestamp,
-        };
-        solana_simulator.set_sysvar(&clock);
+        });
 
         let signers = seeds
             .iter()
@@ -1174,7 +1172,6 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
                 Ok(signer)
             })
             .collect::<Result<HashSet<_>, PubkeyError>>()?;
-
         info!("Signers: {signers:?}");
 
         let mut accounts = Vec::new();
@@ -1198,18 +1195,22 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             .await
             .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
 
-        let mut trx = Transaction::new_unsigned(Message::new(
+        let trx = Transaction::new_unsigned(Message::new_with_blockhash(
             &[instruction.clone()],
             Some(&solana_simulator.payer().pubkey()),
+            &solana_simulator.blockhash(),
         ));
-        trx.message.recent_blockhash = solana_simulator.blockhash();
 
         let result = solana_simulator
             .simulate_legacy_transaction(trx)
             .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
-        result
-            .result
-            .map_err(|e| EvmLoaderError::ExternalCallFailed(called_program, e.to_string()))?;
+
+        if let Err(error) = result.result {
+            return Err(EvmLoaderError::ExternalCallFailed(
+                instruction.program_id,
+                error.to_string(),
+            ));
+        }
 
         if let Some(return_data) = result.return_data {
             *self.return_data.borrow_mut() = Some(return_data);

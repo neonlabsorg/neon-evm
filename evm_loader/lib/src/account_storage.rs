@@ -158,13 +158,7 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
         &self,
         pubkeys: &[Pubkey],
     ) -> ClientResult<Vec<Option<Account>>> {
-        // TODO: Optimize this!!!
-        let mut result = vec![];
-        for key in pubkeys {
-            let account = self.get_account(key).await?.value;
-            result.push(account);
-        }
-        Ok(result)
+        self.rpc.get_multiple_accounts(pubkeys).await
     }
 
     async fn get_block_time(&self, _slot: Slot) -> ClientResult<UnixTimestamp> {

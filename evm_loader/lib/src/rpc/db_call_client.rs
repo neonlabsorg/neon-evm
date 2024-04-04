@@ -94,4 +94,8 @@ impl Rpc for CallDbClient {
     async fn get_slot(&self) -> ClientResult<Slot> {
         Ok(self.slot)
     }
+
+    fn supports_features(&self) -> bool {
+        false
+    }
 }

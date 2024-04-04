@@ -53,8 +53,10 @@ pub async fn genesis_config_info(
         vec![],
     );
 
-    for feature in deactivated_features(rpc).await? {
-        genesis_config.accounts.remove(&feature);
+    if rpc.supports_features() {
+        for feature in deactivated_features(rpc).await? {
+            genesis_config.accounts.remove(&feature);
+        }
     }
 
     Ok(GenesisConfigInfo {

@@ -89,4 +89,8 @@ impl Rpc for CloneRpcClient {
     async fn get_slot(&self) -> ClientResult<Slot> {
         self.rpc.get_slot().await
     }
+
+    fn supports_features(&self) -> bool {
+        true
+    }
 }

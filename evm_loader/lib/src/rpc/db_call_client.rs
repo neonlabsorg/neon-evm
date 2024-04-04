@@ -77,11 +77,27 @@ impl Rpc for CallDbClient {
         &self,
         pubkeys: &[Pubkey],
     ) -> ClientResult<Vec<Option<Account>>> {
-        let mut result = Vec::new();
+        let mut tasks = Vec::new();
+
         for key in pubkeys {
-            result.push(self.get_account_at(key).await?);
+            let tracer_db = self.tracer_db.clone();
+            let key = *key;
+            let slot = self.slot;
+            let tx_index_in_block = self.tx_index_in_block;
+            tasks.push(tokio::spawn(async move {
+                tracer_db
+                    .get_account_at(&key, slot, tx_index_in_block)
+                    .await
+                    .map_err(|e| e!("get_account_at error", &key, e))
+            }));
         }
-        Ok(result)
+
+        let mut results = Vec::new();
+        for task in tasks {
+            results.push(task.await.expect("Join should not fail")?);
+        }
+
+        Ok(results)
     }
 
     async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp> {

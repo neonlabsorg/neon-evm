@@ -71,6 +71,10 @@ mod mock_rpc_client {
         async fn get_slot(&self) -> ClientResult<Slot> {
             Ok(Slot::default())
         }
+
+        fn supports_features(&self) -> bool {
+            false
+        }
     }
 
     #[async_trait(?Send)]

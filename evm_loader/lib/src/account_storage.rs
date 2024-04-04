@@ -176,6 +176,10 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
         //Ok(self.block_number)
         unimplemented!();
     }
+
+    fn supports_features(&self) -> bool {
+        false
+    }
 }
 
 impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {

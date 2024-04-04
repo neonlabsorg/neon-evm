@@ -32,6 +32,7 @@ pub trait Rpc {
         -> ClientResult<Vec<Option<Account>>>;
     async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp>;
     async fn get_slot(&self) -> ClientResult<Slot>;
+    fn supports_features(&self) -> bool;
 }
 
 #[enum_dispatch(BuildConfigSimulator, Rpc)]

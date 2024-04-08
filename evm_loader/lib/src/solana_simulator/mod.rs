@@ -69,7 +69,9 @@ impl SolanaSimulator {
             genesis_bank.slot() + 1,
         );
 
-        utils::sync_sysvar_accounts(rpc, &mut bank).await?;
+        if rpc.supports_sysvars() {
+            utils::sync_sysvar_accounts(rpc, &mut bank).await?;
+        }
 
         Ok(Self {
             bank,

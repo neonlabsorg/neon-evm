@@ -26,7 +26,7 @@ use serde_with::{hex::Hex, serde_as};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulateResponse {
     pub exit_status: String,
-    pub external_solana_calls: bool,
+    pub external_solana_call: bool,
     pub reverts_before_solana_calls: bool,
     pub reverts_after_solana_calls: bool,
     #[serde_as(as = "Hex")]
@@ -43,7 +43,7 @@ impl EmulateResponse {
         let exit_status = ExitStatus::Revert(revert_message);
         Self {
             exit_status: exit_status.to_string(),
-            external_solana_calls: false,
+            external_solana_call: false,
             reverts_before_solana_calls: false,
             reverts_after_solana_calls: false,
             result: exit_status.into_result().unwrap_or_default(),
@@ -99,7 +99,7 @@ pub async fn execute<T: Tracer>(
 
             let emul_response = EmulateResponse {
                 exit_status: response.exit_status.to_string(),
-                external_solana_calls: response.external_solana_calls,
+                external_solana_call: response.external_solana_call,
                 reverts_before_solana_calls: response.reverts_before_solana_calls,
                 reverts_after_solana_calls: response.reverts_after_solana_calls,
                 steps_executed: response.steps_executed.max(response2.steps_executed),
@@ -162,7 +162,7 @@ async fn emulate_trx<T: Tracer>(
     Ok((
         EmulateResponse {
             exit_status: exit_status.to_string(),
-            external_solana_calls: execute_status.external_solana_calls,
+            external_solana_call: execute_status.external_solana_call,
             reverts_before_solana_calls: execute_status.reverts_before_solana_calls,
             reverts_after_solana_calls: execute_status.reverts_after_solana_calls,
             steps_executed,

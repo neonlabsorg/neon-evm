@@ -50,7 +50,7 @@ const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator11111111111111111111111111111
 
 #[derive(Default, Clone, Copy)]
 pub struct ExecuteStatus {
-    pub external_solana_calls: bool,
+    pub external_solana_call: bool,
     pub reverts_before_solana_calls: bool,
     pub reverts_after_solana_calls: bool,
 }
@@ -1150,7 +1150,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
 
         info!("execute_external_instruction: {instruction:?}");
         info!("Operator: {}", self.operator);
-        self.execute_status.external_solana_calls |= !emulated_internally;
+        self.execute_status.external_solana_call |= !emulated_internally;
 
         let mut solana_simulator = SolanaSimulator::new(self)
             .await
@@ -1252,10 +1252,10 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         info!("revert_snapshot");
         self.accounts = self.call_stack.pop().expect("No snapshots to revert");
 
-        if self.execute_status.external_solana_calls {
-            self.execute_status.reverts_before_solana_calls = true;
-        } else {
+        if self.execute_status.external_solana_call {
             self.execute_status.reverts_after_solana_calls = true;
+        } else {
+            self.execute_status.reverts_before_solana_calls = true;
         }
     }
 

@@ -9,8 +9,8 @@ mod program_options;
 
 use neon_lib::{
     commands::{
-        cancel_trx, collect_treasury, emulate, get_balance, get_config, get_contract, get_holder,
-        get_neon_elf, get_storage_at, init_environment, trace,
+        collect_treasury, emulate, get_balance, get_config, get_contract, get_holder, get_neon_elf,
+        get_storage_at, init_environment, trace,
     },
     rpc::CloneRpcClient,
     types::{BalanceAddress, EmulateRequest},
@@ -87,16 +87,6 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
             let account = pubkey_of(params, "account").unwrap();
 
             get_holder::execute(&rpc, &config.evm_loader, account)
-                .await
-                .map(|result| json!(result))
-        }
-        ("cancel-trx", Some(params)) => {
-            let rpc_client = CloneRpcClient::new_from_config(config);
-            let signer = build_signer(config)?;
-
-            let storage_account =
-                pubkey_of(params, "storage_account").expect("storage_account parse error");
-            cancel_trx::execute(rpc_client, &*signer, config.evm_loader, &storage_account)
                 .await
                 .map(|result| json!(result))
         }

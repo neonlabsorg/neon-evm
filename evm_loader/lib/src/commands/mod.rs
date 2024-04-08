@@ -11,7 +11,6 @@ use solana_sdk::{
     transaction::Transaction,
 };
 
-pub mod cancel_trx;
 pub mod collect_treasury;
 pub mod emulate;
 pub mod get_balance;

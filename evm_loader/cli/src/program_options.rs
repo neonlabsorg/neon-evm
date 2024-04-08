@@ -215,19 +215,6 @@ pub fn parse<'a>() -> ArgMatches<'a> {
                 )
         )
         .subcommand(
-            SubCommand::with_name("cancel-trx")
-                .about("Cancel NEON transaction")
-                .arg(
-                    Arg::with_name("storage_account")
-                        .index(1)
-                        .value_name("STORAGE_ACCOUNT")
-                        .takes_value(true)
-                        .required(true)
-                        .validator(is_valid_pubkey)
-                        .help("storage account for transaction"),
-                )
-        )
-        .subcommand(
             SubCommand::with_name("neon-elf-params")
                 .about("Get NEON values stored in elf")
                 .arg(

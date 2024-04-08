@@ -8,7 +8,7 @@ use evm_loader::{
     types::{AccessListTx, LegacyTx, TransactionPayload},
 };
 use serde_with::skip_serializing_none;
-use solana_sdk::pubkey::Pubkey;
+use solana_sdk::{account::Account, pubkey::Pubkey};
 pub use tracer_ch_db::ClickHouseDb as TracerDb;
 
 use crate::tracing::TraceCallConfig;
@@ -116,6 +116,30 @@ impl std::fmt::Debug for TxParams {
 }
 
 #[serde_as]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct SerializedAccount {
+    pub lamports: u64,
+    #[serde_as(as = "DisplayFromStr")]
+    pub owner: Pubkey,
+    pub executable: bool,
+    pub rent_epoch: u64,
+    #[serde_as(as = "Hex")]
+    pub data: Vec<u8>,
+}
+
+impl From<&SerializedAccount> for Account {
+    fn from(account: &SerializedAccount) -> Self {
+        Account {
+            lamports: account.lamports,
+            owner: account.owner,
+            executable: account.executable,
+            rent_epoch: account.rent_epoch,
+            data: account.data.clone(),
+        }
+    }
+}
+
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulateRequest {
     pub tx: TxParams,
@@ -124,6 +148,8 @@ pub struct EmulateRequest {
     pub trace_config: Option<TraceCallConfig>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub accounts: Vec<Pubkey>,
+    #[serde_as(as = "Option<Vec<(DisplayFromStr,_)>>")]
+    pub solana_overrides: Option<Vec<(Pubkey, Option<SerializedAccount>)>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

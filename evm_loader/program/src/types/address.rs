@@ -6,7 +6,7 @@ use std::convert::{From, TryInto};
 use std::fmt::{Debug, Display};
 use std::str::FromStr;
 
-use crate::account::ACCOUNT_SEED_VERSION;
+use crate::account::{Operator, ACCOUNT_SEED_VERSION};
 use crate::error::Error;
 
 #[repr(transparent)]
@@ -64,6 +64,24 @@ impl Address {
         let chain_id = U256::from(chain_id);
 
         let seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], &self.0, &chain_id.to_be_bytes()];
+        Pubkey::find_program_address(seeds, program_id)
+    }
+
+    #[must_use]
+    pub fn find_operator_address(
+        &self,
+        program_id: &Pubkey,
+        chain_id: u64,
+        operator: &Operator,
+    ) -> (Pubkey, u8) {
+        let chain_id = U256::from(chain_id);
+
+        let seeds: &[&[u8]] = &[
+            &[ACCOUNT_SEED_VERSION],
+            operator.key.as_ref(),
+            &self.0,
+            &chain_id.to_be_bytes(),
+        ];
         Pubkey::find_program_address(seeds, program_id)
     }
 }

@@ -132,7 +132,7 @@ fn finalize<'a>(
         &total_used_gas.to_le_bytes(),
     ]);
 
-    storage.consume_gas(used_gas, accounts.operator_balance())?;
+    storage.consume_gas(used_gas, accounts.db().try_operator_balance())?;
 
     if let Some(status) = status {
         log_return_value(&status);

@@ -1,7 +1,7 @@
 use crate::account::legacy::{TAG_HOLDER_DEPRECATED, TAG_STATE_FINALIZED_DEPRECATED};
 use crate::account::{
-    program, AccountsDB, AccountsStatus, BalanceAccount, Operator, StateAccount, Treasury,
-    TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
+    program, AccountsDB, AccountsStatus, Operator, OperatorBalanceAccount,
+    OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::debug::log_data;
 use crate::error::{Error, Result};
@@ -28,15 +28,15 @@ pub fn process<'a>(
 
     let operator = Operator::from_account(&accounts[1])?;
     let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
-    let operator_balance = BalanceAccount::from_account(program_id, accounts[3].clone())?;
+    let operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
     let system = program::System::from_account(&accounts[4])?;
 
-    let miner_address = operator_balance.address();
+    operator_balance.validate_owner(&operator)?;
 
     let accounts_db = AccountsDB::new(
         &accounts[5..],
         operator.clone(),
-        Some(operator_balance),
+        operator_balance.clone(),
         Some(system),
         Some(treasury),
     );
@@ -53,10 +53,13 @@ pub fn process<'a>(
             let trx = Transaction::from_rlp(message)?;
             let origin = trx.recover_caller_address()?;
 
+            operator_balance.validate_transaction(&trx)?;
+            let miner_address = operator_balance.miner(origin);
+
             log_data(&[b"HASH", &trx.hash()]);
             log_data(&[b"MINER", miner_address.as_bytes()]);
 
-            let mut gasometer = Gasometer::new(U256::ZERO, accounts_db.operator())?;
+            let mut gasometer = Gasometer::new(U256::ZERO, &operator)?;
             gasometer.record_solana_transaction_cost();
             gasometer.record_address_lookup_table(accounts);
 
@@ -71,10 +74,13 @@ pub fn process<'a>(
             let (storage, accounts_status) =
                 StateAccount::restore(program_id, storage_info, &accounts_db)?;
 
+            operator_balance.validate_transaction(storage.trx())?;
+            let miner_address = operator_balance.miner(storage.trx_origin());
+
             log_data(&[b"HASH", &storage.trx().hash()]);
             log_data(&[b"MINER", miner_address.as_bytes()]);
 
-            let mut gasometer = Gasometer::new(storage.gas_used(), accounts_db.operator())?;
+            let mut gasometer = Gasometer::new(storage.gas_used(), &operator)?;
             gasometer.record_solana_transaction_cost();
 
             let reset = accounts_status != AccountsStatus::Ok;

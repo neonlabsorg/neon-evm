@@ -190,6 +190,18 @@ pub enum Error {
 
     #[error("External call fails {0}: {1}")]
     ExternalCallFailed(Pubkey, String),
+
+    #[error("Operator Balance - invalid owner {0}, expected = {1}")]
+    OperatorBalanceInvalidOwner(Pubkey, Pubkey),
+
+    #[error("Operator Balance - not found")]
+    OperatorBalanceMissing,
+
+    #[error("Operator Balance - invalid chainId")]
+    OperatorBalanceInvalidChainId,
+
+    #[error("Operator Balance - invalid address")]
+    OperatorBalanceInvalidAddress,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

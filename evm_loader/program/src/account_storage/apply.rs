@@ -32,14 +32,17 @@ impl<'a> ProgramAccountStorage<'a> {
         chain_id: u64,
         value: U256,
     ) -> Result<()> {
+        if value == U256::ZERO {
+            return Ok(());
+        }
+
         let (pubkey, _) = origin.find_balance_address(&crate::ID, chain_id);
 
         let source = self.accounts.get(&pubkey).clone();
         let mut source = BalanceAccount::from_account(&crate::ID, source)?;
 
-        let target = self.accounts.operator_balance();
-
-        source.transfer(target, value)
+        let mut target = self.accounts.operator_balance();
+        target.consume_gas(&mut source, value)
     }
 
     pub fn allocate(&mut self, actions: &[Action]) -> Result<AllocateResult> {

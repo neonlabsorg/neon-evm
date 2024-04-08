@@ -203,6 +203,10 @@ pub enum EvmInstruction {
     ConfigGetPropertyByName,
     ConfigGetStatus,
     ConfigGetVersion,
+
+    OperatorBalanceCreate,
+    OperatorBalanceDelete,
+    OperatorBalanceWithdraw,
 }
 
 impl EvmInstruction {
@@ -229,6 +233,10 @@ impl EvmInstruction {
             0x38 => Self::TransactionExecuteFromInstructionWithSolanaCall, // 56
             0x39 => Self::TransactionExecuteFromAccountWithSolanaCall, // 57
 
+            0x38 => Self::OperatorBalanceCreate,   // 56
+            0x39 => Self::OperatorBalanceDelete,   // 57
+            0x3A => Self::OperatorBalanceWithdraw, // 58
+
             0xA0 => Self::ConfigGetChainCount, // 160
             0xA1 => Self::ConfigGetChainInfo,
             0xA2 => Self::ConfigGetEnvironment,
@@ -237,6 +245,7 @@ impl EvmInstruction {
             0xA5 => Self::ConfigGetPropertyByName,
             0xA6 => Self::ConfigGetStatus,
             0xA7 => Self::ConfigGetVersion,
+
             _ => return Err(ProgramError::InvalidInstructionData),
         })
     }
@@ -257,6 +266,9 @@ pub mod config_get_status;
 pub mod config_get_version;
 pub mod create_main_treasury;
 pub mod neon_tokens_deposit;
+pub mod operator_create_balance;
+pub mod operator_delete_balance;
+pub mod operator_withdraw_balance;
 pub mod transaction_cancel;
 pub mod transaction_execute;
 pub mod transaction_execute_from_account;

@@ -166,6 +166,15 @@ fn process_instruction<'a>(
         EvmInstruction::ConfigGetVersion => {
             instruction::config_get_version::process(program_id, accounts, instruction)
         }
+        EvmInstruction::OperatorBalanceCreate => {
+            instruction::operator_create_balance::process(program_id, accounts, instruction)
+        }
+        EvmInstruction::OperatorBalanceDelete => {
+            instruction::operator_delete_balance::process(program_id, accounts, instruction)
+        }
+        EvmInstruction::OperatorBalanceWithdraw => {
+            instruction::operator_withdraw_balance::process(program_id, accounts, instruction)
+        }
     }
     .map_err(ProgramError::from)
 }

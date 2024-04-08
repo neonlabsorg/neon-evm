@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use super::{
-    revision, AccountHeader, AccountsDB, BalanceAccount, Holder, StateFinalizedAccount,
-    ACCOUNT_PREFIX_LEN, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
+    revision, AccountHeader, AccountsDB, BalanceAccount, Holder, OperatorBalanceAccount,
+    StateFinalizedAccount, ACCOUNT_PREFIX_LEN, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
 };
 
 #[derive(PartialEq, Eq)]
@@ -258,14 +258,9 @@ impl<'a> StateAccount<'a> {
         self.trx().gas_limit().saturating_sub(self.gas_used())
     }
 
-    pub fn consume_gas(&mut self, amount: U256, receiver: &mut BalanceAccount) -> Result<()> {
+    fn use_gas(&mut self, amount: U256) -> Result<U256> {
         if amount == U256::ZERO {
-            return Ok(());
-        }
-
-        let trx_chain_id = self.trx().chain_id().unwrap_or(DEFAULT_CHAIN_ID);
-        if receiver.chain_id() != trx_chain_id {
-            return Err(Error::GasReceiverInvalidChainId);
+            return Ok(U256::ZERO);
         }
 
         let total_gas_used = self.data.gas_used.saturating_add(amount);
@@ -277,10 +272,29 @@ impl<'a> StateAccount<'a> {
 
         self.data.gas_used = total_gas_used;
 
-        let tokens = amount
+        amount
             .checked_mul(self.trx().gas_price())
-            .ok_or(Error::IntegerOverflow)?;
-        receiver.mint(tokens)
+            .ok_or(Error::IntegerOverflow)
+    }
+
+    pub fn consume_gas(
+        &mut self,
+        amount: U256,
+        receiver: Option<OperatorBalanceAccount>,
+    ) -> Result<()> {
+        let tokens = self.use_gas(amount)?;
+        if tokens == U256::ZERO {
+            return Ok(());
+        }
+
+        let mut operator_balance = receiver.ok_or(Error::OperatorBalanceMissing)?;
+
+        let trx_chain_id = self.trx().chain_id().unwrap_or(DEFAULT_CHAIN_ID);
+        if operator_balance.chain_id() != trx_chain_id {
+            return Err(Error::OperatorBalanceInvalidChainId);
+        }
+
+        operator_balance.mint(tokens)
     }
 
     pub fn refund_unused_gas(&mut self, origin: &mut BalanceAccount) -> Result<()> {
@@ -290,7 +304,8 @@ impl<'a> StateAccount<'a> {
         assert!(origin.address() == self.trx_origin());
 
         let unused_gas = self.gas_available();
-        self.consume_gas(unused_gas, origin)
+        let tokens = self.use_gas(unused_gas)?;
+        origin.mint(tokens)
     }
 
     #[must_use]

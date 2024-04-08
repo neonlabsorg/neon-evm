@@ -1,5 +1,4 @@
 use crate::error::{Error, Result};
-use crate::types::Address;
 use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
@@ -13,6 +12,7 @@ pub use ether_storage::{Header as StorageCellHeader, StorageCell, StorageCellAdd
 pub use holder::{Header as HolderHeader, Holder};
 pub use incinerator::Incinerator;
 pub use operator::Operator;
+pub use operator_balance::{OperatorBalanceAccount, OperatorBalanceValidator};
 pub use state::{AccountsStatus, StateAccount};
 pub use state_finalized::{Header as StateFinalizedHeader, StateFinalizedAccount};
 pub use treasury::{MainTreasury, Treasury};
@@ -26,6 +26,7 @@ mod holder;
 mod incinerator;
 pub mod legacy;
 mod operator;
+mod operator_balance;
 pub mod program;
 mod state;
 mod state_finalized;
@@ -39,6 +40,7 @@ pub const TAG_HOLDER: u8 = 52;
 
 pub const TAG_ACCOUNT_BALANCE: u8 = 60;
 pub const TAG_ACCOUNT_CONTRACT: u8 = 70;
+pub const TAG_OPERATOR_BALANCE: u8 = 80;
 pub const TAG_STORAGE_CELL: u8 = 43;
 
 const TAG_OFFSET: usize = 0;
@@ -203,7 +205,7 @@ pub unsafe fn delete(account: &AccountInfo, operator: &Operator) {
 pub struct AccountsDB<'a> {
     sorted_accounts: Vec<AccountInfo<'a>>,
     operator: Operator<'a>,
-    operator_balance: Option<BalanceAccount<'a>>,
+    operator_balance: Option<OperatorBalanceAccount<'a>>,
     system: Option<System<'a>>,
     treasury: Option<Treasury<'a>>,
 }
@@ -213,7 +215,7 @@ impl<'a> AccountsDB<'a> {
     pub fn new(
         accounts: &[AccountInfo<'a>],
         operator: Operator<'a>,
-        operator_balance: Option<BalanceAccount<'a>>,
+        operator_balance: Option<OperatorBalanceAccount<'a>>,
         system: Option<System<'a>>,
         treasury: Option<Treasury<'a>>,
     ) -> Self {
@@ -259,21 +261,17 @@ impl<'a> AccountsDB<'a> {
     }
 
     #[must_use]
-    pub fn operator_balance(&mut self) -> &mut BalanceAccount<'a> {
-        if let Some(operator_balance) = &mut self.operator_balance {
-            return operator_balance;
+    pub fn operator_balance(&self) -> OperatorBalanceAccount<'a> {
+        if let Some(operator_balance) = &self.operator_balance {
+            return operator_balance.clone();
         }
 
         panic!("Operator Balance Account must be present in the transaction");
     }
 
     #[must_use]
-    pub fn operator_balance_address(&self) -> Address {
-        if let Some(operator_balance) = &self.operator_balance {
-            return operator_balance.address();
-        }
-
-        panic!("Operator Balance Account must be present in the transaction");
+    pub fn try_operator_balance(&self) -> Option<OperatorBalanceAccount<'a>> {
+        self.operator_balance.clone()
     }
 
     #[must_use]

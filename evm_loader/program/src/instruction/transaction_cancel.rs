@@ -1,4 +1,4 @@
-use crate::account::{AccountsDB, BalanceAccount, Operator, StateAccount};
+use crate::account::{AccountsDB, BalanceAccount, Operator, OperatorBalanceAccount, StateAccount};
 use crate::config::DEFAULT_CHAIN_ID;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
@@ -18,7 +18,9 @@ pub fn process<'a>(
 
     let storage_info = accounts[0].clone();
     let operator = Operator::from_account(&accounts[1])?;
-    let operator_balance = BalanceAccount::from_account(program_id, accounts[2].clone())?;
+    let operator_balance = OperatorBalanceAccount::from_account(program_id, &accounts[2])?;
+
+    operator_balance.validate_owner(&operator)?;
 
     log_data(&[b"HASH", transaction_hash]);
     log_data(&[b"MINER", operator_balance.address().as_bytes()]);
@@ -43,7 +45,7 @@ fn validate(storage: &StateAccount, transaction_hash: &[u8; 32]) -> Result<()> {
 
 fn execute<'a>(
     program_id: &Pubkey,
-    mut accounts: AccountsDB<'a>,
+    accounts: AccountsDB<'a>,
     mut storage: StateAccount<'a>,
 ) -> Result<()> {
     let trx_chain_id = storage.trx().chain_id().unwrap_or(DEFAULT_CHAIN_ID);
@@ -57,7 +59,7 @@ fn execute<'a>(
     ]);
 
     let gas = U256::from(CANCEL_TRX_COST + LAST_ITERATION_COST);
-    let _ = storage.consume_gas(gas, accounts.operator_balance()); // ignore error
+    let _ = storage.consume_gas(gas, accounts.try_operator_balance()); // ignore error
 
     let origin = storage.trx_origin();
     let (origin_pubkey, _) = origin.find_balance_address(program_id, trx_chain_id);

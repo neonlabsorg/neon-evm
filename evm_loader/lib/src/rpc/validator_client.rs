@@ -95,4 +95,8 @@ impl Rpc for CloneRpcClient {
     fn supports_features(&self) -> bool {
         true
     }
+
+    fn supports_sysvars(&self) -> bool {
+        true
+    }
 }

@@ -98,4 +98,8 @@ impl Rpc for CallDbClient {
     fn supports_features(&self) -> bool {
         false
     }
+
+    fn supports_sysvars(&self) -> bool {
+        false
+    }
 }

@@ -1,7 +1,6 @@
 pub mod tracer_ch_common;
 mod tracer_ch_db;
 
-use std::collections::HashMap;
 pub use evm_loader::types::Address;
 use evm_loader::types::{StorageKey, Transaction};
 use evm_loader::{
@@ -10,6 +9,7 @@ use evm_loader::{
 };
 use serde_with::skip_serializing_none;
 use solana_sdk::{account::Account, pubkey::Pubkey};
+use std::collections::HashMap;
 pub use tracer_ch_db::ClickHouseDb as TracerDb;
 
 use crate::tracing::TraceCallConfig;
@@ -150,7 +150,7 @@ pub struct EmulateRequest {
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub accounts: Vec<Pubkey>,
     #[serde_as(as = "Option<HashMap<DisplayFromStr,_>>")]
-    pub solana_overrides: Option<HashMap<Pubkey,Option<SerializedAccount> > >,
+    pub solana_overrides: Option<HashMap<Pubkey, Option<SerializedAccount>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

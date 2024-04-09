@@ -1,6 +1,7 @@
 pub mod tracer_ch_common;
 mod tracer_ch_db;
 
+use std::collections::HashMap;
 pub use evm_loader::types::Address;
 use evm_loader::types::{StorageKey, Transaction};
 use evm_loader::{
@@ -148,8 +149,8 @@ pub struct EmulateRequest {
     pub trace_config: Option<TraceCallConfig>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub accounts: Vec<Pubkey>,
-    #[serde_as(as = "Option<Vec<(DisplayFromStr,_)>>")]
-    pub solana_overrides: Option<Vec<(Pubkey, Option<SerializedAccount>)>>,
+    #[serde_as(as = "Option<HashMap<DisplayFromStr,_>>")]
+    pub solana_overrides: Option<HashMap<Pubkey,Option<SerializedAccount> > >,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -306,5 +307,57 @@ mod tests {
         assert_eq!(map.get(123456799), Some(String::from("Rev3"))); // The top bound of the third range
 
         assert_eq!(map.get(123456800), None); // Beyond the top end of the last range
+    }
+
+    #[test]
+    fn test_deserialize() {
+        let txt = r#"
+        {
+            "step_limit": 500000,
+            "accounts": [],
+            "chains": [
+                {
+                    "id": 111,
+                    "name": "neon",
+                    "token": "HPsV9Deocecw3GeZv1FkAPNCBRfuVyfw9MMwjwRe1xaU"
+                },
+                {
+                    "id": 112,
+                    "name": "sol",
+                    "token": "So11111111111111111111111111111111111111112"
+                },
+                {
+                    "id": 113,
+                    "name": "usdt",
+                    "token": "2duuuuhNJHUYqcnZ7LKfeufeeTBgSJdftf2zM3cZV6ym"
+                },
+                {
+                    "id": 114,
+                    "name": "eth",
+                    "token": "EwJYd3UAFAgzodVeHprB2gMQ68r4ZEbbvpoVzCZ1dGq5"
+                }
+            ],
+            "tx": {
+                "from": "0x3fd219e7cf0e701fcf5a6903b40d47ca4e597d99",
+                "to": "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883",
+                "value": "0x0",
+                "data": "3ff21f8e",
+                "chain_id": 111
+            },
+            "solana_overrides": {
+                "EwJYd3UAFAgzodVeHprB2gMQ68r4ZEbbvpoVzCZ1dGq5": null,
+                "2duuuuhNJHUYqcnZ7LKfeufeeTBgSJdftf2zM3cZV6ym": {
+                    "lamports": 1000000000000,
+                    "owner": "So11111111111111111111111111111111111111112",
+                    "executable": false,
+                    "rent_epoch": 0,
+                    "data": "0102030405"
+                }
+            }
+        }        
+        "#;
+
+        let request: super::EmulateRequest = serde_json::from_str(txt).unwrap();
+        println!("{:?}", request);
     }
 }

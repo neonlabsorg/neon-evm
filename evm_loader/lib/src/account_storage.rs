@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use elsa::FrozenMap;
 use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::{
     cell::{RefCell, RefMut},
     convert::TryInto,
@@ -63,6 +63,8 @@ pub struct SolanaAccount {
     pub is_writable: bool,
     pub is_legacy: bool,
 }
+
+pub type SolanaOverrides = HashMap<Pubkey, Option<Account>>;
 
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
@@ -152,6 +154,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         chains: Option<Vec<ChainInfo>>,
         block_overrides: Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
+        solana_overrides: Option<SolanaOverrides>,
     ) -> Result<EmulatorAccountStorage<T>, NeonError> {
         trace!("backend::new");
 
@@ -178,6 +181,13 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         let rent = bincode::deserialize::<Rent>(&rent_account.data)?;
         info!("Rent: {rent:?}");
 
+        let accounts_cache = FrozenMap::new();
+        if let Some(overrides) = solana_overrides {
+            for (pubkey, account) in overrides {
+                accounts_cache.insert(pubkey, Box::new(account));
+            }
+        }
+
         Ok(Self {
             accounts: FrozenMap::new(),
             call_stack: vec![],
@@ -193,7 +203,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             timestamp_used: RefCell::new(false),
             _state_overrides: state_overrides,
             rent,
-            accounts_cache: FrozenMap::new(),
+            accounts_cache,
             used_accounts: FrozenMap::new(),
             return_data: RefCell::new(None),
         })
@@ -228,8 +238,17 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         chains: Option<Vec<ChainInfo>>,
         block_overrides: Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
+        solana_overrides: Option<SolanaOverrides>,
     ) -> Result<EmulatorAccountStorage<'rpc, T>, NeonError> {
-        let storage = Self::new(rpc, program_id, chains, block_overrides, state_overrides).await?;
+        let storage = Self::new(
+            rpc,
+            program_id,
+            chains,
+            block_overrides,
+            state_overrides,
+            solana_overrides,
+        )
+        .await?;
 
         storage.download_accounts(accounts).await?;
 
@@ -1850,6 +1869,7 @@ mod tests {
         mock_rpc: mock_rpc_client::MockRpcClient,
         block_overrides: Option<BlockOverrides>,
         state_overrides: Option<HashMap<Address, AccountOverride>>,
+        solana_overrides: Option<SolanaOverrides>,
     }
 
     impl Fixture {
@@ -1906,6 +1926,7 @@ mod tests {
                 mock_rpc: rpc_client,
                 block_overrides: None,
                 state_overrides: None,
+                solana_overrides: None,
             }
         }
 
@@ -1918,6 +1939,7 @@ mod tests {
                 Some(self.chains.clone()),
                 self.block_overrides.clone(),
                 self.state_overrides.clone(),
+                self.solana_overrides.clone(),
             )
             .await
             .unwrap()

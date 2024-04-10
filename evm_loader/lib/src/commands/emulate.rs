@@ -1,10 +1,3 @@
-use evm_loader::account_storage::AccountStorage;
-use evm_loader::error::build_revert_message;
-use log::{debug, info};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use solana_sdk::pubkey::Pubkey;
-
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::rpc::Rpc;
 use crate::tracing::tracers::Tracer;
@@ -14,13 +7,19 @@ use crate::{
     errors::NeonError,
     NeonResult,
 };
+use evm_loader::account_storage::AccountStorage;
+use evm_loader::error::build_revert_message;
 use evm_loader::{
     config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
     executor::SyncedExecutorState,
     gasometer::LAMPORTS_PER_SIGNATURE,
 };
+use log::{debug, info};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use serde_with::{hex::Hex, serde_as};
+use solana_sdk::{account::Account, pubkey::Pubkey};
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,6 +69,13 @@ pub async fn execute<T: Tracer>(
         .as_ref()
         .and_then(|t| t.state_overrides.clone());
 
+    let solana_overrides = emulate_request.solana_overrides.map(|overrides| {
+        overrides
+            .iter()
+            .map(|(pubkey, account)| (*pubkey, account.as_ref().map(Account::from)))
+            .collect()
+    });
+
     let mut storage = EmulatorAccountStorage::with_accounts(
         rpc,
         program_id,
@@ -77,6 +83,7 @@ pub async fn execute<T: Tracer>(
         emulate_request.chains,
         block_overrides,
         state_overrides,
+        solana_overrides,
     )
     .await?;
 

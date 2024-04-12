@@ -1,24 +1,64 @@
 use std::cell::{Ref, RefMut};
+use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::mem::size_of;
 
 use crate::account_storage::AccountStorage;
 use crate::config::DEFAULT_CHAIN_ID;
 use crate::error::{Error, Result};
+use crate::types::serde::bytes_32;
 use crate::types::{Address, Transaction};
 use ethnum::U256;
 use serde::{Deserialize, Serialize};
+use solana_program::system_program;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use super::{
-    revision, AccountHeader, AccountsDB, BalanceAccount, Holder, OperatorBalanceAccount,
-    StateFinalizedAccount, ACCOUNT_PREFIX_LEN, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
+    AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder, OperatorBalanceAccount,
+    StateFinalizedAccount, StorageCell, ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_BALANCE,
+    TAG_ACCOUNT_CONTRACT, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED, TAG_STORAGE_CELL,
 };
 
 #[derive(PartialEq, Eq)]
 pub enum AccountsStatus {
     Ok,
-    RevisionChanged,
+    NeedRestart,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
+enum AccountRevision {
+    Revision(u32),
+    Hash(#[serde(with = "bytes_32")] [u8; 32]),
+}
+
+impl AccountRevision {
+    pub fn new(program_id: &Pubkey, info: &AccountInfo) -> Self {
+        if (info.owner != program_id) && !system_program::check_id(info.owner) {
+            let hash = solana_program::hash::hashv(&[
+                info.owner.as_ref(),
+                &info.lamports().to_le_bytes(),
+                &info.data.borrow(),
+            ]);
+
+            return AccountRevision::Hash(hash.to_bytes());
+        }
+
+        match crate::account::tag(program_id, info) {
+            Ok(TAG_STORAGE_CELL) => {
+                let cell = StorageCell::from_account(program_id, info.clone()).unwrap();
+                Self::Revision(cell.revision())
+            }
+            Ok(TAG_ACCOUNT_CONTRACT) => {
+                let contract = ContractAccount::from_account(program_id, info.clone()).unwrap();
+                Self::Revision(contract.revision())
+            }
+            Ok(TAG_ACCOUNT_BALANCE) => {
+                let balance = BalanceAccount::from_account(program_id, info.clone()).unwrap();
+                Self::Revision(balance.revision())
+            }
+            _ => Self::Revision(0),
+        }
+    }
 }
 
 /// Storage data account to store execution metainfo between steps for iterative execution
@@ -28,8 +68,10 @@ struct Data {
     pub transaction: Transaction,
     /// Ethereum transaction caller address
     pub origin: Address,
-    /// Stored accounts
-    pub revisions: BTreeMap<Pubkey, u32>,
+    /// Stored revision
+    pub revisions: BTreeMap<Pubkey, AccountRevision>,
+    /// Accounts that been read during the transaction
+    pub touched_accounts: BTreeMap<Pubkey, u64>,
     /// Ethereum transaction gas used and paid
     #[serde(with = "ethnum::serde::bytes::le")]
     pub gas_used: U256,
@@ -103,7 +145,7 @@ impl<'a> StateAccount<'a> {
         let revisions = accounts
             .into_iter()
             .map(|account| {
-                let revision = revision(program_id, account).unwrap_or(0);
+                let revision = AccountRevision::new(program_id, account);
                 (*account.key, revision)
             })
             .collect();
@@ -113,6 +155,7 @@ impl<'a> StateAccount<'a> {
             transaction,
             origin,
             revisions,
+            touched_accounts: BTreeMap::new(),
             gas_used: U256::ZERO,
             steps_executed: 0_u64,
         };
@@ -137,20 +180,34 @@ impl<'a> StateAccount<'a> {
         info: AccountInfo<'a>,
         accounts: &AccountsDB,
     ) -> Result<(Self, AccountsStatus)> {
-        let mut state = Self::from_account(program_id, info)?;
         let mut status = AccountsStatus::Ok;
+        let mut state = Self::from_account(program_id, info)?;
 
-        for account in accounts {
-            let account_revision = revision(program_id, account).unwrap_or(0);
-            let stored_revision = state
+        let is_touched_account = |key: &Pubkey| -> bool {
+            state
                 .data
-                .revisions
-                .entry(*account.key)
-                .or_insert(account_revision);
+                .touched_accounts
+                .get(key)
+                .map(|counter| counter > &1)
+                .is_some()
+        };
 
-            if stored_revision != &account_revision {
-                status = AccountsStatus::RevisionChanged;
-                *stored_revision = account_revision;
+        let touched_accounts = accounts.into_iter().filter(|a| is_touched_account(a.key));
+        for account in touched_accounts {
+            let account_revision = AccountRevision::new(program_id, account);
+            let revision_entry = &state.data.revisions[account.key];
+
+            if revision_entry != &account_revision {
+                status = AccountsStatus::NeedRestart;
+                break;
+            }
+        }
+
+        if status == AccountsStatus::NeedRestart {
+            // update all accounts revisions
+            for account in accounts {
+                let account_revision = AccountRevision::new(program_id, account);
+                state.data.revisions.insert(*account.key, account_revision);
             }
         }
 
@@ -162,6 +219,22 @@ impl<'a> StateAccount<'a> {
 
         // Change tag to finalized
         StateFinalizedAccount::convert_from_state(program_id, self)?;
+
+        Ok(())
+    }
+
+    pub fn update_touched_accounts(&mut self, touched: BTreeMap<Pubkey, u64>) -> Result<()> {
+        for (key, counter) in touched {
+            match self.data.touched_accounts.entry(key) {
+                Entry::Vacant(e) => {
+                    e.insert(counter);
+                }
+                Entry::Occupied(e) => {
+                    let value = e.into_mut();
+                    *value = value.checked_add(counter).ok_or(Error::IntegerOverflow)?;
+                }
+            }
+        }
 
         Ok(())
     }

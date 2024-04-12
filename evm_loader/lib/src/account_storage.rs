@@ -1034,6 +1034,20 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         address.find_solana_address(self.program_id())
     }
 
+    fn balance_pubkey(&self, address: Address, chain_id: u64) -> (Pubkey, u8) {
+        address.find_balance_address(self.program_id(), chain_id)
+    }
+
+    fn storage_cell_pubkey(&self, address: Address, index: U256) -> Pubkey {
+        let base = self.contract_pubkey(address).0;
+        if index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u64) {
+            base
+        } else {
+            let address = StorageCellAddress::new(self.program_id(), &base, &index);
+            *address.pubkey()
+        }
+    }
+
     async fn code_size(&self, address: Address) -> usize {
         info!("code_size {address}");
 

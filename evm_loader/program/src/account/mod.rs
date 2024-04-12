@@ -176,20 +176,6 @@ pub fn validate_tag(program_id: &Pubkey, info: &AccountInfo, tag: u8) -> Result<
     }
 }
 
-pub fn revision(program_id: &Pubkey, info: &AccountInfo) -> Result<u32> {
-    match tag(program_id, info)? {
-        TAG_STORAGE_CELL => {
-            let cell = StorageCell::from_account(program_id, info.clone())?;
-            Ok(cell.revision())
-        }
-        TAG_ACCOUNT_CONTRACT => {
-            let contract = ContractAccount::from_account(program_id, info.clone())?;
-            Ok(contract.revision())
-        }
-        _ => Ok(0),
-    }
-}
-
 /// # Safety
 /// *Permanently delete all data* in the account. Transfer lamports to the operator.
 pub unsafe fn delete(account: &AccountInfo, operator: &Operator) {

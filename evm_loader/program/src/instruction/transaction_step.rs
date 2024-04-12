@@ -1,3 +1,7 @@
+use std::collections::BTreeMap;
+
+use solana_program::pubkey::Pubkey;
+
 use crate::account::{AccountsDB, AllocateResult, StateAccount};
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::config::{EVM_STEPS_LAST_ITERATION_MAX, EVM_STEPS_MIN};
@@ -29,6 +33,7 @@ pub fn do_begin<'a>(
     // These transactions are guaranteed to start in a correct sequence
     // BUT they finalize in an undefined order
     let mut origin_account = account_storage.origin(origin, storage.trx())?;
+    origin_account.increment_revision(account_storage.rent(), account_storage.db())?;
     origin_account.increment_nonce()?;
 
     // Burn `gas_limit` tokens from the origin account
@@ -42,7 +47,16 @@ pub fn do_begin<'a>(
     let evm = Machine::new(storage.trx(), origin, &mut backend, None)?;
 
     serialize_evm_state(&mut storage, &backend, &evm)?;
-    finalize(0, storage, account_storage, None, gasometer)
+
+    let (_, touched_accounts) = backend.deconstruct();
+    finalize(
+        0,
+        storage,
+        account_storage,
+        None,
+        gasometer,
+        touched_accounts,
+    )
 }
 
 pub fn do_continue<'a>(
@@ -71,24 +85,31 @@ pub fn do_continue<'a>(
         deserialize_evm_state(&storage, &account_storage)?
     };
 
-    let (result, steps_executed, _) = match backend.exit_status() {
-        Some(status) => (status.clone(), 0_u64, None),
-        None => evm.execute(step_count, &mut backend)?,
-    };
+    let mut steps_executed = 0;
+    if backend.exit_status().is_none() {
+        let (exit_status, steps_returned, _) = evm.execute(step_count, &mut backend)?;
+        if exit_status != ExitStatus::StepLimit {
+            backend.set_exit_status(exit_status)
+        }
 
-    if (result != ExitStatus::StepLimit) && (steps_executed > 0) {
-        backend.set_exit_status(result.clone());
+        steps_executed = steps_returned;
     }
 
     serialize_evm_state(&mut storage, &backend, &evm)?;
 
-    let results = match result {
-        ExitStatus::StepLimit => None,
-        _ if steps_executed > EVM_STEPS_LAST_ITERATION_MAX => None,
-        result => Some((result, backend.into_actions())),
-    };
+    let (mut results, touched_accounts) = backend.deconstruct();
+    if steps_executed > EVM_STEPS_LAST_ITERATION_MAX {
+        results = None;
+    }
 
-    finalize(steps_executed, storage, account_storage, results, gasometer)
+    finalize(
+        steps_executed,
+        storage,
+        account_storage,
+        results,
+        gasometer,
+        touched_accounts,
+    )
 }
 
 fn finalize<'a>(
@@ -97,9 +118,11 @@ fn finalize<'a>(
     mut accounts: ProgramAccountStorage<'a>,
     results: Option<(ExitStatus, Vec<Action>)>,
     mut gasometer: Gasometer,
+    touched_accounts: BTreeMap<Pubkey, u64>,
 ) -> Result<()> {
     debug_print!("finalize");
 
+    storage.update_touched_accounts(touched_accounts)?;
     storage.increment_steps_executed(steps_executed)?;
     log_data(&[
         b"STEPS",
@@ -138,8 +161,9 @@ fn finalize<'a>(
         log_return_value(&status);
 
         let mut origin = accounts.origin(storage.trx_origin(), storage.trx())?;
-        storage.refund_unused_gas(&mut origin)?;
+        origin.increment_revision(accounts.rent(), accounts.db())?;
 
+        storage.refund_unused_gas(&mut origin)?;
         storage.finalize(accounts.program_id())?;
     } else {
         storage.save_data()?;

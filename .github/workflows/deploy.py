@@ -32,8 +32,8 @@ DOCKER_PASSWORD = os.environ.get("DHUBP")
 IMAGE_NAME = os.environ.get("IMAGE_NAME")
 RUN_LINK_REPO = os.environ.get("RUN_LINK_REPO")
 DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
-SOLANA_NODE_VERSION = 'v1.17.28'
-SOLANA_BPF_VERSION = 'v1.17.28'
+SOLANA_NODE_VERSION = 'v1.17.31'
+SOLANA_BPF_VERSION = 'v1.17.31'
 
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 docker_client = docker.APIClient()
@@ -65,37 +65,41 @@ def build_docker_image(github_sha):
 
 @cli.command(name="publish_image")
 @click.option('--github_sha')
-def publish_image(github_sha):
-    docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
-    out = docker_client.push(f"{IMAGE_NAME}:{github_sha}", decode=True, stream=True)
-    process_output(out)
+@click.option('--github_ref_name')
+@click.option('--head_ref')
+def publish_image(github_sha, github_ref_name, head_ref):
+    push_image_with_tag(github_sha, github_sha)
+    branch_name_tag = ""
+    if head_ref:
+        branch_name_tag = head_ref.split('/')[-1]
+    elif re.match(VERSION_BRANCH_TEMPLATE, github_ref_name):
+        branch_name_tag = github_ref_name
+    if branch_name_tag:
+        push_image_with_tag(github_sha, branch_name_tag)
 
 
 @cli.command(name="finalize_image")
-@click.option('--head_ref_branch')
 @click.option('--github_ref')
 @click.option('--github_sha')
-def finalize_image(head_ref_branch, github_ref, github_sha):
-    branch = github_ref.replace("refs/heads/", "")
-    if re.match(VERSION_BRANCH_TEMPLATE, branch) is None:
-        if 'refs/tags/' in branch:
-            tag = branch.replace("refs/tags/", "")
-        elif branch == 'master':
-            tag = 'stable'
-        elif branch == 'develop':
-            tag = 'latest'
-        else:
-            tag = head_ref_branch.split('/')[-1]
-
-        docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
+def finalize_image(github_ref, github_sha):
+    tag = None
+    if 'refs/tags/' in github_ref:
+        tag = github_ref.replace("refs/tags/", "")
+    elif github_ref == 'refs/heads/develop':
+        tag = 'latest'
+    if tag:
         out = docker_client.pull(f"{IMAGE_NAME}:{github_sha}", decode=True, stream=True)
         process_output(out)
-
-        docker_client.tag(f"{IMAGE_NAME}:{github_sha}", f"{IMAGE_NAME}:{tag}")
-        out = docker_client.push(f"{IMAGE_NAME}:{tag}", decode=True, stream=True)
-        process_output(out)
+        push_image_with_tag(github_sha, tag)
     else:
-        click.echo("The image is not published, please create tag for publishing")
+        click.echo("The image is not published")
+
+
+def push_image_with_tag(sha, tag):
+    docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
+    docker_client.tag(f"{IMAGE_NAME}:{sha}", f"{IMAGE_NAME}:{tag}")
+    out = docker_client.push(f"{IMAGE_NAME}:{tag}", decode=True, stream=True)
+    process_output(out)
 
 
 def run_subprocess(command):

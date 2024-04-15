@@ -1,5 +1,6 @@
 use std::cell::{Ref, RefMut};
 use std::mem::size_of;
+use std::ops::Deref;
 
 use super::{AccountHeader, AccountsDB, NoHeader, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_STORAGE_CELL};
 use crate::error::Result;
@@ -303,5 +304,13 @@ impl<'a> StorageCell<'a> {
         header.revision = header.revision.wrapping_add(1);
 
         Ok(())
+    }
+}
+
+impl<'a> Deref for StorageCell<'a> {
+    type Target = AccountInfo<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.account
     }
 }

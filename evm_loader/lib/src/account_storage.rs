@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use elsa::FrozenMap;
 use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
 use std::collections::{HashMap, HashSet};
+use std::ops::Deref;
 use std::{
     cell::{RefCell, RefMut},
     convert::TryInto,
@@ -66,6 +67,35 @@ pub struct SolanaAccount {
 }
 
 pub type SolanaOverrides = HashMap<Pubkey, Option<Account>>;
+
+trait UpdateLamports<'a> {
+    fn update_lamports(&mut self, rent: &Rent)
+    where
+        Self: Deref<Target = AccountInfo<'a>>,
+    {
+        let info = self as &AccountInfo<'_>;
+        let required_lamports = rent.minimum_balance(self.required_lamports());
+        if info.lamports() < required_lamports {
+            **info.lamports.borrow_mut() = required_lamports;
+        }
+    }
+    fn required_lamports(&self) -> usize;
+}
+impl<'a> UpdateLamports<'_> for BalanceAccount<'a> {
+    fn required_lamports(&self) -> usize {
+        BalanceAccount::required_account_size()
+    }
+}
+impl<'a> UpdateLamports<'_> for ContractAccount<'a> {
+    fn required_lamports(&self) -> usize {
+        ContractAccount::required_account_size(self.code().as_ref())
+    }
+}
+impl<'a> UpdateLamports<'_> for StorageCell<'a> {
+    fn required_lamports(&self) -> usize {
+        StorageCell::required_account_size(self.cells().len())
+    }
+}
 
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
@@ -751,11 +781,12 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             .await
             .map_err(map_neon_error)?
             .borrow_mut();
-        self.mark_account(balance_data.pubkey, true);
 
         let mut balance =
             self.get_or_create_ethereum_balance(&mut balance_data, address, chain_id)?;
         balance.mint(value)?;
+        balance.update_lamports(&self.rent);
+        self.mark_account(balance_data.pubkey, true);
 
         Ok(())
     }
@@ -1141,6 +1172,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
                 ContractAccount::from_account(self.program_id(), contract_data.into_account_info())?
             };
             contract.set_storage_value(index.as_usize(), &value);
+            contract.update_lamports(&self.rent);
             self.mark_account(contract_data.pubkey, true);
         } else {
             let subindex = (index & 0xFF).as_u8();
@@ -1154,8 +1186,8 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
 
             let mut storage = self.get_or_create_ethereum_storage(&mut storage_data)?;
             storage.update(subindex, &value)?;
+            storage.update_lamports(&self.rent);
             self.mark_account(storage_data.pubkey, true);
-            storage_data.lamports = self.rent.minimum_balance(storage_data.get_length());
         }
 
         Ok(())
@@ -1175,6 +1207,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         let mut balance =
             self.get_or_create_ethereum_balance(&mut balance_data, address, chain_id)?;
         balance.increment_nonce()?;
+        balance.update_lamports(&self.rent);
         self.mark_account(balance_data.pubkey, true);
 
         Ok(())
@@ -1210,6 +1243,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         let mut balance =
             self.get_or_create_ethereum_balance(&mut balance_data, address, chain_id)?;
         balance.burn(value)?;
+        balance.update_lamports(&self.rent);
 
         Ok(())
     }

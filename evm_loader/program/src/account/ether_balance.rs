@@ -1,4 +1,4 @@
-use std::mem::size_of;
+use std::{mem::size_of, ops::Deref};
 
 use crate::{
     account::{TAG_ACCOUNT_CONTRACT, TAG_EMPTY},
@@ -204,5 +204,13 @@ impl<'a> BalanceAccount<'a> {
             .ok_or(Error::IntegerOverflow)?;
 
         Ok(())
+    }
+}
+
+impl<'a> Deref for BalanceAccount<'a> {
+    type Target = AccountInfo<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.account
     }
 }

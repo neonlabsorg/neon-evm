@@ -162,7 +162,7 @@ async fn emulate_trx<T: Tracer>(
     let begin_end_iterations = 2;
     let iterations: u64 = steps_iterations + begin_end_iterations + storage.realloc_iterations;
     let iterations_gas = iterations * LAMPORTS_PER_SIGNATURE;
-    let storage_gas = i64::max(0, storage.get_changes_in_rent()?) as u64;
+    let storage_gas = storage.get_changes_in_rent()?;
 
     let used_gas = storage_gas + iterations_gas + treasury_gas + cancel_gas;
 

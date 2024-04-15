@@ -62,6 +62,7 @@ pub struct SolanaAccount {
     pub pubkey: Pubkey,
     pub is_writable: bool,
     pub is_legacy: bool,
+    pub lamports_after_upgrade: Option<u64>,
 }
 
 pub type SolanaOverrides = HashMap<Pubkey, Option<Account>>;
@@ -284,20 +285,37 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         Ok(account.as_ref())
     }
 
-    fn mark_account(&self, pubkey: Pubkey, is_writable: bool, is_legacy: bool) {
-        let mut data = self
-            .used_accounts
+    fn mark_account(&self, pubkey: Pubkey, is_writable: bool) {
+        let mut data = self._get_account_mark(pubkey);
+        data.is_writable |= is_writable;
+    }
+
+    fn mark_legacy_account(
+        &self,
+        pubkey: Pubkey,
+        is_writable: bool,
+        lamports_after_upgrade: Option<u64>,
+    ) {
+        let mut data = self._get_account_mark(pubkey);
+        data.is_writable |= is_writable;
+        data.is_legacy = true;
+        if lamports_after_upgrade.is_some() {
+            data.lamports_after_upgrade = lamports_after_upgrade;
+        }
+    }
+
+    fn _get_account_mark(&self, pubkey: Pubkey) -> RefMut<'_, SolanaAccount> {
+        self.used_accounts
             .insert(
                 pubkey,
                 Box::new(RefCell::new(SolanaAccount {
                     pubkey,
                     is_writable: false,
                     is_legacy: false,
+                    lamports_after_upgrade: None,
                 })),
             )
-            .borrow_mut();
-        data.is_writable |= is_writable;
-        data.is_legacy |= is_legacy;
+            .borrow_mut()
     }
 
     async fn _add_legacy_account(
@@ -319,9 +337,9 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             )?;
             balance.mint(legacy.balance)?;
             balance.increment_nonce_by(legacy.trx_count)?;
-            self.mark_account(balance_pubkey, true, true);
+            self.mark_legacy_account(balance_pubkey, true, Some(balance_data.lamports));
         } else {
-            self.mark_account(balance_pubkey, false, true);
+            self.mark_legacy_account(balance_pubkey, false, Some(0));
         }
 
         let (contract_pubkey, _) = legacy.address.find_solana_address(&self.program_id);
@@ -341,11 +359,12 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             if !code.is_empty() {
                 contract.set_storage_multiple_values(0, &storage);
             }
-            self.mark_account(contract_pubkey, true, true);
+            self.mark_legacy_account(contract_pubkey, true, Some(contract_data.lamports));
+        } else {
+            // We have to mark account as writable, because we destroy the original legacy account
+            self.mark_legacy_account(contract_pubkey, true, Some(0));
         }
 
-        // We have to mark account as writable, because we destroy the original legacy account
-        self.mark_account(contract_pubkey, true, true);
         Ok((contract_data, balance_data))
     }
 
@@ -397,7 +416,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                 self.add_empty_account(pubkey)?
             }
         };
-        self.mark_account(pubkey, false, true);
+        self.mark_legacy_account(pubkey, false, None);
         extract_generation(contract_data)
     }
 
@@ -423,8 +442,10 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             let mut storage =
                 StorageCell::from_account(&self.program_id, storage_data.into_account_info())?;
             storage.cells_mut().copy_from_slice(&cells);
+            self.mark_legacy_account(pubkey, true, Some(storage_data.lamports));
+        } else {
+            self.mark_legacy_account(pubkey, true, Some(0));
         }
-        self.mark_account(pubkey, true, true);
         Ok(storage_data)
     }
 
@@ -437,7 +458,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         let info = account_info(&pubkey, &mut account);
         if *info.owner != self.program_id {
             let account_data = AccountData::new_from_account(pubkey, &account);
-            self.mark_account(pubkey, false, false);
+            self.mark_account(pubkey, false);
             Ok(self
                 .accounts
                 .insert(pubkey, Box::new(RefCell::new(account_data))))
@@ -449,7 +470,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                 | evm_loader::account::TAG_STORAGE_CELL => {
                     // TODO: update header from previous revisions
                     let account_data = AccountData::new_from_account(pubkey, &account);
-                    self.mark_account(pubkey, false, false);
+                    self.mark_account(pubkey, false);
                     Ok(self
                         .accounts
                         .insert(pubkey, Box::new(RefCell::new(account_data))))
@@ -472,7 +493,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
 
     fn add_empty_account(&self, pubkey: Pubkey) -> NeonResult<&RefCell<AccountData>> {
         let account_data = AccountData::new(pubkey);
-        self.mark_account(pubkey, false, false);
+        self.mark_account(pubkey, false);
         Ok(self
             .accounts
             .insert(pubkey, Box::new(RefCell::new(account_data))))
@@ -487,7 +508,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             return Err(EvmLoaderError::InvalidAccountForCall(pubkey).into());
         }
 
-        self.mark_account(pubkey, is_writable, false);
+        self.mark_account(pubkey, is_writable);
 
         if let Some(account) = self.accounts.get(&pubkey) {
             return Ok(account);
@@ -679,7 +700,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         generation: u32,
         code: &[u8],
     ) -> evm_loader::error::Result<ContractAccount> {
-        self.mark_account(account_data.pubkey, true, false);
+        self.mark_account(account_data.pubkey, true);
         let required_len = ContractAccount::required_account_size(code);
         account_data.assign(self.program_id)?;
         account_data.expand(required_len);
@@ -699,7 +720,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         &'a self,
         account_data: &'a mut RefMut<AccountData>,
     ) -> evm_loader::error::Result<StorageCell> {
-        self.mark_account(account_data.pubkey, true, false);
+        self.mark_account(account_data.pubkey, true);
         account_data.assign(self.program_id)?;
         account_data.expand(StorageCell::required_account_size(0));
         account_data.lamports = self.rent.minimum_balance(account_data.get_length());
@@ -730,7 +751,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             .await
             .map_err(map_neon_error)?
             .borrow_mut();
-        self.mark_account(balance_data.pubkey, true, false);
+        self.mark_account(balance_data.pubkey, true);
 
         let mut balance =
             self.get_or_create_ethereum_balance(&mut balance_data, address, chain_id)?;
@@ -748,33 +769,68 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             .collect::<Vec<_>>()
     }
 
-    pub fn get_changes_in_rent(&self) -> evm_loader::error::Result<i64> {
-        let accounts = self.accounts.clone();
+    pub fn get_upgrade_rent(&self) -> evm_loader::error::Result<u64> {
+        let mut lamports_collected = 0u64;
+        let mut lamports_spend = 0u64;
+        for used_account in self.used_accounts().iter() {
+            if let Some(lamports_after_upgrade) = used_account.lamports_after_upgrade {
+                let orig_lamports = self
+                    .accounts_cache
+                    .get(&used_account.pubkey)
+                    .unwrap_or(&None)
+                    .as_ref()
+                    .map(|v| v.lamports)
+                    .unwrap_or(0);
+                if lamports_after_upgrade > orig_lamports {
+                    lamports_spend += lamports_after_upgrade - orig_lamports;
+                } else {
+                    lamports_collected += orig_lamports - lamports_after_upgrade;
+                }
+            }
+        }
+        Ok(lamports_spend.saturating_sub(lamports_collected))
+    }
 
-        let mut changes_in_rent = 0i64;
+    pub fn get_regular_rent(&self) -> evm_loader::error::Result<u64> {
+        let accounts = self.accounts.clone();
+        let mut changes_in_rent = 0u64;
         for (pubkey, account) in accounts.into_map().iter() {
             if *pubkey == system_program::ID {
                 continue;
             }
 
-            let (original_rent, original_size) =
+            let (original_lamports, original_size) =
                 self.accounts_cache.get(pubkey).map_or((0, 0), |v| {
                     v.as_ref().map_or((0, 0), |v| (v.lamports, v.data.len()))
                 });
-            let new_acc = account.borrow();
-            let new_rent = new_acc.lamports;
-            let new_size = new_acc.get_length();
-            info!("Changes in rent: {pubkey} {original_rent} -> {new_rent} | {original_size} -> {new_size}");
 
-            if new_acc.is_busy() && new_rent < self.rent.minimum_balance(new_acc.get_length()) {
+            let lamports_after_upgrade = self
+                .used_accounts
+                .get(pubkey)
+                .and_then(|v| v.borrow().lamports_after_upgrade);
+
+            let new_acc = account.borrow();
+            let new_lamports = new_acc.lamports;
+            let new_size = new_acc.get_length();
+
+            if new_acc.is_busy() && new_lamports < self.rent.minimum_balance(new_acc.get_length()) {
                 info!("Account {pubkey} is not rent exempt");
                 return Err(ProgramError::AccountNotRentExempt.into());
             }
 
-            changes_in_rent += new_rent as i64 - original_rent as i64;
+            if let Some(lamports_after_upgrade) = lamports_after_upgrade {
+                changes_in_rent += new_lamports.saturating_sub(lamports_after_upgrade);
+                info!("Changes in rent: {pubkey} {original_lamports} -> {lamports_after_upgrade} -> {new_lamports} | {original_size} -> {new_size}");
+            } else {
+                changes_in_rent += new_lamports.saturating_sub(original_lamports);
+                info!("Changes in rent: {pubkey} {original_lamports} -> {new_lamports} | {original_size} -> {new_size}");
+            }
         }
-
         Ok(changes_in_rent)
+    }
+
+    pub fn get_changes_in_rent(&self) -> evm_loader::error::Result<u64> {
+        Ok(self.get_upgrade_rent()? + self.get_regular_rent()?)
     }
 
     pub fn is_timestamp_used(&self) -> bool {
@@ -1085,7 +1141,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
                 ContractAccount::from_account(self.program_id(), contract_data.into_account_info())?
             };
             contract.set_storage_value(index.as_usize(), &value);
-            self.mark_account(contract_data.pubkey, true, false);
+            self.mark_account(contract_data.pubkey, true);
         } else {
             let subindex = (index & 0xFF).as_u8();
             let index = index & !U256::new(0xFF);
@@ -1098,7 +1154,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
 
             let mut storage = self.get_or_create_ethereum_storage(&mut storage_data)?;
             storage.update(subindex, &value)?;
-            self.mark_account(storage_data.pubkey, true, false);
+            self.mark_account(storage_data.pubkey, true);
             storage_data.lamports = self.rent.minimum_balance(storage_data.get_length());
         }
 
@@ -1119,7 +1175,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         let mut balance =
             self.get_or_create_ethereum_balance(&mut balance_data, address, chain_id)?;
         balance.increment_nonce()?;
-        self.mark_account(balance_data.pubkey, true, false);
+        self.mark_account(balance_data.pubkey, true);
 
         Ok(())
     }
@@ -1149,7 +1205,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             .await
             .map_err(map_neon_error)?
             .borrow_mut();
-        self.mark_account(balance_data.pubkey, true, false);
+        self.mark_account(balance_data.pubkey, true);
 
         let mut balance =
             self.get_or_create_ethereum_balance(&mut balance_data, address, chain_id)?;
@@ -1195,7 +1251,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
 
         let mut accounts = Vec::new();
         accounts.push(instruction.program_id);
-        self.mark_account(instruction.program_id, false, false);
+        self.mark_account(instruction.program_id, false);
 
         for meta in instruction.accounts.iter() {
             if meta.pubkey != self.operator {
@@ -2011,9 +2067,18 @@ mod tests {
             assert_eq!(actual, expected);
         }
 
-        pub fn verify_rent_changes(&self, added_rent: u64, removed_rent: u64) {
-            let changes = added_rent as i64 - removed_rent as i64;
-            assert_eq!(self.get_changes_in_rent().unwrap(), changes);
+        pub fn verify_upgrade_rent(&self, added_rent: u64, removed_rent: u64) {
+            assert_eq!(
+                self.get_upgrade_rent().unwrap(),
+                added_rent.saturating_sub(removed_rent)
+            );
+        }
+
+        pub fn verify_regular_rent(&self, added_rent: u64, removed_rent: u64) {
+            assert_eq!(
+                self.get_regular_rent().unwrap(),
+                added_rent.saturating_sub(removed_rent)
+            );
         }
     }
 
@@ -2036,7 +2101,8 @@ mod tests {
             ),
             (fixture.legacy_pubkey(MISSING_ADDRESS), false, false),
         ]);
-        storage.verify_rent_changes(0, 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2055,7 +2121,8 @@ mod tests {
             false,
             false,
         )]);
-        storage.verify_rent_changes(0, 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2075,7 +2142,8 @@ mod tests {
             false,
             false,
         )]);
-        storage.verify_rent_changes(0, 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2096,7 +2164,8 @@ mod tests {
             false,
             false,
         )]);
-        storage.verify_rent_changes(0, 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2119,7 +2188,8 @@ mod tests {
             ),
             (fixture.legacy_pubkey(acc.address), true, true),
         ]);
-        storage.verify_rent_changes(fixture.balance_rent(), fixture.legacy_rent(None));
+        storage.verify_upgrade_rent(fixture.balance_rent(), fixture.legacy_rent(None));
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2151,7 +2221,8 @@ mod tests {
             ),
             (fixture.legacy_pubkey(MISSING_ADDRESS), false, false),
         ]);
-        storage.verify_rent_changes(fixture.balance_rent(), 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(fixture.balance_rent(), 0);
 
         assert_eq!(
             storage.balance(from.address, from.chain_id).await,
@@ -2191,7 +2262,8 @@ mod tests {
                 false,
             ),
         ]);
-        storage.verify_rent_changes(fixture.balance_rent(), 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(fixture.balance_rent(), 0);
 
         assert_eq!(
             storage.balance(from.address, from.chain_id).await,
@@ -2233,7 +2305,8 @@ mod tests {
             ),
             (fixture.legacy_pubkey(to.address), true, true),
         ]);
-        storage.verify_rent_changes(fixture.balance_rent(), fixture.legacy_rent(None));
+        storage.verify_upgrade_rent(fixture.balance_rent(), fixture.legacy_rent(None));
+        storage.verify_regular_rent(0, 0);
 
         assert_eq!(
             storage.balance(from.address, from.chain_id).await,
@@ -2256,7 +2329,8 @@ mod tests {
             [0u8; 32]
         );
         storage.verify_used_accounts(&[(fixture.contract_pubkey(MISSING_ADDRESS), false, false)]);
-        storage.verify_rent_changes(0, 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(0, 0);
 
         assert_eq!(
             storage
@@ -2290,10 +2364,11 @@ mod tests {
             ),
             (fixture.contract_pubkey(LEGACY_CONTRACT.address), true, true),
         ]);
-        storage.verify_rent_changes(
+        storage.verify_upgrade_rent(
             fixture.balance_rent() + fixture.contract_rent(LEGACY_CONTRACT.code),
             fixture.legacy_rent(Some(LEGACY_CONTRACT.code.len())),
         );
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2315,10 +2390,11 @@ mod tests {
             ),
             (fixture.contract_pubkey(contract.address), true, true),
         ]);
-        storage.verify_rent_changes(
+        storage.verify_upgrade_rent(
             fixture.contract_rent(contract.code),
             fixture.legacy_rent(Some(contract.code.len())),
         );
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2333,7 +2409,8 @@ mod tests {
             [0u8; 32]
         );
         storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), false, false)]);
-        storage.verify_rent_changes(0, 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2355,10 +2432,11 @@ mod tests {
             ),
             (fixture.contract_pubkey(contract.address), true, true),
         ]);
-        storage.verify_rent_changes(
+        storage.verify_upgrade_rent(
             fixture.balance_rent() + fixture.contract_rent(contract.code),
             fixture.legacy_rent(Some(contract.code.len())),
         );
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2375,7 +2453,8 @@ mod tests {
             true
         );
         storage.verify_used_accounts(&[(fixture.contract_pubkey(MISSING_ADDRESS), true, false)]);
-        storage.verify_rent_changes(fixture.contract_rent(&code), 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(fixture.contract_rent(&code), 0);
     }
 
     #[tokio::test]
@@ -2393,7 +2472,8 @@ mod tests {
             true
         );
         storage.verify_used_accounts(&[(fixture.contract_pubkey(acc.address), true, false)]);
-        storage.verify_rent_changes(fixture.contract_rent(&code), 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(fixture.contract_rent(&code), 0);
     }
 
     #[tokio::test]
@@ -2413,7 +2493,8 @@ mod tests {
                 .to_string()
         );
         storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), false, false)]);
-        storage.verify_rent_changes(0, 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2438,10 +2519,8 @@ mod tests {
             ),
             (fixture.contract_pubkey(contract.address), true, true),
         ]);
-        storage.verify_rent_changes(
-            fixture.balance_rent() + fixture.contract_rent(&code),
-            fixture.legacy_rent(None),
-        );
+        storage.verify_upgrade_rent(fixture.balance_rent(), fixture.legacy_rent(None));
+        storage.verify_regular_rent(fixture.contract_rent(&code), 0);
     }
 
     #[tokio::test]
@@ -2468,10 +2547,11 @@ mod tests {
             ),
             (fixture.contract_pubkey(contract.address), true, true),
         ]);
-        storage.verify_rent_changes(
+        storage.verify_upgrade_rent(
             fixture.balance_rent() + fixture.contract_rent(contract.code),
             fixture.legacy_rent(Some(contract.code.len())),
         );
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2490,7 +2570,8 @@ mod tests {
             true,
         );
         storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), true, false)]);
-        storage.verify_rent_changes(
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(
             fixture.contract_rent(&code),
             fixture.contract_rent(contract.code),
         );
@@ -2519,9 +2600,13 @@ mod tests {
             ),
             (fixture.contract_pubkey(contract.address), true, true),
         ]);
-        storage.verify_rent_changes(
-            fixture.balance_rent() + fixture.contract_rent(&code),
+        storage.verify_upgrade_rent(
+            fixture.balance_rent() + fixture.contract_rent(&contract.code),
             fixture.legacy_rent(Some(contract.code.len())),
+        );
+        storage.verify_regular_rent(
+            fixture.contract_rent(&code),
+            fixture.contract_rent(&contract.code),
         );
     }
 
@@ -2541,7 +2626,8 @@ mod tests {
             false,
             false,
         )]);
-        storage.verify_rent_changes(0, 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2561,7 +2647,8 @@ mod tests {
             false,
             false,
         )]);
-        storage.verify_rent_changes(0, 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2581,7 +2668,8 @@ mod tests {
             false,
             false,
         )]);
-        storage.verify_rent_changes(0, 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2596,7 +2684,8 @@ mod tests {
                 .await,
             [0u8; 32]
         );
-        storage.verify_rent_changes(0, 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(0, 0);
 
         let new_value = [0x01u8; 32];
         assert_eq!(
@@ -2621,7 +2710,8 @@ mod tests {
             true,
             false,
         )]);
-        storage.verify_rent_changes(fixture.storage_rent(2), fixture.storage_rent(1));
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(fixture.storage_rent(2), fixture.storage_rent(1));
     }
 
     #[tokio::test]
@@ -2649,7 +2739,8 @@ mod tests {
             true,
             false,
         )]);
-        storage.verify_rent_changes(fixture.storage_rent(1), 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(fixture.storage_rent(1), 0);
     }
 
     #[tokio::test]
@@ -2669,7 +2760,8 @@ mod tests {
         );
         assert_eq!(storage.storage(contract.address, index).await, new_value);
         storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), true, false)]);
-        storage.verify_rent_changes(0, 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2692,7 +2784,8 @@ mod tests {
                 true,
             ),
         ]);
-        storage.verify_rent_changes(fixture.storage_rent(1), fixture.legacy_storage_rent(1))
+        storage.verify_upgrade_rent(fixture.storage_rent(1), fixture.legacy_storage_rent(1));
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2715,7 +2808,8 @@ mod tests {
                 true,
             ),
         ]);
-        storage.verify_rent_changes(0, fixture.legacy_storage_rent(1));
+        storage.verify_upgrade_rent(0, fixture.legacy_storage_rent(1));
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2735,7 +2829,8 @@ mod tests {
             false,
             false,
         )]);
-        storage.verify_rent_changes(0, 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2763,10 +2858,11 @@ mod tests {
                 true,
             ),
         ]);
-        storage.verify_rent_changes(
+        storage.verify_upgrade_rent(
             fixture.balance_rent() + fixture.contract_rent(contract.code) + fixture.storage_rent(1),
             fixture.legacy_storage_rent(1) + fixture.legacy_rent(Some(contract.code.len())),
         );
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2794,10 +2890,11 @@ mod tests {
                 true,
             ),
         ]);
-        storage.verify_rent_changes(
+        storage.verify_upgrade_rent(
             fixture.balance_rent() + fixture.contract_rent(contract.code),
             fixture.legacy_storage_rent(1) + fixture.legacy_rent(Some(contract.code.len())),
         );
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2817,7 +2914,8 @@ mod tests {
             false,
             false,
         )]);
-        storage.verify_rent_changes(0, 0);
+        storage.verify_upgrade_rent(0, 0);
+        storage.verify_regular_rent(0, 0);
     }
 
     #[tokio::test]
@@ -2845,9 +2943,10 @@ mod tests {
                 true,
             ),
         ]);
-        storage.verify_rent_changes(
+        storage.verify_upgrade_rent(
             fixture.balance_rent() + fixture.contract_rent(contract.code),
             fixture.legacy_storage_rent(1) + fixture.legacy_rent(Some(contract.code.len())),
-        )
+        );
+        storage.verify_regular_rent(0, 0);
     }
 }

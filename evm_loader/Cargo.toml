@@ -12,12 +12,12 @@ members = [
 ]
 
 [workspace.dependencies]
-solana-clap-utils = "=1.17.28"
-solana-cli = "=1.17.28"
-solana-cli-config = "=1.17.28"
-solana-client = "=1.17.28"
-solana-program = { version = "=1.17.28", default-features = false }
-solana-sdk = "=1.17.28"
-solana-program-runtime = "=1.17.28"
-solana-runtime = "=1.17.28"
-solana-accounts-db = "=1.17.28"
+solana-clap-utils = "=1.17.31"
+solana-cli = "=1.17.31"
+solana-cli-config = "=1.17.31"
+solana-client = "=1.17.31"
+solana-program = { version = "=1.17.31", default-features = false }
+solana-sdk = "=1.17.31"
+solana-program-runtime = "=1.17.31"
+solana-runtime = "=1.17.31"
+solana-accounts-db = "=1.17.31"

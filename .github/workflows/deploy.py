@@ -32,8 +32,8 @@ DOCKER_PASSWORD = os.environ.get("DHUBP")
 IMAGE_NAME = os.environ.get("IMAGE_NAME")
 RUN_LINK_REPO = os.environ.get("RUN_LINK_REPO")
 DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
-SOLANA_NODE_VERSION = 'v1.17.28'
-SOLANA_BPF_VERSION = 'v1.17.28'
+SOLANA_NODE_VERSION = 'v1.17.31'
+SOLANA_BPF_VERSION = 'v1.17.31'
 
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 docker_client = docker.APIClient()
@@ -72,7 +72,7 @@ def publish_image(github_sha, github_ref_name, head_ref):
     branch_name_tag = ""
     if head_ref:
         branch_name_tag = head_ref.split('/')[-1]
-    elif re.match(VERSION_BRANCH_TEMPLATE,  github_ref_name):
+    elif re.match(VERSION_BRANCH_TEMPLATE, github_ref_name):
         branch_name_tag = github_ref_name
     if branch_name_tag:
         push_image_with_tag(github_sha, branch_name_tag)
@@ -94,11 +94,13 @@ def finalize_image(github_ref, github_sha):
     else:
         click.echo("The image is not published")
 
+
 def push_image_with_tag(sha, tag):
     docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
     docker_client.tag(f"{IMAGE_NAME}:{sha}", f"{IMAGE_NAME}:{tag}")
     out = docker_client.push(f"{IMAGE_NAME}:{tag}", decode=True, stream=True)
     process_output(out)
+
 
 def run_subprocess(command):
     click.echo(f"run command: {command}")

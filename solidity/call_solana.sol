@@ -19,12 +19,12 @@ interface CallSolana {
 
     // Returns Solana address for Neon address.
     // Calculates as PDA([ACCOUNT_SEED_VERSION, Neon-address], evm_loader_id)
-    function getNeonAddress(address) external returns (bytes32);
+    function getNeonAddress(address) external view returns (bytes32);
     
     
     // Returns Solana address of resource for contracts.
     // Calculates as PDA([ACCONT_SEED_VERSION, "ContractData", msg.sender, salt], evm_loader_id)
-    function getResourceAddress(bytes32 salt) external returns (bytes32);
+    function getResourceAddress(bytes32 salt) external view returns (bytes32);
     
     
     // Creates resource with specified salt.
@@ -33,17 +33,17 @@ interface CallSolana {
     
     
     // Returns Solana PDA generated from specified program_id and seeds
-    function getSolanaPDA(bytes32 program_id, bytes memory seeds) external returns (bytes32);
+    function getSolanaPDA(bytes32 program_id, bytes memory seeds) external view returns (bytes32);
     
     
     // Returns Solana address of the external authority.
     // Calculates as PDA([ACCOUNT_SEED_VERSION, "AUTH", msg.sender, salt], evm_loader_id)
-    function getExtAuthority(bytes32 salt) external returns (bytes32);
+    function getExtAuthority(bytes32 salt) external view returns (bytes32);
     
     
     // Return Solana address for payer account (if instruction required some account to funding new created accounts)
     // Calculates as PDA([ACCOUNT_SEED_VERSION, "PAYER", msg.sender], evm_loader_id)
-    function getPayer() external returns (bytes32);
+    function getPayer() external view returns (bytes32);
 
 
     // Execute the instruction with a call to the Solana program.
@@ -95,7 +95,7 @@ interface CallSolana {
     // Returns the program_id and returned data of the last executed instruction (if no return data was set returns zeroed bytes)
     // For more information see: https://docs.rs/solana-program/latest/solana_program/program/fn.get_return_data.html
     // Note: This method should be called after a call to `execute`/`executeWithSeed` methods
-    function getReturnData() external returns (bytes32, bytes memory);
+    function getReturnData() external view returns (bytes32, bytes memory);
 }
     
     

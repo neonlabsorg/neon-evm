@@ -1424,8 +1424,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         return_data: Vec<u8>,
         backend: &mut B,
     ) -> Result<Action> {
-        backend.revert_snapshot();
         log_data(&[b"EXIT", b"REVERT", &return_data]);
+        backend.revert_snapshot();
 
         end_vm!(
             self,

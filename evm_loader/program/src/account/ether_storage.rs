@@ -1,6 +1,5 @@
 use std::cell::{Ref, RefMut};
 use std::mem::size_of;
-use std::ops::Deref;
 
 use super::{AccountHeader, AccountsDB, NoHeader, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_STORAGE_CELL};
 use crate::error::Result;
@@ -109,6 +108,11 @@ impl<'a> StorageCell<'a> {
         Ok(Self { account })
     }
 
+    #[must_use]
+    pub fn info(&self) -> &AccountInfo<'a> {
+        &self.account
+    }
+
     pub fn create(
         address: StorageCellAddress,
         allocate_cells: usize,
@@ -135,15 +139,7 @@ impl<'a> StorageCell<'a> {
             rent,
         )?;
 
-        super::set_tag(&crate::ID, cell_account, TAG_STORAGE_CELL, Header::VERSION)?;
-        {
-            let mut header = super::header_mut::<Header>(cell_account);
-            header.revision = 1;
-        }
-
-        Ok(Self {
-            account: cell_account.clone(),
-        })
+        Self::initialize(cell_account.clone(), &crate::ID)
     }
 
     pub fn initialize(account: AccountInfo<'a>, program_id: &Pubkey) -> Result<Self> {
@@ -304,13 +300,5 @@ impl<'a> StorageCell<'a> {
         header.revision = header.revision.wrapping_add(1);
 
         Ok(())
-    }
-}
-
-impl<'a> Deref for StorageCell<'a> {
-    type Target = AccountInfo<'a>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.account
     }
 }

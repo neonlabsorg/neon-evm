@@ -3,7 +3,7 @@ use crate::rpc::Rpc;
 use crate::tracing::tracers::Tracer;
 use crate::types::{EmulateRequest, TxParams};
 use crate::{
-    account_storage::{EmulatorAccountStorage, SolanaAccount, SyncedAccountStorage},
+    account_storage::{EmulatorAccountStorage, SyncedAccountStorage},
     errors::NeonError,
     NeonResult,
 };
@@ -18,9 +18,17 @@ use evm_loader::{
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use serde_with::{hex::Hex, serde_as};
+use serde_with::{hex::Hex, serde_as, DisplayFromStr};
 use solana_sdk::{account::Account, pubkey::Pubkey};
 
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SolanaAccount {
+    #[serde_as(as = "DisplayFromStr")]
+    pub pubkey: Pubkey,
+    pub is_writable: bool,
+    pub is_legacy: bool,
+}
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulateResponse {
@@ -104,16 +112,32 @@ pub async fn execute<T: Tracer>(
             let response = &result.0;
             let response2 = &result2.0;
 
+            let mut combined_solana_accounts = response.solana_accounts.clone();
+            response2.solana_accounts.iter().for_each(|v| {
+                if let Some(w) = combined_solana_accounts
+                    .iter_mut()
+                    .find(|x| x.pubkey == v.pubkey)
+                {
+                    w.is_writable |= v.is_writable;
+                    w.is_legacy |= v.is_legacy;
+                } else {
+                    combined_solana_accounts.push(v.clone());
+                }
+            });
+
             let emul_response = EmulateResponse {
+                // We get the result from the first response (as it is executed on the current time)
+                result: response.result.clone(),
                 exit_status: response.exit_status.to_string(),
                 external_solana_call: response.external_solana_call,
                 reverts_before_solana_calls: response.reverts_before_solana_calls,
                 reverts_after_solana_calls: response.reverts_after_solana_calls,
+
+                // ...and consumed resources from the both responses (because the real execution can occur in the future)
                 steps_executed: response.steps_executed.max(response2.steps_executed),
                 used_gas: response.used_gas.max(response2.used_gas),
-                solana_accounts: response2.solana_accounts.clone(),
-                result: response.result.clone(),
                 iterations: response.iterations.max(response2.iterations),
+                solana_accounts: combined_solana_accounts,
             };
 
             return Ok((emul_response, result.1));
@@ -166,6 +190,16 @@ async fn emulate_trx<T: Tracer>(
 
     let used_gas = storage_gas + iterations_gas + treasury_gas + cancel_gas;
 
+    let solana_accounts = storage
+        .used_accounts()
+        .iter()
+        .map(|v| SolanaAccount {
+            pubkey: v.pubkey,
+            is_writable: v.is_writable,
+            is_legacy: v.is_legacy,
+        })
+        .collect::<Vec<_>>();
+
     Ok((
         EmulateResponse {
             exit_status: exit_status.to_string(),
@@ -174,7 +208,7 @@ async fn emulate_trx<T: Tracer>(
             reverts_after_solana_calls: execute_status.reverts_after_solana_calls,
             steps_executed,
             used_gas,
-            solana_accounts: storage.used_accounts(),
+            solana_accounts,
             result: exit_status.into_result().unwrap_or_default(),
             iterations,
         },

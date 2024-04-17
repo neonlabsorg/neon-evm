@@ -87,7 +87,7 @@ fn update_ether_account_from_v1(
         // Fill it with new data
         account.try_borrow_mut_data()?.fill(0);
 
-        let mut contract = ContractAccount::init(
+        let mut contract = ContractAccount::create(
             legacy_data.address,
             crate::config::DEFAULT_CHAIN_ID,
             legacy_data.generation,

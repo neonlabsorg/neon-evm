@@ -11,7 +11,6 @@ use solana_program::{
 use std::{
     cell::{Ref, RefMut},
     mem::size_of,
-    ops::Deref,
 };
 
 use crate::config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
@@ -76,6 +75,11 @@ impl<'a> ContractAccount<'a> {
         Ok(Self { account })
     }
 
+    #[must_use]
+    pub fn info(&self) -> &AccountInfo<'a> {
+        &self.account
+    }
+
     pub fn allocate(
         address: Address,
         code: &[u8],
@@ -125,7 +129,7 @@ impl<'a> ContractAccount<'a> {
         }
     }
 
-    pub fn init(
+    pub fn create(
         address: Address,
         chain_id: u64,
         generation: u32,
@@ -316,13 +320,5 @@ impl<'a> ContractAccount<'a> {
 
         let mut storage = self.storage_mut();
         storage[offset..][..values.len()].copy_from_slice(values);
-    }
-}
-
-impl<'a> Deref for ContractAccount<'a> {
-    type Target = AccountInfo<'a>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.account
     }
 }

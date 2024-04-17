@@ -26,7 +26,7 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
             return Err(crate::error::Error::AccountSpaceAllocationFailure);
         }
 
-        ContractAccount::init(
+        ContractAccount::create(
             address,
             chain_id,
             0,

@@ -2,7 +2,6 @@ use crate::{
     config::ACCOUNT_SEED_VERSION,
     error::{Error, Result},
     evm::database::Database,
-    //account::ACCOUNT_SEED_VERSION,
     types::Address,
 };
 use arrayref::array_ref;

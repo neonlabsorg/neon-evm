@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use elsa::FrozenMap;
 use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
 use std::collections::{HashMap, HashSet};
-use std::ops::Deref;
 use std::{
     cell::{RefCell, RefMut},
     convert::TryInto,
@@ -26,7 +25,6 @@ use evm_loader::{
     types::Address,
 };
 use log::{debug, info, trace};
-use serde::{Deserialize, Serialize};
 use solana_client::client_error::{self, Result as ClientResult};
 use solana_sdk::{
     account::Account,
@@ -45,7 +43,6 @@ use solana_sdk::{
 
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
 use crate::tracing::{AccountOverrides, BlockOverrides};
-use serde_with::{serde_as, DisplayFromStr};
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
@@ -56,10 +53,8 @@ pub struct ExecuteStatus {
     pub reverts_after_solana_calls: bool,
 }
 
-#[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct SolanaAccount {
-    #[serde_as(as = "DisplayFromStr")]
     pub pubkey: Pubkey,
     pub is_writable: bool,
     pub is_legacy: bool,
@@ -69,31 +64,37 @@ pub struct SolanaAccount {
 pub type SolanaOverrides = HashMap<Pubkey, Option<Account>>;
 
 trait UpdateLamports<'a> {
-    fn update_lamports(&mut self, rent: &Rent)
-    where
-        Self: Deref<Target = AccountInfo<'a>>,
-    {
-        let info = self as &AccountInfo<'_>;
+    fn update_lamports(&mut self, rent: &Rent) {
         let required_lamports = rent.minimum_balance(self.required_lamports());
-        if info.lamports() < required_lamports {
-            **info.lamports.borrow_mut() = required_lamports;
+        if self.info().lamports() < required_lamports {
+            **self.info().lamports.borrow_mut() = required_lamports;
         }
     }
     fn required_lamports(&self) -> usize;
+    fn info(&self) -> &AccountInfo<'a>;
 }
-impl<'a> UpdateLamports<'_> for BalanceAccount<'a> {
+impl<'a> UpdateLamports<'a> for BalanceAccount<'a> {
     fn required_lamports(&self) -> usize {
         BalanceAccount::required_account_size()
     }
+    fn info(&self) -> &AccountInfo<'a> {
+        self.info()
+    }
 }
-impl<'a> UpdateLamports<'_> for ContractAccount<'a> {
+impl<'a> UpdateLamports<'a> for ContractAccount<'a> {
     fn required_lamports(&self) -> usize {
         ContractAccount::required_account_size(self.code().as_ref())
     }
+    fn info(&self) -> &AccountInfo<'a> {
+        self.info()
+    }
 }
-impl<'a> UpdateLamports<'_> for StorageCell<'a> {
+impl<'a> UpdateLamports<'a> for StorageCell<'a> {
     fn required_lamports(&self) -> usize {
         StorageCell::required_account_size(self.cells().len())
+    }
+    fn info(&self) -> &AccountInfo<'a> {
+        self.info()
     }
 }
 
@@ -803,7 +804,8 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     pub fn get_upgrade_rent(&self) -> evm_loader::error::Result<u64> {
         let mut lamports_collected = 0u64;
         let mut lamports_spend = 0u64;
-        for used_account in self.used_accounts().iter() {
+        for (_, used_account) in self.used_accounts.clone().into_tuple_vec() {
+            let used_account = used_account.borrow();
             if let Some(lamports_after_upgrade) = used_account.lamports_after_upgrade {
                 let orig_lamports = self
                     .accounts_cache

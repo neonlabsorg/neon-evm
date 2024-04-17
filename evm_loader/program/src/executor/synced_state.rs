@@ -3,7 +3,6 @@ use maybe_async::maybe_async;
 use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
-use std::collections::BTreeMap;
 
 use crate::account_storage::{AccountStorage, SyncedAccountStorage};
 use crate::error::{Error, Result};
@@ -14,10 +13,18 @@ use crate::types::Address;
 use super::precompile_extension::PrecompiledContracts;
 use super::OwnedAccountInfo;
 
+enum Action {
+    SetTransientStorage {
+        address: Address,
+        index: U256,
+        value: [u8; 32],
+    },
+}
+
 pub struct SyncedExecutorState<'a, B: AccountStorage> {
     pub backend: &'a mut B,
-    depth: usize,
-    transient_storage: BTreeMap<Address, BTreeMap<U256, [u8; 32]>>,
+    actions: Vec<Action>,
+    stack: Vec<usize>,
 }
 
 impl<'a, B: AccountStorage + SyncedAccountStorage> SyncedExecutorState<'a, B> {
@@ -25,8 +32,8 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> SyncedExecutorState<'a, B> {
     pub fn new(backend: &'a mut B) -> Self {
         Self {
             backend,
-            depth: 0,
-            transient_storage: BTreeMap::new(),
+            actions: Vec::with_capacity(64),
+            stack: Vec::with_capacity(16),
         }
     }
 }
@@ -133,10 +140,18 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         Ok(())
     }
 
-    async fn transient_storage(&self, address: Address, index: U256) -> Result<[u8; 32]> {
-        if let Some(storage) = self.transient_storage.get(&address) {
-            if let Some(value) = storage.get(&index) {
-                return Ok(*value);
+    async fn transient_storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
+        for action in self.actions.iter().rev() {
+            #[allow(irrefutable_let_patterns)]
+            if let Action::SetTransientStorage {
+                address,
+                index,
+                value,
+            } = action
+            {
+                if (&from_address == address) && (&from_index == index) {
+                    return Ok(*value);
+                }
             }
         }
 
@@ -149,13 +164,11 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
         index: U256,
         value: [u8; 32],
     ) -> Result<()> {
-        if let Some(storage) = self.transient_storage.get_mut(&address) {
-            storage.insert(index, value);
-        } else {
-            let mut storage = BTreeMap::new();
-            storage.insert(index, value);
-            self.transient_storage.insert(address, storage);
-        }
+        self.actions.push(Action::SetTransientStorage {
+            address,
+            index,
+            value,
+        });
         Ok(())
     }
 
@@ -217,22 +230,29 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorSt
     }
 
     fn snapshot(&mut self) {
-        self.depth += 1;
+        self.stack.push(self.actions.len());
         self.backend.snapshot();
     }
 
     fn revert_snapshot(&mut self) {
-        self.depth = self
-            .depth
-            .checked_sub(1)
+        let actions_len = self
+            .stack
+            .pop()
             .expect("Fatal Error: Inconsistent EVM Call Stack");
+
+        self.actions.truncate(actions_len);
+
+        if self.stack.is_empty() {
+            // sanity check
+            assert!(self.actions.is_empty());
+        }
+
         self.backend.revert_snapshot();
     }
 
     fn commit_snapshot(&mut self) {
-        self.depth = self
-            .depth
-            .checked_sub(1)
+        self.stack
+            .pop()
             .expect("Fatal Error: Inconsistent EVM Call Stack");
         self.backend.commit_snapshot();
     }

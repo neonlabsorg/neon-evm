@@ -111,7 +111,7 @@ impl<'a> ProgramAccountStorage<'a> {
                     chain_id,
                     code,
                 } => {
-                    ContractAccount::init(
+                    ContractAccount::create(
                         address,
                         chain_id,
                         0,

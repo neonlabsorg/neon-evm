@@ -7,7 +7,7 @@ use crate::tracing::tracers::state_diff::StateMap;
 use evm_loader::types::Address;
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/native/prestate.go#L39>
-type PrestateTracerState = BTreeMap<Address, PrestateTracerAccount>;
+pub type PrestateTracerState = BTreeMap<Address, PrestateTracerAccount>;
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/native/prestate.go#L41>
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -18,6 +18,7 @@ pub struct PrestateTracerAccount {
     pub code: Option<Bytes>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nonce: Option<u64>,
+    #[serde(default)]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub storage: BTreeMap<H256, H256>,
 }

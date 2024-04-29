@@ -30,16 +30,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: build docker image
         run: |
           python3 ./.github/workflows/deploy.py build_docker_image \
           --github_sha=${GITHUB_SHA}
-
       - name: publish image
         run: |
           python3 ./.github/workflows/deploy.py publish_image \
-          --github_sha=${GITHUB_SHA}
+          --github_sha=${GITHUB_SHA} \
+          --head_ref=${{ github.head_ref }} \
+          --github_ref_name=${{github.ref_name}}
   run-neon-evm-tests:
     runs-on: test-runner
     needs:
@@ -77,6 +77,9 @@ jobs:
           --github_sha=${GITHUB_SHA} \
           --neon_test_branch=${{ steps.neon_test_branch.outputs.value }} \
           --base_ref_branch=${{ github.base_ref }}
+      - name: Cancel the build if job failed
+        if: "failure()"
+        uses: "andymckay/cancel-action@0.4"
   trigger-proxy-tests:
     runs-on: trigger-runner
     needs:
@@ -93,10 +96,12 @@ jobs:
           --base_ref_branch=${{ github.base_ref }} \
           --github_ref=${{ github.ref }} \
           --token=${{secrets.GHTOKEN }} \
-          --is_draft=${{github.event.pull_request.draft}} \
           --labels='${{ toJson(github.event.pull_request.labels.*.name) }}' \
           --pr_url="${{ github.api_url }}/repos/${{ github.repository }}/issues" \
           --pr_number="${{ github.event.pull_request.number }}"
+      - name: Cancel the build if job failed
+        if: "failure()"
+        uses: "andymckay/cancel-action@0.4"
   finalize-image:
     runs-on: neon-evm-1
     needs:
@@ -109,7 +114,6 @@ jobs:
       - name: Finalize image
         run: |
           python3 ./.github/workflows/deploy.py finalize_image \
-          --head_ref_branch=${{ github.head_ref }} \
           --github_ref=${GITHUB_REF} \
           --github_sha=${GITHUB_SHA}
       - name: Check if it version branch

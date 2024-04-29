@@ -65,37 +65,41 @@ def build_docker_image(github_sha):
 
 @cli.command(name="publish_image")
 @click.option('--github_sha')
-def publish_image(github_sha):
-    docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
-    out = docker_client.push(f"{IMAGE_NAME}:{github_sha}", decode=True, stream=True)
-    process_output(out)
+@click.option('--github_ref_name')
+@click.option('--head_ref')
+def publish_image(github_sha, github_ref_name, head_ref):
+    push_image_with_tag(github_sha, github_sha)
+    branch_name_tag = ""
+    if head_ref:
+        branch_name_tag = head_ref.split('/')[-1]
+    elif re.match(VERSION_BRANCH_TEMPLATE, github_ref_name):
+        branch_name_tag = github_ref_name
+    if branch_name_tag:
+        push_image_with_tag(github_sha, branch_name_tag)
 
 
 @cli.command(name="finalize_image")
-@click.option('--head_ref_branch')
 @click.option('--github_ref')
 @click.option('--github_sha')
-def finalize_image(head_ref_branch, github_ref, github_sha):
-    branch = github_ref.replace("refs/heads/", "")
-    if re.match(VERSION_BRANCH_TEMPLATE, branch) is None:
-        if 'refs/tags/' in branch:
-            tag = branch.replace("refs/tags/", "")
-        elif branch == 'master':
-            tag = 'stable'
-        elif branch == 'develop':
-            tag = 'latest'
-        else:
-            tag = head_ref_branch.split('/')[-1]
-
-        docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
+def finalize_image(github_ref, github_sha):
+    tag = None
+    if 'refs/tags/' in github_ref:
+        tag = github_ref.replace("refs/tags/", "")
+    elif github_ref == 'refs/heads/develop':
+        tag = 'latest'
+    if tag:
         out = docker_client.pull(f"{IMAGE_NAME}:{github_sha}", decode=True, stream=True)
         process_output(out)
-
-        docker_client.tag(f"{IMAGE_NAME}:{github_sha}", f"{IMAGE_NAME}:{tag}")
-        out = docker_client.push(f"{IMAGE_NAME}:{tag}", decode=True, stream=True)
-        process_output(out)
+        push_image_with_tag(github_sha, tag)
     else:
-        click.echo("The image is not published, please create tag for publishing")
+        click.echo("The image is not published")
+
+
+def push_image_with_tag(sha, tag):
+    docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
+    docker_client.tag(f"{IMAGE_NAME}:{sha}", f"{IMAGE_NAME}:{tag}")
+    out = docker_client.push(f"{IMAGE_NAME}:{tag}", decode=True, stream=True)
+    process_output(out)
 
 
 def run_subprocess(command):
@@ -172,24 +176,20 @@ def stop_containers(project_name):
 @click.option('--github_ref')
 @click.option('--github_sha')
 @click.option('--token')
-@click.option('--is_draft')
 @click.option('--labels')
 @click.option('--pr_url')
 @click.option('--pr_number')
-def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sha, token, is_draft, labels,
+def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sha, token, labels,
                          pr_url, pr_number):
     is_develop_branch = github_ref in ['refs/heads/develop', 'refs/heads/master']
     is_tag_creating = 'refs/tags/' in github_ref
     is_version_branch = re.match(VERSION_BRANCH_TEMPLATE, github_ref.replace("refs/heads/", "")) is not None
-    is_FTS_labeled_not_draft = 'fullTestSuit' in labels and is_draft != "true"
-    is_extended_FTS_labeled_not_draft = 'extendedFullTestSuit' in labels and is_draft != "true"
+    is_FTS_labeled = 'fullTestSuit' in labels
 
-    if is_extended_FTS_labeled_not_draft:
-        test_set = "extendedFullTestSuite"
-    elif is_develop_branch or is_tag_creating or is_version_branch or is_FTS_labeled_not_draft:
-        test_set = "fullTestSuite"
+    if is_develop_branch or is_tag_creating or is_version_branch or is_FTS_labeled:
+        full_test_suite = True
     else:
-        test_set = "basic"
+        full_test_suite = False
 
     github = GithubClient(token)
 
@@ -210,7 +210,8 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
 
     runs_before = github.get_proxy_runs_list(proxy_branch)
     runs_count_before = github.get_proxy_runs_count(proxy_branch)
-    github.run_proxy_dispatches(proxy_branch, github_ref, github_sha, test_set, initial_pr)
+    neon_evm_branch = head_ref_branch if head_ref_branch else github_ref
+    github.run_proxy_dispatches(proxy_branch, neon_evm_branch, github_sha, full_test_suite, initial_pr)
     wait_condition(lambda: github.get_proxy_runs_count(proxy_branch) > runs_count_before)
 
     runs_after = github.get_proxy_runs_list(proxy_branch)

@@ -3293,7 +3293,6 @@ dependencies = [
  "solana-client",
  "solana-sdk",
  "tokio",
- "tower",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
@@ -3407,7 +3406,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "build-info",
- "jsonrpc-v2",
  "jsonrpsee-core",
  "jsonrpsee-http-client",
  "jsonrpsee-types",
@@ -6747,7 +6745,6 @@ dependencies = [
  "futures-util",
  "pin-project",
  "pin-project-lite",
- "tokio",
  "tower-layer",
  "tower-service",
  "tracing",

@@ -18,6 +18,8 @@ mainnet = []
 testnet = []
 ## Builds NeonEVM for devnet deployment
 devnet = []
+## Builds NeonEVM for Eclipse devnet environment
+eclipse = []
 ## Builds NeonEVM for CI environment
 ci = []
 

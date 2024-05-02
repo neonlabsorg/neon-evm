@@ -18,6 +18,8 @@ cfg_if! {
         net_specific_config_parser!("config/devnet.toml");
     } else if #[cfg(feature = "govertest")] {
         net_specific_config_parser!("config/govertest.toml");
+    } else if #[cfg(feature = "eclipse")] {
+        net_specific_config_parser!("config/eclipse.toml");
     } else {
         net_specific_config_parser!("config/default.toml");
     }

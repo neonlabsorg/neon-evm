@@ -24,6 +24,7 @@ RUN cargo fmt --check && \
     cargo build-bpf --features govertest,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest-emergency.so && \
     cargo build-bpf --features mainnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet.so && \
     cargo build-bpf --features mainnet,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet-emergency.so && \
+    cargo build-bpf --features eclipse && cp target/deploy/evm_loader.so target/deploy/evm_loader-eclipse-devnet.so && \
     cargo build-bpf --features ci --dump
 
 # Build Solidity contracts

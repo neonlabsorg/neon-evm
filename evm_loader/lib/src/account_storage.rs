@@ -289,11 +289,38 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
 }
 
 impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
+    async fn apply_state_overrides(&self, state_overrides: &AccountOverrides) -> NeonResult<()> {
+        for (address, overrides) in state_overrides.into_iter() {
+            if let Some(nonce) = overrides.nonce {
+                let target_chain_id = self
+                    .contract_chain_id(*address)
+                    .await
+                    .unwrap_or(self.default_chain_id());
+                let mut balance_data = self
+                    .get_balance_account(*address, target_chain_id)
+                    .await?
+                    .borrow_mut();
+                let mut balance = self.get_or_create_ethereum_balance(
+                    &mut balance_data,
+                    *address,
+                    target_chain_id,
+                )?;
+                info!("apply_state_overrides {address} -> {nonce}");
+                balance.override_nonce_by(nonce);
+            }
+        }
+        Ok(())
+    }
+
     async fn download_accounts(&self, pubkeys: &[Pubkey]) -> Result<(), NeonError> {
         let accounts = self.rpc.get_multiple_accounts(pubkeys).await?;
 
         for (key, account) in pubkeys.iter().zip(accounts) {
             self.accounts_cache.insert(*key, Box::new(account));
+        }
+
+        if let Some(overrides) = &self._state_overrides {
+            self.apply_state_overrides(&overrides).await?;
         }
 
         Ok(())

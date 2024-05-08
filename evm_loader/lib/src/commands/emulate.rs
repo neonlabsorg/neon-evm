@@ -92,6 +92,7 @@ pub async fn execute<T: Tracer>(
         block_overrides,
         state_overrides,
         solana_overrides,
+        emulate_request.tx.chain_id.clone(),
     )
     .await?;
 

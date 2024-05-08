@@ -271,6 +271,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         block_overrides: Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
         solana_overrides: Option<SolanaOverrides>,
+        tx_chain_id: Option<u64>,
     ) -> Result<EmulatorAccountStorage<'rpc, T>, NeonError> {
         let storage = Self::new(
             rpc,
@@ -283,30 +284,30 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         .await?;
 
         storage.download_accounts(accounts).await?;
+        storage.apply_overrides(tx_chain_id).await?;
 
         Ok(storage)
     }
 }
 
 impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
-    async fn apply_state_overrides(&self, state_overrides: &AccountOverrides) -> NeonResult<()> {
-        for (address, overrides) in state_overrides.into_iter() {
-            if let Some(nonce) = overrides.nonce {
-                let target_chain_id = self
-                    .contract_chain_id(*address)
-                    .await
-                    .unwrap_or(self.default_chain_id());
-                let mut balance_data = self
-                    .get_balance_account(*address, target_chain_id)
-                    .await?
-                    .borrow_mut();
-                let mut balance = self.get_or_create_ethereum_balance(
-                    &mut balance_data,
-                    *address,
-                    target_chain_id,
-                )?;
-                info!("apply_state_overrides {address} -> {nonce}");
-                balance.override_nonce_by(nonce);
+    async fn apply_overrides(&self, tx_chain_id: Option<u64>) -> NeonResult<()> {
+        if let Some(state_overrides) = self._state_overrides.as_ref() {
+            for (address, overrides) in state_overrides.into_iter() {
+                if let Some(nonce) = overrides.nonce {
+                    let target_chain_id = tx_chain_id.unwrap_or(self.default_chain_id());
+                    let mut balance_data = self
+                        .get_balance_account(*address, target_chain_id)
+                        .await?
+                        .borrow_mut();
+                    let mut balance = self.get_or_create_ethereum_balance(
+                        &mut balance_data,
+                        *address,
+                        target_chain_id,
+                    )?;
+                    info!("apply nonce overrides {address} -> {nonce}");
+                    balance.override_nonce_by(nonce);
+                }
             }
         }
         Ok(())
@@ -317,10 +318,6 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
 
         for (key, account) in pubkeys.iter().zip(accounts) {
             self.accounts_cache.insert(*key, Box::new(account));
-        }
-
-        if let Some(overrides) = &self._state_overrides {
-            self.apply_state_overrides(&overrides).await?;
         }
 
         Ok(())
@@ -956,12 +953,6 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
 
     async fn nonce(&self, address: Address, chain_id: u64) -> u64 {
         info!("nonce {address}  {chain_id}");
-
-        // TODO: move to reading data from Solana node
-        // let nonce_override = self.account_override(address, |a| a.nonce);
-        // if let Some(nonce_override) = nonce_override {
-        //     return nonce_override;
-        // }
 
         self.ethereum_balance_map_or(address, chain_id, u64::default(), |account| account.nonce())
             .await

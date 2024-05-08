@@ -148,8 +148,12 @@ impl<'a> BalanceAccount<'a> {
 
     pub fn override_nonce_by(&mut self, value: u64) {
         let mut header = super::header_mut::<Header>(&self.account);
-
         header.trx_count = value;
+    }
+
+    pub fn override_balance_by(&mut self, value: U256) {
+        let mut header = super::header_mut::<Header>(&self.account);
+        header.balance = value;
     }
 
     #[must_use]

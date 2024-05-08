@@ -284,29 +284,36 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         .await?;
 
         storage.download_accounts(accounts).await?;
-        storage.apply_overrides(tx_chain_id).await?;
+        let target_chain_id = tx_chain_id.unwrap_or(storage.default_chain_id());
+        storage.apply_balance_overrides(target_chain_id).await?;
 
         Ok(storage)
     }
 }
 
 impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
-    async fn apply_overrides(&self, tx_chain_id: Option<u64>) -> NeonResult<()> {
-        if let Some(state_overrides) = self._state_overrides.as_ref() {
+    async fn apply_balance_overrides(&self, target_chain_id: u64) -> NeonResult<()> {
+        if let Some(state_overrides) = self.state_overrides.as_ref() {
             for (address, overrides) in state_overrides.into_iter() {
+                if overrides.nonce.is_none() && overrides.balance.is_none() {
+                    continue;
+                }
+                let mut balance_data = self
+                    .get_balance_account(*address, target_chain_id)
+                    .await?
+                    .borrow_mut();
+                let mut balance = self.get_or_create_ethereum_balance(
+                    &mut balance_data,
+                    *address,
+                    target_chain_id,
+                )?;
                 if let Some(nonce) = overrides.nonce {
-                    let target_chain_id = tx_chain_id.unwrap_or(self.default_chain_id());
-                    let mut balance_data = self
-                        .get_balance_account(*address, target_chain_id)
-                        .await?
-                        .borrow_mut();
-                    let mut balance = self.get_or_create_ethereum_balance(
-                        &mut balance_data,
-                        *address,
-                        target_chain_id,
-                    )?;
                     info!("apply nonce overrides {address} -> {nonce}");
                     balance.override_nonce_by(nonce);
+                }
+                if let Some(expected_balance) = overrides.balance {
+                    info!("apply balance overrides {address} -> {expected_balance}");
+                    balance.override_balance_by(expected_balance);
                 }
             }
         }

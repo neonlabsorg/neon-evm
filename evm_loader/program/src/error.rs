@@ -203,6 +203,14 @@ pub enum Error {
 
     #[error("Operator Balance - invalid address")]
     OperatorBalanceInvalidAddress,
+
+    #[error(
+        "Instructions that execute Ethereum DynamicGas transaction (EIP-1559) should specify priority fee."
+    )]
+    PriorityFeeNotSpecified,
+
+    #[error("Error while parsing priority fee instructions: {0}")]
+    PriorityFeeParsingError(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

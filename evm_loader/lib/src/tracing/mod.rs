@@ -27,7 +27,7 @@ pub struct BlockOverrides {
 }
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L942>
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountOverride {
     pub nonce: Option<u64>,

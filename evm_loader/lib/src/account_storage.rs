@@ -114,7 +114,7 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     block_timestamp: i64,
     timestamp_used: RefCell<bool>,
     rent: Rent,
-    _state_overrides: Option<AccountOverrides>,
+    state_overrides: Option<AccountOverrides>,
     accounts_cache: FrozenMap<Pubkey, Box<Option<Account>>>,
     used_accounts: FrozenMap<Pubkey, Box<RefCell<SolanaAccount>>>,
     return_data: RefCell<Option<TransactionReturnData>>,
@@ -233,7 +233,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             block_number,
             block_timestamp,
             timestamp_used: RefCell::new(false),
-            _state_overrides: state_overrides,
+            state_overrides: state_overrides,
             rent,
             accounts_cache,
             used_accounts: FrozenMap::new(),
@@ -256,7 +256,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             block_timestamp: other.block_timestamp.saturating_add(timestamp_shift),
             timestamp_used: RefCell::new(false),
             rent: other.rent,
-            _state_overrides: other._state_overrides.clone(),
+            state_overrides: other.state_overrides.clone(),
             accounts_cache: other.accounts_cache.clone(),
             used_accounts: other.used_accounts.clone(),
             return_data: RefCell::new(None),
@@ -968,12 +968,6 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
 
     async fn balance(&self, address: Address, chain_id: u64) -> U256 {
         info!("balance {address} {chain_id}");
-
-        // TODO: move to reading data from Solana node
-        // let balance_override = self.account_override(address, |a| a.balance);
-        // if let Some(balance_override) = balance_override {
-        //     return balance_override;
-        // }
 
         self.ethereum_balance_map_or(address, chain_id, U256::default(), |account| {
             account.balance()

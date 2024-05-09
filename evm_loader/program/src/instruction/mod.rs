@@ -71,6 +71,7 @@ pub enum EvmInstruction {
     ///  `[WRITE]` Treasury
     ///  `[WRITE]` Operator Balance
     ///  `[]` System program
+    ///  `[]` Sysvar account
     ///  `[WRITE?]` Other accounts
     /// Instruction data:
     ///  0..4 - treasury index in little endian
@@ -85,6 +86,7 @@ pub enum EvmInstruction {
     ///  `[WRITE]` Treasury
     ///  `[WRITE]` Operator Balance
     ///  `[]` System program
+    ///  `[]` Sysvar account
     ///  `[WRITE?]` Other accounts
     /// Instruction data:
     ///  0..4 - treasury index in little endian
@@ -98,6 +100,7 @@ pub enum EvmInstruction {
     ///  `[WRITE]` Treasury
     ///  `[WRITE]` Operator Balance
     ///  `[]` System program
+    ///  `[]` Sysvar account
     ///  `[WRITE]`  Other accounts
     /// Instruction data:
     ///  0..4 - treasury index in little endian
@@ -113,6 +116,7 @@ pub enum EvmInstruction {
     ///  `[WRITE]` Treasury
     ///  `[WRITE]` Operator Balance
     ///  `[]` System program
+    ///  `[]` Sysvar account
     ///  `[WRITE]`  Other accounts
     /// Instruction data:
     ///  0..4 - treasury index in little endian
@@ -127,6 +131,7 @@ pub enum EvmInstruction {
     ///  `[WRITE]` Treasury
     ///  `[WRITE]` Operator Balance
     ///  `[]` System program
+    ///  `[]` Sysvar account
     ///  `[WRITE]`  Other accounts
     /// Instruction data:
     ///  0..4 - treasury index in little endian
@@ -176,6 +181,7 @@ pub enum EvmInstruction {
     ///  `[WRITE]` Treasury
     ///  `[WRITE]` Operator Balance
     ///  `[]` System program
+    ///  `[]` Sysvar account
     ///  `[WRITE?]` Other accounts
     /// Instruction data:
     ///  0..4 - treasury index in little-endian
@@ -190,6 +196,7 @@ pub enum EvmInstruction {
     ///  `[WRITE]` Treasury
     ///  `[WRITE]` Operator Balance
     ///  `[]` System program
+    ///  `[]` Sysvar account
     ///  `[WRITE?]` Other accounts
     /// Instruction data:
     ///  0..4 - treasury index in little-endian

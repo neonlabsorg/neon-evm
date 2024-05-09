@@ -1,5 +1,6 @@
 use crate::account::{
-    program, AccountsDB, Operator, OperatorBalanceAccount, OperatorBalanceValidator, Treasury,
+    program, AccountsDB, Operator, OperatorBalanceAccount, OperatorBalanceValidator, Sysvar,
+    Treasury,
 };
 use crate::debug::log_data;
 use crate::error::Result;
@@ -24,6 +25,7 @@ pub fn process<'a>(
     let treasury = Treasury::from_account(program_id, treasury_index, &accounts[1])?;
     let operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[2])?;
     let system = program::System::from_account(&accounts[3])?;
+    let sysvar = Sysvar::from_account(&accounts[4])?;
 
     let trx = Transaction::from_rlp(messsage)?;
     let origin = trx.recover_caller_address()?;
@@ -36,11 +38,12 @@ pub fn process<'a>(
     log_data(&[b"MINER", miner_address.as_bytes()]);
 
     let accounts_db = AccountsDB::new(
-        &accounts[4..],
+        &accounts[5..],
         operator,
         operator_balance,
         Some(system),
         Some(treasury),
+        Some(sysvar),
     );
 
     let mut gasometer = Gasometer::new(U256::ZERO, accounts_db.operator())?;

@@ -1,16 +1,8 @@
-use async_trait::async_trait;
-use elsa::FrozenMap;
-use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
-use std::collections::{HashMap, HashSet};
-use std::{
-    cell::{RefCell, RefMut},
-    convert::TryInto,
-    rc::Rc,
-};
-
 use crate::{
     account_data::AccountData, rpc::Rpc, solana_simulator::SolanaSimulator, NeonError, NeonResult,
 };
+use async_trait::async_trait;
+use elsa::FrozenMap;
 use ethnum::U256;
 pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use evm_loader::{
@@ -26,6 +18,7 @@ use evm_loader::{
 };
 use log::{debug, info, trace};
 use solana_client::client_error::{self, Result as ClientResult};
+use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
 use solana_sdk::{
     account::Account,
     account_info::{AccountInfo, IntoAccountInfo},
@@ -40,6 +33,13 @@ use solana_sdk::{
     sysvar::slot_hashes,
     transaction_context::TransactionReturnData,
 };
+use std::collections::{HashMap, HashSet};
+use std::{
+    cell::{RefCell, RefMut},
+    convert::TryInto,
+    rc::Rc,
+};
+use web3::types::Bytes;
 
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
 use crate::tracing::{AccountOverrides, BlockOverrides};
@@ -220,7 +220,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
                 accounts_cache.insert(pubkey, Box::new(account));
             }
         }
-        let storage = Self {
+        let mut storage = Self {
             accounts: FrozenMap::new(),
             call_stack: vec![],
             program_id,
@@ -240,9 +240,9 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             return_data: RefCell::new(None),
         };
 
-        let target_chain_id = tx_chain_id.unwrap_or(storage.default_chain_id());
-        storage.apply_balance_overrides(target_chain_id).await?;
-
+        storage
+            .apply_state_overrides(tx_chain_id.unwrap_or(storage.default_chain_id()))
+            .await?;
         Ok(storage)
     }
 
@@ -252,7 +252,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         timestamp_shift: i64,
         tx_chain_id: Option<u64>,
     ) -> Result<EmulatorAccountStorage<'rpc, T>, NeonError> {
-        let storage = Self {
+        let mut storage = Self {
             accounts: FrozenMap::new(),
             call_stack: vec![],
             program_id: other.program_id,
@@ -271,8 +271,9 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             used_accounts: other.used_accounts.clone(),
             return_data: RefCell::new(None),
         };
-        let target_chain_id = tx_chain_id.unwrap_or(storage.default_chain_id());
-        storage.apply_balance_overrides(target_chain_id).await?;
+        storage
+            .apply_state_overrides(tx_chain_id.unwrap_or(storage.default_chain_id()))
+            .await?;
         Ok(storage)
     }
 
@@ -304,6 +305,73 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
 }
 
 impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
+    async fn apply_state_overrides(&mut self, target_chain_id: u64) -> NeonResult<()> {
+        self.apply_balance_overrides(target_chain_id).await?;
+        self.apply_contract_overrides(target_chain_id).await?;
+        Ok(())
+    }
+    /// Overrides existing code for a contract, used in emulations only.
+    async fn override_code_by(
+        &mut self,
+        address: Address,
+        chain_id: u64,
+        code: Vec<u8>,
+    ) -> evm_loader::error::Result<()> {
+        info!("override_code_by {address} -> {} bytes", code.len());
+        {
+            let mut account_data = self
+                .get_contract_account(address)
+                .await
+                .map_err(map_neon_error)?
+                .borrow_mut();
+            let pubkey = account_data.pubkey;
+
+            if account_data.is_empty() {
+                self.create_ethereum_contract(&mut account_data, address, chain_id, 0, &code)?;
+            } else {
+                let contract = ContractAccount::from_account(
+                    self.program_id(),
+                    account_data.into_account_info(),
+                )?;
+                let new_account_data = RefCell::new(AccountData::new(pubkey));
+                {
+                    let mut new_account = new_account_data.borrow_mut();
+                    let mut new_contract = self.create_ethereum_contract(
+                        &mut new_account,
+                        address,
+                        chain_id,
+                        contract.generation(),
+                        &code,
+                    )?;
+                    let storage = *contract.storage();
+                    new_contract.set_storage_multiple_values(0, &storage);
+                }
+                *account_data = new_account_data.replace_with(|_| AccountData::new(pubkey));
+            }
+        }
+
+        Ok(())
+    }
+    async fn apply_contract_overrides(&mut self, target_chain_id: u64) -> NeonResult<()> {
+        if self.state_overrides.is_none() {
+            return Ok(());
+        }
+        let codes_for_overriding: HashMap<Address, Bytes> = self
+            .state_overrides
+            .as_ref()
+            .unwrap()
+            .into_iter()
+            .filter(|(_, account)| account.code.is_some())
+            .map(|(&address, account)| (address, account.code.clone().unwrap()))
+            .collect();
+
+        for (address, code) in codes_for_overriding {
+            self.override_code_by(address, target_chain_id, code.0)
+                .await?;
+        }
+        Ok(())
+    }
+
     async fn apply_balance_overrides(&self, target_chain_id: u64) -> NeonResult<()> {
         if let Some(state_overrides) = self.state_overrides.as_ref() {
             for (address, overrides) in state_overrides.into_iter() {
@@ -1042,12 +1110,6 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         use evm_loader::evm::Buffer;
 
         info!("code {address}");
-
-        // TODO: move to reading data from Solana node
-        // let code_override = self.account_override(address, |a| a.code.clone());
-        // if let Some(code_override) = code_override {
-        //     return Buffer::from_vec(code_override.0);
-        // }
 
         let code = self
             .ethereum_contract_map_or(address, Vec::default(), |c| c.code().to_vec())

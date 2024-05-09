@@ -116,6 +116,24 @@ where
     Ok(action(&balance_account?))
 }
 
+async fn check_contract_code<T: rpc::Rpc>(
+    storage: &EmulatorAccountStorage<'_, T>,
+    address: Address,
+    code: Vec<u8>,
+) -> NeonResult<bool> {
+    let mut account_data = storage
+        .get_contract_account(address)
+        .await
+        .map_err(map_neon_error)?
+        .borrow_mut();
+
+    let contract =
+        ContractAccount::from_account(storage.program_id(), account_data.into_account_info())?;
+
+    let is_equal = hex::encode(&*contract.code()) == hex::encode(code);
+    Ok(is_equal)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn create_legacy_ether_contract(
     program_id: &Pubkey,
@@ -1682,12 +1700,23 @@ async fn test_state_overrides_nonce_and_balance() {
 async fn test_storage_with_accounts_and_override() {
     let expected_nonce = 17;
     let expected_balance = U256::MAX;
+    let expected_code = hex!("14").to_vec();
 
     let rent = Rent::default();
     let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
     let account_tuple = ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent);
+
     let accounts_for_rpc = vec![
-        (solana_sdk::sysvar::rent::id(), account_tuple.1.clone()),
+        (
+            Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap(),
+            Account {
+                lamports: 1009200,
+                data: bincode::serialize(&rent).unwrap(),
+                owner: Pubkey::from_str("Sysvar1111111111111111111111111111111111111").unwrap(),
+                executable: false,
+                rent_epoch: 0,
+            },
+        ),
         account_tuple.clone(),
     ];
     let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
@@ -1708,6 +1737,7 @@ async fn test_storage_with_accounts_and_override() {
             AccountOverride {
                 nonce: Some(expected_nonce),
                 balance: Some(expected_balance),
+                code: Some(web3::types::Bytes(expected_code.clone())),
                 ..Default::default()
             },
         )])),
@@ -1727,6 +1757,11 @@ async fn test_storage_with_accounts_and_override() {
             .await
             .expect("Failed to read balance"),
         expected_balance
+    );
+    assert!(
+        check_contract_code(&storage, ACTUAL_BALANCE.address, expected_code)
+            .await
+            .expect("The contract code must be udpated")
     );
 }
 

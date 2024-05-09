@@ -1,5 +1,6 @@
 use crate::account::{
-    program, AccountsDB, Holder, Operator, OperatorBalanceAccount, OperatorBalanceValidator,
+    program, AccountsDB, Holder, Operator, OperatorBalanceAccount, OperatorBalanceValidator, Sysvar,
+   
     Treasury,
 };
 use crate::debug::log_data;
@@ -26,6 +27,7 @@ pub fn process<'a>(
     let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
     let operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
     let system = program::System::from_account(&accounts[4])?;
+    let sysvar = Sysvar::from_account(&accounts[4])?;
 
     holder.validate_owner(&operator)?;
     holder.init_heap(0)?;
@@ -46,6 +48,7 @@ pub fn process<'a>(
         operator_balance,
         Some(system),
         Some(treasury),
+        Some(sysvar),
     );
 
     let mut gasometer = Gasometer::new(U256::ZERO, accounts_db.operator())?;

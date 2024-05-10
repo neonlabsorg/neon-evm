@@ -131,6 +131,23 @@ async fn check_contract_code<T: rpc::Rpc>(
     Ok(is_equal)
 }
 
+async fn get_storage_value<T: rpc::Rpc>(
+    storage: &EmulatorAccountStorage<'_, T>,
+    address: Address,
+    index: usize,
+) -> NeonResult<U256> {
+    let mut account_data = storage
+        .get_contract_account(address)
+        .await
+        .map_err(map_neon_error)?
+        .borrow_mut();
+
+    let contract =
+        ContractAccount::from_account(storage.program_id(), account_data.into_account_info())?;
+
+    Ok(U256::from_be_bytes(contract.storage_value(index)))
+}
+
 fn create_legacy_ether_contract(
     program_id: &Pubkey,
     rent: &Rent,
@@ -1738,7 +1755,6 @@ async fn test_storage_with_accounts_and_override() {
     let rent = Rent::default();
     let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
     let account_tuple = ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent);
-
     let accounts_for_rpc = vec![
         (
             Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap(),
@@ -1771,6 +1787,7 @@ async fn test_storage_with_accounts_and_override() {
                 nonce: Some(expected_nonce),
                 balance: Some(expected_balance),
                 code: Some(web3::types::Bytes(expected_code.clone())),
+                state_diff: Some([(U256::new(0), U256::MAX)].into()),
                 ..Default::default()
             },
         )])),
@@ -1795,6 +1812,12 @@ async fn test_storage_with_accounts_and_override() {
         check_contract_code(&storage, ACTUAL_BALANCE.address, expected_code)
             .await
             .expect("The contract code must be udpated")
+    );
+    assert_eq!(
+        get_storage_value(&storage, ACTUAL_BALANCE.address, 0x0)
+            .await
+            .expect("Failed to read storage value"),
+        U256::MAX
     );
 }
 

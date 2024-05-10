@@ -5,7 +5,10 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use solana_program_runtime::compute_budget::ComputeBudget;
 use solana_runtime::runtime_config::RuntimeConfig;
-use solana_sdk::{pubkey::Pubkey, transaction::VersionedTransaction};
+use solana_sdk::{
+    pubkey::Pubkey,
+    transaction::{SanitizedTransaction, Transaction, VersionedTransaction},
+};
 
 use crate::{
     rpc::Rpc, solana_simulator::SolanaSimulator, types::SimulateSolanaRequest, NeonResult,
@@ -25,40 +28,89 @@ pub struct SimulateSolanaResponse {
     transactions: Vec<SimulateSolanaTransactionResult>,
 }
 
+fn decode_transaction(data: &[u8]) -> NeonResult<VersionedTransaction> {
+    let tx_result = bincode::options()
+        .with_fixint_encoding()
+        .allow_trailing_bytes()
+        .deserialize::<VersionedTransaction>(data);
+
+    if let Ok(tx) = tx_result {
+        return Ok(tx);
+    }
+
+    let tx = bincode::options()
+        .with_fixint_encoding()
+        .allow_trailing_bytes()
+        .deserialize::<Transaction>(data)?;
+
+    Ok(tx.into())
+}
+
+fn address_table_lookups(txs: &[VersionedTransaction]) -> Vec<Pubkey> {
+    let mut accounts: HashSet<Pubkey> = HashSet::<Pubkey>::new();
+    for tx in txs {
+        let Some(address_table_lookups) = tx.message.address_table_lookups() else {
+            continue;
+        };
+
+        for alt in address_table_lookups {
+            accounts.insert(alt.account_key);
+        }
+    }
+
+    accounts.into_iter().collect()
+}
+
+fn account_keys(txs: &[SanitizedTransaction]) -> Vec<Pubkey> {
+    let mut accounts: HashSet<Pubkey> = HashSet::<Pubkey>::new();
+    for tx in txs {
+        let keys = tx.message().account_keys();
+        accounts.extend(keys.iter());
+    }
+
+    accounts.into_iter().collect()
+}
+
 pub async fn execute(
     rpc: &impl Rpc,
     request: SimulateSolanaRequest,
 ) -> NeonResult<SimulateSolanaResponse> {
-    let mut transactions: Vec<VersionedTransaction> = vec![];
-    for data in request.transactions {
-        let tx = bincode::options()
-            .with_fixint_encoding()
-            .allow_trailing_bytes()
-            .deserialize(&data)?;
-
-        transactions.push(tx);
-    }
-
-    let mut accounts: HashSet<Pubkey> = HashSet::<Pubkey>::new();
-    for tx in &transactions {
-        let keys = tx.message.static_account_keys();
-        accounts.extend(keys);
-    }
-
     let config = RuntimeConfig {
         compute_budget: request.compute_units.map(ComputeBudget::new),
         log_messages_bytes_limit: Some(100 * 1024),
         transaction_account_lock_limit: request.account_limit,
     };
+    let verify = request.verify.unwrap_or(true);
+
     let mut simulator = SolanaSimulator::new_with_config(rpc, config).await?;
 
-    let accounts: Vec<Pubkey> = accounts.into_iter().collect();
+    // Decode transactions from bytes
+    let mut transactions: Vec<VersionedTransaction> = vec![];
+    for data in request.transactions {
+        let tx = decode_transaction(&data)?;
+        transactions.push(tx);
+    }
+
+    // Download ALT
+    let alt = address_table_lookups(&transactions);
+    simulator.sync_accounts(rpc, &alt).await?;
+
+    // Sanitize transactions (verify tx and decode ALT)
+    let mut sanitized_transactions: Vec<SanitizedTransaction> = vec![];
+    for tx in transactions {
+        let sanitized = simulator.sanitize_transaction(tx, verify)?;
+        sanitized_transactions.push(sanitized);
+    }
+
+    // Download accounts
+    let accounts = account_keys(&sanitized_transactions);
     simulator.sync_accounts(rpc, &accounts).await?;
 
+    // Process transactions
     simulator.replace_blockhash(&request.blockhash.into());
 
     let results = simulator
-        .process_multiple_transactions(transactions)?
+        .process_multiple_transactions(&sanitized_transactions)?
         .into_iter()
         .map(|r| SimulateSolanaTransactionResult {
             error: r.status.err(),

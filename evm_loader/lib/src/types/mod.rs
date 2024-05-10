@@ -239,6 +239,7 @@ pub struct GetHolderRequest {
 pub struct SimulateSolanaRequest {
     pub compute_units: Option<u64>,
     pub account_limit: Option<usize>,
+    pub verify: Option<bool>,
     #[serde_as(as = "Hex")]
     pub blockhash: [u8; 32],
     #[serde_as(as = "Vec<Hex>")]

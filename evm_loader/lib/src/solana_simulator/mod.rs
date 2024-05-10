@@ -180,29 +180,39 @@ impl SolanaSimulator {
             .map(Account::from)
     }
 
+    pub fn sanitize_transaction(
+        &self,
+        tx: VersionedTransaction,
+        verify: bool,
+    ) -> Result<SanitizedTransaction, Error> {
+        let bank = self.bank();
+
+        let sanitized = if verify {
+            bank.verify_transaction(tx, TransactionVerificationMode::FullVerification)?
+        } else {
+            let hash = tx.message.hash();
+            SanitizedTransaction::try_create(tx, hash, None, bank)?
+        };
+
+        Ok(sanitized)
+    }
+
     pub fn process_transaction(
         &mut self,
-        tx: VersionedTransaction,
+        tx: SanitizedTransaction,
     ) -> Result<TransactionExecutionDetails, Error> {
-        let mut result = self.process_multiple_transactions(vec![tx])?;
+        let mut result = self.process_multiple_transactions(&[tx])?;
 
         Ok(result.remove(0))
     }
 
     pub fn process_multiple_transactions(
         &mut self,
-        txs: Vec<VersionedTransaction>,
+        txs: &[SanitizedTransaction],
     ) -> Result<Vec<TransactionExecutionDetails>, Error> {
         let bank = self.bank();
 
-        let mut sanitized_transactions = vec![];
-        for tx in txs {
-            let sanitized =
-                bank.verify_transaction(tx, TransactionVerificationMode::FullVerification)?;
-            sanitized_transactions.push(sanitized);
-        }
-
-        let batch = bank.prepare_sanitized_batch(&sanitized_transactions);
+        let batch = bank.prepare_sanitized_batch(txs);
 
         let (
             solana_accounts_db::transaction_results::TransactionResults {

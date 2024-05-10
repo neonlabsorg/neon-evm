@@ -122,7 +122,7 @@ pub fn execute_with_solana_call(
 
 // In case the transaction is DynamicFee:
 // (1) validate that the Operator specified the priority fee according to transaction.
-// (2) charge the User in favor of Operator with amount of `priority_fee_per_gas` * `LAMPORTS_PER_SIGNATURE`.
+// (2) charge the User in favor of Operator with amount of `priority_fee_per_gas` * `gas_used`.
 fn handle_priority_fee(
     trx: &Transaction,
     account_storage: &mut ProgramAccountStorage,

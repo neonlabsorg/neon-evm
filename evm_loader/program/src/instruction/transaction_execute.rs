@@ -137,7 +137,7 @@ fn handle_priority_fee(
             dynamic_fee_payload.max_fee_per_gas,
         )?;
 
-        let actual_priority_fee_in_tokens = dynamic_fee_payload
+        let priority_fee_in_tokens = dynamic_fee_payload
             .max_priority_fee_per_gas
             .checked_mul(used_gas)
             .ok_or(Error::PriorityFeeError(
@@ -145,7 +145,8 @@ fn handle_priority_fee(
             ))?;
 
         // Transfer priority fee.
-        account_storage.transfer_gas_payment(origin, chain_id, actual_priority_fee_in_tokens)?;
+        account_storage.transfer_gas_payment(origin, chain_id, priority_fee_in_tokens)?;
+        log_data(&[b"PRIORITYFEE", &priority_fee_in_tokens.to_le_bytes()]);
     }
 
     Ok(())

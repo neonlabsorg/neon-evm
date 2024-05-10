@@ -1,7 +1,6 @@
 use crate::account::{
-    program, AccountsDB, Holder, Operator, OperatorBalanceAccount, OperatorBalanceValidator, Sysvar,
-   
-    Treasury,
+    program, AccountsDB, Holder, Operator, OperatorBalanceAccount, OperatorBalanceValidator,
+    Sysvar, Treasury,
 };
 use crate::debug::log_data;
 use crate::error::Result;

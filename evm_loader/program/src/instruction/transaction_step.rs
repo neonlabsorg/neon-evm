@@ -9,8 +9,8 @@ use crate::evm::tracing::NoopEventListener;
 use crate::evm::{ExitStatus, Machine};
 use crate::executor::{Action, ExecutorState, ExecutorStateData};
 use crate::gasometer::{Gasometer, LAMPORTS_PER_SIGNATURE};
-use crate::types::TransactionPayload;
 use crate::types::boxx::boxx;
+use crate::types::TransactionPayload;
 use crate::types::TreeMap;
 use crate::types::Vector;
 

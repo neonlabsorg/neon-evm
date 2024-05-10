@@ -1,5 +1,6 @@
 pub use address::Address;
 pub use transaction::AccessListTx;
+pub use transaction::DynamicFeeTx;
 pub use transaction::LegacyTx;
 pub use transaction::StorageKey;
 pub use transaction::Transaction;

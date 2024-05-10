@@ -7,7 +7,8 @@ use crate::evm::Machine;
 use crate::executor::{ExecutorState, SyncedExecutorState};
 use crate::gasometer::Gasometer;
 use crate::instruction::transaction_step::log_return_value;
-use crate::types::{Address, Transaction};
+use crate::types::{Address, Transaction, TransactionPayload};
+use ethnum::U256;
 
 pub fn execute(
     accounts: AccountsDB<'_>,
@@ -60,6 +61,7 @@ pub fn execute(
 
     let gas_cost = used_gas.saturating_mul(gas_price);
     account_storage.transfer_gas_payment(origin, chain_id, gas_cost)?;
+    handle_priority_fee(&trx, &mut account_storage, origin, used_gas, chain_id)?;
 
     log_return_value(&exit_reason);
 
@@ -110,8 +112,40 @@ pub fn execute_with_solana_call(
 
     let gas_cost = used_gas.saturating_mul(gas_price);
     account_storage.transfer_gas_payment(origin, chain_id, gas_cost)?;
+    handle_priority_fee(&trx, &mut account_storage, origin, used_gas, chain_id)?;
 
     log_return_value(&exit_reason);
+
+    Ok(())
+}
+
+// In case the transaction is DynamicFee:
+// (1) validate that the Operator specified the priority fee according to transaction.
+// (2) charge the User in favor of Operator with amount of `priority_fee_per_gas` * `LAMPORTS_PER_SIGNATURE`.
+fn handle_priority_fee(
+    trx: &Transaction,
+    account_storage: &mut ProgramAccountStorage,
+    origin: Address,
+    used_gas: U256,
+    chain_id: u64,
+) -> Result<()> {
+    if let TransactionPayload::DynamicFee(dynamic_fee_payload) = &trx.transaction {
+        // Validate.
+        account_storage.db().sysvar().validate_priority_fee(
+            dynamic_fee_payload.max_priority_fee_per_gas,
+            dynamic_fee_payload.max_fee_per_gas,
+        )?;
+
+        let actual_priority_fee_in_tokens = dynamic_fee_payload
+            .max_priority_fee_per_gas
+            .checked_mul(used_gas)
+            .ok_or(Error::PriorityFeeError(
+                "max_priority_fee_per_gas * used_gas overflow".to_string(),
+            ))?;
+
+        // Transfer priority fee.
+        account_storage.transfer_gas_payment(origin, chain_id, actual_priority_fee_in_tokens)?;
+    }
 
     Ok(())
 }

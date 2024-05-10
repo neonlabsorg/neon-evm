@@ -1,4 +1,6 @@
 use crate::error::Error;
+use crate::gasometer::LAMPORTS_PER_SIGNATURE;
+use ethnum::U256;
 use solana_program::program_error::ProgramError;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, sysvar::instructions};
 use std::convert::From;
@@ -15,6 +17,12 @@ const COMPUTE_UNIT_LIMIT_TAG: u8 = 0x2;
 const COMPUTE_UNIT_PRICE_TAG: u8 = 0x3;
 // The default compute units limit for Solana transactions.
 const DEFAULT_COMPUTE_UNIT_LIMIT: u32 = 200_000;
+
+// The divisor in the conversion from priority fee in microlamports to priority fee per gas.
+// This divisor includes the tolerance_level := 0.9 which is an allowed discrepancy between
+// the actual priority fee per gas as paid by the Operator and the priority fee per gas
+// as set by the User in the transaction.
+const CONVERSION_DIVISOR: u64 = LAMPORTS_PER_SIGNATURE * 900_000;
 
 pub struct Sysvar<'a>(&'a AccountInfo<'a>);
 
@@ -39,7 +47,7 @@ impl<'a> Sysvar<'a> {
     pub fn get_compute_budget_priority_fee(&self) -> Result<(u32, u64), Error> {
         let compute_budget_account_pubkey =
             Pubkey::from_str(COMPUTE_BUDGET_ADDRESS).map_err(|_| {
-                Error::PriorityFeeParsingError("Invalid Compute budget address.".to_owned())
+                Error::PriorityFeeParsingError("Invalid Compute budget address.".to_string())
             })?;
         // Intent is to check all the instructions before the current one.
         let max_idx = instructions::load_current_index_checked(self.0)? as usize;
@@ -64,7 +72,7 @@ impl<'a> Sysvar<'a> {
                     compute_unit_limit = Some(u32::from_le_bytes(
                         cur_ixn.data[1..].try_into().map_err(|_| {
                             Error::PriorityFeeParsingError(
-                                "Invalid format of compute unit limit.".to_owned(),
+                                "Invalid format of compute unit limit.".to_string(),
                             )
                         })?,
                     ));
@@ -73,7 +81,7 @@ impl<'a> Sysvar<'a> {
                     compute_unit_price = Some(u64::from_le_bytes(
                         cur_ixn.data[1..].try_into().map_err(|_| {
                             Error::PriorityFeeParsingError(
-                                "Invalid format of compute unit price.".to_owned(),
+                                "Invalid format of compute unit price.".to_string(),
                             )
                         })?,
                     ));
@@ -94,6 +102,35 @@ impl<'a> Sysvar<'a> {
 
         // Both are not none, it's safe to unwrap.
         Ok((compute_unit_limit.unwrap(), compute_unit_price.unwrap()))
+    }
+
+    /// Checks that priority fee as set by the Operator is accurate to what User set as `max_priority_fee_per_gas`.
+    pub fn validate_priority_fee(
+        &self,
+        trx_max_priority_fee_per_gas: U256,
+        trx_max_fee_per_gas: U256,
+    ) -> Result<(), Error> {
+        let (cu_limit, cu_price) = self.get_compute_budget_priority_fee()?;
+        let priority_fee: U256 = cu_price
+            .checked_mul(u64::from(cu_limit))
+            .ok_or(Error::PriorityFeeError(
+                "cu_limit * cu_price overflow".to_string(),
+            ))?
+            .into();
+        let base_fee_per_gas = trx_max_fee_per_gas - trx_max_priority_fee_per_gas;
+
+        let actual_priority_fee_per_gas = base_fee_per_gas
+            .checked_mul(priority_fee)
+            .and_then(|res| res.checked_div(CONVERSION_DIVISOR.into()))
+            .ok_or(Error::PriorityFeeError("base_fee_per_gas * ".into()))?;
+
+        if actual_priority_fee_per_gas >= trx_max_priority_fee_per_gas {
+            Ok(())
+        } else {
+            Err(Error::PriorityFeeError(
+                "actual_priority_fee_per_gas < max_priority_fee_per_gas".to_string(),
+            ))
+        }
     }
 }
 

@@ -171,7 +171,7 @@ fn finalize<'a>(
             dynamic_fee_payload.max_fee_per_gas,
         )?;
 
-        let actual_priority_fee_in_tokens = dynamic_fee_payload
+        let priority_fee_in_tokens = dynamic_fee_payload
             .max_priority_fee_per_gas
             .checked_mul(LAMPORTS_PER_SIGNATURE.into())
             .ok_or(Error::PriorityFeeError(
@@ -185,8 +185,9 @@ fn finalize<'a>(
                 .trx()
                 .chain_id()
                 .unwrap_or(accounts.default_chain_id()),
-            actual_priority_fee_in_tokens,
+            priority_fee_in_tokens,
         )?;
+        log_data(&[b"PRIORITYFEE", &priority_fee_in_tokens.to_le_bytes()]);
     }
 
     if let Some(status) = status {

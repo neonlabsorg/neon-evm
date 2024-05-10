@@ -211,6 +211,9 @@ pub enum Error {
 
     #[error("Error while parsing priority fee instructions: {0}")]
     PriorityFeeParsingError(String),
+
+    #[error("Priority fee calculation error: {0}")]
+    PriorityFeeError(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

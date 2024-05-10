@@ -8,7 +8,8 @@ use crate::error::{Error, Result};
 use crate::evm::tracing::NoopEventListener;
 use crate::evm::{ExitStatus, Machine};
 use crate::executor::{Action, ExecutorState, ExecutorStateData};
-use crate::gasometer::Gasometer;
+use crate::gasometer::{Gasometer, LAMPORTS_PER_SIGNATURE};
+use crate::types::TransactionPayload;
 use crate::types::boxx::boxx;
 use crate::types::TreeMap;
 use crate::types::Vector;
@@ -187,6 +188,34 @@ fn finalize<'a, 'b>(
     ]);
 
     storage.consume_gas(used_gas, accounts.db().try_operator_balance())?;
+
+    // In case the transaction is DynamicFee:
+    // (1) validate that the Operator specified the priority fee according to transaction.
+    // (2) charge the User in favor of Operator with amount of `priority_fee_per_gas` * `LAMPORTS_PER_SIGNATURE`.
+    if let TransactionPayload::DynamicFee(dynamic_fee_payload) = &storage.trx().transaction {
+        // Validate.
+        accounts.db().sysvar().validate_priority_fee(
+            dynamic_fee_payload.max_priority_fee_per_gas,
+            dynamic_fee_payload.max_fee_per_gas,
+        )?;
+
+        let actual_priority_fee_in_tokens = dynamic_fee_payload
+            .max_priority_fee_per_gas
+            .checked_mul(LAMPORTS_PER_SIGNATURE.into())
+            .ok_or(Error::PriorityFeeError(
+                "max_priority_fee_per_gas * LAMPORTS_PER_SIGNATURE overflow".to_string(),
+            ))?;
+
+        // Transfer priority fee.
+        accounts.transfer_gas_payment(
+            storage.trx_origin(),
+            storage
+                .trx()
+                .chain_id()
+                .unwrap_or(accounts.default_chain_id()),
+            actual_priority_fee_in_tokens,
+        )?;
+    }
 
     if let Some(status) = status {
         log_return_value(&status);

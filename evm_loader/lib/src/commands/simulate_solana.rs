@@ -71,16 +71,26 @@ fn account_keys(txs: &[SanitizedTransaction]) -> Vec<Pubkey> {
     accounts.into_iter().collect()
 }
 
+fn runtime_config(request: &SimulateSolanaRequest) -> RuntimeConfig {
+    let compute_units = request.compute_units.unwrap_or(1_400_000);
+    let heap_size = request.heap_size.unwrap_or(256 * 1024);
+
+    let mut compute_budget = ComputeBudget::new(compute_units);
+    compute_budget.heap_size = heap_size;
+
+    RuntimeConfig {
+        compute_budget: Some(compute_budget),
+        log_messages_bytes_limit: Some(100 * 1024),
+        transaction_account_lock_limit: request.account_limit,
+    }
+}
+
 pub async fn execute(
     rpc: &impl Rpc,
     request: SimulateSolanaRequest,
 ) -> NeonResult<SimulateSolanaResponse> {
-    let config = RuntimeConfig {
-        compute_budget: request.compute_units.map(ComputeBudget::new),
-        log_messages_bytes_limit: Some(100 * 1024),
-        transaction_account_lock_limit: request.account_limit,
-    };
     let verify = request.verify.unwrap_or(true);
+    let config = runtime_config(&request);
 
     let mut simulator = SolanaSimulator::new_with_config(rpc, config).await?;
 

@@ -238,6 +238,7 @@ pub struct GetHolderRequest {
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct SimulateSolanaRequest {
     pub compute_units: Option<u64>,
+    pub heap_size: Option<u32>,
     pub account_limit: Option<usize>,
     pub verify: Option<bool>,
     #[serde_as(as = "Hex")]

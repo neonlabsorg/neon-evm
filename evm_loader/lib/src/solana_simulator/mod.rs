@@ -9,7 +9,7 @@ use solana_runtime::{
 };
 use solana_sdk::{
     account::Account,
-    bpf_loader, bpf_loader_upgradeable,
+    address_lookup_table, bpf_loader, bpf_loader_upgradeable,
     hash::Hash,
     pubkey::Pubkey,
     signature::Keypair,
@@ -79,12 +79,12 @@ impl SolanaSimulator {
     }
 
     pub async fn sync_accounts(&mut self, rpc: &impl Rpc, keys: &[Pubkey]) -> Result<(), Error> {
-        let mut storable_accounts = vec![];
+        let mut storable_accounts: Vec<(&Pubkey, &Account)> = vec![];
 
         let mut programdata_keys = vec![];
 
-        let accounts = rpc.get_multiple_accounts(keys).await?;
-        for (key, account) in keys.iter().zip(&accounts) {
+        let mut accounts = rpc.get_multiple_accounts(keys).await?;
+        for (key, account) in keys.iter().zip(&mut accounts) {
             let Some(account) = account else {
                 continue;
             };
@@ -92,6 +92,10 @@ impl SolanaSimulator {
             if account.executable && bpf_loader_upgradeable::check_id(&account.owner) {
                 let programdata_address = utils::program_data_address(account)?;
                 programdata_keys.push(programdata_address);
+            }
+
+            if account.owner == address_lookup_table::program::id() {
+                utils::reset_alt_slot(account).map_err(|_| Error::InvalidALT)?;
             }
 
             storable_accounts.push((key, account));
@@ -201,12 +205,12 @@ impl SolanaSimulator {
         &mut self,
         tx: SanitizedTransaction,
     ) -> Result<TransactionExecutionDetails, Error> {
-        let mut result = self.process_multiple_transactions(&[tx])?;
+        let mut result = self.process_multiple_not_intersected_transactions(&[tx])?;
 
         Ok(result.remove(0))
     }
 
-    pub fn process_multiple_transactions(
+    pub fn process_multiple_not_intersected_transactions(
         &mut self,
         txs: &[SanitizedTransaction],
     ) -> Result<Vec<TransactionExecutionDetails>, Error> {

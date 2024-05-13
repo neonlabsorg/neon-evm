@@ -18,4 +18,6 @@ pub enum Error {
     SanitizeError(#[from] solana_sdk::sanitize::SanitizeError),
     #[error("Instruction error {0:?}")]
     InstructionError(#[from] solana_sdk::instruction::InstructionError),
+    #[error("Invalid ALT")]
+    InvalidALT,
 }

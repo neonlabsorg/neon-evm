@@ -116,18 +116,18 @@ pub async fn execute(
     let accounts = account_keys(&sanitized_transactions);
     simulator.sync_accounts(rpc, &accounts).await?;
 
-    // Process transactions
     simulator.replace_blockhash(&request.blockhash.into());
 
-    let results = simulator
-        .process_multiple_transactions(&sanitized_transactions)?
-        .into_iter()
-        .map(|r| SimulateSolanaTransactionResult {
+    // Process transactions
+    let mut results = Vec::new();
+    for tx in sanitized_transactions {
+        let r = simulator.process_transaction(tx)?;
+        results.push(SimulateSolanaTransactionResult {
             error: r.status.err(),
             logs: r.log_messages.unwrap_or_default(),
             executed_units: r.executed_units,
         })
-        .collect();
+    }
 
     Ok(SimulateSolanaResponse {
         transactions: results,

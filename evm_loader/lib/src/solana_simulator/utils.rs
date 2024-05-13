@@ -6,6 +6,10 @@ use solana_runtime::{
 use solana_sdk::{
     account::Account,
     account_utils::StateMut,
+    address_lookup_table::{
+        self,
+        state::{AddressLookupTable, LookupTableMeta},
+    },
     bpf_loader_upgradeable::{self, UpgradeableLoaderState},
     fee_calculator::DEFAULT_TARGET_LAMPORTS_PER_SIGNATURE,
     native_token::sol_to_lamports,
@@ -187,6 +191,20 @@ pub fn reset_program_data_slot(account: &mut Account) -> Result<(), Error> {
         upgrade_authority_address,
     };
     account.set_state(&new_state)?;
+
+    Ok(())
+}
+
+pub fn reset_alt_slot(account: &mut Account) -> Result<(), Error> {
+    assert!(account.owner == address_lookup_table::program::id());
+
+    let lookup_table = AddressLookupTable::deserialize(&account.data)?;
+    let metadata = LookupTableMeta {
+        last_extended_slot: 0,
+        ..lookup_table.meta
+    };
+
+    AddressLookupTable::overwrite_meta_data(&mut account.data, metadata)?;
 
     Ok(())
 }

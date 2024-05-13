@@ -300,6 +300,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     #[should_panic(expected = "assertion failed: !self.ptr.is_null()")]
     fn test_deref_account_uninit() {
         let _: &[u8] = &Buffer::new(Inner::AccountUninit {

@@ -19,6 +19,7 @@ ENV NEON_REVISION=${REVISION}
 RUN cargo fmt --check && \
     cargo clippy --release && \
     cargo build --release && \
+    cargo test && \
     cargo build-bpf --manifest-path program/Cargo.toml --features devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
     cargo build-bpf --manifest-path program/Cargo.toml --features testnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet.so && \
     cargo build-bpf --manifest-path program/Cargo.toml --features govertest && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest.so && \

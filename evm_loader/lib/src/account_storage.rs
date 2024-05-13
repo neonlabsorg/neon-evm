@@ -1114,35 +1114,13 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
                 .await
                 .map_err(map_neon_error)?
                 .borrow_mut();
-            let pubkey = account_data.pubkey;
 
-            if account_data.is_empty() {
-                self.create_ethereum_contract(&mut account_data, address, chain_id, 0, &code)?;
-            } else {
-                let contract = ContractAccount::from_account(
-                    self.program_id(),
-                    account_data.into_account_info(),
-                )?;
-                if contract.code().len() > 0 {
-                    return Err(EvmLoaderError::AccountAlreadyInitialized(
-                        account_data.pubkey,
-                    ));
-                }
-                let new_account_data = RefCell::new(AccountData::new(pubkey));
-                {
-                    let mut new_account = new_account_data.borrow_mut();
-                    let mut new_contract = self.create_ethereum_contract(
-                        &mut new_account,
-                        address,
-                        chain_id,
-                        contract.generation(),
-                        &code,
-                    )?;
-                    let storage = *contract.storage();
-                    new_contract.set_storage_multiple_values(0, &storage);
-                }
-                *account_data = new_account_data.replace_with(|_| AccountData::new(pubkey));
+            if !account_data.is_empty() {
+                return Err(EvmLoaderError::AccountAlreadyInitialized(
+                    account_data.pubkey,
+                ));
             }
+            self.create_ethereum_contract(&mut account_data, address, chain_id, 0, &code)?;
         }
 
         let realloc = ContractAccount::required_account_size(&code)
@@ -2597,20 +2575,11 @@ mod tests {
 
         let code = hex!("13412971").to_vec();
         let contract = &ACTUAL_SUICIDE;
-        // TODO: Should we deploy new contract by the previous address?
-        assert_eq!(
-            storage
-                .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
-                .await
-                .is_ok(),
-            true,
-        );
-        storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), true, false)]);
-        storage.verify_upgrade_rent(0, 0);
-        storage.verify_regular_rent(
-            fixture.contract_rent(&code),
-            fixture.contract_rent(contract.code),
-        );
+
+        assert!(storage
+            .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
+            .await
+            .is_err());
     }
 
     #[tokio::test]
@@ -2620,30 +2589,10 @@ mod tests {
 
         let code = hex!("13412971").to_vec();
         let contract = &LEGACY_SUICIDE;
-        // TODO: Should we deploy new contract by the previous address?
-        assert_eq!(
-            storage
-                .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
-                .await
-                .is_ok(),
-            true,
-        );
-        storage.verify_used_accounts(&[
-            (
-                fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
-                true,
-                true,
-            ),
-            (fixture.contract_pubkey(contract.address), true, true),
-        ]);
-        storage.verify_upgrade_rent(
-            fixture.balance_rent() + fixture.contract_rent(&contract.code),
-            fixture.legacy_rent(Some(contract.code.len())),
-        );
-        storage.verify_regular_rent(
-            fixture.contract_rent(&code),
-            fixture.contract_rent(&contract.code),
-        );
+        assert!(storage
+            .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
+            .await
+            .is_err());
     }
 
     #[tokio::test]

@@ -2576,10 +2576,15 @@ mod tests {
         let code = hex!("13412971").to_vec();
         let contract = &ACTUAL_SUICIDE;
 
-        assert!(storage
-            .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
-            .await
-            .is_err());
+        assert_eq!(
+            storage
+                .set_code(contract.address, LEGACY_CHAIN_ID, code)
+                .await
+                .unwrap_err()
+                .to_string(),
+            EvmLoaderError::AccountAlreadyInitialized(fixture.contract_pubkey(contract.address))
+                .to_string()
+        );
     }
 
     #[tokio::test]
@@ -2589,10 +2594,15 @@ mod tests {
 
         let code = hex!("13412971").to_vec();
         let contract = &LEGACY_SUICIDE;
-        assert!(storage
-            .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
-            .await
-            .is_err());
+        assert_eq!(
+            storage
+                .set_code(contract.address, LEGACY_CHAIN_ID, code)
+                .await
+                .unwrap_err()
+                .to_string(),
+            EvmLoaderError::AccountAlreadyInitialized(fixture.contract_pubkey(contract.address))
+                .to_string()
+        );
     }
 
     #[tokio::test]

@@ -122,19 +122,9 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
 #[async_trait(?Send)]
 impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
     async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>> {
-        let account = if *key == self.operator {
-            Some(Account {
-                lamports: 100 * 1_000_000_000,
-                data: vec![],
-                owner: system_program::ID,
-                executable: false,
-                rent_epoch: 0,
-            })
-        } else if let Some(account) = self.accounts.get(key) {
-            let acc = &*account.borrow();
-            Some(acc.into())
-        } else {
-            self._get_account_from_rpc(*key).await?.cloned()
+        let account = match self.get_existing_account(key) {
+            Some(account) => Some(account),
+            None => self._get_account_from_rpc(*key).await?.cloned(),
         };
 
         Ok(Response {
@@ -154,16 +144,67 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
         unimplemented!();
     }
 
+    // Requests multiple accounts from RPC by chunks:
+    // -> FAKE_OPERATOR account is a special case and checked twice:
+    //    -> It set by default inside storage constructor to self.operator and
+    //       checked inside get_existing_account.
+    //    -> if self.operator is not same by some reason it handled as special case before go to the RPC.
+    // -> If accounts has been cached, it returned from cache.
+    // -> Returned accounts from RPC returned in same order as requested.
+    // -> Returned accounts added to the cache if required.
     async fn get_multiple_accounts(
         &self,
         pubkeys: &[Pubkey],
     ) -> ClientResult<Vec<Option<Account>>> {
-        // TODO: Optimize this!!!
-        let mut result = vec![];
-        for key in pubkeys {
-            let account = self.get_account(key).await?.value;
-            result.push(account);
+        let chunk_size = 100;
+        let mut result = vec![None; pubkeys.len()];
+        let mut chunk = Vec::with_capacity(chunk_size);
+        let mut index_map: HashMap<Pubkey, usize> = HashMap::new();
+
+        let update_cache_fn = |pubkeys: &[Pubkey], accounts: &[Option<Account>]| {
+            for (key, acc) in pubkeys.iter().zip(accounts.iter()) {
+                self.accounts_cache.insert(*key, Box::new(acc.clone()));
+            }
+        };
+
+        for (index, key) in pubkeys.iter().enumerate() {
+            if let Some(account) = self.get_existing_account(key) {
+                result[index] = Some(account);
+                continue;
+            }
+            if *key == FAKE_OPERATOR {
+                result[index] = None;
+                continue;
+            }
+            if let Some(account) = self.accounts_cache.get(key) {
+                result[index] = account.clone();
+            } else {
+                // Fill the tank for a bulk request.
+                chunk.push(*key);
+                index_map.insert(*key, index); // Map pubkey to its index
+                if chunk.len() == chunk_size {
+                    let received = self.rpc.get_multiple_accounts(&chunk).await?.into_iter();
+                    update_cache_fn(&chunk, received.as_ref());
+                    for (account, pubkey) in received.into_iter().zip(&chunk) {
+                        if let Some(index) = index_map.get(pubkey) {
+                            result[*index] = account;
+                        }
+                    }
+                    chunk.clear();
+                }
+            }
         }
+
+        if !chunk.is_empty() {
+            let received = self.rpc.get_multiple_accounts(&chunk).await?.into_iter();
+            update_cache_fn(&chunk, received.as_ref());
+            for (account, pubkey) in received.into_iter().zip(&chunk) {
+                if let Some(index) = index_map.get(pubkey) {
+                    result[*index] = account;
+                }
+            }
+        }
+
         Ok(result)
     }
 
@@ -304,6 +345,21 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
 }
 
 impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
+    fn get_existing_account(&self, key: &Pubkey) -> Option<Account> {
+        if *key == self.operator {
+            Some(Account {
+                lamports: 100 * 1_000_000_000,
+                data: vec![],
+                owner: system_program::ID,
+                executable: false,
+                rent_epoch: 0,
+            })
+        } else {
+            self.accounts
+                .get(key)
+                .map(|account| (&(*account.borrow())).into())
+        }
+    }
     async fn apply_balance_overrides(&self, target_chain_id: u64) -> NeonResult<()> {
         if let Some(state_overrides) = self.state_overrides.as_ref() {
             for (address, overrides) in state_overrides {

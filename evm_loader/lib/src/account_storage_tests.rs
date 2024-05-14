@@ -18,16 +18,19 @@ mod mock_rpc_client {
     use solana_sdk::clock::{Slot, UnixTimestamp};
     use solana_sdk::commitment_config::CommitmentConfig;
     use solana_sdk::pubkey::Pubkey;
+    use std::cell::RefCell;
     use std::collections::HashMap;
 
     pub struct MockRpcClient {
         accounts: HashMap<Pubkey, Account>,
+        pub multiple_accounts_requested_for_testing: RefCell<Vec<Pubkey>>,
     }
 
     impl MockRpcClient {
         pub fn new(accounts: &[(Pubkey, Account)]) -> Self {
             Self {
                 accounts: accounts.iter().cloned().collect(),
+                multiple_accounts_requested_for_testing: RefCell::new(vec![]),
             }
         }
     }
@@ -61,6 +64,7 @@ mod mock_rpc_client {
                 .iter()
                 .map(|key| self.accounts.get(key).cloned())
                 .collect::<Vec<_>>();
+            *self.multiple_accounts_requested_for_testing.borrow_mut() = pubkeys.to_vec();
             Ok(result)
         }
 
@@ -1785,4 +1789,345 @@ async fn test_storage_new_from_other_and_override() {
             .expect("Failed to read balance"),
         expected_balance
     );
+}
+
+#[tokio::test]
+async fn test_storage_get_multiple_accounts() {
+    let rent = Rent::default();
+    let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
+    let account_tuple = ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent);
+    let accounts_for_rpc = vec![
+        (solana_sdk::sysvar::rent::id(), account_tuple.1.clone()),
+        account_tuple.clone(),
+        ACTUAL_BALANCE2.account_with_pubkey(&program_id, &rent),
+        LEGACY_ACCOUNT.account_with_pubkey(&program_id, &rent),
+        ACTUAL_CONTRACT.account_with_pubkey(&program_id, &rent),
+        (
+            FAKE_OPERATOR,
+            LEGACY_CONTRACT_NO_BALANCE
+                .account_with_pubkey(&program_id, &rent)
+                .1,
+        ),
+        ACTUAL_CONTRACT.actual_storage_with_pubkey(&program_id, &rent),
+        ACTUAL_CONTRACT.legacy_storage_with_pubkey(&program_id, &rent),
+        ACTUAL_CONTRACT.outdate_storage_with_pubkey(&program_id, &rent),
+    ];
+    let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
+    let accounts_for_storage: Vec<Pubkey> = vec![account_tuple.0.clone()];
+    let storage = EmulatorAccountStorage::with_accounts(
+        &rpc_client,
+        program_id,
+        &accounts_for_storage,
+        vec![ChainInfo {
+            id: LEGACY_CHAIN_ID,
+            name: "neon".to_string(),
+            token: Pubkey::new_unique(),
+        }]
+        .into(),
+        None,
+        None,
+        None,
+        Some(LEGACY_CHAIN_ID),
+    )
+    .await
+    .expect("Failed to create storage");
+
+    {
+        // Account returned from cache, no calls to rpc.
+        assert_eq!(storage.accounts_cache.len(), 1);
+        assert!(storage
+            .accounts_cache
+            .get(&accounts_for_storage[0])
+            .is_some());
+
+        rpc_client
+            .multiple_accounts_requested_for_testing
+            .borrow_mut()
+            .clear();
+        assert!(rpc_client
+            .multiple_accounts_requested_for_testing
+            .borrow()
+            .is_empty());
+
+        let result = storage
+            .get_multiple_accounts(&[accounts_for_storage[0]])
+            .await
+            .expect("Failed to request accounts");
+        assert_eq!(result.len(), 1);
+        assert!(result[0].is_some());
+        assert_eq!(
+            storage
+                .accounts_cache
+                .get(&accounts_for_storage[0])
+                .unwrap()
+                .clone()
+                .unwrap(),
+            result[0].clone().unwrap()
+        );
+        assert!(rpc_client
+            .multiple_accounts_requested_for_testing
+            .borrow()
+            .is_empty());
+    }
+
+    {
+        // Return accounts from cache and rpc.
+        assert_eq!(storage.accounts_cache.len(), 1);
+        assert!(storage
+            .accounts_cache
+            .get(&accounts_for_storage[0])
+            .is_some());
+
+        rpc_client
+            .multiple_accounts_requested_for_testing
+            .borrow_mut()
+            .clear();
+        assert!(rpc_client
+            .multiple_accounts_requested_for_testing
+            .borrow()
+            .is_empty());
+        let keys_to_request: Vec<Pubkey> =
+            accounts_for_rpc.iter().map(|(key, _value)| *key).collect();
+        let accounts = storage
+            .get_multiple_accounts(keys_to_request.as_ref())
+            .await
+            .expect("Failed to request accounts");
+        assert_eq!(accounts.len(), keys_to_request.len());
+        // Expecting FAKE_OPERATOR as Some on 5th position.
+        assert_eq!(keys_to_request[5], FAKE_OPERATOR);
+        assert!(accounts[5].is_some());
+        assert_eq!(storage.operator, FAKE_OPERATOR);
+        // Check we returned valid accounts.
+        for (returned_account, requested_account) in accounts.iter().zip(accounts_for_rpc.clone()) {
+            if requested_account.0 == FAKE_OPERATOR {
+                assert!(returned_account.is_some());
+                // EmulatorAccountStorage.get_account has hardcoded account value.
+                assert_eq!(
+                    *returned_account,
+                    Some(Account {
+                        lamports: 100 * 1_000_000_000,
+                        data: vec![],
+                        owner: system_program::ID,
+                        executable: false,
+                        rent_epoch: 0,
+                    })
+                );
+                continue;
+            }
+            assert!(returned_account.is_some());
+            assert_eq!(*returned_account, Some(requested_account.1));
+        }
+        // FAKE_OPERATOR should not be added to cache so -1.
+        assert_eq!(storage.accounts_cache.len(), accounts_for_rpc.len() - 1);
+        // Check we added correct accounts to the cache.
+        for (returned_account, requested_key) in accounts.iter().zip(keys_to_request.clone()) {
+            if requested_key == FAKE_OPERATOR {
+                assert!(returned_account.is_some());
+                continue;
+            }
+            assert!(returned_account.is_some());
+            assert_eq!(
+                returned_account.clone().unwrap(),
+                storage
+                    .accounts_cache
+                    .get(&requested_key)
+                    .unwrap()
+                    .clone()
+                    .unwrap()
+            );
+        }
+
+        // We made  keys_to_request.len() - 2 RPC request because:
+        // -> 1 account has already been added to the cache.
+        // -> 1 account was FAKE OPERATOR account which is skipped.
+        assert_eq!(
+            rpc_client
+                .multiple_accounts_requested_for_testing
+                .borrow()
+                .len(),
+            keys_to_request.len() - 2
+        );
+    }
+
+    {
+        // FAKE_OPERATOR should return hardcoded value.
+        rpc_client
+            .multiple_accounts_requested_for_testing
+            .borrow_mut()
+            .clear();
+        assert!(rpc_client
+            .multiple_accounts_requested_for_testing
+            .borrow()
+            .is_empty());
+        let result = storage
+            .get_multiple_accounts(&[FAKE_OPERATOR])
+            .await
+            .expect("Failed to request accounts");
+        assert_eq!(result.len(), 1);
+        assert!(result[0].is_some());
+        assert!(rpc_client
+            .multiple_accounts_requested_for_testing
+            .borrow()
+            .is_empty());
+    }
+}
+
+#[tokio::test]
+async fn test_storage_get_multiple_accounts_order_with_fake_operator() {
+    let rent = Rent::default();
+    let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
+    let account_tuple = ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent);
+    let fake_operator = (
+        FAKE_OPERATOR,
+        LEGACY_CONTRACT_NO_BALANCE
+            .account_with_pubkey(&program_id, &rent)
+            .1,
+    );
+
+    let mut accounts_for_rpc = vec![
+        (solana_sdk::sysvar::rent::id(), account_tuple.1.clone()),
+        account_tuple.clone(),
+    ];
+    let mut none_indexes: HashSet<usize> = HashSet::new();
+    for i in accounts_for_rpc.len()..1000 {
+        if i % 9 == 0 {
+            accounts_for_rpc.push(fake_operator.clone());
+            none_indexes.insert(i);
+            continue;
+        }
+        accounts_for_rpc.push(account_tuple.clone());
+    }
+    let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
+    let accounts_for_storage: Vec<Pubkey> = vec![account_tuple.0.clone()];
+    let mut storage = EmulatorAccountStorage::with_accounts(
+        &rpc_client,
+        program_id,
+        &accounts_for_storage,
+        vec![ChainInfo {
+            id: LEGACY_CHAIN_ID,
+            name: "neon".to_string(),
+            token: Pubkey::new_unique(),
+        }]
+        .into(),
+        None,
+        None,
+        None,
+        Some(LEGACY_CHAIN_ID),
+    )
+    .await
+    .expect("Failed to create storage");
+    // Reset storage operator to check FAKE OPERATOR case on later stages.
+    storage.operator = Pubkey::new_unique();
+    // Check none indexes of returned accounts.
+    assert_eq!(storage.accounts_cache.len(), 1);
+    assert!(storage
+        .accounts_cache
+        .get(&accounts_for_storage[0])
+        .is_some());
+
+    rpc_client
+        .multiple_accounts_requested_for_testing
+        .borrow_mut()
+        .clear();
+    assert!(rpc_client
+        .multiple_accounts_requested_for_testing
+        .borrow()
+        .is_empty());
+    let keys_to_request: Vec<Pubkey> = accounts_for_rpc.iter().map(|(key, _value)| *key).collect();
+    let returned_accounts = storage
+        .get_multiple_accounts(keys_to_request.as_ref())
+        .await
+        .expect("Failed to request accounts");
+    assert_eq!(returned_accounts.len(), keys_to_request.len());
+    // Check we returned valid accounts in valid order.
+    for (index, returned_account) in returned_accounts.iter().enumerate() {
+        assert_eq!(returned_account.is_none(), none_indexes.contains(&index));
+    }
+    assert!(none_indexes.len() > 0);
+}
+
+#[tokio::test]
+async fn test_storage_get_multiple_accounts_order() {
+    let rent = Rent::default();
+    let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
+    let account_tuple = ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent);
+    let fake_operator = (
+        FAKE_OPERATOR,
+        LEGACY_CONTRACT_NO_BALANCE
+            .account_with_pubkey(&program_id, &rent)
+            .1,
+    );
+
+    let mut accounts_for_rpc = vec![
+        (solana_sdk::sysvar::rent::id(), account_tuple.1.clone()),
+        account_tuple.clone(),
+    ];
+    for i in accounts_for_rpc.len()..1000 {
+        if i % 9 == 0 {
+            accounts_for_rpc.push(fake_operator.clone());
+            continue;
+        }
+        accounts_for_rpc.push((Pubkey::new_unique(), account_tuple.1.clone()));
+    }
+    let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
+    let accounts_for_storage: Vec<Pubkey> = vec![account_tuple.0.clone()];
+    let storage = EmulatorAccountStorage::with_accounts(
+        &rpc_client,
+        program_id,
+        &accounts_for_storage,
+        vec![ChainInfo {
+            id: LEGACY_CHAIN_ID,
+            name: "neon".to_string(),
+            token: Pubkey::new_unique(),
+        }]
+        .into(),
+        None,
+        None,
+        None,
+        Some(LEGACY_CHAIN_ID),
+    )
+    .await
+    .expect("Failed to create storage");
+
+    // Check none indexes of returned accounts.
+    assert_eq!(storage.accounts_cache.len(), 1);
+    assert!(storage
+        .accounts_cache
+        .get(&accounts_for_storage[0])
+        .is_some());
+
+    rpc_client
+        .multiple_accounts_requested_for_testing
+        .borrow_mut()
+        .clear();
+    assert!(rpc_client
+        .multiple_accounts_requested_for_testing
+        .borrow()
+        .is_empty());
+    let keys_to_request: Vec<Pubkey> = accounts_for_rpc.iter().map(|(key, _value)| *key).collect();
+    let returned_accounts = storage
+        .get_multiple_accounts(keys_to_request.as_ref())
+        .await
+        .expect("Failed to request accounts");
+    assert_eq!(returned_accounts.len(), keys_to_request.len());
+    // Check we returned valid accounts in valid order.
+    for (returned_account, requested_account) in
+        returned_accounts.iter().zip(accounts_for_rpc.clone())
+    {
+        if requested_account.0 == FAKE_OPERATOR {
+            assert!(returned_account.is_some());
+            continue;
+        }
+        assert!(returned_account.is_some());
+        assert_eq!(*returned_account, Some(requested_account.1));
+        assert_eq!(
+            returned_account.clone().unwrap(),
+            storage
+                .accounts_cache
+                .get(&requested_account.0)
+                .unwrap()
+                .clone()
+                .unwrap()
+        );
+    }
 }

@@ -155,16 +155,61 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
         unimplemented!();
     }
 
+    // Requests multiple accounts from RPC:
+    // -> FAKE_OPERATOR skipped.
+    // -> If accounts has been cached, it returned from cache.
+    // -> Returned accounts from RPC returned in same order as requested.
+    // -> Returned accounts added to the cache if required.
     async fn get_multiple_accounts(
         &self,
         pubkeys: &[Pubkey],
     ) -> ClientResult<Vec<Option<Account>>> {
-        // TODO: Optimize this!!!
-        let mut result = vec![];
-        for key in pubkeys {
-            let account = self.get_account(key).await?.value;
-            result.push(account);
+        let chunk_size = 100;
+        let mut result = vec![None; pubkeys.len()];
+        let mut chunk = Vec::with_capacity(chunk_size);
+        let mut index_map: HashMap<Pubkey, usize> = HashMap::new();
+
+        let update_cache_fn = |pubkeys: &[Pubkey], accounts: &[Option<Account>]| {
+            for (key, acc) in pubkeys.iter().zip(accounts.iter()) {
+                self.accounts_cache.insert(*key, Box::new(acc.clone()));
+            }
+        };
+
+        for (index, key) in pubkeys.iter().enumerate() {
+            if *key == FAKE_OPERATOR {
+                result[index] = None;
+                continue;
+            }
+
+            if let Some(account) = self.accounts_cache.get(key) {
+                result[index] = account.clone();
+            } else {
+                // Fill the tank for a bulk request.
+                chunk.push(*key);
+                index_map.insert(*key, index); // Map pubkey to its index
+                if chunk.len() == chunk_size {
+                    let received = self.rpc.get_multiple_accounts(&chunk).await?.into_iter();
+                    update_cache_fn(&chunk, received.as_ref());
+                    for (account, pubkey) in received.into_iter().zip(&chunk) {
+                        if let Some(index) = index_map.get(&pubkey) {
+                            result[*index] = account;
+                        }
+                    }
+                    chunk.clear();
+                }
+            }
         }
+
+        if !chunk.is_empty() {
+            let received = self.rpc.get_multiple_accounts(&chunk).await?.into_iter();
+            update_cache_fn(&chunk, received.as_ref());
+            for (account, pubkey) in received.into_iter().zip(&chunk) {
+                if let Some(index) = index_map.get(&pubkey) {
+                    result[*index] = account;
+                }
+            }
+        }
+
         Ok(result)
     }
 

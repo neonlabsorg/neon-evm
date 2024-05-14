@@ -101,7 +101,13 @@ pub async fn execute<T: Tracer>(
     let result = emulate_trx(emulate_request.tx.clone(), &mut storage, step_limit, tracer).await?;
 
     if storage.is_timestamp_used() {
-        let mut storage2 = EmulatorAccountStorage::new_from_other(&storage, 5, 3);
+        let mut storage2 = EmulatorAccountStorage::new_from_other(
+            &storage,
+            5,
+            3,
+            emulate_request.tx.chain_id.clone(),
+        )
+        .await?;
         if let Ok(result2) = emulate_trx(
             emulate_request.tx,
             &mut storage2,

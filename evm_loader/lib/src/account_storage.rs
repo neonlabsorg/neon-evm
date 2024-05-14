@@ -187,6 +187,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         block_overrides: Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
         solana_overrides: Option<SolanaOverrides>,
+        tx_chain_id: Option<u64>,
     ) -> Result<EmulatorAccountStorage<T>, NeonError> {
         trace!("backend::new");
 
@@ -219,8 +220,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
                 accounts_cache.insert(pubkey, Box::new(account));
             }
         }
-
-        Ok(Self {
+        let storage = Self {
             accounts: FrozenMap::new(),
             call_stack: vec![],
             program_id,
@@ -238,11 +238,21 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             accounts_cache,
             used_accounts: FrozenMap::new(),
             return_data: RefCell::new(None),
-        })
+        };
+
+        let target_chain_id = tx_chain_id.unwrap_or(storage.default_chain_id());
+        storage.apply_balance_overrides(target_chain_id).await?;
+
+        Ok(storage)
     }
 
-    pub fn new_from_other(other: &Self, block_shift: u64, timestamp_shift: i64) -> Self {
-        Self {
+    pub async fn new_from_other(
+        other: &Self,
+        block_shift: u64,
+        timestamp_shift: i64,
+        tx_chain_id: Option<u64>,
+    ) -> Result<EmulatorAccountStorage<'rpc, T>, NeonError> {
+        let storage = Self {
             accounts: FrozenMap::new(),
             call_stack: vec![],
             program_id: other.program_id,
@@ -260,7 +270,10 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             accounts_cache: other.accounts_cache.clone(),
             used_accounts: other.used_accounts.clone(),
             return_data: RefCell::new(None),
-        }
+        };
+        let target_chain_id = tx_chain_id.unwrap_or(storage.default_chain_id());
+        storage.apply_balance_overrides(target_chain_id).await?;
+        Ok(storage)
     }
 
     pub async fn with_accounts(
@@ -280,12 +293,11 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             block_overrides,
             state_overrides,
             solana_overrides,
+            tx_chain_id,
         )
         .await?;
 
         storage.download_accounts(accounts).await?;
-        let target_chain_id = tx_chain_id.unwrap_or(storage.default_chain_id());
-        storage.apply_balance_overrides(target_chain_id).await?;
 
         Ok(storage)
     }

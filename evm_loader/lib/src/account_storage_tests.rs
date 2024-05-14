@@ -86,9 +86,9 @@ async fn get_overriden_nonce_and_balance(
 ) -> (u64, U256) {
     let mut fixture = Fixture::new().await;
     fixture.state_overrides = overrides;
-    let storage = fixture.build_account_storage().await;
-
-    assert!(storage.apply_balance_overrides(tx_chain_id).await.is_ok());
+    let storage = fixture
+        .build_account_storage_with_chain_id(Some(tx_chain_id))
+        .await;
 
     (
         storage.nonce(address, nonce_chain_id).await,
@@ -652,6 +652,23 @@ impl Fixture {
         }
     }
 
+    pub async fn build_account_storage_with_chain_id(
+        &self,
+        tx_chain_id: Option<u64>,
+    ) -> EmulatorAccountStorage<'_, mock_rpc_client::MockRpcClient> {
+        EmulatorAccountStorage::new(
+            &self.mock_rpc,
+            self.program_id,
+            Some(self.chains.clone()),
+            self.block_overrides.clone(),
+            self.state_overrides.clone(),
+            self.solana_overrides.clone(),
+            tx_chain_id,
+        )
+        .await
+        .unwrap()
+    }
+
     pub async fn build_account_storage(
         &self,
     ) -> EmulatorAccountStorage<'_, mock_rpc_client::MockRpcClient> {
@@ -662,6 +679,7 @@ impl Fixture {
             self.block_overrides.clone(),
             self.state_overrides.clone(),
             self.solana_overrides.clone(),
+            None,
         )
         .await
         .unwrap()
@@ -1693,7 +1711,7 @@ async fn test_state_overrides_nonce_and_balance() {
 }
 
 #[tokio::test]
-async fn test_storage_init_and_override() {
+async fn test_storage_with_accounts_and_override() {
     let expected_nonce = 17;
     let expected_balance = U256::MAX;
 
@@ -1738,6 +1756,63 @@ async fn test_storage_init_and_override() {
     );
     assert_eq!(
         get_balance_account_info(&storage, |account| account.balance())
+            .await
+            .expect("Failed to read balance"),
+        expected_balance
+    );
+}
+
+#[tokio::test]
+async fn test_storage_new_from_other_and_override() {
+    let expected_nonce = 17;
+    let expected_balance = U256::MAX;
+
+    let rent = Rent::default();
+    let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
+    let account_tuple = ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent);
+    let accounts_for_rpc = vec![
+        (solana_sdk::sysvar::rent::id(), account_tuple.1.clone()),
+        account_tuple.clone(),
+    ];
+    let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
+    let accounts_for_storage: Vec<Pubkey> = vec![account_tuple.0.clone()];
+    let storage = EmulatorAccountStorage::with_accounts(
+        &rpc_client,
+        program_id,
+        &accounts_for_storage,
+        vec![ChainInfo {
+            id: LEGACY_CHAIN_ID,
+            name: "neon".to_string(),
+            token: Pubkey::new_unique(),
+        }]
+        .into(),
+        None,
+        Some(AccountOverrides::from([(
+            ACTUAL_BALANCE.address,
+            AccountOverride {
+                nonce: Some(expected_nonce),
+                balance: Some(expected_balance),
+                ..Default::default()
+            },
+        )])),
+        None,
+        Some(LEGACY_CHAIN_ID),
+    )
+    .await
+    .expect("Failed to create storage");
+
+    let other_storage =
+        EmulatorAccountStorage::new_from_other(&storage, 0, 0, Some(LEGACY_CHAIN_ID))
+            .await
+            .expect("Failed to create a copy of storage");
+    assert_eq!(
+        get_balance_account_info(&other_storage, |account| account.nonce())
+            .await
+            .expect("Failed to read nonce"),
+        expected_nonce
+    );
+    assert_eq!(
+        get_balance_account_info(&other_storage, |account| account.balance())
             .await
             .expect("Failed to read balance"),
         expected_balance

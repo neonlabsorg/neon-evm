@@ -7,6 +7,7 @@ use std::str::FromStr;
 
 const STORAGE_LENGTH: usize = 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 
+use web3::types::H256;
 mod mock_rpc_client {
     use crate::commands::get_config::BuildConfigSimulator;
     use crate::NeonResult;
@@ -132,6 +133,31 @@ async fn check_contract_code<T: rpc::Rpc>(
 
     let is_equal = hex::encode(&*contract.code()) == hex::encode(code);
     Ok(is_equal)
+}
+
+async fn get_storage_value<T: rpc::Rpc>(
+    storage: &EmulatorAccountStorage<'_, T>,
+    address: Address,
+    index: U256,
+) -> NeonResult<U256> {
+    let value = if index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u64) {
+        let index: usize = index.as_usize();
+        storage
+            .ethereum_contract_map_or(address, [0_u8; 32], |c| c.storage_value(index))
+            .await
+            .unwrap()
+    } else {
+        let subindex = (index & 0xFF).as_u8();
+        let index = index & !U256::new(0xFF);
+
+        storage
+            .ethereum_storage_map_or(address, index, <[u8; 32]>::default(), |cell| {
+                cell.get(subindex)
+            })
+            .await
+            .unwrap()
+    };
+    Ok(U256::from_be_bytes(value))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1697,15 +1723,14 @@ async fn test_state_overrides_nonce_and_balance() {
 }
 
 #[tokio::test]
-async fn test_storage_with_accounts_and_override() {
+async fn test_storage_override_state_diff_balance_nonce() {
     let expected_nonce = 17;
     let expected_balance = U256::MAX;
     let expected_code = hex!("14").to_vec();
-
+    const STATIC_STORAGE_LIMIT: U256 = U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128);
     let rent = Rent::default();
     let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
     let account_tuple = ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent);
-
     let accounts_for_rpc = vec![
         (
             Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap(),
@@ -1720,7 +1745,8 @@ async fn test_storage_with_accounts_and_override() {
         account_tuple.clone(),
     ];
     let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
-    let accounts_for_storage: Vec<Pubkey> = vec![account_tuple.0];
+    let accounts_for_storage: Vec<Pubkey> = vec![account_tuple.0.clone()];
+
     let storage = EmulatorAccountStorage::with_accounts(
         &rpc_client,
         program_id,
@@ -1738,6 +1764,16 @@ async fn test_storage_with_accounts_and_override() {
                 nonce: Some(expected_nonce),
                 balance: Some(expected_balance),
                 code: Some(web3::types::Bytes(expected_code.clone())),
+                state_diff: Some(
+                    [
+                        (H256::zero(), H256::from(U256::MAX.to_be_bytes())),
+                        (
+                            H256::from((STATIC_STORAGE_LIMIT + 1).to_be_bytes()),
+                            H256::from(U256::MAX.to_be_bytes()),
+                        ),
+                    ]
+                    .into(),
+                ),
                 ..Default::default()
             },
         )])),
@@ -1762,6 +1798,18 @@ async fn test_storage_with_accounts_and_override() {
         check_contract_code(&storage, ACTUAL_BALANCE.address, expected_code)
             .await
             .expect("The contract code must be udpated")
+    );
+    assert_eq!(
+        get_storage_value(&storage, ACTUAL_BALANCE.address, U256::new(0))
+            .await
+            .expect("Failed to read storage value"),
+        U256::MAX
+    );
+    assert_eq!(
+        get_storage_value(&storage, ACTUAL_BALANCE.address, STATIC_STORAGE_LIMIT + 1)
+            .await
+            .expect("Failed to read storage value"),
+        U256::MAX
     );
 }
 
@@ -1820,4 +1868,107 @@ async fn test_storage_new_from_other_and_override() {
             .expect("Failed to read balance"),
         expected_balance
     );
+}
+
+#[tokio::test]
+async fn test_storage_override_state() {
+    const STATIC_STORAGE_LIMIT: U256 = U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128);
+    let rent = Rent::default();
+    let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
+    let account_tuple = ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent);
+    let accounts_for_rpc = vec![
+        (
+            Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap(),
+            Account {
+                lamports: 1009200,
+                data: bincode::serialize(&rent).unwrap(),
+                owner: Pubkey::from_str("Sysvar1111111111111111111111111111111111111").unwrap(),
+                executable: false,
+                rent_epoch: 0,
+            },
+        ),
+        account_tuple.clone(),
+    ];
+    let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
+    let accounts_for_storage: Vec<Pubkey> = vec![account_tuple.0.clone()];
+    let storage = EmulatorAccountStorage::with_accounts(
+        &rpc_client,
+        program_id,
+        &accounts_for_storage,
+        vec![ChainInfo {
+            id: LEGACY_CHAIN_ID,
+            name: "neon".to_string(),
+            token: Pubkey::new_unique(),
+        }]
+        .into(),
+        None,
+        Some(AccountOverrides::from([(
+            ACTUAL_BALANCE.address,
+            AccountOverride {
+                state: Some(
+                    [
+                        (H256::zero(), H256::from(U256::MAX.to_be_bytes())),
+                        (
+                            H256::from((STATIC_STORAGE_LIMIT + 1).to_be_bytes()),
+                            H256::from(U256::MAX.to_be_bytes()),
+                        ),
+                    ]
+                    .into(),
+                ),
+                // state and stateDiff can't be specified at the same time. If state is set,
+                // message execution will only use the data in the given state.
+                // Otherwise if statDiff is set, all diff will be applied first and then execute the call.
+                state_diff: Some(
+                    [
+                        (
+                            H256::from(U256::new(40).to_be_bytes()),
+                            H256::from(U256::MAX.to_be_bytes()),
+                        ),
+                        (
+                            H256::from((STATIC_STORAGE_LIMIT + 2).to_be_bytes()),
+                            H256::from(U256::MAX.to_be_bytes()),
+                        ),
+                    ]
+                    .into(),
+                ),
+                ..Default::default()
+            },
+        )])),
+        None,
+        Some(LEGACY_CHAIN_ID),
+    )
+    .await
+    .expect("Failed to create storage");
+    assert_eq!(
+        get_storage_value(&storage, ACTUAL_BALANCE.address, U256::new(0))
+            .await
+            .expect("Failed to read storage value"),
+        U256::MAX
+    );
+    assert_eq!(
+        get_storage_value(&storage, ACTUAL_BALANCE.address, STATIC_STORAGE_LIMIT + 1)
+            .await
+            .expect("Failed to read storage value"),
+        U256::MAX
+    );
+    // Checking state_diff values were not applied.
+    assert_eq!(
+        get_storage_value(&storage, ACTUAL_BALANCE.address, STATIC_STORAGE_LIMIT + 2)
+            .await
+            .expect("Failed to read storage value"),
+        0
+    );
+
+    for i in 1..STATIC_STORAGE_LIMIT.as_usize() {
+        assert_eq!(
+            get_storage_value(
+                &storage,
+                ACTUAL_BALANCE.address,
+                U256::new(i.try_into().unwrap())
+            )
+            .await
+            .expect("Failed to read storage value"),
+            0
+        );
+    }
 }

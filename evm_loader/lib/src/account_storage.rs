@@ -40,7 +40,7 @@ use std::{
 };
 
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
-use crate::tracing::{AccountOverrides, BlockOverrides};
+use crate::tracing::{AccountOverride, AccountOverrides, BlockOverrides};
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
@@ -304,9 +304,10 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
 }
 
 impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
+    // https://geth.ethereum.org/docs/developers/evm-tracing/built-in-tracers#state-overrides
     async fn apply_state_overrides(&mut self, target_chain_id: u64) -> NeonResult<()> {
-        self.apply_balance_overrides(target_chain_id).await?;
         self.apply_contract_overrides(target_chain_id).await?;
+        self.apply_balance_overrides(target_chain_id).await?;
         Ok(())
     }
     /// Overrides existing code for a contract, used in emulations only.
@@ -355,18 +356,47 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         if self.state_overrides.is_none() {
             return Ok(());
         }
-        let codes_for_overriding: HashMap<Address, Bytes> = self
+        let accounts_for_overriding: HashMap<Address, AccountOverride> = self
             .state_overrides
             .as_ref()
             .unwrap()
             .into_iter()
-            .filter(|(_, account)| account.code.is_some())
-            .map(|(&address, account)| (address, account.code.clone().unwrap()))
+            .filter(|(_, account)| {
+                account.code.is_some() || account.state_diff.is_some() || account.state.is_some()
+            })
+            .map(|(&address, account)| (address, account.clone()))
             .collect();
 
-        for (address, code) in codes_for_overriding {
-            self.override_code_by(address, target_chain_id, code.0)
-                .await?;
+        for (address, account) in accounts_for_overriding {
+            if let Some(state) = account.state {
+                for (index, value) in state {
+                    info!("apply state overrides at {index} as {value} for {address}");
+                    self.set_storage(
+                        address,
+                        U256::from_be_bytes(index.to_fixed_bytes()),
+                        value.to_fixed_bytes(),
+                    )
+                    .await?
+                }
+            // state and stateDiff can't be specified at the same time.
+            // If state is set, message execution will only use the data in
+            // the given state. Otherwise if statDiff is set,
+            // all diff will be applied first and then execute the call.
+            } else if let Some(state_diff) = account.state_diff {
+                for (index, value) in state_diff {
+                    info!("apply stateDiff overrides at {index} as {value} for {address}");
+                    self.set_storage(
+                        address,
+                        U256::from_be_bytes(index.to_fixed_bytes()),
+                        value.to_fixed_bytes(),
+                    )
+                    .await?
+                }
+            }
+            if let Some(code) = account.code {
+                self.override_code_by(address, target_chain_id, code.0)
+                    .await?;
+            }
         }
         Ok(())
     }
@@ -407,6 +437,18 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
 
         Ok(())
+    }
+
+    fn is_storage_overriden(&self, pubkey: Pubkey) -> bool {
+        self.state_overrides.as_ref().map_or(false, |overrides| {
+            overrides
+                .iter()
+                .filter(|(address, _)| {
+                    let (overridden_pubkey, _) = address.find_solana_address(&self.program_id);
+                    overridden_pubkey == pubkey
+                })
+                .any(|(_, overrides)| overrides.state.is_some())
+        })
     }
 
     pub async fn _get_account_from_rpc(
@@ -707,6 +749,13 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
 
         if let Some(account) = self.accounts.get(&pubkey) {
             return Ok(account);
+        }
+
+        if self.is_storage_overriden(pubkey) {
+            // In case of emulated state overrides full storage we should not
+            // go to the node and return empty account here to fill it by
+            // overriden data.
+            return Ok(self.add_empty_account(pubkey));
         }
 
         match self._get_account_from_rpc(pubkey).await? {
@@ -1135,12 +1184,6 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     }
 
     async fn storage(&self, address: Address, index: U256) -> [u8; 32] {
-        // TODO: move to reading data from Solana node
-        // let storage_override = self.account_override(address, |a| a.storage(index));
-        // if let Some(storage_override) = storage_override {
-        //     return storage_override;
-        // }
-
         let value = if index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u64) {
             let index: usize = index.as_usize();
             self.ethereum_contract_map_or(address, [0_u8; 32], |c| c.storage_value(index))

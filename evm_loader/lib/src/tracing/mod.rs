@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ethnum::U256;
 use serde_json::Value;
-use web3::types::Bytes;
+use web3::types::{Bytes, H256};
 
 use evm_loader::types::Address;
 
@@ -33,8 +33,8 @@ pub struct AccountOverride {
     pub nonce: Option<u64>,
     pub code: Option<Bytes>,
     pub balance: Option<U256>,
-    pub state: Option<HashMap<U256, U256>>,
-    pub state_diff: Option<HashMap<U256, U256>>,
+    pub state: Option<HashMap<H256, H256>>,
+    pub state_diff: Option<HashMap<H256, H256>>,
 }
 
 impl AccountOverride {
@@ -45,8 +45,14 @@ impl AccountOverride {
             (Some(_), Some(_)) => {
                 panic!("Account has both `state` and `stateDiff` overrides")
             }
-            (Some(state), None) => return state.get(&index).map(|value| value.to_be_bytes()),
-            (None, Some(state_diff)) => state_diff.get(&index).map(|v| v.to_be_bytes()),
+            (Some(state), None) => {
+                return state
+                    .get(&H256::from(index.to_be_bytes()))
+                    .map(|value| value.to_fixed_bytes())
+            }
+            (None, Some(state_diff)) => state_diff
+                .get(&H256::from(index.to_be_bytes()))
+                .map(|v| v.to_fixed_bytes()),
         }
     }
 }

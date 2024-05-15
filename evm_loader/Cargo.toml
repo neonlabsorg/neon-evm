@@ -21,3 +21,6 @@ solana-sdk = "=1.17.33"
 solana-program-runtime = "=1.17.33"
 solana-runtime = "=1.17.33"
 solana-accounts-db = "=1.17.33"
+
+[profile.test]
+debug = true

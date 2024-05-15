@@ -35,7 +35,7 @@ class GithubClient():
         click.echo(f"Sent data: {data}")
         click.echo(f"Status code: {response.status_code}")
         if response.status_code != 204:
-            raise RuntimeError("proxy-model.py action is not triggered, error: {response.text}")
+            raise RuntimeError("Proxy action is not triggered, error: {response.text}")
 
     @staticmethod
     def is_branch_exist(endpoint, branch):

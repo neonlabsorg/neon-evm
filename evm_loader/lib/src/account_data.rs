@@ -1,3 +1,4 @@
+use log::info;
 pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 // use solana_sdk::account::{ReadableAccount, WritableAccount};
 use solana_sdk::system_program;
@@ -81,6 +82,8 @@ impl AccountData {
     }
 
     pub fn assign(&mut self, owner: Pubkey) -> evm_loader::error::Result<()> {
+        info!("balance_data2.owner: {}", self.owner);
+        info!("owner: {}", owner);
         if self.owner != system_program::ID {
             return Err(evm_loader::error::Error::AccountAlreadyInitialized(
                 self.pubkey,

@@ -363,8 +363,10 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             .address
             .find_balance_address(&self.program_id, self.default_chain_id());
         let balance_data = self.add_empty_account(balance_pubkey)?;
+        info!("balance_data0.1.owner: {}", balance_data.borrow().owner);
         if (legacy.balance > 0) || (legacy.trx_count > 0) {
             let mut balance_data = balance_data.borrow_mut();
+            info!("balance_data1.owner: {}", balance_data.owner);
             let mut balance = self.create_ethereum_balance(
                 &mut balance_data,
                 legacy.address,
@@ -528,10 +530,15 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
 
     fn add_empty_account(&self, pubkey: Pubkey) -> NeonResult<&RefCell<AccountData>> {
         let account_data = AccountData::new(pubkey);
+        info!("balance_data0.owner: {}", account_data.owner);
         self.mark_account(pubkey, false);
-        Ok(self
+        info!("balance_data0.0.1.owner: {}", account_data.owner);
+        info!("balance_data0.0.0.1.owner: {:?}", self.accounts.get(&pubkey));
+        let v = Ok(self
             .accounts
-            .insert(pubkey, Box::new(RefCell::new(account_data))))
+            .insert(pubkey, Box::new(RefCell::new(account_data))));
+        info!("balance_data0.0.0.0.1.owner: {:?}", v);
+        v
     }
 
     async fn use_account(

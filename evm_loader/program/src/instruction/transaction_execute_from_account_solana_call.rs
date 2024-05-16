@@ -1,4 +1,7 @@
-use crate::account::{program, AccountsDB, BalanceAccount, Holder, Operator, Treasury};
+use crate::account::{
+    program, AccountsDB, Holder, Operator, OperatorBalanceAccount, OperatorBalanceValidator,
+    Treasury,
+};
 use crate::debug::log_data;
 use crate::error::Result;
 use crate::gasometer::Gasometer;
@@ -21,7 +24,7 @@ pub fn process<'a>(
 
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1])? };
     let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
-    let operator_balance = BalanceAccount::from_account(program_id, accounts[3].clone())?;
+    let operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
     let system = program::System::from_account(&accounts[4])?;
 
     holder.validate_owner(&operator)?;
@@ -29,14 +32,17 @@ pub fn process<'a>(
     holder.validate_transaction(&trx)?;
 
     let origin = trx.recover_caller_address()?;
+    operator_balance.validate_owner(&operator)?;
+    operator_balance.validate_transaction(&trx)?;
+    let miner_address = operator_balance.miner(origin);
 
     log_data(&[b"HASH", &trx.hash()]);
-    log_data(&[b"MINER", operator_balance.address().as_bytes()]);
+    log_data(&[b"MINER", miner_address.as_bytes()]);
 
     let accounts_db = AccountsDB::new(
         &accounts[5..],
         operator,
-        Some(operator_balance),
+        operator_balance,
         Some(system),
         Some(treasury),
     );

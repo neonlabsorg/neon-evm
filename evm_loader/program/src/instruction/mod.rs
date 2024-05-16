@@ -233,9 +233,9 @@ impl EvmInstruction {
             0x38 => Self::TransactionExecuteFromInstructionWithSolanaCall, // 56
             0x39 => Self::TransactionExecuteFromAccountWithSolanaCall, // 57
 
-            0x38 => Self::OperatorBalanceCreate,   // 56
-            0x39 => Self::OperatorBalanceDelete,   // 57
-            0x3A => Self::OperatorBalanceWithdraw, // 58
+            0x3A => Self::OperatorBalanceCreate,   // 58
+            0x3B => Self::OperatorBalanceDelete,   // 59
+            0x3C => Self::OperatorBalanceWithdraw, // 60
 
             0xA0 => Self::ConfigGetChainCount, // 160
             0xA1 => Self::ConfigGetChainInfo,

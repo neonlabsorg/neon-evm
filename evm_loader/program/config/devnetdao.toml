@@ -1,0 +1,21 @@
+program_id = "CeT8eFTXjGfrSbzqCCurssdYHGucG28Qb22FiZP9jLKr"
+operators_whitelist = [
+    "NeoQM3utcHGxhKT41Nq81g8t4xGcPNFpkAgYj1N2N8v",
+    "54Sn9AwNeYUM5XqcWyYvXpduPiAe9DdukgmW3YP8Msu9",
+    "AS5DGtgjX2gYRkqK1ZomKu1wvJxqmkjgm6g7CQLqT3A7",
+    "9QkLhzDK18jC5Vm2budvgWRpZ4DkJz4mSqypo484N3J",
+    "5pZDXbWSUFfvo5Z2iLJkUa89K3db8EizS6LXVQV852nQ",
+    "9Wf3eCygnUTZmbGUeEyzkHTuz6YqzGMfygmdNRCQMoZm"
+]
+
+[chain.neon]
+id = 245022926
+token = "7PtCZ7skn1Pb11CmiNkRnYvbRKJjptsDzQU8eTxZb85e"
+
+[chain.sol]
+id = 245022927
+token = "So11111111111111111111111111111111111111112"
+
+[chain.usdc]
+id = 245022928
+token = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"

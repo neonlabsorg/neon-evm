@@ -13,6 +13,8 @@ cfg_if! {
         net_specific_config_parser!("config/devnet.toml");
     } else if #[cfg(feature = "govertest")] {
         net_specific_config_parser!("config/govertest.toml");
+    } else if #[cfg(feature = "devnetdao")] {
+        net_specific_config_parser!("config/devnetdao.toml");
     } else {
         net_specific_config_parser!("config/default.toml");
     }

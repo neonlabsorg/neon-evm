@@ -1,12 +1,10 @@
-use std::collections::HashMap;
-
 use ethnum::U256;
 use serde_json::Value;
+use serde_with::serde_as;
 use web3::types::{Bytes, H256};
-
-use evm_loader::types::Address;
-
 pub mod tracers;
+use evm_loader::types::Address;
+use std::collections::{HashMap, HashSet};
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L993>
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -25,6 +23,18 @@ pub struct BlockOverrides {
     #[allow(unused)]
     pub base_fee: Option<U256>, // NOT SUPPORTED BY Neon EVM
 }
+
+#[derive(Eq, PartialEq, Hash, Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde_as]
+pub struct ChainBalanceOverride {
+    pub address: Option<Address>,
+    pub chain_id: Option<u64>,
+    pub nonce: Option<u64>,
+    pub balance: Option<U256>,
+}
+
+pub type ChainBalanceOverrides = HashSet<ChainBalanceOverride>;
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L942>
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
@@ -89,4 +99,9 @@ pub struct TraceCallConfig {
     pub trace_config: TraceConfig,
     pub block_overrides: Option<BlockOverrides>,
     pub state_overrides: Option<AccountOverrides>,
+    pub balance_overrides: Option<HashMap<String, ChainBalanceOverride>>,
 }
+
+#[cfg(test)]
+#[path = "./mod_tests.rs"]
+mod mod_tests;

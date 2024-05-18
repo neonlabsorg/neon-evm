@@ -17,7 +17,7 @@ pub async fn execute(
     address: Address,
     index: U256,
 ) -> NeonResult<GetStorageAtReturn> {
-    let value = EmulatorAccountStorage::new(rpc, *program_id, None, None, None, None, None)
+    let value = EmulatorAccountStorage::new(rpc, *program_id, None, None, None, None, None, None)
         .await?
         .storage(address, index)
         .await;

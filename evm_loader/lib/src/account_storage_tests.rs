@@ -1,6 +1,6 @@
 use super::*;
 use crate::rpc;
-use crate::tracing::AccountOverride;
+use crate::tracing::{AccountOverride, ChainBalanceOverride, ChainBalanceOverrides};
 use hex_literal::hex;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -8,6 +8,7 @@ use std::str::FromStr;
 const STORAGE_LENGTH: usize = 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 
 use web3::types::H256;
+
 mod mock_rpc_client {
     use crate::commands::get_config::BuildConfigSimulator;
     use crate::NeonResult;
@@ -83,14 +84,12 @@ mod mock_rpc_client {
 }
 
 async fn get_overriden_nonce_and_balance(
+    storage: &Fixture,
     address: Address,
     tx_chain_id: u64,
     nonce_chain_id: u64,
-    overrides: Option<AccountOverrides>,
 ) -> (u64, U256) {
-    let mut fixture = Fixture::new();
-    fixture.state_overrides = overrides;
-    let storage = fixture
+    let storage = storage
         .build_account_storage_with_chain_id(Some(tx_chain_id))
         .await;
 
@@ -102,13 +101,15 @@ async fn get_overriden_nonce_and_balance(
 
 async fn get_balance_account_info<T: rpc::Rpc, F, R>(
     storage: &EmulatorAccountStorage<'_, T>,
+    address: Address,
+    chain_id: u64,
     action: F,
 ) -> NeonResult<R>
 where
     F: FnOnce(&BalanceAccount) -> R,
 {
     let mut balance_data = storage
-        .get_balance_account(ACTUAL_BALANCE.address, LEGACY_CHAIN_ID)
+        .get_balance_account(address, chain_id)
         .await?
         .borrow_mut();
     let balance_account =
@@ -668,6 +669,7 @@ impl Fixture {
             Some(self.chains.clone()),
             self.block_overrides.clone(),
             self.state_overrides.clone(),
+            None,
             self.solana_overrides.clone(),
             tx_chain_id,
         )
@@ -684,6 +686,7 @@ impl Fixture {
             Some(self.chains.clone()),
             self.block_overrides.clone(),
             self.state_overrides.clone(),
+            None,
             self.solana_overrides.clone(),
             None,
         )
@@ -1623,15 +1626,17 @@ async fn test_state_overrides_nonce_and_balance() {
             },
         ),
     ]);
+    let mut fixture = Fixture::new().await;
+    fixture.state_overrides = Some(overriden_state);
 
     // Checking override for another acount and chain where we expect only
     // nonce overriden.
     assert_eq!(
         get_overriden_nonce_and_balance(
+            &fixture,
             ACTUAL_BALANCE2.address,
             EXTRA_CHAIN_ID,
-            EXTRA_CHAIN_ID,
-            Some(overriden_state.clone())
+            EXTRA_CHAIN_ID
         )
         .await,
         (expected_nonce, ACTUAL_BALANCE2.balance)
@@ -1641,10 +1646,10 @@ async fn test_state_overrides_nonce_and_balance() {
     // balance and nonce.
     assert_eq!(
         get_overriden_nonce_and_balance(
+            &fixture,
             ACTUAL_BALANCE.address,
             LEGACY_CHAIN_ID,
-            LEGACY_CHAIN_ID,
-            Some(overriden_state.clone())
+            LEGACY_CHAIN_ID
         )
         .await,
         (expected_nonce, expected_balance)
@@ -1654,25 +1659,26 @@ async fn test_state_overrides_nonce_and_balance() {
     assert_ne!(expected_nonce, ACTUAL_BALANCE.nonce);
     assert_eq!(
         get_overriden_nonce_and_balance(
+            &fixture,
             ACTUAL_BALANCE.address,
             EXTRA_CHAIN_ID,
-            LEGACY_CHAIN_ID,
-            Some(overriden_state.clone())
+            LEGACY_CHAIN_ID
         )
         .await,
         (ACTUAL_BALANCE.nonce, ACTUAL_BALANCE.balance)
     );
 
+    fixture.state_overrides = Some(AccountOverrides::from([
+        (ACTUAL_BALANCE.address, AccountOverride::default()),
+        (ACTUAL_BALANCE2.address, AccountOverride::default()),
+    ]));
     // Do not override if all items are None.
     assert_eq!(
         get_overriden_nonce_and_balance(
+            &fixture,
             ACTUAL_BALANCE.address,
             LEGACY_CHAIN_ID,
-            LEGACY_CHAIN_ID,
-            Some(AccountOverrides::from([
-                (ACTUAL_BALANCE.address, AccountOverride::default()),
-                (ACTUAL_BALANCE2.address, AccountOverride::default())
-            ]))
+            LEGACY_CHAIN_ID
         )
         .await,
         (ACTUAL_BALANCE.nonce, ACTUAL_BALANCE.balance)
@@ -1684,13 +1690,14 @@ async fn test_storage_override_state_diff_balance_nonce() {
     let expected_nonce = 17;
     let expected_balance = U256::MAX;
     let expected_code = hex!("14").to_vec();
-    const STATIC_STORAGE_LIMIT: U256 = U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128);
+
     let rent = Rent::default();
     let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
-    let account_tuple = ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent);
+
+    let shared_account = Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap();
     let accounts_for_rpc = vec![
         (
-            Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap(),
+            shared_account,
             Account {
                 lamports: 1009200,
                 data: bincode::serialize(&rent).unwrap(),
@@ -1699,11 +1706,32 @@ async fn test_storage_override_state_diff_balance_nonce() {
                 rent_epoch: 0,
             },
         ),
-        account_tuple.clone(),
+        ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent),
     ];
-    let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
-    let accounts_for_storage: Vec<Pubkey> = vec![account_tuple.0.clone()];
 
+    let accounts_for_storage: Vec<Pubkey> = vec![shared_account.clone()];
+    let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
+
+    let state_overrides = Some(AccountOverrides::from([(
+        ACTUAL_BALANCE.address,
+        AccountOverride {
+            nonce: Some(expected_nonce),
+            balance: Some(expected_balance),
+            code: Some(web3::types::Bytes(expected_code.clone())),
+            state_diff: Some(
+                [
+                    (H256::zero(), H256::from(U256::MAX.to_be_bytes())),
+                    (
+                        H256::from((STATIC_STORAGE_LIMIT + 1).to_be_bytes()),
+                        H256::from(U256::MAX.to_be_bytes()),
+                    ),
+                ]
+                .into(),
+            ),
+            ..Default::default()
+        },
+    )]));
+    let tx_chain_id = Some(LEGACY_CHAIN_ID);
     let storage = EmulatorAccountStorage::with_accounts(
         &rpc_client,
         program_id,
@@ -1715,41 +1743,34 @@ async fn test_storage_override_state_diff_balance_nonce() {
         }]
         .into(),
         None,
-        Some(AccountOverrides::from([(
-            ACTUAL_BALANCE.address,
-            AccountOverride {
-                nonce: Some(expected_nonce),
-                balance: Some(expected_balance),
-                code: Some(web3::types::Bytes(expected_code.clone())),
-                state_diff: Some(
-                    [
-                        (H256::zero(), H256::from(U256::MAX.to_be_bytes())),
-                        (
-                            H256::from((STATIC_STORAGE_LIMIT + 1).to_be_bytes()),
-                            H256::from(U256::MAX.to_be_bytes()),
-                        ),
-                    ]
-                    .into(),
-                ),
-                ..Default::default()
-            },
-        )])),
+        state_overrides,
         None,
-        Some(LEGACY_CHAIN_ID),
+        None,
+        tx_chain_id,
     )
     .await
     .expect("Failed to create storage");
 
     assert_eq!(
-        get_balance_account_info(&storage, |account: &BalanceAccount| account.nonce())
-            .await
-            .expect("Failed to read nonce"),
+        get_balance_account_info(
+            &storage,
+            ACTUAL_BALANCE.address,
+            LEGACY_CHAIN_ID,
+            |account| account.nonce()
+        )
+        .await
+        .expect("Failed to read nonce"),
         expected_nonce
     );
     assert_eq!(
-        get_balance_account_info(&storage, |account: &BalanceAccount| account.balance())
-            .await
-            .expect("Failed to read balance"),
+        get_balance_account_info(
+            &storage,
+            ACTUAL_BALANCE.address,
+            LEGACY_CHAIN_ID,
+            |account| account.balance()
+        )
+        .await
+        .expect("Failed to read balance"),
         expected_balance
     );
 
@@ -1759,10 +1780,17 @@ async fn test_storage_override_state_diff_balance_nonce() {
         U256::MAX.to_be_bytes()
     );
     assert_eq!(
-        storage
-            .storage(ACTUAL_BALANCE.address, STATIC_STORAGE_LIMIT + 1)
-            .await,
-        U256::MAX.to_be_bytes()
+        get_storage_value(&storage, ACTUAL_BALANCE.address, U256::new(0))
+            .await
+            .expect("Failed to read storage value"),
+        U256::MAX
+    );
+    const STATIC_STORAGE_LIMIT: U256 = U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128);
+    assert_eq!(
+        get_storage_value(&storage, ACTUAL_BALANCE.address, STATIC_STORAGE_LIMIT + 1)
+            .await
+            .expect("Failed to read storage value"),
+        U256::MAX
     );
 }
 
@@ -1800,6 +1828,7 @@ async fn test_storage_new_from_other_and_override() {
             },
         )])),
         None,
+        None,
         Some(LEGACY_CHAIN_ID),
     )
     .await
@@ -1810,15 +1839,25 @@ async fn test_storage_new_from_other_and_override() {
             .await
             .expect("Failed to create a copy of storage");
     assert_eq!(
-        get_balance_account_info(&other_storage, |account: &BalanceAccount| account.nonce())
-            .await
-            .expect("Failed to read nonce"),
+        get_balance_account_info(
+            &other_storage,
+            ACTUAL_BALANCE.address,
+            LEGACY_CHAIN_ID,
+            |account| account.nonce()
+        )
+        .await
+        .expect("Failed to read nonce"),
         expected_nonce
     );
     assert_eq!(
-        get_balance_account_info(&other_storage, |account: &BalanceAccount| account.balance())
-            .await
-            .expect("Failed to read balance"),
+        get_balance_account_info(
+            &other_storage,
+            ACTUAL_BALANCE.address,
+            LEGACY_CHAIN_ID,
+            |account| account.balance()
+        )
+        .await
+        .expect("Failed to read balance"),
         expected_balance
     );
 }
@@ -1888,6 +1927,7 @@ async fn test_storage_override_state() {
             },
         )])),
         None,
+        None,
         Some(LEGACY_CHAIN_ID),
     )
     .await
@@ -1918,4 +1958,166 @@ async fn test_storage_override_state() {
             [0u8; 32]
         );
     }
+}
+
+#[tokio::test]
+async fn test_storage_override_chain_balance_nonce() {
+    let expected_nonce = 17;
+    let expected_balance = U256::MAX;
+
+    let rent = Rent::default();
+    let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
+
+    let shared_account = Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap();
+    let accounts_for_rpc = vec![
+        (
+            shared_account,
+            Account {
+                lamports: 1009200,
+                data: bincode::serialize(&rent).unwrap(),
+                owner: Pubkey::from_str("Sysvar1111111111111111111111111111111111111").unwrap(),
+                executable: false,
+                rent_epoch: 0,
+            },
+        ),
+        ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent),
+    ];
+
+    let accounts_for_storage: Vec<Pubkey> = vec![shared_account.clone()];
+    let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
+
+    let chain_balance_overrides = ChainBalanceOverrides::from([
+        ChainBalanceOverride {
+            address: Some(ACTUAL_BALANCE.address),
+            chain_id: Some(111),
+            nonce: Some(expected_nonce),
+            balance: Some(expected_balance),
+        },
+        ChainBalanceOverride {
+            address: Some(ACTUAL_BALANCE2.address),
+            chain_id: Some(222),
+            nonce: Some(expected_nonce),
+            balance: Some(expected_balance),
+        },
+    ]);
+    let tx_chain_id = Some(LEGACY_CHAIN_ID);
+    let storage = EmulatorAccountStorage::with_accounts(
+        &rpc_client,
+        program_id,
+        &accounts_for_storage,
+        vec![ChainInfo {
+            id: LEGACY_CHAIN_ID,
+            name: "neon".to_string(),
+            token: Pubkey::new_unique(),
+        }]
+        .into(),
+        None,
+        None,
+        Some(chain_balance_overrides),
+        None,
+        tx_chain_id,
+    )
+    .await
+    .expect("Failed to create storage");
+
+    assert_eq!(
+        get_balance_account_info(&storage, ACTUAL_BALANCE.address, 111, |account| account
+            .nonce())
+        .await
+        .expect("Failed to read nonce"),
+        expected_nonce
+    );
+    assert_eq!(
+        get_balance_account_info(&storage, ACTUAL_BALANCE2.address, 222, |account| account
+            .balance())
+        .await
+        .expect("Failed to read balance"),
+        expected_balance
+    );
+}
+
+#[tokio::test]
+async fn test_storage_override_chain_conditions() {
+    let expected_nonce = 17;
+    let expected_balance = U256::MAX;
+
+    let rent = Rent::default();
+    let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
+
+    let shared_account = Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap();
+    let accounts_for_rpc = vec![
+        (
+            shared_account,
+            Account {
+                lamports: 1009200,
+                data: bincode::serialize(&rent).unwrap(),
+                owner: Pubkey::from_str("Sysvar1111111111111111111111111111111111111").unwrap(),
+                executable: false,
+                rent_epoch: 0,
+            },
+        ),
+        ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent),
+        ACTUAL_BALANCE2.account_with_pubkey(&program_id, &rent),
+    ];
+
+    let accounts_for_storage: Vec<Pubkey> = vec![shared_account.clone()];
+    let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
+
+    let chain_balance_overrides = ChainBalanceOverrides::from([
+        ChainBalanceOverride {
+            address: None,
+            chain_id: Some(111),
+            nonce: Some(expected_nonce),
+            balance: Some(expected_balance),
+        },
+        ChainBalanceOverride {
+            address: Some(ACTUAL_BALANCE2.address),
+            chain_id: None,
+            nonce: Some(expected_nonce),
+            balance: Some(expected_balance),
+        },
+    ]);
+    let tx_chain_id = Some(LEGACY_CHAIN_ID);
+    let storage = EmulatorAccountStorage::with_accounts(
+        &rpc_client,
+        program_id,
+        &accounts_for_storage,
+        vec![ChainInfo {
+            id: LEGACY_CHAIN_ID,
+            name: "neon".to_string(),
+            token: Pubkey::new_unique(),
+        }]
+        .into(),
+        None,
+        None,
+        Some(chain_balance_overrides),
+        None,
+        tx_chain_id,
+    )
+    .await
+    .expect("Failed to create storage");
+
+    // No overrides happen because no address or chain id.
+    assert_eq!(
+        get_balance_account_info(
+            &storage,
+            ACTUAL_BALANCE.address,
+            ACTUAL_BALANCE.chain_id,
+            |account| account.nonce()
+        )
+        .await
+        .expect("Failed to read nonce"),
+        ACTUAL_BALANCE.nonce
+    );
+    assert_eq!(
+        get_balance_account_info(
+            &storage,
+            ACTUAL_BALANCE2.address,
+            ACTUAL_BALANCE2.chain_id,
+            |account| account.balance()
+        )
+        .await
+        .expect("Failed to read balance"),
+        ACTUAL_BALANCE2.balance
+    );
 }

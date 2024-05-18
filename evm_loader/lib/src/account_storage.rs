@@ -40,7 +40,7 @@ use std::{
 };
 
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
-use crate::tracing::{AccountOverride, AccountOverrides, BlockOverrides};
+use crate::tracing::{AccountOverride, AccountOverrides, BlockOverrides, ChainBalanceOverrides};
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
@@ -114,6 +114,8 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     timestamp_used: RefCell<bool>,
     rent: Rent,
     state_overrides: Option<AccountOverrides>,
+    // Overrides nonce and balance per chain id. (NDEV-3020)
+    chain_balance_overrides: Option<ChainBalanceOverrides>,
     accounts_cache: FrozenMap<Pubkey, Box<Option<Account>>>,
     used_accounts: FrozenMap<Pubkey, Box<RefCell<SolanaAccount>>>,
     return_data: RefCell<Option<TransactionReturnData>>,
@@ -185,6 +187,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         chains: Option<Vec<ChainInfo>>,
         block_overrides: Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
+        chain_balance_overrides: Option<ChainBalanceOverrides>,
         solana_overrides: Option<SolanaOverrides>,
         tx_chain_id: Option<u64>,
     ) -> Result<EmulatorAccountStorage<T>, NeonError> {
@@ -233,6 +236,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             block_timestamp,
             timestamp_used: RefCell::new(false),
             state_overrides,
+            chain_balance_overrides,
             rent,
             accounts_cache,
             used_accounts: FrozenMap::new(),
@@ -241,6 +245,8 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         storage
             .apply_state_overrides(tx_chain_id.unwrap_or_else(|| storage.default_chain_id()))
             .await?;
+        storage.apply_chain_overrides().await?;
+
         Ok(storage)
     }
 
@@ -265,6 +271,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             timestamp_used: RefCell::new(false),
             rent: other.rent,
             state_overrides: other.state_overrides.clone(),
+            chain_balance_overrides: other.chain_balance_overrides.clone(),
             accounts_cache: other.accounts_cache.clone(),
             used_accounts: other.used_accounts.clone(),
             return_data: RefCell::new(None),
@@ -272,6 +279,8 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         storage
             .apply_state_overrides(tx_chain_id.unwrap_or_else(|| storage.default_chain_id()))
             .await?;
+        storage.apply_chain_overrides().await?;
+
         Ok(storage)
     }
 
@@ -283,6 +292,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         chains: Option<Vec<ChainInfo>>,
         block_overrides: Option<BlockOverrides>,
         state_overrides: Option<AccountOverrides>,
+        chain_balance_overrides: Option<ChainBalanceOverrides>,
         solana_overrides: Option<SolanaOverrides>,
         tx_chain_id: Option<u64>,
     ) -> Result<EmulatorAccountStorage<'rpc, T>, NeonError> {
@@ -292,6 +302,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             chains,
             block_overrides,
             state_overrides,
+            chain_balance_overrides,
             solana_overrides,
             tx_chain_id,
         )
@@ -304,6 +315,36 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
 }
 
 impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
+    async fn apply_chain_overrides(&mut self) -> NeonResult<()> {
+        if let Some(chain_overrides) = self.chain_balance_overrides.as_ref() {
+            for data in chain_overrides.into_iter() {
+                // Address and chain_id are mandatory both for overriding.
+                if (data.address.is_none() || data.chain_id.is_none())
+                    || (data.nonce.is_none() && data.balance.is_none())
+                {
+                    continue;
+                }
+                let address = data.address.unwrap();
+                let chain_id = data.chain_id.unwrap();
+
+                let mut balance_data = self
+                    .get_balance_account(address, chain_id)
+                    .await?
+                    .borrow_mut();
+                let mut balance =
+                    self.get_or_create_ethereum_balance(&mut balance_data, address, chain_id)?;
+                if let Some(nonce) = data.nonce {
+                    info!("apply nonce overrides {address} -> {nonce} for chain {chain_id}");
+                    balance.override_nonce_by(nonce);
+                }
+                if let Some(expected_balance) = data.balance {
+                    info!("apply balance overrides {address} -> {expected_balance} for chain {chain_id}");
+                    balance.override_balance_by(expected_balance);
+                }
+            }
+        }
+        Ok(())
+    }
     // https://geth.ethereum.org/docs/developers/evm-tracing/built-in-tracers#state-overrides
     async fn apply_state_overrides(&mut self, target_chain_id: u64) -> NeonResult<()> {
         self.apply_contract_overrides(target_chain_id).await?;

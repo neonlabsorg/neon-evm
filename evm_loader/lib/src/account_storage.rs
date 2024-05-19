@@ -378,11 +378,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     }
 
     async fn download_accounts(&self, pubkeys: &[Pubkey]) -> Result<(), NeonError> {
-        let accounts = self.rpc.get_multiple_accounts(pubkeys).await?;
-
-        for (key, account) in pubkeys.iter().zip(accounts) {
-            self.accounts_cache.insert(*key, Box::new(account));
-        }
+        self.get_multiple_accounts(pubkeys).await?;
 
         Ok(())
     }

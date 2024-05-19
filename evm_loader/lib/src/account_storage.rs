@@ -146,12 +146,12 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
 
     // Requests multiple accounts from RPC by chunks:
     // -> FAKE_OPERATOR account is a special case and checked twice:
-    //    -> It set by default inside storage constructor to self.operator and
+    //    -> It is set by default inside storage constructor to self.operator and
     //       checked inside get_existing_account.
     //    -> if self.operator is not same by some reason it handled as special case before go to the RPC.
     // -> If accounts has been cached, it returned from cache.
-    // -> Returned accounts from RPC returned in same order as requested.
-    // -> Returned accounts added to the cache if required.
+    // -> Accounts from RPC returned in same order as requested.
+    // -> Returned accounts from RPC added to the accounts_cache .
     async fn get_multiple_accounts(
         &self,
         pubkeys: &[Pubkey],
@@ -161,7 +161,7 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
         let mut chunk = Vec::with_capacity(chunk_size);
         let mut index_map: HashMap<Pubkey, usize> = HashMap::new();
 
-        let update_cache_fn = |pubkeys: &[Pubkey], accounts: &[Option<Account>]| {
+        let update_accounts_cache = |pubkeys: &[Pubkey], accounts: &[Option<Account>]| {
             for (key, acc) in pubkeys.iter().zip(accounts.iter()) {
                 self.accounts_cache.insert(*key, Box::new(acc.clone()));
             }
@@ -184,7 +184,7 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
                 index_map.insert(*key, index); // Map pubkey to its index
                 if chunk.len() == chunk_size {
                     let received = self.rpc.get_multiple_accounts(&chunk).await?.into_iter();
-                    update_cache_fn(&chunk, received.as_ref());
+                    update_accounts_cache(&chunk, received.as_ref());
                     for (account, pubkey) in received.into_iter().zip(&chunk) {
                         if let Some(index) = index_map.get(pubkey) {
                             result[*index] = account;
@@ -197,7 +197,7 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
 
         if !chunk.is_empty() {
             let received = self.rpc.get_multiple_accounts(&chunk).await?.into_iter();
-            update_cache_fn(&chunk, received.as_ref());
+            update_accounts_cache(&chunk, received.as_ref());
             for (account, pubkey) in received.into_iter().zip(&chunk) {
                 if let Some(index) = index_map.get(pubkey) {
                     result[*index] = account;
@@ -389,11 +389,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     }
 
     async fn download_accounts(&self, pubkeys: &[Pubkey]) -> Result<(), NeonError> {
-        let accounts = self.rpc.get_multiple_accounts(pubkeys).await?;
-
-        for (key, account) in pubkeys.iter().zip(accounts) {
-            self.accounts_cache.insert(*key, Box::new(account));
-        }
+        self.get_multiple_accounts(pubkeys).await?;
 
         Ok(())
     }

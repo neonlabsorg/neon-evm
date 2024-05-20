@@ -92,7 +92,7 @@ pub async fn execute<T: Tracer>(
         block_overrides,
         state_overrides,
         solana_overrides,
-        emulate_request.tx.chain_id.clone(),
+        emulate_request.tx.chain_id,
     )
     .await?;
 
@@ -105,7 +105,7 @@ pub async fn execute<T: Tracer>(
             &storage,
             5,
             3,
-            emulate_request.tx.chain_id.clone(),
+            emulate_request.tx.chain_id,
         )
         .await?;
         if let Ok(result2) = emulate_trx(

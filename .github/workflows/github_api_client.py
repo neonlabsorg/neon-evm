@@ -23,19 +23,20 @@ class GithubClient():
             f"{self.proxy_endpoint}/actions/workflows/pipeline.yml/runs?branch={proxy_branch}", headers=self.headers)
         return int(response.json()["total_count"])
 
-    def run_proxy_dispatches(self, proxy_branch, neon_evm_branch, github_sha, full_test_suite, initial_pr):
+    def run_proxy_dispatches(self, proxy_branch, neon_evm_branch, github_sha, full_test_suite, initial_pr, is_trigger_tracer_tests: str = 'false'):
         data = {"ref": proxy_branch,
                 "inputs": {"full_test_suite": f"{full_test_suite}".lower(),
                            "neon_evm_commit": github_sha,
                            "neon_evm_branch": neon_evm_branch,
-                           "initial_pr": initial_pr}
+                           "initial_pr": initial_pr,
+                           "trigger_tracer_tests": is_trigger_tracer_tests}
                 }
         response = requests.post(
             f"{self.proxy_endpoint}/actions/workflows/pipeline.yml/dispatches", json=data, headers=self.headers)
         click.echo(f"Sent data: {data}")
         click.echo(f"Status code: {response.status_code}")
         if response.status_code != 204:
-            raise RuntimeError("Proxy action is not triggered, error: {response.text}")
+            raise RuntimeError(f"Proxy action is not triggered, error: {response.text}")
 
     @staticmethod
     def is_branch_exist(endpoint, branch):

@@ -276,6 +276,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         Ok(storage)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn with_accounts(
         rpc: &'rpc T,
         program_id: Pubkey,

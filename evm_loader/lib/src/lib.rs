@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 pub mod abi;
 pub mod account_data;
 pub mod account_storage;

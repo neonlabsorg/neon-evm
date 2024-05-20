@@ -13,6 +13,8 @@ use super::process_result;
 #[routes]
 #[post("/config")]
 #[get("/config")]
+// TODO: Remove future_not_send.
+#[allow(clippy::future_not_send)]
 pub async fn get_config(state: NeonApiState, request_id: RequestId) -> impl Responder {
     let rpc = match state.build_rpc(None, None).await {
         Ok(rpc) => rpc,

@@ -11,6 +11,8 @@ use super::process_result;
 
 #[tracing::instrument(skip_all, fields(id = request_id.as_str()))]
 #[post("/emulate")]
+// TODO: Remove future_not_send.
+#[allow(clippy::future_not_send)]
 pub async fn emulate(
     state: NeonApiState,
     request_id: RequestId,

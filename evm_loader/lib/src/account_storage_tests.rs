@@ -352,9 +352,7 @@ struct ActualBalance {
 
 impl ActualBalance {
     pub fn account_with_pubkey(&self, program_id: &Pubkey, rent: &Rent) -> (Pubkey, Account) {
-        let (pubkey, _) = self
-            .address
-            .find_balance_address(program_id, self.chain_id);
+        let (pubkey, _) = self.address.find_balance_address(program_id, self.chain_id);
         let mut account_data = AccountData::new(pubkey);
         account_data.assign(*program_id).unwrap();
         account_data.expand(BalanceAccount::required_account_size());
@@ -882,12 +880,10 @@ async fn test_modify_actual_and_missing_account() {
     let from = &ACTUAL_BALANCE;
     let amount = U256::new(10);
     assert_eq!(from.chain_id, LEGACY_CHAIN_ID);
-    assert!(
-        storage
-            .transfer(from.address, MISSING_ADDRESS, from.chain_id, amount)
-            .await
-            .is_ok()
-    );
+    assert!(storage
+        .transfer(from.address, MISSING_ADDRESS, from.chain_id, amount)
+        .await
+        .is_ok());
 
     storage.verify_used_accounts(&[
         (
@@ -923,12 +919,10 @@ async fn test_modify_actual_and_missing_account_extra_chain() {
     let from = &ACTUAL_BALANCE2;
     let amount = U256::new(11);
     assert_eq!(from.chain_id, EXTRA_CHAIN_ID);
-    assert!(
-        storage
-            .transfer(from.address, MISSING_ADDRESS, from.chain_id, amount)
-            .await
-            .is_ok()
-    );
+    assert!(storage
+        .transfer(from.address, MISSING_ADDRESS, from.chain_id, amount)
+        .await
+        .is_ok());
 
     storage.verify_used_accounts(&[
         (
@@ -964,12 +958,10 @@ async fn test_modify_actual_and_legacy_account() {
     let to = &LEGACY_ACCOUNT;
     let amount = U256::new(10);
     assert_eq!(from.chain_id, LEGACY_CHAIN_ID);
-    assert!(
-        storage
-            .transfer(from.address, to.address, from.chain_id, amount)
-            .await
-            .is_ok()
-    );
+    assert!(storage
+        .transfer(from.address, to.address, from.chain_id, amount)
+        .await
+        .is_ok());
 
     storage.verify_used_accounts(&[
         (
@@ -1124,12 +1116,10 @@ async fn test_deploy_at_missing_contract() {
     let mut storage = fixture.build_account_storage().await;
 
     let code = hex!("14643165").to_vec();
-    assert!(
-        storage
-            .set_code(MISSING_ADDRESS, LEGACY_CHAIN_ID, code.clone())
-            .await
-            .is_ok()
-    );
+    assert!(storage
+        .set_code(MISSING_ADDRESS, LEGACY_CHAIN_ID, code.clone())
+        .await
+        .is_ok());
     storage.verify_used_accounts(&[(fixture.contract_pubkey(MISSING_ADDRESS), true, false)]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(fixture.contract_rent(&code), 0);
@@ -1142,12 +1132,10 @@ async fn test_deploy_at_actual_balance() {
 
     let code = hex!("14643165").to_vec();
     let acc = &ACTUAL_BALANCE;
-    assert!(
-        storage
-            .set_code(acc.address, LEGACY_CHAIN_ID, code.clone())
-            .await
-            .is_ok()
-    );
+    assert!(storage
+        .set_code(acc.address, LEGACY_CHAIN_ID, code.clone())
+        .await
+        .is_ok());
     storage.verify_used_accounts(&[(fixture.contract_pubkey(acc.address), true, false)]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(fixture.contract_rent(&code), 0);
@@ -1181,12 +1169,10 @@ async fn test_deploy_at_legacy_account() {
 
     let code = hex!("37455846").to_vec();
     let contract = &LEGACY_ACCOUNT;
-    assert!(
-        storage
-            .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
-            .await
-            .is_ok()
-    );
+    assert!(storage
+        .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
+        .await
+        .is_ok());
     storage.verify_used_accounts(&[
         (
             fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
@@ -1238,12 +1224,10 @@ async fn test_deploy_at_actual_suicide() {
     let code = hex!("13412971").to_vec();
     let contract = &ACTUAL_SUICIDE;
     // TODO: Should we deploy new contract by the previous address?
-    assert!(
-        storage
-            .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
-            .await
-            .is_ok(),
-    );
+    assert!(storage
+        .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
+        .await
+        .is_ok(),);
     storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), true, false)]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(
@@ -1260,12 +1244,10 @@ async fn test_deploy_at_legacy_suicide() {
     let code = hex!("13412971").to_vec();
     let contract = &LEGACY_SUICIDE;
     // TODO: Should we deploy new contract by the previous address?
-    assert!(
-        storage
-            .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
-            .await
-            .is_ok(),
-    );
+    assert!(storage
+        .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
+        .await
+        .is_ok(),);
     storage.verify_used_accounts(&[
         (
             fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
@@ -1362,16 +1344,10 @@ async fn test_modify_new_storage_for_actual_contract() {
     storage.verify_regular_rent(0, 0);
 
     let new_value = [0x01u8; 32];
-    assert!(
-        storage
-            .set_storage(
-                contract.address,
-                ACTUAL_STORAGE_INDEX + 1,
-                new_value
-            )
-            .await
-            .is_ok()
-    );
+    assert!(storage
+        .set_storage(contract.address, ACTUAL_STORAGE_INDEX + 1, new_value)
+        .await
+        .is_ok());
     assert_eq!(
         storage
             .storage(contract.address, ACTUAL_STORAGE_INDEX + 1)
@@ -1394,12 +1370,10 @@ async fn test_modify_missing_storage_for_actual_contract() {
 
     let contract = &ACTUAL_CONTRACT;
     let new_value = [0x02u8; 32];
-    assert!(
-        storage
-            .set_storage(contract.address, MISSING_STORAGE_INDEX, new_value)
-            .await
-            .is_ok()
-    );
+    assert!(storage
+        .set_storage(contract.address, MISSING_STORAGE_INDEX, new_value)
+        .await
+        .is_ok());
     assert_eq!(
         storage
             .storage(contract.address, MISSING_STORAGE_INDEX)
@@ -1423,12 +1397,10 @@ async fn test_modify_internal_storage_for_actual_contract() {
     let contract = &ACTUAL_CONTRACT;
     let new_value = [0x03u8; 32];
     let index = U256::new(0);
-    assert!(
-        storage
-            .set_storage(contract.address, index, new_value)
-            .await
-            .is_ok()
-    );
+    assert!(storage
+        .set_storage(contract.address, index, new_value)
+        .await
+        .is_ok());
     assert_eq!(storage.storage(contract.address, index).await, new_value);
     storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), true, false)]);
     storage.verify_upgrade_rent(0, 0);

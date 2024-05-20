@@ -24,6 +24,7 @@ pub struct Account {
 }
 
 impl Account {
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.balance.is_zero() && self.nonce == 0 && self.code.0.is_empty()
     }
@@ -36,7 +37,7 @@ pub struct States {
     pub pre: Account,
 }
 
-fn map_code(buffer: Buffer) -> Bytes {
+fn map_code(buffer: &Buffer) -> Bytes {
     buffer.to_vec().into()
 }
 
@@ -110,7 +111,7 @@ impl EventListener for StateDiffTracer {
                             balance: to_web3_u256(
                                 executor_state.balance(*address, chain_id).await?,
                             ),
-                            code: map_code(executor_state.code(*address).await?),
+                            code: map_code(&executor_state.code(*address).await?),
                             nonce: executor_state.nonce(*address, chain_id).await?,
                             storage: {
                                 let mut new_storage = BTreeMap::new();
@@ -208,7 +209,7 @@ impl EventListener for StateDiffTracer {
 
 impl StateDiffTracer {
     pub fn new(tx: &TxParams) -> Self {
-        StateDiffTracer {
+        Self {
             from: tx.from,
             gas_price: tx.gas_price.map(to_web3_u256).unwrap_or_default(),
             tx_fee: to_web3_u256(
@@ -216,11 +217,12 @@ impl StateDiffTracer {
                     .unwrap_or_default()
                     .saturating_mul(tx.gas_price.unwrap_or_default()),
             ),
-            ..StateDiffTracer::default()
+            ..Self::default()
         }
     }
 
     /// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/native/prestate.go#L276>
+
     async fn lookup_account(
         &mut self,
         executor_state: &impl Database,
@@ -230,10 +232,10 @@ impl StateDiffTracer {
         match self.state_map.entry(address) {
             Entry::Vacant(entry) => {
                 entry.insert(States {
-                    post: Default::default(),
+                    post: Account::default(),
                     pre: Account {
                         balance: to_web3_u256(executor_state.balance(address, chain_id).await?),
-                        code: map_code(executor_state.code(address).await?),
+                        code: map_code(&executor_state.code(address).await?),
                         nonce: executor_state.nonce(address, chain_id).await?,
                         storage: BTreeMap::new(),
                     },
@@ -245,6 +247,7 @@ impl StateDiffTracer {
     }
 
     /// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/native/prestate.go#L292>
+
     async fn lookup_storage(
         &mut self,
         executor_state: &impl Database,
@@ -270,7 +273,7 @@ impl StateDiffTracer {
         };
         Ok(())
     }
-
+    #[must_use]
     pub fn into_state_map(mut self, emulator_gas_used: u64) -> StateMap {
         if self.tx_fee.is_zero() {
             self.state_map.entry(self.from).or_default().post.balance -=

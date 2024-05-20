@@ -24,10 +24,7 @@ pub struct PrestateTracerAccount {
 }
 
 fn is_empty(bytes: &Option<Bytes>) -> bool {
-    match bytes {
-        None => true,
-        Some(bytes) => bytes.0.is_empty(),
-    }
+    bytes.as_ref().map_or(true, |bytes| bytes.0.is_empty())
 }
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/native/prestate.go#L255>
@@ -73,25 +70,25 @@ pub fn build_prestate_tracer_diff_mode_result(state_map: StateMap) -> PrestateTr
 
         let mut modified = false;
 
-        let balance = if post_account.balance != pre_account.balance {
+        let balance = if post_account.balance == pre_account.balance {
+            None
+        } else {
             modified = true;
             Some(post_account.balance)
-        } else {
-            None
         };
 
-        let code = if post_account.code != pre_account.code {
+        let code = if post_account.code == pre_account.code {
+            None
+        } else {
             modified = true;
             Some(post_account.code.clone())
-        } else {
-            None
         };
 
-        let nonce = if post_account.nonce != pre_account.nonce {
+        let nonce = if post_account.nonce == pre_account.nonce {
+            None
+        } else {
             modified = true;
             Some(post_account.nonce)
-        } else {
-            None
         };
 
         let mut storage = BTreeMap::new();
@@ -104,7 +101,7 @@ pub fn build_prestate_tracer_diff_mode_result(state_map: StateMap) -> PrestateTr
                 });
             }
 
-            let final_value = post_account.storage.get(&key).cloned().unwrap_or_default();
+            let final_value = post_account.storage.get(&key).copied().unwrap_or_default();
 
             // Omit unchanged slots
             if initial_value == final_value {

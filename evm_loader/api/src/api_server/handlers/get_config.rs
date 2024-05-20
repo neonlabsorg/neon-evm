@@ -1,3 +1,5 @@
+#![allow(clippy::future_not_send)]
+
 use crate::api_server::handlers::process_error;
 use crate::NeonApiState;
 use actix_request_identifier::RequestId;
@@ -13,7 +15,6 @@ use super::process_result;
 #[routes]
 #[post("/config")]
 #[get("/config")]
-#[allow(clippy::future_not_send)]
 pub async fn get_config(state: NeonApiState, request_id: RequestId) -> impl Responder {
     let rpc = match state.build_rpc(None, None).await {
         Ok(rpc) => rpc,

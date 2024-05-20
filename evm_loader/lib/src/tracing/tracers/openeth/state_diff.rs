@@ -2,10 +2,11 @@ use crate::tracing::tracers::state_diff::StateMap;
 use std::collections::BTreeMap;
 use web3::types::{AccountDiff, ChangedType, Diff, StateDiff, H160, H256};
 
+#[must_use]
 pub fn into_state_diff(state_map: StateMap) -> StateDiff {
     let mut state_diff = BTreeMap::new();
 
-    for (address, states) in state_map.into_iter() {
+    for (address, states) in state_map {
         let pre_account = states.pre;
         let post_account = states.post;
 
@@ -48,7 +49,7 @@ fn storage_diff(
     let mut storage_diff = BTreeMap::new();
 
     for (key, initial_value) in account_initial_storage {
-        let final_value = account_final_storage.get(key).cloned();
+        let final_value = account_final_storage.get(key).copied();
 
         storage_diff.insert(*key, build_diff(Some(*initial_value), final_value));
     }

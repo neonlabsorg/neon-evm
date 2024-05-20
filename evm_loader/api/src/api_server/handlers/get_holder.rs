@@ -1,3 +1,5 @@
+#![allow(clippy::future_not_send)]
+
 use crate::api_server::handlers::process_error;
 use crate::commands::get_holder as GetHolderCommand;
 use crate::{types::GetHolderRequest, NeonApiState};
@@ -12,7 +14,6 @@ use super::process_result;
 
 #[tracing::instrument(skip_all, fields(id = request_id.as_str()))]
 #[post("/holder")]
-#[allow(clippy::future_not_send)]
 pub async fn get_holder_account_data(
     state: NeonApiState,
     request_id: RequestId,

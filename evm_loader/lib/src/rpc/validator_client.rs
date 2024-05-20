@@ -22,6 +22,7 @@ pub struct CloneRpcClient {
 }
 
 impl CloneRpcClient {
+    #[must_use]
     pub fn new_from_config(config: &Config) -> Self {
         let url = config.json_rpc_url.clone();
         let commitment = config.commitment;
@@ -33,6 +34,7 @@ impl CloneRpcClient {
         }
     }
 
+    #[must_use]
     pub fn new_from_api_config(config: &APIOptions) -> Self {
         let url = config.json_rpc_url.clone();
         let commitment = config.commitment;

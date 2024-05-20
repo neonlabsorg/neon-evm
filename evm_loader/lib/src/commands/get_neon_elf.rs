@@ -24,11 +24,13 @@ impl CachedElfParams {
                 .expect("read elf_params error"),
         }
     }
+    #[must_use]
     pub fn get(&self, param_name: &str) -> Option<&String> {
         self.elf_params.get(param_name)
     }
 }
 
+#[must_use]
 pub fn read_elf_parameters(_config: &Config, program_data: &[u8]) -> GetNeonElfReturn {
     let mut result = HashMap::new();
     let elf = goblin::elf::Elf::parse(program_data).expect("Unable to parse ELF file");
@@ -126,7 +128,7 @@ pub fn get_elf_parameter(data: &[u8], elf_parameter: &str) -> Result<String> {
     )
     .context("Error parsing Symtab")?;
 
-    for sym in dynsyms.iter() {
+    for sym in &dynsyms {
         let name = &elf.dynstrtab[sym.st_name];
         if name == elf_parameter {
             let end = program_data.len();
@@ -143,9 +145,9 @@ pub fn get_elf_parameter(data: &[u8], elf_parameter: &str) -> Result<String> {
                 let buf = &program_data[from..to];
                 let value = std::str::from_utf8(buf).context("Read ELF value error")?;
                 return Ok(String::from(value));
-            } else {
-                return Err(anyhow::anyhow!("{name} is out of bounds"));
             }
+
+            return Err(anyhow::anyhow!("{name} is out of bounds"));
         }
     }
 

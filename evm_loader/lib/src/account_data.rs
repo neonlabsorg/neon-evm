@@ -24,6 +24,7 @@ use solana_sdk::account_info::IntoAccountInfo;
 use solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE;
 
 impl AccountData {
+    #[must_use]
     pub fn new(pubkey: Pubkey) -> Self {
         Self {
             original_length: 0,
@@ -36,10 +37,12 @@ impl AccountData {
         }
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.get_length() == 0 && self.owner == system_program::ID
     }
 
+    #[must_use]
     pub fn is_busy(&self) -> bool {
         self.get_length() != 0 || self.owner != system_program::ID
     }
@@ -47,12 +50,15 @@ impl AccountData {
     pub fn new_from_account<T: ReadableAccount>(pubkey: Pubkey, account: &T) -> Self {
         let account_data = account.data();
         let mut data = vec![0u8; account_data.len() + 8 + MAX_PERMITTED_DATA_INCREASE];
-        let ptr_length = data.as_mut_ptr() as *mut _ as *mut u64;
+        let ptr_length: *mut u64 = data.as_mut_ptr().cast();
         unsafe { *ptr_length = account_data.len() as u64 };
         data[8..8 + account_data.len()].copy_from_slice(account_data);
 
         Self {
-            original_length: account_data.len() as u32,
+            original_length: u32::try_from(account_data.len()).unwrap_or_else(|error| {
+                println!("Error converting account data length: {error}");
+                0
+            }),
             pubkey,
             lamports: account.lamports(),
             data,
@@ -63,12 +69,19 @@ impl AccountData {
     }
 
     pub fn expand(&mut self, length: usize) {
-        if self.original_length < length as u32 {
+        let len = u32::try_from(length).unwrap_or_else(|error| {
+            println!("Error converting account data length: {error}");
+            0
+        });
+        if self.original_length < len {
             self.data
                 .resize(length + 8 + MAX_PERMITTED_DATA_INCREASE, 0);
-            self.original_length = length as u32;
+            self.original_length = u32::try_from(length).unwrap_or_else(|error| {
+                println!("Error converting account data length: {error}");
+                0
+            });
         }
-        let ptr_length = self.data.as_mut_ptr() as *mut _ as *mut u64;
+        let ptr_length: *mut u64 = self.data.as_mut_ptr().cast();
         unsafe {
             if *ptr_length < length as u64 {
                 *ptr_length = length as u64;
@@ -77,7 +90,7 @@ impl AccountData {
     }
 
     pub fn reserve(&mut self) {
-        self.expand(self.get_length())
+        self.expand(self.get_length());
     }
 
     pub fn assign(&mut self, owner: Pubkey) -> evm_loader::error::Result<()> {
@@ -90,6 +103,7 @@ impl AccountData {
         Ok(())
     }
 
+    #[must_use]
     pub fn data(&self) -> &[u8] {
         let length = self.get_length();
         &self.data[8..8 + length]
@@ -100,9 +114,10 @@ impl AccountData {
         &mut self.data[8..8 + length]
     }
 
+    #[must_use]
     pub fn get_length(&self) -> usize {
-        let ptr_length = self.data.as_ptr() as *const _ as *const u64;
-        (unsafe { *ptr_length }) as usize
+        let ptr_length: *const u64 = self.data.as_ptr().cast();
+        usize::try_from(unsafe { *ptr_length }).unwrap_or(0)
     }
 
     fn get(&mut self) -> (&Pubkey, &mut u64, &mut [u8], &Pubkey, bool, u64) {
@@ -130,7 +145,7 @@ impl<'a> IntoAccountInfo<'a> for &'a mut AccountData {
 
 impl<'a> From<&'a AccountData> for Account {
     fn from(val: &'a AccountData) -> Self {
-        Account {
+        Self {
             lamports: val.lamports,
             data: val.data().to_vec(),
             owner: val.owner,

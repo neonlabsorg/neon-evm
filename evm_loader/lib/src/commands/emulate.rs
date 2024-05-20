@@ -45,7 +45,7 @@ pub struct EmulateResponse {
 }
 
 impl EmulateResponse {
-    pub fn revert<E: ToString>(e: E) -> Self {
+    pub fn revert<E: ToString>(e: &E) -> Self {
         let revert_message = build_revert_message(&e.to_string());
         let exit_status = ExitStatus::Revert(revert_message);
         Self {
@@ -96,7 +96,7 @@ pub async fn execute<T: Tracer>(
     )
     .await?;
 
-    let step_limit = emulate_request.step_limit.unwrap_or(100000);
+    let step_limit = emulate_request.step_limit.unwrap_or(100_000);
 
     let result = emulate_trx(emulate_request.tx.clone(), &mut storage, step_limit, tracer).await?;
 
@@ -169,7 +169,7 @@ async fn emulate_trx<T: Tracer>(
     let mut backend = SyncedExecutorState::new(storage);
     let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
         Ok(evm) => evm,
-        Err(e) => return Ok((EmulateResponse::revert(e), None)),
+        Err(e) => return Ok((EmulateResponse::revert(&e), None)),
     };
 
     let (exit_status, steps_executed, tracer) = evm.execute(step_limit, &mut backend).await?;

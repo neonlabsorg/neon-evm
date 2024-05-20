@@ -28,6 +28,7 @@ pub struct ClickHouseDb {
 }
 
 impl ClickHouseDb {
+    #[must_use]
     pub fn new(config: &ChDbConfig) -> Self {
         let url_id = rand::thread_rng().gen_range(0..config.clickhouse_url.len());
         let url = config.clickhouse_url.get(url_id).unwrap();
@@ -41,10 +42,10 @@ impl ClickHouseDb {
                 .with_password(password),
         };
 
-        ClickHouseDb { client }
+        Self { client }
     }
 
-    // return value is not used for tracer methods
+    // Returned value is not used for tracer methods.
     pub async fn get_block_time(&self, slot: Slot) -> ChResult<UnixTimestamp> {
         let time_start = Instant::now();
         let query =
@@ -141,9 +142,7 @@ impl ClickHouseDb {
             .fetch_all::<SlotParent>()
             .await?;
 
-        let first = if let Some(first) = rows.pop() {
-            first
-        } else {
+        let Some(first) = rows.pop() else {
             let err = clickhouse::error::Error::Custom("Rooted slot not found".to_string());
             return Err(ChError::Db(err));
         };
@@ -307,7 +306,7 @@ impl ClickHouseDb {
         }
 
         let result = row
-            .map(|a| a.try_into())
+            .map(std::convert::TryInto::try_into)
             .transpose()
             .map_err(|e| ChError::Db(clickhouse::error::Error::Custom(e)));
 
@@ -351,7 +350,7 @@ impl ClickHouseDb {
             error!("get_account_at_index_in_block error: {e}");
             ChError::Db(e)
         })?
-        .map(|a| a.try_into())
+        .map(std::convert::TryInto::try_into)
         .transpose()
         .map_err(|e| ChError::Db(clickhouse::error::Error::Custom(e)))?;
 
@@ -410,9 +409,7 @@ impl ClickHouseDb {
                 .fetch_one::<SlotParentRooted>()
                 .await,
         )
-        .map(|slot_parent_rooted_opt| {
-            slot_parent_rooted_opt.map(|slot_parent_rooted| slot_parent_rooted.into())
-        })
+        .map(|slot_parent_rooted_opt| slot_parent_rooted_opt.map(std::convert::Into::into))
         .map_err(|e| {
             println!("get_sol_sig_rooted_slot error: {e}");
             ChError::Db(e)
@@ -474,9 +471,7 @@ impl ClickHouseDb {
             );
         }
 
-        let slot = if let Some(slot) = slot_opt {
-            slot
-        } else {
+        let Some(slot) = slot_opt else {
             return Ok(None);
         };
 
@@ -564,23 +559,19 @@ impl ClickHouseDb {
                 .fetch_one::<Vec<u8>>()
                 .await,
         )?;
-
-        match data {
-            Some(data) => {
-                let neon_revision =
-                    get_elf_parameter(data.as_slice(), "NEON_REVISION").map_err(|e| {
-                        ChError::Db(clickhouse::error::Error::Custom(format!(
-                            "Failed to get NEON_REVISION, error: {e:?}",
-                        )))
-                    })?;
-                Ok(neon_revision)
-            }
-            None => {
-                let err = clickhouse::error::Error::Custom(format!(
-                    "get_neon_revision: for slot {slot} and pubkey {pubkey} not found",
-                ));
-                Err(ChError::Db(err))
-            }
+        if let Some(data) = data {
+            let neon_revision =
+                get_elf_parameter(data.as_slice(), "NEON_REVISION").map_err(|e| {
+                    ChError::Db(clickhouse::error::Error::Custom(format!(
+                        "Failed to get NEON_REVISION, error: {e:?}",
+                    )))
+                })?;
+            Ok(neon_revision)
+        } else {
+            let err = clickhouse::error::Error::Custom(format!(
+                "get_neon_revision: for slot {slot} and pubkey {pubkey} not found",
+            ));
+            Err(ChError::Db(err))
         }
     }
 
@@ -606,13 +597,12 @@ impl ClickHouseDb {
         for row in rows {
             let neon_revision = get_elf_parameter(&row.data, "NEON_REVISION").map_err(|e| {
                 ChError::Db(clickhouse::error::Error::Custom(format!(
-                    "Failed to get NEON_REVISION, error: {:?}",
-                    e
+                    "Failed to get NEON_REVISION, error: {e}",
                 )))
             })?;
             results.push((row.slot, neon_revision));
         }
-        let ranges = RevisionMap::build_ranges(results);
+        let ranges = RevisionMap::build_ranges(&results);
 
         Ok(RevisionMap::new(ranges))
     }
@@ -631,13 +621,14 @@ impl ClickHouseDb {
                 .fetch_one::<u64>()
                 .await,
         )?;
-
-        match slot {
-            Some(slot) => Ok(slot),
-            None => Err(ChError::Db(clickhouse::error::Error::Custom(
-                "get_slot_by_blockhash: no data available".to_string(),
-            ))),
-        }
+        slot.map_or_else(
+            || {
+                Err(ChError::Db(clickhouse::error::Error::Custom(
+                    "get_slot_by_blockhash: no data available".to_string(),
+                )))
+            },
+            Ok,
+        )
     }
 
     pub async fn get_sync_status(&self) -> ChResult<EthSyncStatus> {
@@ -657,7 +648,7 @@ impl ClickHouseDb {
                 .await,
         )?;
 
-        if let Some(true) = is_startup {
+        if is_startup == Some(true) {
             let query = r#"SELECT slot
             FROM (
               (SELECT MIN(slot) as slot FROM events.notify_block_distributed)
@@ -671,12 +662,14 @@ impl ClickHouseDb {
 
             let data = Self::row_opt(self.client.query(query).fetch_one::<EthSyncing>().await)?;
 
-            return match data {
-                Some(data) => Ok(EthSyncStatus::new(Some(data))),
-                None => Err(ChError::Db(clickhouse::error::Error::Custom(
-                    "get_sync_status: no data available".to_string(),
-                ))),
-            };
+            return data.map_or_else(
+                || {
+                    Err(ChError::Db(clickhouse::error::Error::Custom(
+                        "get_sync_status: no data available".to_string(),
+                    )))
+                },
+                |data| Ok(EthSyncStatus::new(Some(data))),
+            );
         }
 
         Ok(EthSyncStatus::new(None))

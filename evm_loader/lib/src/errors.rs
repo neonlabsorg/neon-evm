@@ -126,7 +126,7 @@ pub enum NeonError {
 }
 
 impl NeonError {
-    pub fn error_code(&self) -> i32 {
+    pub const fn error_code(&self) -> u32 {
         match self {
             NeonError::IncompleteEnvironment => 50,
             NeonError::WrongEnvironment => 51,

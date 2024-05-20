@@ -1,3 +1,5 @@
+#![allow(clippy::future_not_send)]
+
 use actix_request_identifier::RequestId;
 use actix_web::{http::StatusCode, post, web::Json, Responder};
 use neon_lib::tracing::tracers::TracerTypeEnum;
@@ -11,8 +13,6 @@ use super::process_result;
 
 #[tracing::instrument(skip_all, fields(id = request_id.as_str()))]
 #[post("/emulate")]
-// TODO: Remove future_not_send.
-#[allow(clippy::future_not_send)]
 pub async fn emulate(
     state: NeonApiState,
     request_id: RequestId,

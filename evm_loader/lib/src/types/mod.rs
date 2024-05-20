@@ -117,7 +117,7 @@ impl std::fmt::Debug for TxParams {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct SerializedAccount {
     pub lamports: u64,
     #[serde_as(as = "DisplayFromStr")]
@@ -130,7 +130,7 @@ pub struct SerializedAccount {
 
 impl From<&SerializedAccount> for Account {
     fn from(account: &SerializedAccount) -> Self {
-        Account {
+        Self {
             lamports: account.lamports,
             owner: account.owner,
             executable: account.executable,
@@ -168,12 +168,14 @@ pub struct BalanceAddress {
 }
 
 impl BalanceAddress {
+    #[must_use]
     pub fn find_pubkey(&self, program_id: &Pubkey) -> Pubkey {
         self.address
             .find_balance_address(program_id, self.chain_id)
             .0
     }
 
+    #[must_use]
     pub fn find_contract_pubkey(&self, program_id: &Pubkey) -> Pubkey {
         self.address.find_solana_address(program_id).0
     }
@@ -255,7 +257,7 @@ mod tests {
     fn test_build_ranges_empty() {
         let results = Vec::new();
         let exp = Vec::new();
-        let res = RevisionMap::build_ranges(results);
+        let res = RevisionMap::build_ranges(&results);
         assert_eq!(res, exp);
     }
 
@@ -263,24 +265,24 @@ mod tests {
     fn test_build_ranges_single_element() {
         let results = vec![(1u64, String::from("Rev1"))];
         let exp = vec![(1u64, 2u64, String::from("Rev1"))];
-        let res = RevisionMap::build_ranges(results);
+        let res = RevisionMap::build_ranges(&results);
         assert_eq!(res, exp);
     }
 
     #[test]
     fn test_build_ranges_multiple_elements_different_revision() {
         let results = vec![
-            (222222222u64, String::from("Rev1")),
-            (333333333u64, String::from("Rev2")),
-            (444444444u64, String::from("Rev3")),
+            (222_222_222u64, String::from("Rev1")),
+            (333_333_333u64, String::from("Rev2")),
+            (444_444_444u64, String::from("Rev3")),
         ];
 
         let exp = vec![
-            (222222222u64, 333333333u64, String::from("Rev1")),
-            (333333334u64, 444444444u64, String::from("Rev2")),
-            (444444445u64, 444444445u64, String::from("Rev3")),
+            (222_222_222u64, 333_333_333u64, String::from("Rev1")),
+            (333_333_334u64, 444_444_444u64, String::from("Rev2")),
+            (444_444_445u64, 444_444_445u64, String::from("Rev3")),
         ];
-        let res = RevisionMap::build_ranges(results);
+        let res = RevisionMap::build_ranges(&results);
 
         assert_eq!(res, exp);
     }
@@ -288,27 +290,27 @@ mod tests {
     #[test]
     fn test_rangemap() {
         let ranges = vec![
-            (123456780, 123456788, String::from("Rev1")),
-            (123456789, 123456793, String::from("Rev2")),
-            (123456794, 123456799, String::from("Rev3")),
+            (123_456_780, 123_456_788, String::from("Rev1")),
+            (123_456_789, 123_456_793, String::from("Rev2")),
+            (123_456_794, 123_456_799, String::from("Rev3")),
         ];
         let map = RevisionMap::new(ranges);
 
-        assert_eq!(map.get(123456779), None); // Below the bottom bound of the first range
+        assert_eq!(map.get(123_456_779), None); // Below the bottom bound of the first range
 
-        assert_eq!(map.get(123456780), Some(String::from("Rev1"))); // The bottom bound of the first range
-        assert_eq!(map.get(123456785), Some(String::from("Rev1"))); // Within the first range
-        assert_eq!(map.get(123456788), Some(String::from("Rev1"))); // The top bound of the first range
+        assert_eq!(map.get(123_456_780), Some(String::from("Rev1"))); // The bottom bound of the first range
+        assert_eq!(map.get(123_456_785), Some(String::from("Rev1"))); // Within the first range
+        assert_eq!(map.get(123_456_788), Some(String::from("Rev1"))); // The top bound of the first range
 
-        assert_eq!(map.get(123456793), Some(String::from("Rev2"))); // The bottom bound of the second range
-        assert_eq!(map.get(123456790), Some(String::from("Rev2"))); // Within the second range
-        assert_eq!(map.get(123456793), Some(String::from("Rev2"))); // The top bound of the second range
+        assert_eq!(map.get(123_456_793), Some(String::from("Rev2"))); // The bottom bound of the second range
+        assert_eq!(map.get(123_456_790), Some(String::from("Rev2"))); // Within the second range
+        assert_eq!(map.get(123_456_793), Some(String::from("Rev2"))); // The top bound of the second range
 
-        assert_eq!(map.get(123456799), Some(String::from("Rev3"))); // The bottom bound of the third range
-        assert_eq!(map.get(123456795), Some(String::from("Rev3"))); // Within the third range
-        assert_eq!(map.get(123456799), Some(String::from("Rev3"))); // The top bound of the third range
+        assert_eq!(map.get(123_456_799), Some(String::from("Rev3"))); // The bottom bound of the third range
+        assert_eq!(map.get(123_456_795), Some(String::from("Rev3"))); // Within the third range
+        assert_eq!(map.get(123_456_799), Some(String::from("Rev3"))); // The top bound of the third range
 
-        assert_eq!(map.get(123456800), None); // Beyond the top end of the last range
+        assert_eq!(map.get(123_456_800), None); // Beyond the top end of the last range
     }
 
     #[test]
@@ -360,6 +362,6 @@ mod tests {
         "#;
 
         let request: super::EmulateRequest = serde_json::from_str(txt).unwrap();
-        println!("{:?}", request);
+        println!("{request:?}");
     }
 }

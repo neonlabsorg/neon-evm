@@ -1,3 +1,5 @@
+#![allow(clippy::future_not_send)]
+
 use actix_request_identifier::RequestId;
 use actix_web::{http::StatusCode, post, web::Json, Responder};
 use std::convert::Into;
@@ -12,7 +14,6 @@ use super::process_result;
 
 #[tracing::instrument(skip_all, fields(id = request_id.as_str()))]
 #[post("/simulate_solana")]
-#[allow(clippy::future_not_send)]
 pub async fn simulate_solana(
     state: NeonApiState,
     request_id: RequestId,

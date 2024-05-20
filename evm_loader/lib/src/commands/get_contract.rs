@@ -22,7 +22,8 @@ pub struct GetContractResponse {
 }
 
 impl GetContractResponse {
-    pub fn empty(solana_address: Pubkey) -> Self {
+    #[must_use]
+    pub const fn empty(solana_address: Pubkey) -> Self {
         Self {
             solana_address,
             chain_id: None,
@@ -46,31 +47,35 @@ fn read_account(
     legacy_chain_id: u64,
     solana_address: Pubkey,
     account: Option<Account>,
-) -> NeonResult<GetContractResponse> {
+) -> GetContractResponse {
     let Some(mut account) = account else {
-        return Ok(GetContractResponse::empty(solana_address));
+        return GetContractResponse::empty(solana_address);
     };
 
     let account_info = account_info(&solana_address, &mut account);
-    let (chain_id, code) =
-        if let Ok(contract) = ContractAccount::from_account(program_id, account_info.clone()) {
-            (Some(contract.chain_id()), contract.code().to_vec())
-        } else if let Ok(contract) = LegacyEtherData::from_account(program_id, &account_info) {
-            if contract.code_size > 0 || contract.generation > 0 {
-                let code = contract.read_code(&account_info);
-                (Some(legacy_chain_id), code)
-            } else {
-                (None, vec![])
-            }
-        } else {
-            (None, vec![])
-        };
+    let (chain_id, code) = ContractAccount::from_account(program_id, account_info.clone())
+        .map_or_else(
+            |_| {
+                LegacyEtherData::from_account(program_id, &account_info).map_or_else(
+                    |_| (None, vec![]),
+                    |contract| {
+                        if contract.code_size > 0 || contract.generation > 0 {
+                            let code = contract.read_code(&account_info);
+                            (Some(legacy_chain_id), code)
+                        } else {
+                            (None, vec![])
+                        }
+                    },
+                )
+            },
+            |contract| (Some(contract.chain_id()), contract.code().to_vec()),
+        );
 
-    Ok(GetContractResponse {
+    GetContractResponse {
         solana_address,
         chain_id,
         code,
-    })
+    }
 }
 
 pub async fn execute(
@@ -90,7 +95,7 @@ pub async fn execute(
 
     let mut result = Vec::with_capacity(accounts.len());
     for (key, account) in pubkeys.into_iter().zip(accounts) {
-        let response = read_account(program_id, legacy_chain_id, key, account)?;
+        let response = read_account(program_id, legacy_chain_id, key, account);
         result.push(response);
     }
 

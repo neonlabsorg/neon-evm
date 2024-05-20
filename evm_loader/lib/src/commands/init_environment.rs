@@ -47,7 +47,7 @@ struct Parameters {
 }
 
 impl Parameters {
-    pub fn new(params: HashMap<String, String>) -> Self {
+    pub const fn new(params: HashMap<String, String>) -> Self {
         Self { params }
     }
 
@@ -117,10 +117,10 @@ pub async fn execute(
         send_trx,
         force
     );
-    let fee_payer: &dyn Signer = match config.fee_payer.as_ref() {
-        Some(fee_payer) => fee_payer,
-        None => signer,
-    };
+    let fee_payer: &dyn Signer = config
+        .fee_payer
+        .as_ref()
+        .map_or(signer, |fee_payer| fee_payer);
     let executor = Rc::new(TransactionExecutor::new(client, fee_payer, send_trx));
     let keys = keys_dir.map_or(Ok(HashMap::new()), read_keys_dir)?;
 

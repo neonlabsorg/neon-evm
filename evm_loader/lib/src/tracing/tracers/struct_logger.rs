@@ -74,7 +74,7 @@ fn is_empty(bytes: &Bytes) -> bool {
 
 /// This is only used for serialize
 #[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_zero(num: &u64) -> bool {
+const fn is_zero(num: &u64) -> bool {
     *num == 0
 }
 
@@ -90,7 +90,7 @@ pub struct StructLogger {
 impl StructLogger {
     #[must_use]
     pub fn new(config: TraceConfig, tx: &TxParams) -> Self {
-        StructLogger {
+        Self {
             actual_gas_used: tx.actual_gas_used,
             config,
             logs: vec![],
@@ -132,40 +132,37 @@ impl EventListener for StructLogger {
                     return Ok(());
                 }
 
-                let storage = if !self.config.disable_storage {
-                    if opcode == opcode_table::SLOAD && !stack.is_empty() {
-                        let index = U256::from_be_bytes(stack[stack.len() - 1]);
+                let storage = if self.config.disable_storage {
+                    None
+                } else if opcode == opcode_table::SLOAD && !stack.is_empty() {
+                    let index = U256::from_be_bytes(stack[stack.len() - 1]);
 
-                        self.storage.entry(context.contract).or_default().insert(
-                            hex::encode(index.to_be_bytes()),
-                            hex::encode(executor_state.storage(context.contract, index).await?),
-                        );
+                    self.storage.entry(context.contract).or_default().insert(
+                        hex::encode(index.to_be_bytes()),
+                        hex::encode(executor_state.storage(context.contract, index).await?),
+                    );
 
-                        Some(
-                            self.storage
-                                .get(&context.contract)
-                                .cloned()
-                                .unwrap_or_default(),
-                        )
-                    } else if opcode == opcode_table::SSTORE && stack.len() >= 2 {
-                        self.storage.entry(context.contract).or_default().insert(
-                            hex::encode(stack[stack.len() - 1]),
-                            hex::encode(stack[stack.len() - 2]),
-                        );
+                    Some(
+                        self.storage
+                            .get(&context.contract)
+                            .cloned()
+                            .unwrap_or_default(),
+                    )
+                } else if opcode == opcode_table::SSTORE && stack.len() >= 2 {
+                    self.storage.entry(context.contract).or_default().insert(
+                        hex::encode(stack[stack.len() - 1]),
+                        hex::encode(stack[stack.len() - 2]),
+                    );
 
-                        Some(
-                            self.storage
-                                .get(&context.contract)
-                                .cloned()
-                                .unwrap_or_default(),
-                        )
-                    } else {
-                        None
-                    }
+                    Some(
+                        self.storage
+                            .get(&context.contract)
+                            .cloned()
+                            .unwrap_or_default(),
+                    )
                 } else {
                     None
                 };
-
                 let stack = if self.config.disable_stack {
                     None
                 } else {

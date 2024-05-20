@@ -18,8 +18,9 @@ pub struct PrestateTracer {
 }
 
 impl PrestateTracer {
+    #[must_use]
     pub fn new(trace_config: TraceConfig, tx: &TxParams) -> Self {
-        PrestateTracer {
+        Self {
             config: trace_config.into(),
             state_diff_tracer: StateDiffTracer::new(tx),
         }

@@ -1,3 +1,5 @@
+#![allow(clippy::future_not_send)]
+
 use crate::api_server::handlers::process_error;
 use crate::commands::get_contract as GetContractCommand;
 use crate::{types::GetContractRequest, NeonApiState};
@@ -12,7 +14,6 @@ use super::process_result;
 
 #[tracing::instrument(skip_all, fields(id = request_id.as_str()))]
 #[post("/contract")]
-#[allow(clippy::future_not_send)]
 pub async fn get_contract(
     state: NeonApiState,
     request_id: RequestId,

@@ -1,16 +1,7 @@
+use crate::account_data::AccountData;
+use crate::{rpc::Rpc, solana_simulator::SolanaSimulator, NeonError, NeonResult};
 use async_trait::async_trait;
 use elsa::FrozenMap;
-use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
-use std::collections::{HashMap, HashSet};
-use std::{
-    cell::{RefCell, RefMut},
-    convert::TryInto,
-    rc::Rc,
-};
-
-use crate::{
-    account_data::AccountData, rpc::Rpc, solana_simulator::SolanaSimulator, NeonError, NeonResult,
-};
 use ethnum::U256;
 pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use evm_loader::{
@@ -26,6 +17,7 @@ use evm_loader::{
 };
 use log::{debug, info, trace};
 use solana_client::client_error::{self, Result as ClientResult};
+use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
 use solana_sdk::{
     account::Account,
     account_info::{AccountInfo, IntoAccountInfo},
@@ -39,6 +31,12 @@ use solana_sdk::{
     system_program,
     sysvar::slot_hashes,
     transaction_context::TransactionReturnData,
+};
+use std::collections::{HashMap, HashSet};
+use std::{
+    cell::{RefCell, RefMut},
+    convert::TryInto,
+    rc::Rc,
 };
 
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
@@ -67,7 +65,8 @@ trait UpdateLamports<'a> {
     fn update_lamports(&mut self, rent: &Rent) {
         let required_lamports = rent.minimum_balance(self.required_lamports());
         if self.info().lamports() < required_lamports {
-            **self.info().lamports.borrow_mut() = required_lamports;
+            let mut lamports = self.info().lamports.borrow_mut();
+            **lamports = required_lamports;
         }
     }
     fn required_lamports(&self) -> usize;
@@ -240,7 +239,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             return_data: RefCell::new(None),
         };
 
-        let target_chain_id = tx_chain_id.unwrap_or(storage.default_chain_id());
+        let target_chain_id = tx_chain_id.unwrap_or_else(|| storage.default_chain_id());
         storage.apply_balance_overrides(target_chain_id).await?;
 
         Ok(storage)
@@ -271,7 +270,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             used_accounts: other.used_accounts.clone(),
             return_data: RefCell::new(None),
         };
-        let target_chain_id = tx_chain_id.unwrap_or(storage.default_chain_id());
+        let target_chain_id = tx_chain_id.unwrap_or_else(|| storage.default_chain_id());
         storage.apply_balance_overrides(target_chain_id).await?;
         Ok(storage)
     }
@@ -307,7 +306,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
 impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     async fn apply_balance_overrides(&self, target_chain_id: u64) -> NeonResult<()> {
         if let Some(state_overrides) = self.state_overrides.as_ref() {
-            for (address, overrides) in state_overrides.iter() {
+            for (address, overrides) in state_overrides {
                 if overrides.nonce.is_none() && overrides.balance.is_none() {
                     continue;
                 }
@@ -393,7 +392,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             .borrow_mut()
     }
 
-    async fn _add_legacy_account(
+    fn _add_legacy_account(
         &self,
         info: &AccountInfo<'_>,
     ) -> NeonResult<(&RefCell<AccountData>, &RefCell<AccountData>)> {
@@ -402,7 +401,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         let (balance_pubkey, _) = legacy
             .address
             .find_balance_address(&self.program_id, self.default_chain_id());
-        let balance_data = self.add_empty_account(balance_pubkey)?;
+        let balance_data = self.add_empty_account(balance_pubkey);
         if (legacy.balance > 0) || (legacy.trx_count > 0) {
             let mut balance_data = balance_data.borrow_mut();
             let mut balance = self.create_ethereum_balance(
@@ -418,7 +417,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
 
         let (contract_pubkey, _) = legacy.address.find_solana_address(&self.program_id);
-        let contract_data = self.add_empty_account(contract_pubkey)?;
+        let contract_data = self.add_empty_account(contract_pubkey);
         if (legacy.code_size > 0) || (legacy.generation > 0) {
             let code = legacy.read_code(info);
             let storage = legacy.read_storage(info);
@@ -468,11 +467,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             let mut account = self._get_account_from_rpc(pubkey).await?.cloned();
             if let Some(account) = &mut account {
                 let info = account_info(&pubkey, account);
-                if *info.owner != self.program_id {
-                    let account_data = AccountData::new_from_account(pubkey, account);
-                    self.accounts
-                        .insert(pubkey, Box::new(RefCell::new(account_data)))
-                } else {
+                if *info.owner == self.program_id {
                     match evm_loader::account::tag(&self.program_id, &info)? {
                         evm_loader::account::TAG_ACCOUNT_CONTRACT => {
                             let data = AccountData::new_from_account(pubkey, account);
@@ -480,15 +475,18 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                         }
                         evm_loader::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED => self
                             ._add_legacy_account(&info)
-                            .await
                             .map(|(contract, _balance)| contract)?,
                         _ => {
                             unimplemented!();
                         }
                     }
+                } else {
+                    let account_data = AccountData::new_from_account(pubkey, account);
+                    self.accounts
+                        .insert(pubkey, Box::new(RefCell::new(account_data)))
                 }
             } else {
-                self.add_empty_account(pubkey)?
+                self.add_empty_account(pubkey)
             }
         };
         self.mark_legacy_account(pubkey, false, None);
@@ -504,7 +502,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         let generation = self
             ._get_contract_generation_limited(legacy_storage.address)
             .await?;
-        let storage_data = self.add_empty_account(pubkey)?;
+        let storage_data = self.add_empty_account(pubkey);
 
         if Some(legacy_storage.generation) == generation {
             let cells = legacy_storage.read_cells(info);
@@ -531,13 +529,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     ) -> NeonResult<&RefCell<AccountData>> {
         let mut account = account.clone();
         let info = account_info(&pubkey, &mut account);
-        if *info.owner != self.program_id {
-            let account_data = AccountData::new_from_account(pubkey, &account);
-            self.mark_account(pubkey, false);
-            Ok(self
-                .accounts
-                .insert(pubkey, Box::new(RefCell::new(account_data))))
-        } else {
+        if *info.owner == self.program_id {
             let tag = evm_loader::account::tag(&self.program_id, &info)?;
             match tag {
                 evm_loader::account::TAG_ACCOUNT_BALANCE
@@ -552,7 +544,6 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                 }
                 evm_loader::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED => self
                     ._add_legacy_account(&info)
-                    .await
                     .map(|(contract, _balance)| contract),
                 evm_loader::account::legacy::TAG_STORAGE_CELL_DEPRECATED => {
                     let legacy_storage = LegacyStorageData::from_account(&self.program_id, &info)?;
@@ -563,15 +554,20 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                     unimplemented!();
                 }
             }
+        } else {
+            let account_data = AccountData::new_from_account(pubkey, &account);
+            self.mark_account(pubkey, false);
+            Ok(self
+                .accounts
+                .insert(pubkey, Box::new(RefCell::new(account_data))))
         }
     }
 
-    fn add_empty_account(&self, pubkey: Pubkey) -> NeonResult<&RefCell<AccountData>> {
+    fn add_empty_account(&self, pubkey: Pubkey) -> &std::cell::RefCell<AccountData> {
         let account_data = AccountData::new(pubkey);
         self.mark_account(pubkey, false);
-        Ok(self
-            .accounts
-            .insert(pubkey, Box::new(RefCell::new(account_data))))
+        self.accounts
+            .insert(pubkey, Box::new(RefCell::new(account_data)))
     }
 
     async fn use_account(
@@ -593,7 +589,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         if let Some(account) = account {
             self.add_account(pubkey, account).await
         } else {
-            self.add_empty_account(pubkey)
+            Ok(self.add_empty_account(pubkey))
         }
     }
 
@@ -616,26 +612,24 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                     if self.accounts.get(&legacy_pubkey).is_some() {
                         // We already have information about contract account (empty or filled with data).
                         // So the balance should be updated, but it is missed. So return the empty account.
-                        self.add_empty_account(pubkey)
+                        Ok(self.add_empty_account(pubkey))
                     } else {
                         // We didn't process contract account and we doesn't have any information about it.
                         // So we can try to process account which can be a legacy.
-                        match self._get_account_from_rpc(legacy_pubkey).await? {
-                            Some(legacy_account) => {
-                                self.add_account(legacy_pubkey, legacy_account).await?;
-                                match self.accounts.get(&pubkey) {
-                                    Some(account) => Ok(account),
-                                    None => self.add_empty_account(pubkey),
-                                }
-                            }
-                            None => {
-                                self.add_empty_account(legacy_pubkey)?;
-                                self.add_empty_account(pubkey)
-                            }
+                        if let Some(legacy_account) =
+                            self._get_account_from_rpc(legacy_pubkey).await?
+                        {
+                            self.add_account(legacy_pubkey, legacy_account).await?;
+                            self.accounts
+                                .get(&pubkey)
+                                .map_or_else(|| Ok(self.add_empty_account(pubkey)), Ok)
+                        } else {
+                            self.add_empty_account(legacy_pubkey);
+                            Ok(self.add_empty_account(pubkey))
                         }
                     }
                 } else {
-                    self.add_empty_account(pubkey)
+                    Ok(self.add_empty_account(pubkey))
                 }
             }
         }
@@ -650,7 +644,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
 
         match self._get_account_from_rpc(pubkey).await? {
             Some(account) => self.add_account(pubkey, account).await,
-            None => self.add_empty_account(pubkey),
+            None => Ok(self.add_empty_account(pubkey)),
         }
     }
 
@@ -669,7 +663,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
 
         match self._get_account_from_rpc(cell_pubkey).await? {
             Some(account) => self.add_account(cell_pubkey, account).await,
-            None => self.add_empty_account(cell_pubkey),
+            None => Ok(self.add_empty_account(cell_pubkey)),
         }
     }
 
@@ -856,8 +850,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                     .get(&used_account.pubkey)
                     .unwrap_or(&None)
                     .as_ref()
-                    .map(|v| v.lamports)
-                    .unwrap_or(0);
+                    .map_or(0, |v| v.lamports);
                 if lamports_after_upgrade > orig_lamports {
                     lamports_spend += lamports_after_upgrade - orig_lamports;
                 } else {
@@ -871,7 +864,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     pub fn get_regular_rent(&self) -> evm_loader::error::Result<u64> {
         let accounts = self.accounts.clone();
         let mut changes_in_rent = 0u64;
-        for (pubkey, account) in accounts.into_map().iter() {
+        for (pubkey, account) in &accounts.into_map() {
             if *pubkey == system_program::ID {
                 continue;
             }
@@ -974,17 +967,25 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     async fn nonce(&self, address: Address, chain_id: u64) -> u64 {
         info!("nonce {address}  {chain_id}");
 
-        self.ethereum_balance_map_or(address, chain_id, u64::default(), |account| account.nonce())
-            .await
-            .unwrap()
+        self.ethereum_balance_map_or(
+            address,
+            chain_id,
+            u64::default(),
+            |account: &BalanceAccount| account.nonce(),
+        )
+        .await
+        .unwrap()
     }
 
     async fn balance(&self, address: Address, chain_id: u64) -> U256 {
         info!("balance {address} {chain_id}");
 
-        self.ethereum_balance_map_or(address, chain_id, U256::default(), |account| {
-            account.balance()
-        })
+        self.ethereum_balance_map_or(
+            address,
+            chain_id,
+            U256::default(),
+            |account: &BalanceAccount| account.balance(),
+        )
         .await
         .unwrap()
     }
@@ -1127,6 +1128,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn map_neon_error(e: NeonError) -> EvmLoaderError {
     EvmLoaderError::Custom(e.to_string())
 }
@@ -1310,7 +1312,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         let signers = seeds
             .iter()
             .map(|s| {
-                let seed = s.iter().map(|s| s.as_slice()).collect::<Vec<_>>();
+                let seed = s.iter().map(std::vec::Vec::as_slice).collect::<Vec<_>>();
                 let signer = Pubkey::create_program_address(&seed, &self.program_id)?;
                 Ok(signer)
             })
@@ -1321,7 +1323,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         accounts.push(instruction.program_id);
         self.mark_account(instruction.program_id, false);
 
-        for meta in instruction.accounts.iter() {
+        for meta in &instruction.accounts {
             if meta.pubkey != self.operator {
                 self.use_account(meta.pubkey, meta.is_writable)
                     .await
@@ -1359,7 +1361,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             *self.return_data.borrow_mut() = Some(return_data);
         }
 
-        for meta in instruction.accounts.iter() {
+        for meta in &instruction.accounts {
             if meta.pubkey == self.operator {
                 continue;
             }

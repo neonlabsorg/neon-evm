@@ -44,7 +44,7 @@ impl From<&BuildInfo> for SlimBuildInfo {
             .version_control
             .expect("Project should be built inside version control");
 
-        SlimBuildInfo {
+        Self {
             timestamp: build_info.timestamp,
             profile: build_info.profile,
             optimization_level: build_info.optimization_level,

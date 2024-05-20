@@ -126,7 +126,7 @@ pub async fn execute(
             error: r.status.err(),
             logs: r.log_messages.unwrap_or_default(),
             executed_units: r.executed_units,
-        })
+        });
     }
 
     Ok(SimulateSolanaResponse {

@@ -22,7 +22,7 @@ pub struct OpenEthereumTracer {
 impl OpenEthereumTracer {
     #[must_use]
     pub fn new(trace_config: TraceConfig, tx: &TxParams) -> Self {
-        OpenEthereumTracer {
+        Self {
             output: None,
             call_analytics: trace_config.into(),
             state_diff_tracer: StateDiffTracer::new(tx),
@@ -32,10 +32,10 @@ impl OpenEthereumTracer {
 
 impl From<TraceConfig> for CallAnalytics {
     fn from(trace_config: TraceConfig) -> Self {
-        let tracer_config = trace_config
+        let trace_call_config = trace_config
             .tracer_config
             .expect("tracer_config should not be None for \"openethereum\" tracer");
-        serde_json::from_value(tracer_config).expect("tracer_config should be CallAnalytics")
+        serde_json::from_value(trace_call_config).expect("tracer_config should be CallAnalytics")
     }
 }
 

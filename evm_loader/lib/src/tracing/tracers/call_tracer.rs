@@ -23,7 +23,7 @@ pub struct CallTracer {
 
 impl CallTracer {
     pub fn new(trace_config: TraceConfig, tx: &TxParams) -> Self {
-        CallTracer {
+        Self {
             config: trace_config.into(),
             call_stack: vec![CallFrame {
                 gas: tx.gas_limit.map(to_web3_u256).unwrap_or_default(),
@@ -47,10 +47,11 @@ pub struct CallTracerConfig {
 
 impl From<TraceConfig> for CallTracerConfig {
     fn from(trace_config: TraceConfig) -> Self {
-        let tracer_config = trace_config
+        let tracer_call_config = trace_config
             .tracer_config
             .expect("tracer_config should not be None for \"callTracer\"");
-        serde_json::from_value(tracer_config).expect("tracer_config should be CallTracerConfig")
+        serde_json::from_value(tracer_call_config)
+            .expect("tracer_config should be CallTracerConfig")
     }
 }
 
@@ -139,7 +140,7 @@ fn get_panic_message(reason: ethnum::U256) -> String {
     let reason = reason.as_u64();
     PANIC_REASONS
         .get(&reason)
-        .map(|s| s.to_string())
+        .map(|s| (*s).to_string())
         .unwrap_or(format!("unknown panic code: {reason:#x}"))
 }
 
@@ -263,7 +264,7 @@ impl CallTracer {
             value: Some(to_web3_u256(context.value)),
             type_string: opcode,
             ..CallFrame::default()
-        })
+        });
     }
 
     fn handle_end_vm(&mut self, status: ExitStatus) {
@@ -293,9 +294,10 @@ impl CallTracer {
 
 impl Tracer for CallTracer {
     fn into_traces(mut self, emulator_gas_used: u64) -> Value {
-        if self.call_stack.len() != 1 {
-            panic!("incorrect number of top-level calls");
-        }
+        assert!(
+            self.call_stack.len() == 1,
+            "incorrect number of top-level calls"
+        );
 
         let call_frame = &mut self.call_stack[0];
         if call_frame.gas_used.is_zero() {

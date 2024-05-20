@@ -1,3 +1,5 @@
+#![allow(clippy::future_not_send)]
+
 use ethnum::U256;
 use evm_loader::account::legacy::LegacyEtherData;
 use evm_loader::account::BalanceAccount;
@@ -30,6 +32,7 @@ pub struct GetBalanceResponse {
 }
 
 impl GetBalanceResponse {
+    #[must_use]
     pub fn empty(program_id: &Pubkey, address: &BalanceAddress) -> Self {
         Self {
             solana_address: address.find_pubkey(program_id),

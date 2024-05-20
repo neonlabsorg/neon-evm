@@ -51,6 +51,7 @@ pub struct GetHolderResponse {
 }
 
 impl GetHolderResponse {
+    #[must_use]
     pub fn empty() -> Self {
         Self {
             status: Status::Empty,

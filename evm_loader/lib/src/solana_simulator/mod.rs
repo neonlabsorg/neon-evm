@@ -63,13 +63,13 @@ impl SolanaSimulator {
         genesis_bank.set_capitalization();
 
         genesis_bank.fill_bank_with_ticks_for_tests();
-        let mut bank = Bank::new_from_parent(
+        let bank = Bank::new_from_parent(
             Arc::clone(&genesis_bank),
             genesis_bank.collector_id(),
             genesis_bank.slot() + 1,
         );
 
-        utils::sync_sysvar_accounts(rpc, &mut bank).await?;
+        utils::sync_sysvar_accounts(rpc, &bank).await?;
 
         Ok(Self {
             bank,
@@ -116,11 +116,11 @@ impl SolanaSimulator {
         Ok(())
     }
 
-    fn bank(&self) -> &Bank {
+    const fn bank(&self) -> &Bank {
         &self.bank
     }
 
-    pub fn payer(&self) -> &Keypair {
+    pub const fn payer(&self) -> &Keypair {
         &self.payer
     }
 

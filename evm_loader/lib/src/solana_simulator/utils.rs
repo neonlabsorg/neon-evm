@@ -87,10 +87,9 @@ pub async fn deactivated_features(rpc: &impl Rpc) -> Result<Vec<Pubkey>, Error> 
     Ok(result)
 }
 
-pub async fn sync_sysvar_accounts(rpc: &impl Rpc, bank: &mut Bank) -> Result<(), Error> {
+pub async fn sync_sysvar_accounts(rpc: &impl Rpc, bank: &Bank) -> Result<(), Error> {
     let keys = sysvar::ALL_IDS.clone();
     let accounts = rpc.get_multiple_accounts(&keys).await?;
-
     for (key, account) in keys.into_iter().zip(accounts) {
         let Some(account) = account else {
             continue;

@@ -4,6 +4,9 @@ use crate::tracing::AccountOverride;
 use hex_literal::hex;
 use std::collections::HashMap;
 use std::str::FromStr;
+
+const STORAGE_LENGTH: usize = 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
+
 mod mock_rpc_client {
     use crate::commands::get_config::BuildConfigSimulator;
     use crate::NeonResult;
@@ -84,7 +87,7 @@ async fn get_overriden_nonce_and_balance(
     nonce_chain_id: u64,
     overrides: Option<AccountOverrides>,
 ) -> (u64, U256) {
-    let mut fixture = Fixture::new().await;
+    let mut fixture = Fixture::new();
     fixture.state_overrides = overrides;
     let storage = fixture
         .build_account_storage_with_chain_id(Some(tx_chain_id))
@@ -149,12 +152,14 @@ fn create_legacy_ether_contract(
     *trx_count_ptr = trx_count.to_le_bytes();
     *balance_ptr = balance.to_le_bytes();
     *generation_ptr = generation.to_le_bytes();
-    *code_size_ptr = (code.len() as u32).to_le_bytes();
+    *code_size_ptr = u32::try_from(code.len())
+        .expect("Expected code value")
+        .to_le_bytes();
     *rw_blocked_ptr = 0u8.to_le_bytes();
 
     if (generation > 0) || (!code.is_empty()) {
         let storage_offset = 1 + LegacyEtherData::SIZE;
-        const STORAGE_LENGTH: usize = 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
+
         let storage_ptr = &mut data[storage_offset..][..STORAGE_LENGTH];
         let storage_source = unsafe {
             let ptr: *const u8 = storage.as_ptr().cast();
@@ -241,7 +246,7 @@ impl ActualStorage {
 }
 
 impl LegacyStorage {
-    pub fn required_account_size(count: usize) -> usize {
+    pub const fn required_account_size(count: usize) -> usize {
         1 + LegacyStorageData::SIZE + std::mem::size_of::<(u8, [u8; 32])>() * count
     }
     pub fn account_with_pubkey(
@@ -597,14 +602,14 @@ struct Fixture {
 }
 
 impl Fixture {
-    pub async fn new() -> Self {
+    pub fn new() -> Self {
         let rent = Rent::default();
         let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
         let accounts = vec![
             (
                 Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap(),
                 Account {
-                    lamports: 1009200,
+                    lamports: 1_009_200,
                     data: bincode::serialize(&rent).unwrap(),
                     owner: Pubkey::from_str("Sysvar1111111111111111111111111111111111111").unwrap(),
                     executable: false,
@@ -724,9 +729,9 @@ impl Fixture {
     }
 
     pub fn legacy_rent(&self, code_len: Option<usize>) -> u64 {
-        let data_length = code_len
-            .map(|len| 1 + LegacyEtherData::SIZE + 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT + len)
-            .unwrap_or(1 + LegacyEtherData::SIZE);
+        let data_length = code_len.map_or(1 + LegacyEtherData::SIZE, |len| {
+            1 + LegacyEtherData::SIZE + 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT + len
+        });
         self.rent.minimum_balance(data_length)
     }
 
@@ -766,7 +771,7 @@ impl<'rpc, T: Rpc> EmulatorAccountStorage<'rpc, T> {
 
 #[tokio::test]
 async fn test_read_balance_missing_account() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     assert_eq!(
@@ -789,7 +794,7 @@ async fn test_read_balance_missing_account() {
 
 #[tokio::test]
 async fn test_read_balance_missing_account_extra_chain() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     assert_eq!(
@@ -809,7 +814,7 @@ async fn test_read_balance_missing_account_extra_chain() {
 
 #[tokio::test]
 async fn test_read_balance_actual_account() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let acc = &ACTUAL_BALANCE;
@@ -830,7 +835,7 @@ async fn test_read_balance_actual_account() {
 
 #[tokio::test]
 async fn test_read_balance_actual_account_extra_chain() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let acc = &ACTUAL_BALANCE2;
@@ -852,7 +857,7 @@ async fn test_read_balance_actual_account_extra_chain() {
 
 #[tokio::test]
 async fn test_read_balance_legacy_account() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let acc = &LEGACY_ACCOUNT;
@@ -876,7 +881,7 @@ async fn test_read_balance_legacy_account() {
 
 #[tokio::test]
 async fn test_modify_actual_and_missing_account() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let mut storage = fixture.build_account_storage().await;
 
     let from = &ACTUAL_BALANCE;
@@ -915,7 +920,7 @@ async fn test_modify_actual_and_missing_account() {
 
 #[tokio::test]
 async fn test_modify_actual_and_missing_account_extra_chain() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let mut storage = fixture.build_account_storage().await;
 
     let from = &ACTUAL_BALANCE2;
@@ -953,7 +958,7 @@ async fn test_modify_actual_and_missing_account_extra_chain() {
 
 #[tokio::test]
 async fn test_modify_actual_and_legacy_account() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let mut storage = fixture.build_account_storage().await;
 
     let from = &ACTUAL_BALANCE;
@@ -993,7 +998,7 @@ async fn test_modify_actual_and_legacy_account() {
 
 #[tokio::test]
 async fn test_read_missing_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     assert_eq!(*storage.code(MISSING_ADDRESS).await, [0u8; 0]);
@@ -1018,7 +1023,7 @@ async fn test_read_missing_contract() {
 
 #[tokio::test]
 async fn test_read_legacy_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     assert_eq!(
@@ -1046,7 +1051,7 @@ async fn test_read_legacy_contract() {
 
 #[tokio::test]
 async fn test_read_legacy_contract_no_balance() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let contract = &LEGACY_CONTRACT_NO_BALANCE;
@@ -1072,7 +1077,7 @@ async fn test_read_legacy_contract_no_balance() {
 
 #[tokio::test]
 async fn test_read_actual_suicide_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let contract = &ACTUAL_SUICIDE;
@@ -1088,7 +1093,7 @@ async fn test_read_actual_suicide_contract() {
 
 #[tokio::test]
 async fn test_read_legacy_suicide_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let contract = &LEGACY_SUICIDE;
@@ -1114,7 +1119,7 @@ async fn test_read_legacy_suicide_contract() {
 
 #[tokio::test]
 async fn test_deploy_at_missing_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let mut storage = fixture.build_account_storage().await;
 
     let code = hex!("14643165").to_vec();
@@ -1129,7 +1134,7 @@ async fn test_deploy_at_missing_contract() {
 
 #[tokio::test]
 async fn test_deploy_at_actual_balance() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let mut storage = fixture.build_account_storage().await;
 
     let code = hex!("14643165").to_vec();
@@ -1145,7 +1150,7 @@ async fn test_deploy_at_actual_balance() {
 
 #[tokio::test]
 async fn test_deploy_at_actual_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let mut storage = fixture.build_account_storage().await;
 
     let code = hex!("62345987").to_vec();
@@ -1166,7 +1171,7 @@ async fn test_deploy_at_actual_contract() {
 
 #[tokio::test]
 async fn test_deploy_at_legacy_account() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let mut storage = fixture.build_account_storage().await;
 
     let code = hex!("37455846").to_vec();
@@ -1189,7 +1194,7 @@ async fn test_deploy_at_legacy_account() {
 
 #[tokio::test]
 async fn test_deploy_at_legacy_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let mut storage = fixture.build_account_storage().await;
 
     let code = hex!("13412971").to_vec();
@@ -1220,7 +1225,7 @@ async fn test_deploy_at_legacy_contract() {
 
 #[tokio::test]
 async fn test_deploy_at_actual_suicide() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let mut storage = fixture.build_account_storage().await;
 
     let code = hex!("13412971").to_vec();
@@ -1240,7 +1245,7 @@ async fn test_deploy_at_actual_suicide() {
 
 #[tokio::test]
 async fn test_deploy_at_legacy_suicide() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let mut storage = fixture.build_account_storage().await;
 
     let code = hex!("13412971").to_vec();
@@ -1270,7 +1275,7 @@ async fn test_deploy_at_legacy_suicide() {
 
 #[tokio::test]
 async fn test_read_missing_storage_for_missing_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     assert_eq!(
@@ -1290,7 +1295,7 @@ async fn test_read_missing_storage_for_missing_contract() {
 
 #[tokio::test]
 async fn test_read_missing_storage_for_actual_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let contract = &ACTUAL_CONTRACT;
@@ -1311,7 +1316,7 @@ async fn test_read_missing_storage_for_actual_contract() {
 
 #[tokio::test]
 async fn test_read_actual_storage_for_actual_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let contract = &ACTUAL_CONTRACT;
@@ -1332,7 +1337,7 @@ async fn test_read_actual_storage_for_actual_contract() {
 
 #[tokio::test]
 async fn test_modify_new_storage_for_actual_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let mut storage = fixture.build_account_storage().await;
 
     let contract = &ACTUAL_CONTRACT;
@@ -1367,7 +1372,7 @@ async fn test_modify_new_storage_for_actual_contract() {
 
 #[tokio::test]
 async fn test_modify_missing_storage_for_actual_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let mut storage = fixture.build_account_storage().await;
 
     let contract = &ACTUAL_CONTRACT;
@@ -1393,7 +1398,7 @@ async fn test_modify_missing_storage_for_actual_contract() {
 
 #[tokio::test]
 async fn test_modify_internal_storage_for_actual_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let mut storage = fixture.build_account_storage().await;
 
     let contract = &ACTUAL_CONTRACT;
@@ -1411,7 +1416,7 @@ async fn test_modify_internal_storage_for_actual_contract() {
 
 #[tokio::test]
 async fn test_read_legacy_storage_for_actual_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let contract = &ACTUAL_CONTRACT;
@@ -1435,7 +1440,7 @@ async fn test_read_legacy_storage_for_actual_contract() {
 
 #[tokio::test]
 async fn test_read_outdate_storage_for_actual_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let contract = &ACTUAL_CONTRACT;
@@ -1459,7 +1464,7 @@ async fn test_read_outdate_storage_for_actual_contract() {
 
 #[tokio::test]
 async fn test_read_missing_storage_for_legacy_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let contract = &LEGACY_CONTRACT;
@@ -1480,7 +1485,7 @@ async fn test_read_missing_storage_for_legacy_contract() {
 
 #[tokio::test]
 async fn test_read_legacy_storage_for_legacy_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let contract = &LEGACY_CONTRACT;
@@ -1512,7 +1517,7 @@ async fn test_read_legacy_storage_for_legacy_contract() {
 
 #[tokio::test]
 async fn test_read_outdate_storage_for_legacy_contract() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let contract = &LEGACY_CONTRACT;
@@ -1544,7 +1549,7 @@ async fn test_read_outdate_storage_for_legacy_contract() {
 
 #[tokio::test]
 async fn test_read_missing_storage_for_legacy_suicide() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let contract = &LEGACY_SUICIDE;
@@ -1565,7 +1570,7 @@ async fn test_read_missing_storage_for_legacy_suicide() {
 
 #[tokio::test]
 async fn test_read_outdate_storage_for_legacy_suicide() {
-    let fixture = Fixture::new().await;
+    let fixture = Fixture::new();
     let storage = fixture.build_account_storage().await;
 
     let contract = &LEGACY_SUICIDE;
@@ -1712,13 +1717,13 @@ async fn test_storage_with_accounts_and_override() {
     .await
     .expect("Failed to create storage");
     assert_eq!(
-        get_balance_account_info(&storage, |account| account.nonce())
+        get_balance_account_info(&storage, |account: &BalanceAccount| account.nonce())
             .await
             .expect("Failed to read nonce"),
         expected_nonce
     );
     assert_eq!(
-        get_balance_account_info(&storage, |account| account.balance())
+        get_balance_account_info(&storage, |account: &BalanceAccount| account.balance())
             .await
             .expect("Failed to read balance"),
         expected_balance
@@ -1769,13 +1774,13 @@ async fn test_storage_new_from_other_and_override() {
             .await
             .expect("Failed to create a copy of storage");
     assert_eq!(
-        get_balance_account_info(&other_storage, |account| account.nonce())
+        get_balance_account_info(&other_storage, |account: &BalanceAccount| account.nonce())
             .await
             .expect("Failed to read nonce"),
         expected_nonce
     );
     assert_eq!(
-        get_balance_account_info(&other_storage, |account| account.balance())
+        get_balance_account_info(&other_storage, |account: &BalanceAccount| account.balance())
             .await
             .expect("Failed to read balance"),
         expected_balance

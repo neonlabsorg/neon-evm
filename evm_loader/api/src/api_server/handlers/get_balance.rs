@@ -1,3 +1,5 @@
+#![allow(clippy::future_not_send)]
+
 use crate::api_server::handlers::process_error;
 use crate::commands::get_balance as GetBalanceCommand;
 use crate::{types::GetBalanceRequest, NeonApiState};
@@ -11,7 +13,6 @@ use super::process_result;
 
 #[tracing::instrument(skip_all, fields(id = request_id.as_str()))]
 #[post("/balance")]
-#[allow(clippy::future_not_send)]
 pub async fn get_balance(
     state: NeonApiState,
     request_id: RequestId,

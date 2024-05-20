@@ -1,3 +1,5 @@
+#![allow(clippy::missing_errors_doc)]
+
 use serde_json::Value;
 use solana_sdk::pubkey::Pubkey;
 
@@ -20,8 +22,8 @@ pub async fn trace_transaction(
 
     let tracer = new_tracer(&emulate_request.tx, trace_config)?;
 
-    let (_, traces) =
+    let (_, emulated_traces) =
         super::emulate::execute(rpc, program_id, emulate_request, Some(tracer)).await?;
 
-    Ok(traces.expect("traces should not be None"))
+    Ok(emulated_traces.expect("traces should not be None"))
 }

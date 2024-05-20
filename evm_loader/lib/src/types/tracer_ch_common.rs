@@ -40,7 +40,7 @@ pub struct SlotParentRooted {
 
 impl From<SlotParentRooted> for SlotParent {
     fn from(slot_parent_rooted: SlotParentRooted) -> Self {
-        SlotParent {
+        Self {
             slot: slot_parent_rooted.slot,
             parent: slot_parent_rooted.parent,
             status: SlotStatus::Rooted as u8,
@@ -49,7 +49,8 @@ impl From<SlotParentRooted> for SlotParent {
 }
 
 impl SlotParent {
-    pub fn is_rooted(&self) -> bool {
+    #[must_use]
+    pub const fn is_rooted(&self) -> bool {
         self.status == SlotStatus::Rooted as u8
     }
 }
@@ -67,7 +68,9 @@ pub struct AccountRow {
     pub lamports: u64,
     pub executable: bool,
     pub rent_epoch: u64,
+    #[allow(clippy::missing_fields_in_debug)]
     pub data: Vec<u8>,
+    #[allow(clippy::missing_fields_in_debug)]
     pub txn_signature: Vec<Option<u8>>,
 }
 
@@ -91,6 +94,8 @@ impl fmt::Debug for AccountRow {
             .field("lamports", &self.lamports)
             .field("executable", &self.executable)
             .field("rent_epoch", &self.rent_epoch)
+            .field("data", &self.data)
+            .field("txn_signature:", &self.txn_signature)
             .finish()
     }
 }
@@ -122,12 +127,9 @@ pub enum EthSyncStatus {
 }
 
 impl EthSyncStatus {
+    #[must_use]
     pub fn new(syncing_status: Option<EthSyncing>) -> Self {
-        if let Some(syncing_status) = syncing_status {
-            Self::Syncing(syncing_status)
-        } else {
-            Self::Synced
-        }
+        syncing_status.map_or(Self::Synced, Self::Syncing)
     }
 }
 
@@ -145,6 +147,7 @@ pub struct RevisionMap {
 }
 
 impl RevisionMap {
+    #[must_use]
     pub fn new(neon_revision_ranges: Vec<(u64, u64, String)>) -> Self {
         let mut map = BTreeMap::new();
 
@@ -155,13 +158,14 @@ impl RevisionMap {
 
         let last_update = std::time::Instant::now();
 
-        RevisionMap { map, last_update }
+        Self { map, last_update }
     }
 
     // When deploying a program for the first time it is now only available in the next slot (the slot after the one the deployment transaction landed in).
     // When undeploying / closing a program the change is visible immediately and the very next instruction even within the transaction can not access it anymore.
     // When redeploying the program becomes temporarily closed immediately and will reopen with the new version in the next slot.
-    pub fn build_ranges(input: Vec<(u64, String)>) -> Vec<(u64, u64, String)> {
+    #[must_use]
+    pub fn build_ranges(input: &[(u64, String)]) -> Vec<(u64, u64, String)> {
         let mut ranges = Vec::new();
 
         for i in 0..input.len() {
@@ -180,7 +184,7 @@ impl RevisionMap {
         }
         ranges
     }
-
+    #[must_use]
     pub fn get(&self, slot: u64) -> Option<String> {
         // Check if slot is less than the starting range or
         // greater than the ending range

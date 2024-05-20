@@ -1,3 +1,5 @@
+#![allow(clippy::future_not_send)]
+
 use async_trait::async_trait;
 use base64::Engine;
 use enum_dispatch::enum_dispatch;
@@ -137,10 +139,10 @@ impl ConfigInstructionSimulator for SolanaSimulator {
 }
 
 impl ConfigSimulator<'_> {
-    fn program_id(&self) -> Pubkey {
+    const fn program_id(&self) -> Pubkey {
         match self {
-            ConfigSimulator::CloneRpcClient { program_id, .. } => *program_id,
-            ConfigSimulator::ProgramTestContext { program_id, .. } => *program_id,
+            ConfigSimulator::CloneRpcClient { program_id, .. }
+            | ConfigSimulator::ProgramTestContext { program_id, .. } => *program_id,
         }
     }
 
@@ -198,9 +200,9 @@ impl ConfigSimulator<'_> {
 
     async fn get_status(&mut self) -> NeonResult<Status> {
         let return_data = self.simulate_evm_instruction(0xA6, &[]).await?;
-        match return_data[0] {
-            0 => Ok(Status::Emergency),
-            1 => Ok(Status::Ok),
+        match return_data.first() {
+            Some(0) => Ok(Status::Emergency),
+            Some(1) => Ok(Status::Ok),
             _ => Ok(Status::Unknown),
         }
     }
@@ -299,7 +301,7 @@ mod tests {
             104, 24, 221, 71, 67, 82, 33, 243, 198, 0, 0, 0, 0,
         ]);
         assert_eq!(
-            format!("{}", pubkey),
+            format!("{pubkey}"),
             "BPFLoader2111111111111111111111111111111111"
         );
     }

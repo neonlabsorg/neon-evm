@@ -1,6 +1,7 @@
 #![allow(clippy::trait_duplication_in_bounds)]
 #![allow(clippy::type_repetition_in_bounds)]
 #![allow(clippy::unsafe_derive_deserialize)]
+#![allow(clippy::future_not_send)]
 
 use std::{fmt::Display, marker::PhantomData, ops::Range};
 

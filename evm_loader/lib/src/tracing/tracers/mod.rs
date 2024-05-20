@@ -34,10 +34,10 @@ impl EventListener for TracerTypeEnum {
         event: Event,
     ) -> evm_loader::error::Result<()> {
         match self {
-            TracerTypeEnum::StructLogger(tracer) => tracer.event(executor_state, event).await,
-            TracerTypeEnum::OpenEthereumTracer(tracer) => tracer.event(executor_state, event).await,
-            TracerTypeEnum::PrestateTracer(tracer) => tracer.event(executor_state, event).await,
-            TracerTypeEnum::CallTracer(tracer) => tracer.event(executor_state, event).await,
+            Self::StructLogger(tracer) => tracer.event(executor_state, event).await,
+            Self::OpenEthereumTracer(tracer) => tracer.event(executor_state, event).await,
+            Self::PrestateTracer(tracer) => tracer.event(executor_state, event).await,
+            Self::CallTracer(tracer) => tracer.event(executor_state, event).await,
         }
     }
 }

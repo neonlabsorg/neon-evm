@@ -1,3 +1,5 @@
+#![allow(clippy::future_not_send)]
+
 use crate::api_server::handlers::process_error;
 use crate::{types::GetStorageAtRequest, NeonApiState};
 use actix_request_identifier::RequestId;
@@ -13,7 +15,6 @@ use super::process_result;
 
 #[tracing::instrument(skip_all, fields(id = request_id.as_str()))]
 #[post("/storage")]
-#[allow(clippy::future_not_send)]
 pub async fn get_storage_at(
     state: NeonApiState,
     request_id: RequestId,

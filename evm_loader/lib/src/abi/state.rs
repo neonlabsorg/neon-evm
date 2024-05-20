@@ -10,6 +10,7 @@ pub struct State {
 }
 
 impl State {
+    #[must_use]
     pub fn new(config: APIOptions) -> Self {
         Self {
             tracer_db: TracerDb::new(&config.db_config),

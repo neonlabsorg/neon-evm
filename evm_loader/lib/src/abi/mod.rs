@@ -29,7 +29,7 @@ use serde_json::json;
 
 lazy_static! {
     static ref RUNTIME: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
-    static ref STATE: State = State::new(load_config().unwrap());
+    static ref STATE: State = State::new(load_config());
 }
 
 pub const _MODULE_WM_: &WithMetadata<NeonEVMLib> = &WithMetadata::new(NeonEVMLib {
@@ -72,8 +72,8 @@ fn invoke<'a>(method: RStr<'a>, params: RStr<'a>) -> RNeonEVMLibResult<'a> {
     .into_local_ffi()
 }
 
-fn load_config() -> Result<APIOptions, NeonError> {
-    Ok(config::load_api_config_from_environment())
+fn load_config() -> APIOptions {
+    config::load_api_config_from_environment()
 }
 
 async fn dispatch(method_str: &str, params_str: &str) -> Result<String, NeonError> {
@@ -127,15 +127,16 @@ fn params_to_neon_error(params: &str) -> NeonError {
     )
 }
 
-fn neon_error_to_neon_lib_error(error: NeonError) -> NeonEVMLibError {
-    assert!(error.error_code() >= 0);
+fn neon_error_to_neon_lib_error(error: &NeonError) -> NeonEVMLibError {
+    assert!(error.error_code() != 0);
     NeonEVMLibError {
-        code: error.error_code() as u32,
+        code: error.error_code(),
         message: error.to_string(),
         data: None,
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn neon_error_to_rstring(error: NeonError) -> RString {
-    RString::from(serde_json::to_string(&neon_error_to_neon_lib_error(error)).unwrap())
+    RString::from(serde_json::to_string(&neon_error_to_neon_lib_error(&error)).unwrap())
 }

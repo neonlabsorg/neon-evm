@@ -233,7 +233,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             block_number,
             block_timestamp,
             timestamp_used: RefCell::new(false),
-            state_overrides: state_overrides,
+            state_overrides,
             rent,
             accounts_cache,
             used_accounts: FrozenMap::new(),
@@ -306,7 +306,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
 impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     async fn apply_balance_overrides(&self, target_chain_id: u64) -> NeonResult<()> {
         if let Some(state_overrides) = self.state_overrides.as_ref() {
-            for (address, overrides) in state_overrides.into_iter() {
+            for (address, overrides) in state_overrides.iter() {
                 if overrides.nonce.is_none() && overrides.balance.is_none() {
                     continue;
                 }

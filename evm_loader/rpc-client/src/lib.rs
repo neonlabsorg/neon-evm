@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 mod config;
 mod error;
 pub mod http;

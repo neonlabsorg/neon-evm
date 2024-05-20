@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 // use std::{collections::HashMap, error::Error};
 mod build_info;
 mod context;

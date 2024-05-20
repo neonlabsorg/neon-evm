@@ -12,7 +12,6 @@ use super::process_result;
 
 #[tracing::instrument(skip_all, fields(id = request_id.as_str()))]
 #[post("/contract")]
-// TODO: Remove future_not_send.
 #[allow(clippy::future_not_send)]
 pub async fn get_contract(
     state: NeonApiState,

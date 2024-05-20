@@ -44,8 +44,7 @@ pub fn init(options: &ArgMatches) -> Result<(), log::SetLoggerError> {
             let file: &str = record.file().unwrap_or("undefined");
             let line: u32 = record.line().unwrap_or(0);
 
-            let mut context = CONTEXT.lock().unwrap();
-            context.push(LogRecord {
+            CONTEXT.lock().unwrap().push(LogRecord {
                 message: record.args().to_string(),
                 source: format!("{file}:{line}"),
                 level: record.metadata().level().as_str(),

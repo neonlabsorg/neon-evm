@@ -1,5 +1,5 @@
 #![deny(warnings)]
-#![deny(clippy::all, clippy::pedantic)]
+#![deny(clippy::all, clippy::pedantic, clippy::nursery)]
 
 #[allow(clippy::module_name_repetitions)]
 mod build_info;
@@ -38,6 +38,8 @@ use solana_sdk::signature::Signer;
 type NeonCliResult = Result<serde_json::Value, NeonError>;
 
 #[allow(clippy::too_many_lines)]
+// TODO: Remove future_not_send.
+#[allow(clippy::future_not_send)]
 async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
     let config = &config::create(options)?;
 

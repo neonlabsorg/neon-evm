@@ -112,6 +112,8 @@ where
 
     Ok(action(&balance_account?))
 }
+
+#[allow(clippy::too_many_arguments)]
 fn create_legacy_ether_contract(
     program_id: &Pubkey,
     rent: &Rent,

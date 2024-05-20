@@ -30,7 +30,7 @@ impl NeonApiError {
 
 impl From<NeonError> for NeonApiError {
     fn from(value: NeonError) -> Self {
-        NeonApiError(value)
+        Self(value)
     }
 }
 
@@ -42,7 +42,7 @@ impl From<NeonApiError> for NeonError {
 
 impl From<AddrParseError> for NeonApiError {
     fn from(value: AddrParseError) -> Self {
-        NeonApiError(value.into())
+        Self(value.into())
     }
 }
 

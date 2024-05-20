@@ -1,5 +1,5 @@
 #![deny(warnings)]
-#![deny(clippy::all, clippy::pedantic)]
+#![deny(clippy::all, clippy::pedantic, clippy::nursery)]
 mod api_options;
 mod api_server;
 #[allow(clippy::module_name_repetitions)]

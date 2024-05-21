@@ -1,3 +1,5 @@
+#![allow(clippy::future_not_send)]
+
 use async_trait::async_trait;
 use jsonrpsee_core::{client::ClientT, rpc_params};
 use jsonrpsee_http_client::{HttpClient, HttpClientBuilder};
@@ -23,8 +25,8 @@ pub struct NeonRpcHttpClient {
 }
 
 impl NeonRpcHttpClient {
-    pub async fn new(config: NeonRpcClientConfig) -> NeonRpcClientResult<NeonRpcHttpClient> {
-        Ok(NeonRpcHttpClient {
+    pub fn new(config: NeonRpcClientConfig) -> NeonRpcClientResult<Self> {
+        Ok(Self {
             client: HttpClientBuilder::default().build(config.url)?,
         })
     }
@@ -33,13 +35,14 @@ impl NeonRpcHttpClient {
 pub struct NeonRpcHttpClientBuilder {}
 
 impl NeonRpcHttpClientBuilder {
-    pub fn new() -> NeonRpcHttpClientBuilder {
-        NeonRpcHttpClientBuilder {}
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {}
     }
 
-    pub async fn build(&self, url: impl Into<String>) -> NeonRpcClientResult<NeonRpcHttpClient> {
+    pub fn build(&self, url: impl Into<String>) -> NeonRpcClientResult<NeonRpcHttpClient> {
         let config = NeonRpcClientConfig::new(url);
-        NeonRpcHttpClient::new(config).await
+        NeonRpcHttpClient::new(config)
     }
 }
 

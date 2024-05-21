@@ -3,7 +3,7 @@ pub struct NeonRpcClientConfig {
 }
 
 impl NeonRpcClientConfig {
-    pub fn new(url: impl Into<String>) -> NeonRpcClientConfig {
-        NeonRpcClientConfig { url: url.into() }
+    pub fn new(url: impl Into<String>) -> Self {
+        Self { url: url.into() }
     }
 }

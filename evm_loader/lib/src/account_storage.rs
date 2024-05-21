@@ -176,11 +176,14 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
         };
 
         for (index, key) in pubkeys.iter().enumerate() {
+            if let Some(account) = self.get_account_from_self(key) {
+                result[index] = Some(account);
+                continue;
+            }
             if *key == FAKE_OPERATOR {
                 result[index] = None;
                 continue;
             }
-
             if let Some(account) = self.accounts_cache.get(key) {
                 result[index] = account.clone();
             } else {
@@ -349,6 +352,23 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
 }
 
 impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
+    fn get_account_from_self(&self, key: &Pubkey) -> Option<Account> {
+        let account = if *key == self.operator {
+            Some(Account {
+                lamports: 100 * 1_000_000_000,
+                data: vec![],
+                owner: system_program::ID,
+                executable: false,
+                rent_epoch: 0,
+            })
+        } else if let Some(account) = self.accounts.get(key) {
+            let acc = &*account.borrow();
+            Some(acc.into())
+        } else {
+            None
+        };
+        return account;
+    }
     async fn apply_balance_overrides(&self, target_chain_id: u64) -> NeonResult<()> {
         if let Some(state_overrides) = self.state_overrides.as_ref() {
             for (address, overrides) in state_overrides.into_iter() {

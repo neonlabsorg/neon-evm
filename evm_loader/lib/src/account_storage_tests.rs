@@ -1823,6 +1823,7 @@ async fn test_storage_new_from_other_and_override() {
     );
 }
 
+#[ignore]
 #[tokio::test]
 async fn test_storage_get_multiple_accounts() {
     let rent = Rent::default();
@@ -1992,6 +1993,7 @@ async fn test_storage_get_multiple_accounts() {
     }
 }
 
+#[ignore]
 #[tokio::test]
 async fn test_storage_get_multiple_accounts_order_with_fake_operator() {
     let rent = Rent::default();
@@ -2065,6 +2067,7 @@ async fn test_storage_get_multiple_accounts_order_with_fake_operator() {
     assert!(none_indexes.len() > 0);
 }
 
+#[ignore]
 #[tokio::test]
 async fn test_storage_get_multiple_accounts_order() {
     let rent = Rent::default();

@@ -22,6 +22,6 @@ pub enum NeonRPCError {
 
 impl From<NeonRPCError> for jsonrpc_v2::Error {
     fn from(value: NeonRPCError) -> Self {
-        jsonrpc_v2::Error::internal(value)
+        Self::internal(value)
     }
 }

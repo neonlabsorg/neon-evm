@@ -1,4 +1,6 @@
 #![deny(warnings)]
+#![deny(clippy::all, clippy::pedantic, clippy::nursery)]
+#![allow(clippy::module_name_repetitions)]
 
 // use std::{collections::HashMap, error::Error};
 mod build_info;
@@ -56,7 +58,9 @@ async fn main() -> NeonRPCResult<()> {
     let listener_addr = matches
         .value_of("host")
         .map(std::borrow::ToOwned::to_owned)
-        .or_else(|| Some(env::var("NEON_API_LISTENER_ADDR").unwrap_or("0.0.0.0:3100".to_owned())))
+        .or_else(|| {
+            Some(env::var("NEON_API_LISTENER_ADDR").unwrap_or_else(|_| "0.0.0.0:3100".to_owned()))
+        })
         .unwrap();
 
     let addr = SocketAddr::from_str(listener_addr.as_str())?;

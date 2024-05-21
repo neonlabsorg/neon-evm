@@ -1,3 +1,5 @@
+#![allow(clippy::future_not_send)]
+
 use super::invoke;
 use crate::{context::Context, error::NeonRPCError};
 use jsonrpc_v2::{Data, Params};

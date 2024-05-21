@@ -1,4 +1,5 @@
 #![deny(warnings)]
+#![deny(clippy::all, clippy::nursery)]
 #![allow(non_camel_case_types)]
 
 pub mod types;
@@ -26,6 +27,7 @@ pub struct NeonEVMLib {
     pub invoke: for<'a> extern "C" fn(RStr<'a>, RStr<'a>) -> RNeonEVMLibResult<'a>,
 }
 
+#[allow(clippy::use_self)]
 impl RootModule for NeonEVMLib_Ref {
     abi_stable::declare_root_module_statics! {NeonEVMLib_Ref}
 

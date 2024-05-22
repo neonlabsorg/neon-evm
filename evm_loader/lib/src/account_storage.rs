@@ -439,15 +439,11 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         Ok(())
     }
 
-    fn is_storage_overriden(&self, pubkey: Pubkey) -> bool {
+    fn has_storage_override(&self, address: &Address) -> bool {
         self.state_overrides.as_ref().map_or(false, |overrides| {
             overrides
                 .iter()
-                .filter(|(address, _)| {
-                    let (overridden_pubkey, _) = address.find_solana_address(&self.program_id);
-                    overridden_pubkey == pubkey
-                })
-                .any(|(_, overrides)| overrides.state.is_some())
+                .any(|(item, override_)| *item == *address && override_.state.is_some())
         })
     }
 
@@ -751,7 +747,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             return Ok(account);
         }
 
-        if self.is_storage_overriden(pubkey) {
+        if self.has_storage_override(&address) {
             // In case of emulated state overrides full storage we should not
             // go to the node and return empty account here to fill it by
             // overriden data.

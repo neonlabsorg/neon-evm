@@ -117,49 +117,6 @@ where
     Ok(action(&balance_account?))
 }
 
-async fn check_contract_code<T: rpc::Rpc>(
-    storage: &EmulatorAccountStorage<'_, T>,
-    address: Address,
-    code: Vec<u8>,
-) -> NeonResult<bool> {
-    let mut account_data = storage
-        .get_contract_account(address)
-        .await
-        .map_err(map_neon_error)?
-        .borrow_mut();
-
-    let contract =
-        ContractAccount::from_account(storage.program_id(), account_data.into_account_info())?;
-
-    let is_equal = hex::encode(&*contract.code()) == hex::encode(code);
-    Ok(is_equal)
-}
-
-async fn get_storage_value<T: rpc::Rpc>(
-    storage: &EmulatorAccountStorage<'_, T>,
-    address: Address,
-    index: U256,
-) -> NeonResult<U256> {
-    let value = if index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u64) {
-        let index: usize = index.as_usize();
-        storage
-            .ethereum_contract_map_or(address, [0_u8; 32], |c| c.storage_value(index))
-            .await
-            .unwrap()
-    } else {
-        let subindex = (index & 0xFF).as_u8();
-        let index = index & !U256::new(0xFF);
-
-        storage
-            .ethereum_storage_map_or(address, index, <[u8; 32]>::default(), |cell| {
-                cell.get(subindex)
-            })
-            .await
-            .unwrap()
-    };
-    Ok(U256::from_be_bytes(value))
-}
-
 #[allow(clippy::too_many_arguments)]
 fn create_legacy_ether_contract(
     program_id: &Pubkey,
@@ -1782,6 +1739,7 @@ async fn test_storage_override_state_diff_balance_nonce() {
     )
     .await
     .expect("Failed to create storage");
+
     assert_eq!(
         get_balance_account_info(&storage, |account: &BalanceAccount| account.nonce())
             .await
@@ -1794,22 +1752,17 @@ async fn test_storage_override_state_diff_balance_nonce() {
             .expect("Failed to read balance"),
         expected_balance
     );
-    assert!(
-        check_contract_code(&storage, ACTUAL_BALANCE.address, expected_code)
-            .await
-            .expect("The contract code must be udpated")
+
+    assert_eq!(*storage.code(ACTUAL_BALANCE.address).await, expected_code);
+    assert_eq!(
+        storage.storage(ACTUAL_BALANCE.address, U256::new(0)).await,
+        U256::MAX.to_be_bytes()
     );
     assert_eq!(
-        get_storage_value(&storage, ACTUAL_BALANCE.address, U256::new(0))
-            .await
-            .expect("Failed to read storage value"),
-        U256::MAX
-    );
-    assert_eq!(
-        get_storage_value(&storage, ACTUAL_BALANCE.address, STATIC_STORAGE_LIMIT + 1)
-            .await
-            .expect("Failed to read storage value"),
-        U256::MAX
+        storage
+            .storage(ACTUAL_BALANCE.address, STATIC_STORAGE_LIMIT + 1)
+            .await,
+        U256::MAX.to_be_bytes()
     );
 }
 
@@ -1940,35 +1893,29 @@ async fn test_storage_override_state() {
     .await
     .expect("Failed to create storage");
     assert_eq!(
-        get_storage_value(&storage, ACTUAL_BALANCE.address, U256::new(0))
-            .await
-            .expect("Failed to read storage value"),
-        U256::MAX
+        storage.storage(ACTUAL_BALANCE.address, U256::new(0)).await,
+        U256::MAX.to_be_bytes()
     );
     assert_eq!(
-        get_storage_value(&storage, ACTUAL_BALANCE.address, STATIC_STORAGE_LIMIT + 1)
-            .await
-            .expect("Failed to read storage value"),
-        U256::MAX
+        storage
+            .storage(ACTUAL_BALANCE.address, STATIC_STORAGE_LIMIT + 1)
+            .await,
+        U256::MAX.to_be_bytes()
     );
     // Checking state_diff values were not applied.
     assert_eq!(
-        get_storage_value(&storage, ACTUAL_BALANCE.address, STATIC_STORAGE_LIMIT + 2)
-            .await
-            .expect("Failed to read storage value"),
-        0
+        storage
+            .storage(ACTUAL_BALANCE.address, STATIC_STORAGE_LIMIT + 2)
+            .await,
+        [0u8; 32]
     );
 
     for i in 1..STATIC_STORAGE_LIMIT.as_usize() {
         assert_eq!(
-            get_storage_value(
-                &storage,
-                ACTUAL_BALANCE.address,
-                U256::new(i.try_into().unwrap())
-            )
-            .await
-            .expect("Failed to read storage value"),
-            0
+            storage
+                .storage(ACTUAL_BALANCE.address, U256::new(i.try_into().unwrap()))
+                .await,
+            [0u8; 32]
         );
     }
 }

@@ -239,7 +239,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             return_data: RefCell::new(None),
         };
         storage
-            .apply_state_overrides(tx_chain_id.unwrap_or(storage.default_chain_id()))
+            .apply_state_overrides(tx_chain_id.unwrap_or_else(|| storage.default_chain_id()))
             .await?;
         Ok(storage)
     }
@@ -270,7 +270,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             return_data: RefCell::new(None),
         };
         storage
-            .apply_state_overrides(tx_chain_id.unwrap_or(storage.default_chain_id()))
+            .apply_state_overrides(tx_chain_id.unwrap_or_else(|| storage.default_chain_id()))
             .await?;
         Ok(storage)
     }
@@ -360,7 +360,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             .state_overrides
             .as_ref()
             .unwrap()
-            .into_iter()
+            .iter()
             .filter(|(_, account)| {
                 account.code.is_some() || account.state_diff.is_some() || account.state.is_some()
             })
@@ -376,7 +376,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                         U256::from_be_bytes(index.to_fixed_bytes()),
                         value.to_fixed_bytes(),
                     )
-                    .await?
+                    .await?;
                 }
             // state and stateDiff can't be specified at the same time.
             // If state is set, message execution will only use the data in
@@ -390,7 +390,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                         U256::from_be_bytes(index.to_fixed_bytes()),
                         value.to_fixed_bytes(),
                     )
-                    .await?
+                    .await?;
                 }
             }
             if let Some(code) = account.code {

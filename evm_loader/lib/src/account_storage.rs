@@ -563,7 +563,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
     }
 
-    fn add_empty_account(&self, pubkey: Pubkey) -> &std::cell::RefCell<AccountData> {
+    fn add_empty_account(&self, pubkey: Pubkey) -> &RefCell<AccountData> {
         let account_data = AccountData::new(pubkey);
         self.mark_account(pubkey, false);
         self.accounts
@@ -1312,7 +1312,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         let signers = seeds
             .iter()
             .map(|s| {
-                let seed = s.iter().map(std::vec::Vec::as_slice).collect::<Vec<_>>();
+                let seed = s.iter().map(Vec::as_slice).collect::<Vec<_>>();
                 let signer = Pubkey::create_program_address(&seed, &self.program_id)?;
                 Ok(signer)
             })

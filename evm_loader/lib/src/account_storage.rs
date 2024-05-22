@@ -402,7 +402,9 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             .address
             .find_balance_address(&self.program_id, self.default_chain_id());
         let balance_data = self.add_empty_account(balance_pubkey);
-        if (legacy.balance > 0) || (legacy.trx_count > 0) {
+        let empty = balance_data.borrow().owner == system_program::ID;
+        let should_create_balance = empty && ((legacy.balance > 0) || (legacy.trx_count > 0));
+        if should_create_balance {
             let mut balance_data = balance_data.borrow_mut();
             let mut balance = self.create_ethereum_balance(
                 &mut balance_data,

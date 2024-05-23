@@ -741,6 +741,36 @@ impl Transaction {
     }
 
     #[must_use]
+    pub fn tx_type(&self) -> u8 {
+        match self.transaction {
+            TransactionPayload::Legacy(_) => 0,
+            TransactionPayload::AccessList(_) => 1,
+            TransactionPayload::DynamicFee(_) => 2,
+        }
+    }
+
+    #[must_use]
+    pub fn max_fee_per_gas(&self) -> Option<U256> {
+        match self.transaction {
+            TransactionPayload::Legacy(_) | TransactionPayload::AccessList(_) => None,
+            TransactionPayload::DynamicFee(DynamicFeeTx {
+                max_fee_per_gas, ..
+            }) => Some(max_fee_per_gas),
+        }
+    }
+
+    #[must_use]
+    pub fn max_priority_fee_per_gas(&self) -> Option<U256> {
+        match self.transaction {
+            TransactionPayload::Legacy(_) | TransactionPayload::AccessList(_) => None,
+            TransactionPayload::DynamicFee(DynamicFeeTx {
+                max_priority_fee_per_gas,
+                ..
+            }) => Some(max_priority_fee_per_gas),
+        }
+    }
+
+    #[must_use]
     pub fn access_list(&self) -> Option<&Vec<(Address, Vec<StorageKey>)>> {
         match &self.transaction {
             TransactionPayload::AccessList(AccessListTx { access_list, .. })

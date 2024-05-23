@@ -1,12 +1,13 @@
+use ethnum::U256;
 use evm_loader::{
     account::{
-        legacy::{
-            LegacyFinalizedData, LegacyHolderData, TAG_HOLDER_DEPRECATED,
-            TAG_STATE_FINALIZED_DEPRECATED,
-        },
-        Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
+            legacy::{
+                LegacyFinalizedData, LegacyHolderData, TAG_HOLDER_DEPRECATED,
+                TAG_STATE_FINALIZED_DEPRECATED,
+            },
+            Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
     },
-    types::Address,
+    types::Transaction, types::Address,
 };
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
@@ -46,6 +47,9 @@ pub struct GetHolderResponse {
     #[serde_as(as = "Option<Hex>")]
     pub tx: Option<[u8; 32]>,
     pub tx_data: Option<TxParams>,
+    pub tx_type: Option<u8>,
+    pub max_fee_per_gas: Option<U256>,
+    pub max_priority_fee_per_gas: Option<U256>,
     pub chain_id: Option<u64>,
     pub origin: Option<Address>,
 
@@ -78,11 +82,15 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
     match evm_loader::account::tag(program_id, &info)? {
         TAG_HOLDER => {
             let holder = Holder::from_account(program_id, info)?;
+            let parsed_tx = Transaction::from_rlp(&holder.transaction())?;
             Ok(GetHolderResponse {
                 status: Status::Holder,
                 len: Some(data_len),
                 owner: Some(holder.owner()),
                 tx: Some(holder.transaction_hash()),
+                tx_type: Some(parsed_tx.tx_type()),
+                max_fee_per_gas: parsed_tx.max_fee_per_gas(),
+                max_priority_fee_per_gas: parsed_tx.max_priority_fee_per_gas(),
                 ..GetHolderResponse::default()
             })
         }
@@ -93,6 +101,10 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 len: Some(data_len),
                 owner: Some(holder.owner),
                 tx: Some([0u8; 32]),
+                // Deprecated holders can't use new transaction type, because new transaction type
+                // is being supported much later than such holder because deprecated.
+                // Thus, tx_type=0 (legacy), max_fee_per_gas and max_priority_fee_per_gas is None.
+                tx_type: Some(0),
                 ..GetHolderResponse::default()
             })
         }
@@ -103,6 +115,11 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 len: Some(data_len),
                 owner: Some(state.owner()),
                 tx: Some(state.trx_hash()),
+                // transaction_type, max_fee_per_gas and max_priority_fee_per_gas are not needed
+                // when transaction is already finalized.
+                // Also, the data about transaction is already not in the holder anymore.
+                // We explicitly set tx_type=0 to indicate that there shouldn't be new gas params.
+                tx_type: Some(0),
                 ..GetHolderResponse::default()
             })
         }
@@ -113,6 +130,11 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 len: Some(data_len),
                 owner: Some(state.owner),
                 tx: Some(state.transaction_hash),
+                // transaction_type, max_fee_per_gas and max_priority_fee_per_gas are not needed
+                // when transaction is already finalized.
+                // Also, the data about transaction is already not in the holder anymore.
+                // We explicitly set tx_type=0 to indicate that there shouldn't be new gas params.
+                tx_type: Some(0),
                 ..GetHolderResponse::default()
             })
         }
@@ -130,6 +152,9 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 owner: Some(state.owner()),
                 tx: Some(transaction.hash()),
                 tx_data: Some(tx_params),
+                tx_type: Some(state.trx().tx_type()),
+                max_fee_per_gas: state.trx().max_fee_per_gas(),
+                max_priority_fee_per_gas: state.trx().max_priority_fee_per_gas(),
                 chain_id: transaction.chain_id(),
                 origin: Some(origin),
                 accounts: Some(accounts),

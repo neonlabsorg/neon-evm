@@ -261,28 +261,21 @@ impl rlp::Decodable for AccessListTx {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, ReconstructRaw)]
+#[repr(C)]
 pub struct DynamicFeeTx {
     pub nonce: u64,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub max_priority_fee_per_gas: U256,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub max_fee_per_gas: U256,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub gas_limit: U256,
     pub target: Option<Address>,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub value: U256,
-    #[serde(with = "serde_bytes")]
-    pub call_data: Vec<u8>,
-    #[serde(with = "ethnum::serde::bytes::le")]
+    pub call_data: Vector<u8>,
     pub r: U256,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub s: U256,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub chain_id: U256,
     pub recovery_id: u8,
-    pub access_list: Vec<(Address, Vec<StorageKey>)>,
+    pub access_list: Vector<(Address, Vector<StorageKey>)>,
 }
 
 impl rlp::Decodable for DynamicFeeTx {
@@ -322,10 +315,10 @@ impl rlp::Decodable for DynamicFeeTx {
         };
 
         let value: U256 = u256(&rlp.at(6)?)?;
-        let call_data = rlp.val_at(7)?;
+        let call_data = decode_byte_vector(&rlp.at(7)?)?;
 
         let rlp_access_list = rlp.at(8)?;
-        let mut access_list = vec![];
+        let mut access_list = vector![];
 
         for entry in &rlp_access_list {
             // Check if entry is a list
@@ -334,7 +327,7 @@ impl rlp::Decodable for DynamicFeeTx {
                 let address: Address = entry.at(0)?.as_val()?;
 
                 // Get storage keys from second element
-                let mut storage_keys: Vec<StorageKey> = vec![];
+                let mut storage_keys: Vector<StorageKey> = vector![];
 
                 for key in &entry.at(1)? {
                     storage_keys.push(key.as_val()?);
@@ -733,6 +726,36 @@ impl Transaction {
     #[must_use]
     pub fn signed_hash(&self) -> [u8; 32] {
         self.signed_hash
+    }
+
+    #[must_use]
+    pub fn tx_type(&self) -> u8 {
+        match self.transaction {
+            TransactionPayload::Legacy(_) => 0,
+            TransactionPayload::AccessList(_) => 1,
+            TransactionPayload::DynamicFee(_) => 2,
+        }
+    }
+
+    #[must_use]
+    pub fn max_fee_per_gas(&self) -> Option<U256> {
+        match self.transaction {
+            TransactionPayload::Legacy(_) | TransactionPayload::AccessList(_) => None,
+            TransactionPayload::DynamicFee(DynamicFeeTx {
+                max_fee_per_gas, ..
+            }) => Some(max_fee_per_gas),
+        }
+    }
+
+    #[must_use]
+    pub fn max_priority_fee_per_gas(&self) -> Option<U256> {
+        match self.transaction {
+            TransactionPayload::Legacy(_) | TransactionPayload::AccessList(_) => None,
+            TransactionPayload::DynamicFee(DynamicFeeTx {
+                max_priority_fee_per_gas,
+                ..
+            }) => Some(max_priority_fee_per_gas),
+        }
     }
 
     #[must_use]

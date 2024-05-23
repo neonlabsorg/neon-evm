@@ -12,6 +12,7 @@ use crate::evm::tracing::EventListener;
 use crate::evm::Machine;
 use crate::executor::ExecutorStateData;
 use crate::types::boxx::{boxx, Boxx};
+use crate::types::DynamicFeeTx;
 use crate::types::{
     read_raw_utils::{read_vec, ReconstructRaw},
     AccessListTx, Address, LegacyTx, Transaction, TransactionPayload, TreeMap,
@@ -530,6 +531,15 @@ impl<'a> StateAccount<'a> {
 
                     TransactionPayload::AccessList(AccessListTx::build(
                         access_list_payload_ptr.cast::<AccessListTx>(),
+                        memory_space_delta,
+                    ))
+                }
+                2 => {
+                    let dynamic_fee_payload_ptr = payload_ptr
+                        .wrapping_add(payload_ptr.align_offset(align_of::<DynamicFeeTx>()));
+
+                    TransactionPayload::DynamicFee(DynamicFeeTx::build(
+                        dynamic_fee_payload_ptr.cast::<DynamicFeeTx>(),
                         memory_space_delta,
                     ))
                 }

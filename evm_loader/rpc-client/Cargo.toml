@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 serde = "1.0.202"
-serde_json = "1.0.115"
+serde_json = "1.0.117"
 neon-lib = { path = "../lib" }
 thiserror = "1.0.58"
 async-trait = "0.1.80"

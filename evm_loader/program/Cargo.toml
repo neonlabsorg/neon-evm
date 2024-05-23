@@ -63,7 +63,7 @@ features = ["is_sync"]
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full"] }
-serde_json = { version = "1.0.115", features = ["preserve_order"] }
+serde_json = { version = "1.0.117", features = ["preserve_order"] }
 solana-sdk.workspace = true
 
 

@@ -1,14 +1,14 @@
 use super::*;
 use std::str::FromStr;
 
-use crate::tracing::ChainBalanceOverride;
+use crate::tracing::{ChainBalanceOverrideKey, ChainBalanceOverrides};
 use crate::types::tracer_ch_common::RevisionMap;
 
 #[test]
 fn test_build_ranges_empty() {
     let results = Vec::new();
     let exp = Vec::new();
-    let res = RevisionMap::build_ranges(results);
+    let res = RevisionMap::build_ranges(&results);
     assert_eq!(res, exp);
 }
 
@@ -16,24 +16,24 @@ fn test_build_ranges_empty() {
 fn test_build_ranges_single_element() {
     let results = vec![(1u64, String::from("Rev1"))];
     let exp = vec![(1u64, 2u64, String::from("Rev1"))];
-    let res = RevisionMap::build_ranges(results);
+    let res = RevisionMap::build_ranges(&results);
     assert_eq!(res, exp);
 }
 
 #[test]
 fn test_build_ranges_multiple_elements_different_revision() {
     let results = vec![
-        (222222222u64, String::from("Rev1")),
-        (333333333u64, String::from("Rev2")),
-        (444444444u64, String::from("Rev3")),
+        (222_222_222u64, String::from("Rev1")),
+        (333_333_333u64, String::from("Rev2")),
+        (444_444_444u64, String::from("Rev3")),
     ];
 
     let exp = vec![
-        (222222222u64, 333333333u64, String::from("Rev1")),
-        (333333334u64, 444444444u64, String::from("Rev2")),
-        (444444445u64, 444444445u64, String::from("Rev3")),
+        (222_222_222u64, 333_333_333u64, String::from("Rev1")),
+        (333_333_334u64, 444_444_444u64, String::from("Rev2")),
+        (444_444_445u64, 444_444_445u64, String::from("Rev3")),
     ];
-    let res = RevisionMap::build_ranges(results);
+    let res = RevisionMap::build_ranges(&results);
 
     assert_eq!(res, exp);
 }
@@ -41,27 +41,27 @@ fn test_build_ranges_multiple_elements_different_revision() {
 #[test]
 fn test_rangemap() {
     let ranges = vec![
-        (123456780, 123456788, String::from("Rev1")),
-        (123456789, 123456793, String::from("Rev2")),
-        (123456794, 123456799, String::from("Rev3")),
+        (123_456_780, 123_456_788, String::from("Rev1")),
+        (123_456_789, 123_456_793, String::from("Rev2")),
+        (123_456_794, 123_456_799, String::from("Rev3")),
     ];
     let map = RevisionMap::new(ranges);
 
-    assert_eq!(map.get(123456779), None); // Below the bottom bound of the first range
+    assert_eq!(map.get(123_456_779), None); // Below the bottom bound of the first range
 
-    assert_eq!(map.get(123456780), Some(String::from("Rev1"))); // The bottom bound of the first range
-    assert_eq!(map.get(123456785), Some(String::from("Rev1"))); // Within the first range
-    assert_eq!(map.get(123456788), Some(String::from("Rev1"))); // The top bound of the first range
+    assert_eq!(map.get(123_456_780), Some(String::from("Rev1"))); // The bottom bound of the first range
+    assert_eq!(map.get(123_456_785), Some(String::from("Rev1"))); // Within the first range
+    assert_eq!(map.get(123_456_788), Some(String::from("Rev1"))); // The top bound of the first range
 
-    assert_eq!(map.get(123456793), Some(String::from("Rev2"))); // The bottom bound of the second range
-    assert_eq!(map.get(123456790), Some(String::from("Rev2"))); // Within the second range
-    assert_eq!(map.get(123456793), Some(String::from("Rev2"))); // The top bound of the second range
+    assert_eq!(map.get(123_456_793), Some(String::from("Rev2"))); // The bottom bound of the second range
+    assert_eq!(map.get(123_456_790), Some(String::from("Rev2"))); // Within the second range
+    assert_eq!(map.get(123_456_793), Some(String::from("Rev2"))); // The top bound of the second range
 
-    assert_eq!(map.get(123456799), Some(String::from("Rev3"))); // The bottom bound of the third range
-    assert_eq!(map.get(123456795), Some(String::from("Rev3"))); // Within the third range
-    assert_eq!(map.get(123456799), Some(String::from("Rev3"))); // The top bound of the third range
+    assert_eq!(map.get(123_456_799), Some(String::from("Rev3"))); // The bottom bound of the third range
+    assert_eq!(map.get(123_456_795), Some(String::from("Rev3"))); // Within the third range
+    assert_eq!(map.get(123_456_799), Some(String::from("Rev3"))); // The top bound of the third range
 
-    assert_eq!(map.get(123456800), None); // Beyond the top end of the last range
+    assert_eq!(map.get(123_456_800), None); // Beyond the top end of the last range
 }
 
 #[test]
@@ -139,9 +139,9 @@ fn test_deserialize() {
     assert_eq!(data.as_ref().unwrap().lamports, 1000000000000);
 }
 
-fn check<F>(json: &str, key: &str, f: F) -> bool
+fn check<F>(json: &str, f: F) -> Result<bool, serde_json::Error>
 where
-    F: FnOnce(&ChainBalanceOverride) -> bool,
+    F: FnOnce(&ChainBalanceOverrides) -> bool,
 {
     let payload = r#"
     {
@@ -168,16 +168,14 @@ where
     "#
     .replace("{balance}", json);
 
-    let request = serde_json::from_str::<EmulateRequest>(&payload).unwrap();
+    let request = serde_json::from_str::<EmulateRequest>(&payload)?;
     assert!(request.trace_config.is_some());
     let trace_call_config = request.trace_config.unwrap();
     assert!(trace_call_config.balance_overrides.is_some());
-    let binding = trace_call_config
+    let balance_overides = trace_call_config
         .balance_overrides
         .expect("Failed to extract balance chain overrides");
-    let data = binding.get(key);
-    assert!(data.as_ref().is_some());
-    f(data.unwrap())
+    Ok(f(&balance_overides))
 }
 
 #[test]
@@ -283,53 +281,63 @@ fn test_deserialization_of_balance_overrides() {
         let balance_overrides = trace_call_config.balance_overrides.unwrap();
         assert_eq!(balance_overrides.len(), 0);
     }
-
+    let expected_key = ChainBalanceOverrideKey {
+        address: Address::from_str("0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883").unwrap(),
+        chain_id: 222_u64,
+    };
     {
         let request = serde_json::from_str::<EmulateRequest>(
             r#"
-    {
-        "step_limit": 500000,
-        "accounts": [],
-        "tx": {
-            "from": "0x3fd219e7cf0e701fcf5a6903b40d47ca4e597d99",
-            "to": "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883",
-            "value": "0x0",
-            "data": "3ff21f8e",
-            "chain_id": 111
-        },
-        "trace_config": {
-            "trace_config": {
-                "enable_memory": true,
-                "disable_storage": true,
-                "disable_stack": true,
-                "enable_return_data": true,
-                "limit": 1
-            },
-            "balanceOverrides": {
-                "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883": {}
-            }
-        }
-    }
-    "#,
+                {
+                    "step_limit": 500000,
+                    "accounts": [],
+                    "tx": {
+                        "from": "0x3fd219e7cf0e701fcf5a6903b40d47ca4e597d99",
+                        "to": "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883",
+                        "value": "0x0",
+                        "data": "3ff21f8e",
+                        "chain_id": 111
+                    },
+                    "trace_config": {
+                        "trace_config": {
+                            "enable_memory": true,
+                            "disable_storage": true,
+                            "disable_stack": true,
+                            "enable_return_data": true,
+                            "limit": 1
+                        }
+                    }
+                }
+                "#,
         )
         .unwrap();
         assert!(request.trace_config.is_some());
         let trace_call_config = request.trace_config.unwrap();
-        assert!(trace_call_config.balance_overrides.is_some());
-        let balance_overrides = trace_call_config.balance_overrides.unwrap();
-        assert_eq!(balance_overrides.len(), 1);
+        assert!(trace_call_config.balance_overrides.is_none());
         assert!(check(
             r#""balanceOverrides": {
                 "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883": {}
             }"#,
-            "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883",
-            |data| {
-                assert!(data.address.is_none());
-                assert!(data.chain_id.is_none());
-                assert!(data.nonce.is_none());
-                assert!(data.balance.is_none());
+            |_data: &ChainBalanceOverrides| { true }
+        )
+        .is_err());
+
+        assert!(check(
+            r#""balanceOverrides": {
+                "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883@222": {
+                    "nonce": 11,
+                    "balance": "0x22"
+                }
+            }"#,
+            |data: &ChainBalanceOverrides| {
+                let value = data.get(&expected_key);
+                assert!(value.is_some());
+                assert!(value.unwrap().nonce.is_some());
+                assert_eq!(value.unwrap().nonce.unwrap(), 11);
+                assert_eq!(value.unwrap().balance.unwrap(), 0x22);
                 true
             }
-        ));
+        )
+        .is_ok());
     }
 }

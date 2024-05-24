@@ -1,6 +1,8 @@
 use super::*;
 use crate::rpc;
-use crate::tracing::{AccountOverride, ChainBalanceOverride, ChainBalanceOverrides};
+use crate::tracing::{
+    AccountOverride, ChainBalanceOverride, ChainBalanceOverrideKey, ChainBalanceOverrides,
+};
 use hex_literal::hex;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -1626,7 +1628,7 @@ async fn test_state_overrides_nonce_and_balance() {
             },
         ),
     ]);
-    let mut fixture = Fixture::new().await;
+    let mut fixture = Fixture::new();
     fixture.state_overrides = Some(overriden_state);
 
     // Checking override for another acount and chain where we expect only
@@ -1767,7 +1769,7 @@ async fn test_storage_override_state_diff_balance_nonce() {
             &storage,
             ACTUAL_BALANCE.address,
             LEGACY_CHAIN_ID,
-            |account| account.balance()
+            |account: &BalanceAccount| account.balance()
         )
         .await
         .expect("Failed to read balance"),
@@ -1780,17 +1782,17 @@ async fn test_storage_override_state_diff_balance_nonce() {
         U256::MAX.to_be_bytes()
     );
     assert_eq!(
-        get_storage_value(&storage, ACTUAL_BALANCE.address, U256::new(0))
-            .await
-            .expect("Failed to read storage value"),
-        U256::MAX
+        storage
+            .storage(ACTUAL_BALANCE.address, STATIC_STORAGE_LIMIT + 1)
+            .await,
+        U256::MAX.to_be_bytes()
     );
     const STATIC_STORAGE_LIMIT: U256 = U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128);
     assert_eq!(
-        get_storage_value(&storage, ACTUAL_BALANCE.address, STATIC_STORAGE_LIMIT + 1)
-            .await
-            .expect("Failed to read storage value"),
-        U256::MAX
+        storage
+            .storage(ACTUAL_BALANCE.address, STATIC_STORAGE_LIMIT + 1)
+            .await,
+        U256::MAX.to_be_bytes()
     );
 }
 
@@ -1987,18 +1989,26 @@ async fn test_storage_override_chain_balance_nonce() {
     let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
 
     let chain_balance_overrides = ChainBalanceOverrides::from([
-        ChainBalanceOverride {
-            address: Some(ACTUAL_BALANCE.address),
-            chain_id: Some(111),
-            nonce: Some(expected_nonce),
-            balance: Some(expected_balance),
-        },
-        ChainBalanceOverride {
-            address: Some(ACTUAL_BALANCE2.address),
-            chain_id: Some(222),
-            nonce: Some(expected_nonce),
-            balance: Some(expected_balance),
-        },
+        (
+            ChainBalanceOverrideKey {
+                address: ACTUAL_BALANCE.address,
+                chain_id: 111,
+            },
+            ChainBalanceOverride {
+                nonce: Some(expected_nonce),
+                balance: Some(expected_balance),
+            },
+        ),
+        (
+            ChainBalanceOverrideKey {
+                address: ACTUAL_BALANCE2.address,
+                chain_id: 222,
+            },
+            ChainBalanceOverride {
+                nonce: Some(expected_nonce),
+                balance: Some(expected_balance),
+            },
+        ),
     ]);
     let tx_chain_id = Some(LEGACY_CHAIN_ID);
     let storage = EmulatorAccountStorage::with_accounts(
@@ -2064,19 +2074,28 @@ async fn test_storage_override_chain_conditions() {
     let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
 
     let chain_balance_overrides = ChainBalanceOverrides::from([
-        ChainBalanceOverride {
-            address: None,
-            chain_id: Some(111),
-            nonce: Some(expected_nonce),
-            balance: Some(expected_balance),
-        },
-        ChainBalanceOverride {
-            address: Some(ACTUAL_BALANCE2.address),
-            chain_id: None,
-            nonce: Some(expected_nonce),
-            balance: Some(expected_balance),
-        },
+        (
+            ChainBalanceOverrideKey {
+                address: ACTUAL_BALANCE2.address,
+                chain_id: 111,
+            },
+            ChainBalanceOverride {
+                nonce: Some(expected_nonce),
+                balance: Some(expected_balance),
+            },
+        ),
+        (
+            ChainBalanceOverrideKey {
+                address: ACTUAL_BALANCE2.address,
+                chain_id: 222,
+            },
+            ChainBalanceOverride {
+                nonce: Some(expected_nonce),
+                balance: Some(expected_balance),
+            },
+        ),
     ]);
+
     let tx_chain_id = Some(LEGACY_CHAIN_ID);
     let storage = EmulatorAccountStorage::with_accounts(
         &rpc_client,

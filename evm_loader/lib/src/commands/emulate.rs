@@ -1,7 +1,7 @@
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::rpc::Rpc;
 use crate::tracing::tracers::Tracer;
-use crate::tracing::{ChainBalanceOverride, ChainBalanceOverrides};
+use crate::tracing::ChainBalanceOverrides;
 use crate::types::{EmulateRequest, TxParams};
 use crate::{
     account_storage::{EmulatorAccountStorage, SyncedAccountStorage},
@@ -15,15 +15,12 @@ use evm_loader::{
     evm::{ExitStatus, Machine},
     executor::SyncedExecutorState,
     gasometer::LAMPORTS_PER_SIGNATURE,
-    types::Address,
 };
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::{hex::Hex, serde_as, DisplayFromStr};
 use solana_sdk::{account::Account, pubkey::Pubkey};
-use std::collections::{HashMap, HashSet};
-use std::str::FromStr;
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,68 +63,6 @@ impl EmulateResponse {
     }
 }
 
-fn parse_from_key(key: &str) -> (Option<Address>, Option<u64>) {
-    let key_parts: Vec<_> = key.split('@').collect();
-    if key_parts.len() != 2 {
-        return (None, None);
-    }
-    (
-        Address::from_str(key_parts[0].to_string().as_ref()).ok(),
-        key_parts[1].parse::<u64>().ok(),
-    )
-}
-
-// Parses balance overridings per chain id from tracer config.
-// Case 1. Address and chainId are inside data structure like:
-// balanceOverrides: {
-//    "address1@chainId": {
-//       "address": "address1",    <- address is taken from the structure
-//       "chain_id": "chain_id1",  <- chain id is taken from the structure
-//       "nonce": "nonce1",
-//       "balance": "balance1",
-//
-//    }
-// }
-// Case 2. Address and chainId are taken from the key parameter
-// balanceOverrides: {
-//    "address1@chainId": {   <- address and chain id are parsed from the key
-//       "nonce": "nonce1",
-//       "balance": "balance1",
-//    }
-// }
-fn parse_balance_overrides(
-    overrides: Option<HashMap<String, ChainBalanceOverride>>,
-) -> Option<ChainBalanceOverrides> {
-    if overrides.is_none() {
-        return None;
-    }
-    let mut result_set = HashSet::new();
-
-    for (key, override_val) in overrides.unwrap() {
-        let (address_from_key, chain_id_from_key) = parse_from_key(&key);
-        let address = match override_val.address {
-            Some(addr) => Some(addr),
-            None => address_from_key,
-        };
-        let chain_id = match override_val.chain_id {
-            Some(chain) => Some(chain),
-            None => chain_id_from_key,
-        };
-        if address.is_none() || chain_id.is_none() {
-            return None;
-        }
-        let override_instance = ChainBalanceOverride {
-            address: address,
-            chain_id: chain_id,
-            nonce: override_val.nonce,
-            balance: override_val.balance,
-        };
-        result_set.insert(override_instance);
-    }
-
-    Some(result_set)
-}
-
 pub async fn execute<T: Tracer>(
     rpc: &(impl Rpc + BuildConfigSimulator),
     program_id: Pubkey,
@@ -142,13 +77,10 @@ pub async fn execute<T: Tracer>(
         .trace_config
         .as_ref()
         .and_then(|t| t.state_overrides.clone());
-    let chain_balance_overrides: Option<ChainBalanceOverrides> = parse_balance_overrides(
-        emulate_request
-            .trace_config
-            .as_ref()
-            .map(|t| t.balance_overrides.clone())
-            .flatten(),
-    );
+    let chain_balance_overrides: Option<ChainBalanceOverrides> = emulate_request
+        .trace_config
+        .as_ref()
+        .and_then(|t| t.balance_overrides.clone());
     let solana_overrides = emulate_request.solana_overrides.map(|overrides| {
         overrides
             .iter()
@@ -291,7 +223,3 @@ async fn emulate_trx<T: Tracer>(
         tracer.map(|tracer| tracer.into_traces(used_gas)),
     ))
 }
-
-#[cfg(test)]
-#[path = "./emulate_tests.rs"]
-mod emulate_tests;

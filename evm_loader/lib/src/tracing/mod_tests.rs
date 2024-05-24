@@ -1,12 +1,10 @@
-use crate::types::EmulateRequest;
-
 use super::*;
-use ethnum::U256;
-use std::str::FromStr;
+use crate::types::EmulateRequest;
+use log::info;
 
-fn check_balance_parsing<F>(json: &str, key: &str, f: F) -> bool
+fn check_balance_parsing<F>(json: &str, f: F) -> Result<bool, serde_json::Error>
 where
-    F: FnOnce(&ChainBalanceOverride) -> bool,
+    F: FnOnce(&ChainBalanceOverrides) -> bool,
 {
     let payload = r#"
     {
@@ -32,16 +30,15 @@ where
     }
     "#
     .replace("{balance}", json);
-    let request: EmulateRequest = serde_json::from_str(&payload).expect("Parsing input data");
+    info!("json {json}");
+    let request: EmulateRequest = serde_json::from_str(&payload)?;
     assert!(request.trace_config.is_some());
     let trace_call_config = request.trace_config.unwrap();
     assert!(trace_call_config.balance_overrides.is_some());
     let binding = trace_call_config
         .balance_overrides
         .expect("Failed to extract balance chain overrides");
-    let data = binding.get(key);
-    assert!(data.as_ref().is_some());
-    f(data.unwrap())
+    Ok(f(&binding))
 }
 
 #[test]
@@ -148,150 +145,69 @@ fn test_deserialization_of_balance_overrides() {
         assert_eq!(balance_overrides.len(), 0);
     }
 
+    let expected_key = ChainBalanceOverrideKey {
+        address: Address::from_str("0x0673ac30e9c5dd7955ae9fb7e46b3cddca455555").unwrap(),
+        chain_id: 222_u64,
+    };
+
     assert!(check_balance_parsing(
         r#""balanceOverrides": {
             "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883": {}
         }"#,
-        "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883",
-        |data| {
-            assert!(data.address.is_none());
-            assert!(data.chain_id.is_none());
-            assert!(data.nonce.is_none());
-            assert!(data.balance.is_none());
+        |data: &ChainBalanceOverrides| {
+            assert_eq!(data.len(), 1);
             true
         }
-    ));
-
-    assert!(check_balance_parsing(
-        r#""balanceOverrides": {
-            "1": {
-                "address": "0x0673ac30e9c5dd7955ae9fb7e46b3cddca455555"
-            }
-        }"#,
-        "1",
-        |data| {
-            assert!(data.address.is_some());
-            assert_eq!(
-                data.address.unwrap(),
-                Address::from_str("0x0673ac30e9c5dd7955ae9fb7e46b3cddca455555").unwrap()
-            );
-            assert!(data.chain_id.is_none());
-            assert!(data.nonce.is_none());
-            assert!(data.balance.is_none());
-            true
-        }
-    ));
+    )
+    .is_err());
 
     // Address/ChainId inside ChainBalanceOverride payload has bigger priority over
     // Address/ChainId from map key
     assert!(check_balance_parsing(
         r#""balanceOverrides": {
             "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883@222": {
-                "address": "0x0673ac30e9c5dd7955ae9fb7e46b3cddca455555",
-                "chainId": 111
             }
         }"#,
-        "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883@222",
-        |data| {
-            assert!(data.address.is_some());
-            assert_eq!(
-                data.address.unwrap(),
-                Address::from_str("0x0673ac30e9c5dd7955ae9fb7e46b3cddca455555").unwrap()
-            );
-            assert!(data.chain_id.is_some());
-            assert_eq!(data.chain_id.unwrap(), 111);
-            assert!(data.nonce.is_none());
-            assert!(data.balance.is_none());
+        |data: &ChainBalanceOverrides| {
+            let value = data.get(&expected_key);
+            assert!(value.is_none());
             true
         }
-    ));
+    )
+    .is_ok());
 
-    {
-        assert!(check_balance_parsing(
-            r#""balanceOverrides": {
-            "1": {
-                "balance": "{balance}"
-            }
-        }"#
-            .replace(
-                "{balance}",
-                "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-            )
-            .as_ref(),
-            "1",
-            |data| {
-                assert!(data.address.is_none());
-                assert!(data.chain_id.is_none());
-                assert!(data.nonce.is_none());
-                assert!(data.balance.is_some());
-                assert_eq!(data.balance.unwrap(), U256::MAX);
-
-                true
-            }
-        ));
-    }
     assert!(check_balance_parsing(
         r#""balanceOverrides": {
-            "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883@222": {
+            "0x0673ac30e9c5dd7955ae9fb7e46b3cddca455555@222": {
                 "nonce": 11
             }
         }"#,
-        "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883@222",
-        |data| {
-            assert!(data.address.is_none());
-            assert!(data.chain_id.is_none());
-            assert!(data.nonce.is_some());
-            assert_eq!(data.nonce.unwrap(), 11);
-            assert!(data.balance.is_none());
+        |data: &ChainBalanceOverrides| {
+            let value = data.get(&expected_key);
+            assert!(value.is_some());
+            assert!(value.unwrap().nonce.is_some());
+            assert_eq!(value.unwrap().nonce.unwrap(), 11);
+            assert!(value.unwrap().balance.is_none());
             true
         }
-    ));
+    )
+    .is_ok());
 
     assert!(check_balance_parsing(
         r#""balanceOverrides": {
-            "1": {
+            "0x0673ac30e9c5dd7955ae9fb7e46b3cddca455555@222": {
+                "nonce": 11,
                 "balance": "0x22"
             }
         }"#,
-        "1",
-        |data| {
-            assert!(data.address.is_none());
-            assert!(data.chain_id.is_none());
-            assert!(data.nonce.is_none());
-            assert!(data.balance.is_some());
-            assert_eq!(data.balance.unwrap(), 0x22);
-
+        |data: &ChainBalanceOverrides| {
+            let value = data.get(&expected_key);
+            assert!(value.is_some());
+            assert!(value.unwrap().nonce.is_some());
+            assert_eq!(value.unwrap().nonce.unwrap(), 11);
+            assert_eq!(value.unwrap().balance.unwrap(), 0x22);
             true
         }
-    ));
-
-    assert!(check_balance_parsing(
-        r#""balanceOverrides": {
-            "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883@222": {
-                "address": "0x0673ac30e9c5dd7955ae9fb7e46b3cddca455555",
-                "chainId": 111,
-                "balance": "0x22",
-                "nonce": 11
-            }
-        }"#,
-        "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883@222",
-        |data| {
-            assert!(data.address.is_some());
-            assert_eq!(
-                data.address.unwrap(),
-                Address::from_str("0x0673ac30e9c5dd7955ae9fb7e46b3cddca455555").unwrap()
-            );
-
-            assert!(data.chain_id.is_some());
-            assert_eq!(data.chain_id.unwrap(), 111);
-
-            assert!(data.nonce.is_some());
-            assert_eq!(data.nonce.unwrap(), 11);
-
-            assert!(data.balance.is_some());
-            assert_eq!(data.balance.unwrap(), 0x22);
-
-            true
-        }
-    ));
+    )
+    .is_ok());
 }

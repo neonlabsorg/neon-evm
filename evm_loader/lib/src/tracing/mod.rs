@@ -3,8 +3,12 @@ use serde_json::Value;
 use serde_with::serde_as;
 use web3::types::{Bytes, H256};
 pub mod tracers;
+use crate::tracing::de::Deserialize;
 use evm_loader::types::Address;
-use std::collections::{HashMap, HashSet};
+use serde::de::{self, Deserializer};
+use std::collections::HashMap;
+use std::fmt;
+use std::str::FromStr;
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L993>
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23,18 +27,6 @@ pub struct BlockOverrides {
     #[allow(unused)]
     pub base_fee: Option<U256>, // NOT SUPPORTED BY Neon EVM
 }
-
-#[derive(Eq, PartialEq, Hash, Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-#[serde_as]
-pub struct ChainBalanceOverride {
-    pub address: Option<Address>,
-    pub chain_id: Option<u64>,
-    pub nonce: Option<u64>,
-    pub balance: Option<U256>,
-}
-
-pub type ChainBalanceOverrides = HashSet<ChainBalanceOverride>;
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L942>
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
@@ -90,6 +82,61 @@ pub struct TraceConfig {
     pub tracer_config: Option<Value>,
 }
 
+/// We have complex key as address@chain_id from requests.
+#[derive(Eq, PartialEq, Hash, Debug, Clone, serde::Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde_as]
+pub struct ChainBalanceOverrideKey {
+    pub address: Address,
+    pub chain_id: u64,
+}
+
+impl<'de> Deserialize<'de> for ChainBalanceOverrideKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct Visitor;
+
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = ChainBalanceOverrideKey;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string in the format \"address@chain_id\"")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<ChainBalanceOverrideKey, E>
+            where
+                E: serde::de::Error,
+            {
+                let parts: Vec<&str> = value.split('@').collect();
+                if parts.len() != 2 {
+                    return Err(E::custom(format!("invalid format: {value}")));
+                }
+
+                let address = Address::from_str(parts[0]).map_err(E::custom)?;
+                let chain_id = u64::from_str(parts[1]).map_err(E::custom)?;
+
+                Ok(ChainBalanceOverrideKey { address, chain_id })
+            }
+        }
+
+        deserializer.deserialize_str(Visitor)
+    }
+}
+
+#[derive(Eq, PartialEq, Hash, Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde_as]
+pub struct ChainBalanceOverride {
+    pub nonce: Option<u64>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(default)]
+    pub balance: Option<U256>,
+}
+
+pub type ChainBalanceOverrides = HashMap<ChainBalanceOverrideKey, ChainBalanceOverride>;
+
 /// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/api.go#L163>
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,7 +146,8 @@ pub struct TraceCallConfig {
     pub trace_config: TraceConfig,
     pub block_overrides: Option<BlockOverrides>,
     pub state_overrides: Option<AccountOverrides>,
-    pub balance_overrides: Option<HashMap<String, ChainBalanceOverride>>,
+    #[serde(default)]
+    pub balance_overrides: Option<ChainBalanceOverrides>,
 }
 
 #[cfg(test)]

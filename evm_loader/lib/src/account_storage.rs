@@ -181,6 +181,7 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
 }
 
 impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         rpc: &'rpc T,
         program_id: Pubkey,
@@ -317,15 +318,12 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
 impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     async fn apply_chain_overrides(&mut self) -> NeonResult<()> {
         if let Some(chain_overrides) = self.chain_balance_overrides.as_ref() {
-            for data in chain_overrides.into_iter() {
-                // Address and chain_id are mandatory both for overriding.
-                if (data.address.is_none() || data.chain_id.is_none())
-                    || (data.nonce.is_none() && data.balance.is_none())
-                {
+            for (key, data) in chain_overrides {
+                if data.nonce.is_none() && data.balance.is_none() {
                     continue;
                 }
-                let address = data.address.unwrap();
-                let chain_id = data.chain_id.unwrap();
+                let address = key.address;
+                let chain_id = key.chain_id;
 
                 let mut balance_data = self
                     .get_balance_account(address, chain_id)

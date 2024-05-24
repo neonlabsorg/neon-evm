@@ -772,7 +772,12 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         if let Some(account) = self.accounts.get(&cell_pubkey) {
             return Ok(account);
         }
-
+        if self.has_storage_override(&address) {
+            // In case of emulated state overrides full storage we should not
+            // go to the node and return empty account here to fill it by
+            // overriden data.
+            return Ok(self.add_empty_account(cell_pubkey));
+        }
         match self._get_account_from_rpc(cell_pubkey).await? {
             Some(account) => self.add_account(cell_pubkey, account).await,
             None => Ok(self.add_empty_account(cell_pubkey)),

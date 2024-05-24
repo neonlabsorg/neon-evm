@@ -122,7 +122,9 @@ impl<'a> Sysvar<'a> {
         let actual_priority_fee_per_gas = base_fee_per_gas
             .checked_mul(priority_fee)
             .and_then(|res| res.checked_div(CONVERSION_DIVISOR.into()))
-            .ok_or(Error::PriorityFeeError("base_fee_per_gas * ".into()))?;
+            .ok_or(Error::PriorityFeeError(
+                "actual priority_fee_per_gas overflow".into(),
+            ))?;
 
         if actual_priority_fee_per_gas >= trx_max_priority_fee_per_gas {
             Ok(())

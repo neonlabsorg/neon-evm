@@ -13,7 +13,7 @@ solana-client.workspace = true
 solana-clap-utils.workspace = true
 solana-cli-config.workspace = true
 hex = "0.4.2"
-serde = "1.0.202"
+serde = "1.0.203"
 serde_json = { version = "1.0.117", features = ["preserve_order"] }
 log = "0.4.21"
 fern = "0.6"

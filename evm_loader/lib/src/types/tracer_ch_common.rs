@@ -1,6 +1,7 @@
 use std::fmt;
 
 use clickhouse::Row;
+use evm_loader::solana_program::debug_account_data::debug_account_data;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::BTreeMap;
@@ -68,35 +69,35 @@ pub struct AccountRow {
     pub lamports: u64,
     pub executable: bool,
     pub rent_epoch: u64,
-    #[allow(clippy::missing_fields_in_debug)]
     pub data: Vec<u8>,
-    #[allow(clippy::missing_fields_in_debug)]
     pub txn_signature: Vec<Option<u8>>,
-}
-
-impl fmt::Display for AccountRow {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "AccountRow {{\n    owner: {},\n    lamports: {},\n    executable: {},\n    rent_epoch: {},\n}}",
-            bs58::encode(&self.owner).into_string(),
-            self.lamports,
-            self.executable,
-            self.rent_epoch,
-        )
-    }
 }
 
 impl fmt::Debug for AccountRow {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Account")
+        let mut debug_struct = f.debug_struct("Account");
+
+        debug_struct
             .field("owner", &bs58::encode(&self.owner).into_string())
             .field("lamports", &self.lamports)
             .field("executable", &self.executable)
             .field("rent_epoch", &self.rent_epoch)
-            .field("data", &self.data)
-            .field("txn_signature:", &self.txn_signature)
-            .finish()
+            .field("data_len", &self.data.len());
+
+        debug_account_data(&self.data, &mut debug_struct);
+
+        debug_struct.field(
+            "txn_signature",
+            &bs58::encode(
+                self.txn_signature
+                    .iter()
+                    .filter_map(|option| *option)
+                    .collect::<Vec<u8>>(),
+            )
+            .into_string(),
+        );
+
+        debug_struct.finish()
     }
 }
 

@@ -1,13 +1,10 @@
 use ethnum::U256;
-use evm_loader::{
-    account::{
-            legacy::{
-                LegacyFinalizedData, LegacyHolderData, TAG_HOLDER_DEPRECATED,
-                TAG_STATE_FINALIZED_DEPRECATED,
-            },
-            Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
+use evm_loader::account::{
+    legacy::{
+        LegacyFinalizedData, LegacyHolderData, TAG_HOLDER_DEPRECATED,
+        TAG_STATE_FINALIZED_DEPRECATED,
     },
-    types::Transaction, types::Address,
+    Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
@@ -82,15 +79,15 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
     match evm_loader::account::tag(program_id, &info)? {
         TAG_HOLDER => {
             let holder = Holder::from_account(program_id, info)?;
-            let parsed_tx = Transaction::from_rlp(&holder.transaction())?;
+
             Ok(GetHolderResponse {
                 status: Status::Holder,
                 len: Some(data_len),
                 owner: Some(holder.owner()),
                 tx: Some(holder.transaction_hash()),
-                tx_type: Some(parsed_tx.tx_type()),
-                max_fee_per_gas: parsed_tx.max_fee_per_gas(),
-                max_priority_fee_per_gas: parsed_tx.max_priority_fee_per_gas(),
+                // Holder may not yet contain the transaction and empty rlp panics.
+                // TODO: check the behavior.
+                tx_type: Some(0),
                 ..GetHolderResponse::default()
             })
         }

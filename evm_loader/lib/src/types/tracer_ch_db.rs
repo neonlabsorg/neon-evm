@@ -99,6 +99,13 @@ impl ClickHouseDb {
         result
     }
 
+    /// Solana slots can have gaps during normal operation, which means that the parent of a slot
+    /// is not necessary the (slot - 1), but might be any value less than the current slot. The only
+    /// guarantee is that slots are sequentially increasing, meaning that each new slot is greater
+    /// than the previous slot.
+    ///
+    /// Returns the slot parent chain starting from input slot capped at around ROOT_BLOCK_DELAY ancestors.
+    /// If called with old enough slot (more than ROOT_BLOCK_DELAY slots), it returns (input_slot, vec![])
     async fn get_branch_slots(&self, slot: Option<u64>) -> ChResult<(u64, Vec<u64>)> {
         fn branch_from(
             rows: Vec<SlotParent>,

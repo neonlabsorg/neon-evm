@@ -178,8 +178,9 @@ def stop_containers(project_name):
 @click.option('--labels')
 @click.option('--pr_url')
 @click.option('--pr_number')
+@click.option('--timeout_sec', default=10800)
 def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sha, token, labels,
-                         pr_url, pr_number):
+                         pr_url, pr_number, timeout_sec):
     is_develop_branch = github_ref in ['refs/heads/develop', 'refs/heads/master']
     is_tag_creating = 'refs/tags/' in github_ref
     is_version_branch = re.match(VERSION_BRANCH_TEMPLATE, github_ref.replace("refs/heads/", "")) is not None
@@ -219,7 +220,7 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
     link = f"https://github.com/{RUN_LINK_REPO}/actions/runs/{proxy_run_id}"
     click.echo(f"Proxy run link: {link}")
     click.echo("Waiting for completed status...")
-    wait_condition(lambda: github.get_proxy_run_info(proxy_run_id)["status"] == "completed", timeout_sec=10800, delay=5)
+    wait_condition(lambda: github.get_proxy_run_info(proxy_run_id)["status"] == "completed", timeout_sec=timeout_sec, delay=5)
 
     if github.get_proxy_run_info(proxy_run_id)["conclusion"] == "success":
         click.echo("Proxy tests passed successfully")

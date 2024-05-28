@@ -327,11 +327,12 @@ impl ClickHouseDb {
 
         let query = r#"
             SELECT owner, lamports, executable, rent_epoch, data, txn_signature
-            FROM events.update_account_distributed
+            FROM events.update_account_distributed uad JOIN events.update_slot us on uad.slot = us.slot
             WHERE pubkey = ?
               AND slot = ?
               AND write_version <= ?
-            ORDER BY write_version DESC
+              AND us.status in ('Rooted', 'Confirmed')
+            ORDER BY write_version DESC, us.status DESC
             LIMIT 1
         "#;
 

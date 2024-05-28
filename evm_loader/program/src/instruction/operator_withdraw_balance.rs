@@ -21,6 +21,13 @@ pub fn process<'a>(
     operator_balance.validate_owner(&operator)?;
     operator_balance.withdraw(&mut target_balance)?;
 
-    let accounts_db = AccountsDB::new(&[], operator, Some(operator_balance), Some(system), None);
+    let accounts_db = AccountsDB::new(
+        &[],
+        operator,
+        Some(operator_balance),
+        Some(system),
+        None,
+        None,
+    );
     target_balance.increment_revision(&Rent::get()?, &accounts_db)
 }

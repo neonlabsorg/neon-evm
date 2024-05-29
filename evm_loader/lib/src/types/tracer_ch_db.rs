@@ -191,17 +191,14 @@ impl ClickHouseDb {
         info!("get_account_rooted_slot {{ key: {key}, slot: {slot} }}");
 
         let query = r#"
-        SELECT DISTINCT uad.slot
-        FROM events.update_account_distributed AS uad
-        WHERE uad.pubkey = ?
-          AND uad.slot <= ?
-          AND (
-            SELECT COUNT(slot)
-            FROM events.rooted_slots
-            WHERE slot = ?
-          ) >= 1
-        ORDER BY uad.slot DESC
-        LIMIT 1
+            SELECT
+                MAX(slot)
+            FROM
+                events.update_account_distributed
+            WHERE
+                pubkey = ?
+                AND slot <= ?
+                AND slot IN (SELECT slot FROM events.rooted_slots)
         "#;
 
         let time_start = Instant::now();
@@ -209,7 +206,6 @@ impl ClickHouseDb {
             self.client
                 .query(query)
                 .bind(key)
-                .bind(slot)
                 .bind(slot)
                 .fetch_one::<u64>()
                 .await,

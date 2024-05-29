@@ -327,13 +327,13 @@ impl ClickHouseDb {
             "get_account_at_index_in_block {{ pubkey: {pubkey}, slot: {slot}, tx_index_in_block: {tx_index_in_block} }}"
         );
 
+        // todo: what to return for abandoned blocks from finalized slots?
         let query = r#"
             SELECT owner, lamports, executable, rent_epoch, data, txn_signature
-            FROM events.update_account_distributed uad JOIN events.update_slot us on uad.slot = us.slot
+            FROM events.update_account_distributed uad
             WHERE pubkey = ?
               AND slot = ?
               AND write_version <= ?
-              AND us.status in ('Rooted', 'Confirmed')
             ORDER BY write_version DESC, us.status DESC
             LIMIT 1
         "#;

@@ -75,6 +75,9 @@ mod mock_rpc_client {
 
     #[async_trait(?Send)]
     impl BuildConfigSimulator for MockRpcClient {
+        fn use_cache(&self) -> bool {
+            false
+        }
         async fn build_config_simulator(&self, _program_id: Pubkey) -> NeonResult<ConfigSimulator> {
             unimplemented!();
         }

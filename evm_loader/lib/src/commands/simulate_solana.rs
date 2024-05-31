@@ -11,7 +11,10 @@ use solana_sdk::{
 };
 
 use crate::{
-    rpc::Rpc, solana_simulator::SolanaSimulator, types::SimulateSolanaRequest, NeonResult,
+    rpc::Rpc,
+    solana_simulator::{SolanaSimulator, SyncState},
+    types::SimulateSolanaRequest,
+    NeonResult,
 };
 
 #[serde_as]
@@ -92,7 +95,7 @@ pub async fn execute(
     let verify = request.verify.unwrap_or(true);
     let config = runtime_config(&request);
 
-    let mut simulator = SolanaSimulator::new_with_config(rpc, config).await?;
+    let mut simulator = SolanaSimulator::new_with_config(rpc, config, SyncState::Yes).await?;
 
     // Decode transactions from bytes
     let mut transactions: Vec<VersionedTransaction> = vec![];

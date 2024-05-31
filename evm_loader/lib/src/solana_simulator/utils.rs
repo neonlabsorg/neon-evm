@@ -21,8 +21,15 @@ use solana_sdk::{
 
 use crate::rpc::Rpc;
 
+#[derive(Eq, PartialEq, Copy, Clone)]
+pub enum SyncState {
+    No,
+    Yes,
+}
+
 pub async fn genesis_config_info(
     rpc: &impl Rpc,
+    sync: SyncState,
     mint_sol: f64,
 ) -> Result<GenesisConfigInfo, Error> {
     let rent = sysvar::rent::Rent::default();
@@ -53,8 +60,10 @@ pub async fn genesis_config_info(
         vec![],
     );
 
-    for feature in deactivated_features(rpc).await? {
-        genesis_config.accounts.remove(&feature);
+    if sync == SyncState::Yes {
+        for feature in deactivated_features(rpc).await? {
+            genesis_config.accounts.remove(&feature);
+        }
     }
 
     Ok(GenesisConfigInfo {

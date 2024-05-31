@@ -25,6 +25,7 @@ mod error;
 mod utils;
 
 pub use error::Error;
+pub use utils::SyncState;
 
 pub struct SolanaSimulator {
     bank: Bank,
@@ -34,16 +35,21 @@ pub struct SolanaSimulator {
 
 impl SolanaSimulator {
     pub async fn new(rpc: &impl Rpc) -> Result<Self, Error> {
-        Self::new_with_config(rpc, RuntimeConfig::default()).await
+        Self::new_with_config(rpc, RuntimeConfig::default(), SyncState::Yes).await
+    }
+
+    pub async fn new_without_sync(rpc: &impl Rpc) -> Result<Self, Error> {
+        Self::new_with_config(rpc, RuntimeConfig::default(), SyncState::No).await
     }
 
     pub async fn new_with_config(
         rpc: &impl Rpc,
         runtime_config: RuntimeConfig,
+        sync_state: SyncState,
     ) -> Result<Self, Error> {
         let runtime_config = Arc::new(runtime_config);
 
-        let info = utils::genesis_config_info(rpc, 1_000.0).await?;
+        let info = utils::genesis_config_info(rpc, sync_state, 1_000.0).await?;
         let payer = info.mint_keypair;
 
         let genesis_bank = Arc::new(Bank::new_with_paths(
@@ -69,7 +75,9 @@ impl SolanaSimulator {
             genesis_bank.slot() + 1,
         );
 
-        utils::sync_sysvar_accounts(rpc, &bank).await?;
+        if sync_state == SyncState::Yes {
+            utils::sync_sysvar_accounts(rpc, &bank).await?;
+        }
 
         Ok(Self {
             bank,

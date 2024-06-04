@@ -60,7 +60,7 @@ pub fn execute(
     log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
     let gas_cost = used_gas.saturating_mul(gas_price);
-    account_storage.transfer_gas_payment(origin, chain_id, gas_cost)?;
+    account_storage.transfer_gas_payment(origin, chain_id, gas_cost, true)?;
     handle_priority_fee(&trx, &mut account_storage, origin, used_gas, chain_id)?;
 
     log_return_value(&exit_reason);
@@ -111,7 +111,7 @@ pub fn execute_with_solana_call(
     log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
     let gas_cost = used_gas.saturating_mul(gas_price);
-    account_storage.transfer_gas_payment(origin, chain_id, gas_cost)?;
+    account_storage.transfer_gas_payment(origin, chain_id, gas_cost, true)?;
     handle_priority_fee(&trx, &mut account_storage, origin, used_gas, chain_id)?;
 
     log_return_value(&exit_reason);
@@ -144,7 +144,7 @@ fn handle_priority_fee(
             ))?;
 
         // Transfer priority fee.
-        account_storage.transfer_gas_payment(origin, chain_id, priority_fee_in_tokens)?;
+        account_storage.transfer_gas_payment(origin, chain_id, priority_fee_in_tokens, false)?;
         log_data(&[b"PRIORITYFEE", &priority_fee_in_tokens.to_le_bytes()]);
     }
 

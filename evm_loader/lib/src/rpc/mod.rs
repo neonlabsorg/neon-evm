@@ -1,4 +1,5 @@
 mod db_call_client;
+mod emulator_client;
 mod validator_client;
 
 pub use db_call_client::CallDbClient;
@@ -15,7 +16,6 @@ use solana_sdk::native_token::lamports_to_sol;
 use solana_sdk::{
     account::Account,
     clock::{Slot, UnixTimestamp},
-    commitment_config::CommitmentConfig,
     pubkey::Pubkey,
 };
 
@@ -23,15 +23,12 @@ use solana_sdk::{
 #[enum_dispatch]
 pub trait Rpc {
     async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>>;
-    async fn get_account_with_commitment(
-        &self,
-        key: &Pubkey,
-        commitment: CommitmentConfig,
-    ) -> RpcResult<Option<Account>>;
     async fn get_multiple_accounts(&self, pubkeys: &[Pubkey])
         -> ClientResult<Vec<Option<Account>>>;
     async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp>;
     async fn get_slot(&self) -> ClientResult<Slot>;
+
+    async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>>;
 }
 
 #[enum_dispatch(BuildConfigSimulator, Rpc)]

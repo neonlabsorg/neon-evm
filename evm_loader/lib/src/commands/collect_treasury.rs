@@ -1,4 +1,4 @@
-use crate::rpc::{check_account_for_fee, CloneRpcClient, Rpc};
+use crate::rpc::{check_account_for_fee, CloneRpcClient};
 use crate::{
     commands::get_neon_elf::read_elf_parameters_from_account, errors::NeonError, Config, NeonResult,
 };

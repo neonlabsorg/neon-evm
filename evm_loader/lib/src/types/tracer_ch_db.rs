@@ -251,7 +251,7 @@ impl ClickHouseDb {
         let pubkey_str = format!("{:?}", pubkey.to_bytes());
 
         if let Some(rooted_slot) = self
-            .get_account_rooted_slot(&pubkey_str, first)
+            .get_sol_sig_rooted_slotget_account_rooted_slot(&pubkey_str, first)
             .await
             .map_err(|e| {
                 error!("get_account_rooted_slot error: {:?}", e);

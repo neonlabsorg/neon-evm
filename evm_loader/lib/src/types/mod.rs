@@ -1,5 +1,8 @@
 pub mod tracer_ch_common;
+
 mod tracer_ch_db;
+
+pub mod tracer_rocks_db;
 
 pub use evm_loader::types::Address;
 use evm_loader::types::{StorageKey, Transaction};
@@ -10,8 +13,8 @@ use evm_loader::{
 use serde_with::skip_serializing_none;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::HashMap;
-pub use tracer_ch_db::ClickHouseDb as TracerDb;
-
+// pub use tracer_ch_db::ClickHouseDb as TracerDb;
+pub use tracer_rocks_db::RocksDb as TracerDb;
 use crate::tracing::TraceCallConfig;
 
 use ethnum::U256;

@@ -13,6 +13,7 @@ use solana_sdk::{
     commitment_config::CommitmentConfig,
     pubkey::Pubkey,
 };
+use crate::NeonError::RocksDb;
 
 pub struct CallDbClient {
     tracer_db: TracerDb,
@@ -29,7 +30,7 @@ impl CallDbClient {
         let earliest_rooted_slot = tracer_db
             .get_earliest_rooted_slot()
             .await
-            .map_err(NeonError::ClickHouse)?;
+            .map_err(RocksDb)?;
         if slot < earliest_rooted_slot {
             return Err(NeonError::EarlySlot(slot, earliest_rooted_slot));
         }

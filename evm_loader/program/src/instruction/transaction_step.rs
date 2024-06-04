@@ -214,6 +214,7 @@ fn finalize<'a, 'b>(
                 .chain_id()
                 .unwrap_or(accounts.default_chain_id()),
             priority_fee_in_tokens,
+            false,
         )?;
         log_data(&[b"PRIORITYFEE", &priority_fee_in_tokens.to_le_bytes()]);
     }

@@ -16,7 +16,6 @@ mod mock_rpc_client {
     use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
     use solana_sdk::account::Account;
     use solana_sdk::clock::{Slot, UnixTimestamp};
-    use solana_sdk::commitment_config::CommitmentConfig;
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
 
@@ -45,14 +44,6 @@ mod mock_rpc_client {
             })
         }
 
-        async fn get_account_with_commitment(
-            &self,
-            key: &Pubkey,
-            _commitment: CommitmentConfig,
-        ) -> RpcResult<Option<Account>> {
-            self.get_account(key).await
-        }
-
         async fn get_multiple_accounts(
             &self,
             pubkeys: &[Pubkey],
@@ -70,6 +61,10 @@ mod mock_rpc_client {
 
         async fn get_slot(&self) -> ClientResult<Slot> {
             Ok(Slot::default())
+        }
+
+        async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {
+            Ok(vec![])
         }
     }
 

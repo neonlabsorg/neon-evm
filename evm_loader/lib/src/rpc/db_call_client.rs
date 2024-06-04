@@ -10,7 +10,6 @@ use solana_client::{
 use solana_sdk::{
     account::Account,
     clock::{Slot, UnixTimestamp},
-    commitment_config::CommitmentConfig,
     pubkey::Pubkey,
 };
 
@@ -65,14 +64,6 @@ impl Rpc for CallDbClient {
         self.get_account(key).await
     }
 
-    async fn get_account_with_commitment(
-        &self,
-        key: &Pubkey,
-        _: CommitmentConfig,
-    ) -> RpcResult<Option<Account>> {
-        self.get_account(key).await
-    }
-
     async fn get_multiple_accounts(
         &self,
         pubkeys: &[Pubkey],
@@ -93,5 +84,9 @@ impl Rpc for CallDbClient {
 
     async fn get_slot(&self) -> ClientResult<Slot> {
         Ok(self.slot)
+    }
+
+    async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {
+        Ok(vec![]) // TODO
     }
 }

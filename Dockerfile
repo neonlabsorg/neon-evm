@@ -30,7 +30,7 @@ RUN cargo fmt --check && \
 
 
 # Add neon_test_invoke_program to the genesis
-FROM neonlabsorg/neon_test_programs:bdfe29dd821afc0a66a2f940fc7fce9e2a5e0730 AS neon_test_programs
+FROM neonlabsorg/neon_test_programs:347671dd719d3b48fa8b0864fd262bb046a8a8e1 AS neon_test_programs
 
 # Define solana-image that contains utility
 FROM builder AS base

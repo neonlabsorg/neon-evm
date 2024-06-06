@@ -10,9 +10,9 @@ use crate::{account_storage::account_info, rpc::Rpc, types::BalanceAddress, Neon
 
 use serde_with::{serde_as, DisplayFromStr};
 
-use super::get_config::{BuildConfigSimulator, ChainInfo};
+use super::get_config::BuildConfigSimulator;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Copy, Clone)]
 pub enum BalanceStatus {
     Ok,
     Legacy,
@@ -20,7 +20,7 @@ pub enum BalanceStatus {
 }
 
 #[serde_as]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Copy, Clone)]
 pub struct GetBalanceResponse {
     #[serde_as(as = "DisplayFromStr")]
     pub solana_address: Pubkey,
@@ -83,42 +83,65 @@ fn read_legacy_account(
     })
 }
 
-fn is_legacy_chain_id(id: u64, chains: &[ChainInfo]) -> bool {
-    for chain in chains {
-        if chain.name == "neon" {
-            return id == chain.id;
-        }
-    }
-
-    false
-}
-
 pub async fn execute(
     rpc: &(impl Rpc + BuildConfigSimulator),
     program_id: &Pubkey,
     address: &[BalanceAddress],
 ) -> NeonResult<Vec<GetBalanceResponse>> {
-    let chain_ids = super::get_config::read_chains(rpc, *program_id).await?;
+    let legacy_chain_id = super::get_config::read_legacy_chain_id(rpc, *program_id).await?;
 
+    let mut response: Vec<Option<GetBalanceResponse>> = vec![None; address.len()];
+    let mut missing: Vec<BalanceAddress> = Vec::with_capacity(address.len());
+
+    // Download accounts
     let pubkeys: Vec<_> = address.iter().map(|a| a.find_pubkey(program_id)).collect();
     let accounts = rpc.get_multiple_accounts(&pubkeys).await?;
 
-    let mut result = Vec::with_capacity(accounts.len());
-    for (key, account) in address.iter().zip(accounts) {
-        let response = if let Some(account) = account {
-            read_account(program_id, key, account)?
-        } else if is_legacy_chain_id(key.chain_id, &chain_ids) {
-            let contract_pubkey = key.find_contract_pubkey(program_id);
-            if let Some(contract_account) = rpc.get_account(&contract_pubkey).await?.value {
-                read_legacy_account(program_id, key, contract_account)?
-            } else {
-                GetBalanceResponse::empty(program_id, key)
-            }
+    for (i, account) in accounts.into_iter().enumerate() {
+        if let Some(account) = account {
+            let balance = read_account(program_id, &address[i], account)?;
+            response[i] = Some(balance);
+        } else if address[i].chain_id == legacy_chain_id {
+            missing.push(address[i]);
         } else {
-            GetBalanceResponse::empty(program_id, key)
-        };
+            let balance = GetBalanceResponse::empty(program_id, &address[i]);
+            response[i] = Some(balance);
+        }
+    }
 
-        result.push(response);
+    // Download missing accounts from legacy addresses
+    let pubkeys: Vec<_> = missing
+        .iter()
+        .map(|a| a.find_contract_pubkey(program_id))
+        .collect();
+    let mut accounts = rpc.get_multiple_accounts(&pubkeys).await?;
+
+    let mut j = 0_usize;
+    for i in 0..response.len() {
+        if response[i].is_some() {
+            continue;
+        }
+
+        assert_eq!(address[i], missing[j]);
+
+        let address = missing[j];
+        let account = accounts[j].take();
+        j += 1;
+
+        let Some(account) = account else {
+            continue;
+        };
+        let Ok(balance) = read_legacy_account(program_id, &address, account) else {
+            continue;
+        };
+        response[i] = Some(balance);
+    }
+
+    // Treat still missing accounts as empty
+    let mut result = Vec::with_capacity(response.len());
+    for (i, balance) in response.into_iter().enumerate() {
+        let balance = balance.unwrap_or_else(|| GetBalanceResponse::empty(program_id, &address[i]));
+        result.push(balance);
     }
 
     Ok(result)

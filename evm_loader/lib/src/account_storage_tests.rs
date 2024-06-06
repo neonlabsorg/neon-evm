@@ -13,7 +13,6 @@ mod mock_rpc_client {
     use crate::{commands::get_config::ConfigSimulator, rpc::Rpc};
     use async_trait::async_trait;
     use solana_client::client_error::Result as ClientResult;
-    use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
     use solana_sdk::account::Account;
     use solana_sdk::clock::{Slot, UnixTimestamp};
     use solana_sdk::pubkey::Pubkey;
@@ -33,15 +32,9 @@ mod mock_rpc_client {
 
     #[async_trait(?Send)]
     impl Rpc for MockRpcClient {
-        async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>> {
+        async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
             let result = self.accounts.get(key).cloned();
-            Ok(Response {
-                context: RpcResponseContext {
-                    slot: 0,
-                    api_version: None,
-                },
-                value: result,
-            })
+            Ok(result)
         }
 
         async fn get_multiple_accounts(

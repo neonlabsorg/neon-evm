@@ -170,7 +170,6 @@ pub async fn read_program_data_from_account(
     let account = rpc
         .get_account(evm_loader)
         .await?
-        .value
         .ok_or(NeonError::AccountNotFound(*evm_loader))?;
 
     if account.owner == bpf_loader::id() || account.owner == bpf_loader_deprecated::id() {
@@ -180,7 +179,7 @@ pub async fn read_program_data_from_account(
             programdata_address,
         }) = account.state()
         {
-            let programdata_account = rpc.get_account(&programdata_address).await?.value.ok_or(
+            let programdata_account = rpc.get_account(&programdata_address).await?.ok_or(
                 NeonError::AssociatedPdaNotFound(programdata_address, config.evm_loader),
             )?;
 

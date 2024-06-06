@@ -10,7 +10,7 @@ use crate::{NeonError, NeonResult};
 use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
 use solana_cli::cli::CliError;
-use solana_client::{client_error::Result as ClientResult, rpc_response::RpcResult};
+use solana_client::client_error::Result as ClientResult;
 use solana_sdk::message::Message;
 use solana_sdk::native_token::lamports_to_sol;
 use solana_sdk::{
@@ -22,7 +22,7 @@ use solana_sdk::{
 #[async_trait(?Send)]
 #[enum_dispatch]
 pub trait Rpc {
-    async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>>;
+    async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>>;
     async fn get_multiple_accounts(&self, pubkeys: &[Pubkey])
         -> ClientResult<Vec<Option<Account>>>;
     async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp>;

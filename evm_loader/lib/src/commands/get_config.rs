@@ -299,6 +299,19 @@ pub async fn read_chains(
     Ok(chains)
 }
 
+pub async fn read_legacy_chain_id(
+    rpc: &impl BuildConfigSimulator,
+    program_id: Pubkey,
+) -> NeonResult<u64> {
+    for chain in read_chains(rpc, program_id).await? {
+        if chain.name == "neon" {
+            return Ok(chain.id);
+        }
+    }
+
+    unreachable!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

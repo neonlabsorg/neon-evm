@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use solana_client::{
     client_error::Result as ClientResult,
     client_error::{ClientError, ClientErrorKind},
-    rpc_response::{Response, RpcResponseContext, RpcResult},
 };
 use solana_sdk::{
     account::Account,
@@ -40,16 +39,6 @@ impl CallDbClient {
         })
     }
 
-    async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>> {
-        Ok(Response {
-            context: RpcResponseContext {
-                slot: self.slot,
-                api_version: None,
-            },
-            value: self.get_account_at(key).await?,
-        })
-    }
-
     async fn get_account_at(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
         self.tracer_db
             .get_account_at(key, self.slot, self.tx_index_in_block)
@@ -60,8 +49,8 @@ impl CallDbClient {
 
 #[async_trait(?Send)]
 impl Rpc for CallDbClient {
-    async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>> {
-        self.get_account(key).await
+    async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
+        self.get_account_at(key).await
     }
 
     async fn get_multiple_accounts(

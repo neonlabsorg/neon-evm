@@ -3367,6 +3367,7 @@ dependencies = [
  "goblin 0.6.1",
  "hex",
  "hex-literal",
+ "hyper",
  "lazy_static",
  "log",
  "neon-lib-interface",

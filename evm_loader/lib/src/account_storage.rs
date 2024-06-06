@@ -146,8 +146,8 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         let rent_account = rpc
             .get_account(&solana_sdk::sysvar::rent::id())
             .await?
-            .value
             .ok_or(NeonError::AccountNotFound(solana_sdk::sysvar::rent::id()))?;
+
         let rent = bincode::deserialize::<Rent>(&rent_account.data)?;
         info!("Rent: {rent:?}");
 
@@ -299,7 +299,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
 
         let response = self.rpc.get_account(&pubkey).await?;
-        let account = self.accounts_cache.insert(pubkey, Box::new(response.value));
+        let account = self.accounts_cache.insert(pubkey, Box::new(response));
         Ok(account.as_ref())
     }
 

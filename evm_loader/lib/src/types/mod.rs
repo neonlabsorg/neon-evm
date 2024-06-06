@@ -161,7 +161,7 @@ pub struct EmulateApiRequest {
     pub tx_index_in_block: Option<u64>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Default)]
+#[derive(Deserialize, Serialize, Debug, Default, Copy, Clone, Eq, PartialEq)]
 pub struct BalanceAddress {
     pub address: Address,
     pub chain_id: u64,

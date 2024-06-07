@@ -1,5 +1,6 @@
 use crate::config::APIOptions;
 use crate::rpc::{CallDbClient, CloneRpcClient, RpcEnum};
+use crate::types::tracer_rocks_db::RocksDb;
 use crate::types::TracerDb;
 use crate::NeonError;
 
@@ -13,7 +14,7 @@ impl State {
     #[must_use]
     pub fn new(config: APIOptions) -> Self {
         Self {
-            tracer_db: TracerDb::new(&config.db_config),
+            tracer_db: RocksDb::new(&(config.db_config)),
             rpc_client: CloneRpcClient::new_from_api_config(&config),
             config,
         }

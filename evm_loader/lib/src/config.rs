@@ -1,6 +1,6 @@
 use std::{env, str::FromStr};
 
-use crate::types::ChDbConfig;
+use crate::types::RocksDbConfig;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair};
 
@@ -11,7 +11,7 @@ pub struct Config {
     pub fee_payer: Option<Keypair>,
     pub commitment: CommitmentConfig,
     pub solana_cli_config: solana_cli_config::Config,
-    pub db_config: Option<ChDbConfig>,
+    pub db_config: Option<RocksDbConfig>,
     pub json_rpc_url: String,
     pub keypair_path: String,
 }
@@ -25,7 +25,7 @@ pub struct APIOptions {
     pub solana_max_retries: usize,
     pub evm_loader: Pubkey,
     pub key_for_config: Pubkey,
-    pub db_config: ChDbConfig,
+    pub db_config: RocksDbConfig,
 }
 
 /// # Errors
@@ -76,27 +76,10 @@ pub fn load_api_config_from_environment() -> APIOptions {
     }
 }
 
-/// # Errors
-fn load_db_config_from_environment() -> ChDbConfig {
-    let clickhouse_url = env::var("NEON_DB_CLICKHOUSE_URLS")
-        .map(|urls| {
-            urls.split(';')
-                .map(std::borrow::ToOwned::to_owned)
-                .collect::<Vec<String>>()
-        })
-        .expect("neon clickhouse db urls valiable must be set");
-
-    let clickhouse_user = env::var("NEON_DB_CLICKHOUSE_USER")
-        .map(Some)
-        .unwrap_or(None);
-
-    let clickhouse_password = env::var("NEON_DB_CLICKHOUSE_PASSWORD")
-        .map(Some)
-        .unwrap_or(None);
-
-    ChDbConfig {
-        clickhouse_url,
-        clickhouse_user,
-        clickhouse_password,
-    }
+fn load_db_config_from_environment() -> RocksDbConfig {
+    let rocksdb_url = env::var("ROCKSDB_URL")
+        .as_deref()
+        .unwrap_or("127.0.0.1")
+        .to_owned();
+    RocksDbConfig { rocksdb_url }
 }

@@ -11,6 +11,10 @@ anyhow = "1.0"
 bincode = "1.3.1"
 hyper = "0.14"
 evm-loader = { path = "../program", default-features = false, features = ["log", "async-trait"] }
+jsonrpsee = { version = "0.20", features = ["server", "ws-client", "macros"] }
+#jsonrpsee = { features = ["server", "http-client", "ws-client", "macros", "client-ws-transport-tls"] }
+#rocksdb_storage = {path = "/home/neo/NEONLABS/geyser-neon-filter/v2-advanced/rocksdb/storage" }
+tempfile = "3.10.1"
 solana-sdk.workspace = true
 solana-client.workspace = true
 solana-cli-config.workspace = true
@@ -47,6 +51,7 @@ clap = "2.33.3"
 lazy_static = "1.4.0"
 elsa = "1.10.0"
 arrayref = "0.3.6"
+rocksdb = "0.22.0"
 
 [dev-dependencies]
 hex-literal = "0.4.1"

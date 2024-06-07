@@ -165,6 +165,7 @@ fn execute(program_id: &Pubkey, accounts: Accounts, address: Address, chain_id: 
     let rent = Rent::get()?;
 
     let mut balance_account = BalanceAccount::create(address, chain_id, &accounts_db, None, &rent)?;
+    balance_account.increment_revision(&rent, &accounts_db)?;
     balance_account.mint(deposit)?;
 
     **accounts_db.operator().try_borrow_mut_lamports()? += excessive_lamports;

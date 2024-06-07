@@ -1,6 +1,6 @@
 [package]
 name = "neon-lib"
-version = "1.11.0-dev"
+version = "1.13.0-dev"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -9,6 +9,7 @@ edition = "2021"
 thiserror = "1.0"
 anyhow = "1.0"
 bincode = "1.3.1"
+hyper = "0.14"
 evm-loader = { path = "../program", default-features = false, features = ["log", "async-trait"] }
 jsonrpsee = { version = "0.20", features = ["server", "ws-client", "macros"] }
 #jsonrpsee = { features = ["server", "http-client", "ws-client", "macros", "client-ws-transport-tls"] }

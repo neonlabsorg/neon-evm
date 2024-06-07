@@ -73,6 +73,7 @@ impl<'a> ProgramAccountStorage<'a> {
 
         if result.is_err() && (chain_id == DEFAULT_CHAIN_ID) {
             let contract_pubkey = self.keys.contract(&crate::ID, address);
+
             let contract = self.accounts.get(&contract_pubkey);
 
             let legacy_tag = crate::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED;
@@ -87,13 +88,15 @@ impl<'a> ProgramAccountStorage<'a> {
         address: Address,
         chain_id: u64,
     ) -> Result<BalanceAccount<'a>> {
-        BalanceAccount::create(
+        let account = BalanceAccount::create(
             address,
             chain_id,
             &self.accounts,
             Some(&self.keys),
             &self.rent,
-        )
+        )?;
+
+        Ok(account)
     }
 
     pub fn origin(

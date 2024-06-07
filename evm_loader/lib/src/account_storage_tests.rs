@@ -13,10 +13,8 @@ mod mock_rpc_client {
     use crate::{commands::get_config::ConfigSimulator, rpc::Rpc};
     use async_trait::async_trait;
     use solana_client::client_error::Result as ClientResult;
-    use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
     use solana_sdk::account::Account;
     use solana_sdk::clock::{Slot, UnixTimestamp};
-    use solana_sdk::commitment_config::CommitmentConfig;
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
 
@@ -34,23 +32,9 @@ mod mock_rpc_client {
 
     #[async_trait(?Send)]
     impl Rpc for MockRpcClient {
-        async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>> {
+        async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
             let result = self.accounts.get(key).cloned();
-            Ok(Response {
-                context: RpcResponseContext {
-                    slot: 0,
-                    api_version: None,
-                },
-                value: result,
-            })
-        }
-
-        async fn get_account_with_commitment(
-            &self,
-            key: &Pubkey,
-            _commitment: CommitmentConfig,
-        ) -> RpcResult<Option<Account>> {
-            self.get_account(key).await
+            Ok(result)
         }
 
         async fn get_multiple_accounts(
@@ -71,10 +55,17 @@ mod mock_rpc_client {
         async fn get_slot(&self) -> ClientResult<Slot> {
             Ok(Slot::default())
         }
+
+        async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {
+            Ok(vec![])
+        }
     }
 
     #[async_trait(?Send)]
     impl BuildConfigSimulator for MockRpcClient {
+        fn use_cache(&self) -> bool {
+            false
+        }
         async fn build_config_simulator(&self, _program_id: Pubkey) -> NeonResult<ConfigSimulator> {
             unimplemented!();
         }

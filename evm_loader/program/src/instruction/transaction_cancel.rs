@@ -5,6 +5,8 @@ use crate::error::{Error, Result};
 use crate::gasometer::{CANCEL_TRX_COST, LAST_ITERATION_COST};
 use arrayref::array_ref;
 use ethnum::U256;
+use solana_program::rent::Rent;
+use solana_program::sysvar::Sysvar;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 pub fn process<'a>(
@@ -67,6 +69,8 @@ fn execute<'a>(
     {
         let origin_info = accounts.get(&origin_pubkey).clone();
         let mut account = BalanceAccount::from_account(program_id, origin_info)?;
+        account.increment_revision(&Rent::get()?, &accounts)?;
+
         storage.refund_unused_gas(&mut account)?;
     }
 

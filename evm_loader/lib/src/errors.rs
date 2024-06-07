@@ -73,8 +73,7 @@ pub enum NeonError {
     InvalidAssociatedPda(Pubkey, Pubkey),
     #[error("")]
     InvalidChDbConfig,
-    /// too many steps
-    #[error("Too many steps")]
+    #[error("Out of Gas. Exceeded maximum number of EVM opcodes")]
     TooManySteps,
     #[error("Incorrect address {0:?}.")]
     IncorrectAddress(String),
@@ -84,8 +83,6 @@ pub enum NeonError {
     TxParametersParsingError(String),
     #[error("AddrParseError. {0:?}")]
     AddrParseError(#[from] AddrParseError),
-    #[error("SolanaClientError. {0:?}")]
-    SolanaClientError(solana_client::client_error::ClientError),
     /// Environment Error
     #[error("Environment error {0:?}")]
     EnvironmentError(#[from] EnvironmentError),
@@ -144,7 +141,6 @@ impl NeonError {
             NeonError::PubkeyError(_) => 116,
             NeonError::EvmError(_) => 117,
             NeonError::AddrParseError(_) => 118,
-            NeonError::SolanaClientError(_) => 120,
             NeonError::EvmLoaderNotSpecified => 201,
             NeonError::KeypairNotSpecified => 202,
             NeonError::IncorrectProgram(_) => 203,

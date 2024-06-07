@@ -6,12 +6,10 @@ use async_trait::async_trait;
 use solana_client::{
     client_error::Result as ClientResult,
     client_error::{ClientError, ClientErrorKind},
-    rpc_response::{Response, RpcResponseContext, RpcResult},
 };
 use solana_sdk::{
     account::Account,
     clock::{Slot, UnixTimestamp},
-    commitment_config::CommitmentConfig,
     pubkey::Pubkey,
 };
 
@@ -42,16 +40,6 @@ impl CallDbClient {
         })
     }
 
-    async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>> {
-        Ok(Response {
-            context: RpcResponseContext {
-                slot: self.slot,
-                api_version: None,
-            },
-            value: self.get_account_at(key).await?,
-        })
-    }
-
     async fn get_account_at(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
         self.tracer_db
             .get_account_at(key, self.slot, self.tx_index_in_block)
@@ -62,16 +50,8 @@ impl CallDbClient {
 
 #[async_trait(?Send)]
 impl Rpc for CallDbClient {
-    async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>> {
-        self.get_account(key).await
-    }
-
-    async fn get_account_with_commitment(
-        &self,
-        key: &Pubkey,
-        _: CommitmentConfig,
-    ) -> RpcResult<Option<Account>> {
-        self.get_account(key).await
+    async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
+        self.get_account_at(key).await
     }
 
     async fn get_multiple_accounts(
@@ -94,5 +74,9 @@ impl Rpc for CallDbClient {
 
     async fn get_slot(&self) -> ClientResult<Slot> {
         Ok(self.slot)
+    }
+
+    async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {
+        Ok(vec![]) // TODO
     }
 }

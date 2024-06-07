@@ -15,9 +15,12 @@ use crate::evm::{Context, ExitStatus};
 use crate::types::Address;
 
 use super::action::Action;
-use super::cache::{cache_get_or_insert_account, cache_get_or_insert_balance, Cache};
+use super::cache::Cache;
 use super::precompile_extension::PrecompiledContracts;
 use super::OwnedAccountInfo;
+
+pub type ExecutionResult = Option<(ExitStatus, Vec<Action>)>;
+pub type TouchedAccounts = BTreeMap<Pubkey, u64>;
 
 /// Represents the state of executor abstracted away from a self.backend.
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
@@ -27,6 +30,8 @@ pub struct ExecutorState<'a, B: AccountStorage> {
     actions: Vec<Action>,
     stack: Vec<usize>,
     exit_status: Option<ExitStatus>,
+    // #[serde(skip)]
+    touched_accounts: RefCell<TouchedAccounts>,
 }
 
 impl<'a, B: AccountStorage> ExecutorState<'a, B> {
@@ -47,14 +52,13 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
             actions,
             stack,
             exit_status,
+            touched_accounts: RefCell::new(TouchedAccounts::new()),
         })
     }
 
     #[must_use]
     pub fn new(backend: &'a B) -> Self {
         let cache = Cache {
-            solana_accounts: BTreeMap::new(),
-            native_balances: BTreeMap::new(),
             block_number: backend.block_number(),
             block_timestamp: backend.block_timestamp(),
         };
@@ -65,7 +69,18 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
             actions: Vec::with_capacity(64),
             stack: Vec::with_capacity(16),
             exit_status: None,
+            touched_accounts: RefCell::new(TouchedAccounts::new()),
         }
+    }
+
+    pub fn deconstruct(self) -> (ExecutionResult, TouchedAccounts) {
+        let result = if let Some(exit_status) = self.exit_status {
+            Some((exit_status, self.actions))
+        } else {
+            None
+        };
+
+        (result, self.touched_accounts.into_inner())
     }
 
     pub fn into_actions(self) -> Vec<Action> {
@@ -78,11 +93,78 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     }
 
     pub fn set_exit_status(&mut self, status: ExitStatus) {
+        assert!(self.stack.is_empty());
+
         self.exit_status = Some(status);
     }
 
     pub fn call_depth(&self) -> usize {
         self.stack.len()
+    }
+
+    #[maybe_async]
+    async fn balance_internal(&self, from_address: Address, from_chain_id: u64) -> Result<U256> {
+        let mut balance = self.backend.balance(from_address, from_chain_id).await;
+
+        for action in &self.actions {
+            match action {
+                Action::Transfer {
+                    source,
+                    target,
+                    chain_id,
+                    value,
+                } if (&from_chain_id == chain_id) => {
+                    if &from_address == source {
+                        balance = balance.checked_sub(*value).ok_or(Error::IntegerOverflow)?;
+                    }
+
+                    if &from_address == target {
+                        balance = balance.checked_add(*value).ok_or(Error::IntegerOverflow)?;
+                    }
+                }
+                Action::Burn {
+                    source,
+                    chain_id,
+                    value,
+                } if (&from_chain_id == chain_id) && (&from_address == source) => {
+                    balance = balance.checked_sub(*value).ok_or(Error::IntegerOverflow)?;
+                }
+                _ => {}
+            }
+        }
+
+        Ok(balance)
+    }
+
+    fn touch_balance(&self, address: Address, chain_id: u64) {
+        let (pubkey, _) = self.backend.balance_pubkey(address, chain_id);
+        self.touch_account(pubkey, 2);
+    }
+
+    fn touch_balance_indirect(&self, address: Address, chain_id: u64) {
+        let (pubkey, _) = self.backend.balance_pubkey(address, chain_id);
+        self.touch_account(pubkey, 1);
+    }
+
+    fn touch_contract(&self, address: Address) {
+        let (pubkey, _) = self.backend.contract_pubkey(address);
+        self.touch_account(pubkey, 2);
+    }
+
+    fn touch_storage(&self, address: Address, index: U256) {
+        let pubkey = self.backend.storage_cell_pubkey(address, index);
+        self.touch_account(pubkey, 2);
+    }
+
+    fn touch_solana(&self, pubkey: Pubkey) {
+        self.touch_account(pubkey, 2);
+    }
+
+    fn touch_account(&self, pubkey: Pubkey, count: u64) {
+        let mut touched_accounts = self.touched_accounts.borrow_mut();
+
+        let counter = touched_accounts.entry(pubkey).or_insert(0);
+        *counter = counter.checked_add(count).unwrap(); // Technically, this could overflow with infinite compute budget
     }
 }
 
@@ -125,38 +207,10 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(())
     }
 
-    async fn balance(&self, from_address: Address, from_chain_id: u64) -> Result<U256> {
-        let cache_key = (from_address, from_chain_id);
-        let mut balance = cache_get_or_insert_balance(&self.cache, cache_key, self.backend).await;
+    async fn balance(&self, address: Address, chain_id: u64) -> Result<U256> {
+        self.touch_balance(address, chain_id);
 
-        for action in &self.actions {
-            match action {
-                Action::Transfer {
-                    source,
-                    target,
-                    chain_id,
-                    value,
-                } if (&from_chain_id == chain_id) => {
-                    if &from_address == source {
-                        balance = balance.checked_sub(*value).ok_or(Error::IntegerOverflow)?;
-                    }
-
-                    if &from_address == target {
-                        balance = balance.checked_add(*value).ok_or(Error::IntegerOverflow)?;
-                    }
-                }
-                Action::Burn {
-                    source,
-                    chain_id,
-                    value,
-                } if (&from_chain_id == chain_id) && (&from_address == source) => {
-                    balance = balance.checked_sub(*value).ok_or(Error::IntegerOverflow)?;
-                }
-                _ => {}
-            }
-        }
-
-        Ok(balance)
+        self.balance_internal(address, chain_id).await
     }
 
     async fn transfer(
@@ -170,6 +224,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             return Ok(());
         }
 
+        self.touch_contract(target);
+
         let target_chain_id = self.contract_chain_id(target).await.unwrap_or(chain_id);
 
         if (self.code_size(target).await? > 0) && (target_chain_id != chain_id) {
@@ -180,7 +236,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             return Ok(());
         }
 
-        if self.balance(source, chain_id).await? < value {
+        self.touch_balance_indirect(source, chain_id);
+        if self.balance_internal(source, chain_id).await? < value {
             return Err(Error::InsufficientBalance(source, chain_id, value));
         }
 
@@ -196,6 +253,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn burn(&mut self, source: Address, chain_id: u64, value: U256) -> Result<()> {
+        self.touch_balance_indirect(source, chain_id);
+        if self.balance_internal(source, chain_id).await? < value {
+            return Err(Error::InsufficientBalance(source, chain_id, value));
+        }
+
         let burn = Action::Burn {
             source,
             chain_id,
@@ -211,6 +273,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             return Ok(1); // This is required in order to make a normal call to an extension contract
         }
 
+        self.touch_contract(from_address);
+
         for action in &self.actions {
             if let Action::EvmSetCode { address, code, .. } = action {
                 if &from_address == address {
@@ -223,6 +287,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
+        self.touch_contract(from_address);
+
         for action in &self.actions {
             if let Action::EvmSetCode { address, code, .. } = action {
                 if &from_address == address {
@@ -256,6 +322,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
+        self.touch_storage(from_address, from_index);
+
         for action in self.actions.iter().rev() {
             if let Action::EvmSetStorage {
                 address,
@@ -352,6 +420,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
+        self.touch_solana(address);
+
         let metas = self
             .actions
             .iter()
@@ -366,14 +436,16 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             .collect::<Vec<_>>();
 
         if !metas.iter().any(|m| (m.pubkey == address) && m.is_writable) {
-            let account = cache_get_or_insert_account(&self.cache, address, self.backend).await;
+            let account = self.backend.clone_solana_account(&address).await;
             return Ok(account);
         }
 
         let mut accounts = BTreeMap::<Pubkey, OwnedAccountInfo>::new();
 
         for m in metas {
-            let account = cache_get_or_insert_account(&self.cache, m.pubkey, self.backend).await;
+            self.touch_solana(m.pubkey);
+
+            let account = self.backend.clone_solana_account(&m.pubkey).await;
             accounts.insert(account.key, account);
         }
 
@@ -441,6 +513,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     where
         F: FnOnce(&solana_program::account_info::AccountInfo) -> R,
     {
+        self.touch_solana(*address);
+
         self.backend.map_solana_account(address, action).await
     }
 
@@ -488,6 +562,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn contract_chain_id(&self, contract: Address) -> Result<u64> {
+        self.touch_contract(contract);
+
         for action in self.actions.iter().rev() {
             if let Action::EvmSetCode {
                 address, chain_id, ..

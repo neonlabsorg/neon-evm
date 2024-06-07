@@ -67,6 +67,7 @@ fn process_error(status_code: StatusCode, e: &NeonError) -> (Json<Value>, Status
         Json(json!({
             "result": "error",
             "error": e.to_string(),
+            "error_code": e.error_code(),
         })),
         status_code,
     )

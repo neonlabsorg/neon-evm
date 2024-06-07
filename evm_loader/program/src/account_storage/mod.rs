@@ -69,8 +69,13 @@ pub trait AccountStorage {
 
     /// Get contract chain_id
     async fn contract_chain_id(&self, address: Address) -> Result<u64>;
+
     /// Get contract solana address
     fn contract_pubkey(&self, address: Address) -> (Pubkey, u8);
+    /// Get balance solana address
+    fn balance_pubkey(&self, address: Address, chain_id: u64) -> (Pubkey, u8);
+    /// Get cell solana address
+    fn storage_cell_pubkey(&self, address: Address, index: U256) -> Pubkey;
 
     /// Get code size
     async fn code_size(&self, address: Address) -> usize;

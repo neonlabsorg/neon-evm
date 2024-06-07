@@ -31,7 +31,7 @@ pub fn process_inner<'a>(
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
     let step_count = u64::from(u32::from_le_bytes(*array_ref![instruction, 4, 4]));
 
-    let holder_or_storage = &accounts[0];
+    let holder_or_storage = accounts[0].clone();
 
     let operator = Operator::from_account(&accounts[1])?;
     let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
@@ -89,19 +89,14 @@ pub fn process_inner<'a>(
             excessive_lamports += crate::account::legacy::update_legacy_accounts(&accounts_db)?;
             gasometer.refund_lamports(excessive_lamports);
 
-            let storage = StateAccount::new(
-                program_id,
-                holder_or_storage.clone(),
-                &accounts_db,
-                origin,
-                trx,
-            )?;
+            let storage =
+                StateAccount::new(program_id, holder_or_storage, &accounts_db, origin, trx)?;
 
             do_begin(accounts_db, storage, gasometer)
         }
         TAG_STATE => {
             let (storage, accounts_status) =
-                StateAccount::restore(program_id, holder_or_storage.clone(), &accounts_db)?;
+                StateAccount::restore(program_id, holder_or_storage, &accounts_db)?;
 
             operator_balance.validate_transaction(storage.trx())?;
             let miner_address = operator_balance.miner(storage.trx_origin());

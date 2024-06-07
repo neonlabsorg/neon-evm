@@ -9,7 +9,7 @@ use crate::{account_storage::account_info, rpc::Rpc, NeonResult};
 
 use serde_with::{hex::Hex, serde_as, DisplayFromStr};
 
-use super::get_config::{BuildConfigSimulator, ChainInfo};
+use super::get_config::BuildConfigSimulator;
 
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize)]
@@ -32,14 +32,25 @@ impl GetContractResponse {
     }
 }
 
-fn find_legacy_chain_id(chains: &[ChainInfo]) -> u64 {
-    for chain in chains {
-        if chain.name == "neon" {
-            return chain.id;
-        }
-    }
+fn read_legacy_account(
+    program_id: &Pubkey,
+    legacy_chain_id: u64,
+    solana_address: Pubkey,
+    mut account: Account,
+) -> GetContractResponse {
+    let account_info = account_info(&solana_address, &mut account);
+    let Ok(contract) = LegacyEtherData::from_account(program_id, &account_info) else {
+        return GetContractResponse::empty(solana_address);
+    };
 
-    unreachable!()
+    let chain_id = Some(legacy_chain_id);
+    let code = contract.read_code(&account_info);
+
+    GetContractResponse {
+        solana_address,
+        chain_id,
+        code,
+    }
 }
 
 fn read_account(
@@ -53,23 +64,12 @@ fn read_account(
     };
 
     let account_info = account_info(&solana_address, &mut account);
-    let (chain_id, code) = ContractAccount::from_account(program_id, account_info.clone())
-        .map_or_else(
-            |_| {
-                LegacyEtherData::from_account(program_id, &account_info).map_or_else(
-                    |_| (None, vec![]),
-                    |contract| {
-                        if contract.code_size > 0 || contract.generation > 0 {
-                            let code = contract.read_code(&account_info);
-                            (Some(legacy_chain_id), code)
-                        } else {
-                            (None, vec![])
-                        }
-                    },
-                )
-            },
-            |contract| (Some(contract.chain_id()), contract.code().to_vec()),
-        );
+    let Ok(contract) = ContractAccount::from_account(program_id, account_info) else {
+        return read_legacy_account(program_id, legacy_chain_id, solana_address, account);
+    };
+
+    let chain_id = Some(contract.chain_id());
+    let code = contract.code().to_vec();
 
     GetContractResponse {
         solana_address,
@@ -83,8 +83,7 @@ pub async fn execute(
     program_id: &Pubkey,
     accounts: &[Address],
 ) -> NeonResult<Vec<GetContractResponse>> {
-    let chain_ids = super::get_config::read_chains(rpc, *program_id).await?;
-    let legacy_chain_id = find_legacy_chain_id(&chain_ids);
+    let legacy_chain_id = super::get_config::read_legacy_chain_id(rpc, *program_id).await?;
 
     let pubkeys: Vec<_> = accounts
         .iter()

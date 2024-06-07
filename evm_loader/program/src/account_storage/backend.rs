@@ -85,6 +85,19 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
             .contract_with_bump_seed(self.program_id(), address)
     }
 
+    fn balance_pubkey(&self, address: Address, chain_id: u64) -> (Pubkey, u8) {
+        self.keys
+            .balance_with_bump_seed(self.program_id(), address, chain_id)
+    }
+
+    fn storage_cell_pubkey(&self, address: Address, index: U256) -> Pubkey {
+        if index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u64) {
+            self.keys.contract(self.program_id(), address)
+        } else {
+            self.keys.storage_cell(self.program_id(), address, index)
+        }
+    }
+
     fn code_size(&self, address: Address) -> usize {
         self.contract_account(address).map_or(0, |a| a.code_len())
     }

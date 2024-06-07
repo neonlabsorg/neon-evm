@@ -15,16 +15,31 @@ use super::{
 };
 
 #[repr(C, packed)]
-pub struct Header {
+pub struct HeaderV0 {
     pub address: Address,
     pub chain_id: u64,
     pub trx_count: u64,
     pub balance: U256,
 }
-impl AccountHeader for Header {
+impl AccountHeader for HeaderV0 {
     const VERSION: u8 = 0;
 }
 
+#[repr(C, packed)]
+pub struct HeaderWithRevision {
+    pub v0: HeaderV0,
+    pub revision: u32,
+}
+
+impl AccountHeader for HeaderWithRevision {
+    const VERSION: u8 = 2;
+}
+
+// Set the last version of the Header struct here
+// and change the `header_size` and `header_upgrade` functions
+pub type Header = HeaderWithRevision;
+
+#[derive(Clone)]
 pub struct BalanceAccount<'a> {
     account: AccountInfo<'a>,
 }
@@ -33,6 +48,12 @@ impl<'a> BalanceAccount<'a> {
     #[must_use]
     pub fn required_account_size() -> usize {
         ACCOUNT_PREFIX_LEN + size_of::<Header>()
+    }
+
+    #[must_use]
+    pub fn required_header_realloc(&self) -> usize {
+        let allocated_header_size = self.header_size();
+        size_of::<Header>().saturating_sub(allocated_header_size)
     }
 
     pub fn from_account(program_id: &Pubkey, account: AccountInfo<'a>) -> Result<Self> {
@@ -114,13 +135,36 @@ impl<'a> BalanceAccount<'a> {
         super::set_tag(program_id, &account, TAG_ACCOUNT_BALANCE, Header::VERSION)?;
         {
             let mut header = super::header_mut::<Header>(&account);
-            header.address = address;
-            header.chain_id = chain_id;
-            header.trx_count = 0;
-            header.balance = U256::ZERO;
+            header.v0.address = address;
+            header.v0.chain_id = chain_id;
+            header.v0.trx_count = 0;
+            header.v0.balance = U256::ZERO;
+            header.revision = 1;
         }
 
         Ok(Self { account })
+    }
+
+    fn header_size(&self) -> usize {
+        match super::header_version(&self.account) {
+            0 | 1 => size_of::<HeaderV0>(),
+            HeaderWithRevision::VERSION => size_of::<HeaderWithRevision>(),
+            _ => panic!("Unknown header version"),
+        }
+    }
+
+    fn header_upgrade(&mut self, rent: &Rent, db: &AccountsDB<'a>) -> Result<()> {
+        match super::header_version(&self.account) {
+            0 | 1 => {
+                super::expand_header::<HeaderV0, Header>(&self.account, rent, db)?;
+            }
+            HeaderWithRevision::VERSION => {
+                super::expand_header::<HeaderWithRevision, Header>(&self.account, rent, db)?;
+            }
+            _ => panic!("Unknown header version"),
+        }
+
+        Ok(())
     }
 
     #[must_use]
@@ -130,35 +174,35 @@ impl<'a> BalanceAccount<'a> {
 
     #[must_use]
     pub fn address(&self) -> Address {
-        let header = super::header::<Header>(&self.account);
+        let header = super::header::<HeaderV0>(&self.account);
         header.address
     }
 
     #[must_use]
     pub fn chain_id(&self) -> u64 {
-        let header = super::header::<Header>(&self.account);
+        let header = super::header::<HeaderV0>(&self.account);
         header.chain_id
     }
 
     #[must_use]
     pub fn nonce(&self) -> u64 {
-        let header = super::header::<Header>(&self.account);
+        let header = super::header::<HeaderV0>(&self.account);
         header.trx_count
     }
 
     pub fn override_nonce_by(&mut self, value: u64) {
-        let mut header = super::header_mut::<Header>(&self.account);
+        let mut header = super::header_mut::<HeaderV0>(&self.account);
         header.trx_count = value;
     }
 
     pub fn override_balance_by(&mut self, value: U256) {
-        let mut header = super::header_mut::<Header>(&self.account);
+        let mut header = super::header_mut::<HeaderV0>(&self.account);
         header.balance = value;
     }
 
     #[must_use]
     pub fn exists(&self) -> bool {
-        let header = super::header::<Header>(&self.account);
+        let header = super::header::<HeaderV0>(&self.account);
 
         ({ header.trx_count } > 0) || ({ header.balance } > 0)
     }
@@ -168,7 +212,7 @@ impl<'a> BalanceAccount<'a> {
     }
 
     pub fn increment_nonce_by(&mut self, value: u64) -> Result<()> {
-        let mut header = super::header_mut::<Header>(&self.account);
+        let mut header = super::header_mut::<HeaderV0>(&self.account);
 
         header.trx_count = header
             .trx_count
@@ -180,7 +224,7 @@ impl<'a> BalanceAccount<'a> {
 
     #[must_use]
     pub fn balance(&self) -> U256 {
-        let header = super::header::<Header>(&self.account);
+        let header = super::header::<HeaderV0>(&self.account);
         header.balance
     }
 
@@ -196,7 +240,7 @@ impl<'a> BalanceAccount<'a> {
     }
 
     pub fn burn(&mut self, value: U256) -> Result<()> {
-        let mut header = super::header_mut::<Header>(&self.account);
+        let mut header = super::header_mut::<HeaderV0>(&self.account);
 
         header.balance = header
             .balance
@@ -211,12 +255,33 @@ impl<'a> BalanceAccount<'a> {
     }
 
     pub fn mint(&mut self, value: U256) -> Result<()> {
-        let mut header = super::header_mut::<Header>(&self.account);
+        let mut header = super::header_mut::<HeaderV0>(&self.account);
 
         header.balance = header
             .balance
             .checked_add(value)
             .ok_or(Error::IntegerOverflow)?;
+
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn revision(&self) -> u32 {
+        if super::header_version(&self.account) < HeaderWithRevision::VERSION {
+            return 0;
+        }
+
+        let header = super::header::<HeaderWithRevision>(&self.account);
+        header.revision
+    }
+
+    pub fn increment_revision(&mut self, rent: &Rent, db: &AccountsDB<'a>) -> Result<()> {
+        if super::header_version(&self.account) < HeaderWithRevision::VERSION {
+            self.header_upgrade(rent, db)?;
+        }
+
+        let mut header = super::header_mut::<HeaderWithRevision>(&self.account);
+        header.revision = header.revision.wrapping_add(1);
 
         Ok(())
     }

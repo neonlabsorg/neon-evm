@@ -76,7 +76,9 @@ jobs:
           python3 ./.github/workflows/deploy.py run_tests \
           --github_sha=${GITHUB_SHA} \
           --neon_test_branch=${{ steps.neon_test_branch.outputs.value }} \
-          --base_ref_branch=${{ github.base_ref }}
+          --base_ref_branch=${{ github.base_ref }} \
+          --run_number=${{ github.run_number }} \
+          --run_attempt=${{ github.run_attempt }}
       - name: Cancel the build if job failed
         if: "failure()"
         uses: "andymckay/cancel-action@0.4"

@@ -21,8 +21,15 @@ use solana_sdk::{
 
 use crate::rpc::Rpc;
 
+#[derive(Eq, PartialEq, Copy, Clone)]
+pub enum SyncState {
+    No,
+    Yes,
+}
+
 pub async fn genesis_config_info(
     rpc: &impl Rpc,
+    sync: SyncState,
     mint_sol: f64,
 ) -> Result<GenesisConfigInfo, Error> {
     let rent = sysvar::rent::Rent::default();
@@ -53,8 +60,10 @@ pub async fn genesis_config_info(
         vec![],
     );
 
-    for feature in deactivated_features(rpc).await? {
-        genesis_config.accounts.remove(&feature);
+    if sync == SyncState::Yes {
+        for feature in rpc.get_deactivated_solana_features().await? {
+            genesis_config.accounts.remove(&feature);
+        }
     }
 
     Ok(GenesisConfigInfo {
@@ -63,28 +72,6 @@ pub async fn genesis_config_info(
         voting_keypair,
         validator_pubkey,
     })
-}
-
-pub async fn deactivated_features(rpc: &impl Rpc) -> Result<Vec<Pubkey>, Error> {
-    let feature_keys: Vec<Pubkey> = solana_sdk::feature_set::FEATURE_NAMES
-        .keys()
-        .copied()
-        .collect();
-    let features = rpc.get_multiple_accounts(&feature_keys).await?;
-
-    let mut result = Vec::with_capacity(feature_keys.len());
-    for (pubkey, feature) in feature_keys.iter().zip(features) {
-        let is_activated = feature
-            .and_then(|a| solana_sdk::feature::from_account(&a))
-            .and_then(|f| f.activated_at)
-            .is_some();
-
-        if !is_activated {
-            result.push(*pubkey);
-        }
-    }
-
-    Ok(result)
 }
 
 pub async fn sync_sysvar_accounts(rpc: &impl Rpc, bank: &Bank) -> Result<(), Error> {

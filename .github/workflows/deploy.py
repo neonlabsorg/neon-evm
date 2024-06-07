@@ -111,7 +111,9 @@ def run_subprocess(command):
 @click.option('--github_sha')
 @click.option('--neon_test_branch')
 @click.option('--base_ref_branch')
-def run_tests(github_sha, neon_test_branch, base_ref_branch):
+@click.option('--run_number')
+@click.option('--run_attempt')
+def run_tests(github_sha, neon_test_branch, base_ref_branch, run_number, run_attempt):
     os.environ["EVM_LOADER_IMAGE"] = f"{IMAGE_NAME}:{github_sha}"
 
     if GithubClient.is_branch_exist(NEON_TESTS_ENDPOINT, neon_test_branch) \
@@ -123,7 +125,7 @@ def run_tests(github_sha, neon_test_branch, base_ref_branch):
         neon_test_image_tag = 'latest'
     os.environ["NEON_TESTS_IMAGE"] = f"{NEON_TEST_IMAGE_NAME}:{neon_test_image_tag}"
     click.echo(f"NEON_TESTS_IMAGE: {os.environ['NEON_TESTS_IMAGE']}")
-    project_name = f"neon-evm-{github_sha}"
+    project_name = f"neon-evm-{github_sha}-{run_number}-{run_attempt}"
     stop_containers(project_name)
 
     run_subprocess(f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml pull")

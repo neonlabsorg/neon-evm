@@ -168,9 +168,8 @@ pub async fn read_program_data_from_account(
     evm_loader: &Pubkey,
 ) -> Result<(Option<Pubkey>, Vec<u8>), NeonError> {
     let account = rpc
-        .get_account_with_commitment(evm_loader, config.commitment)
+        .get_account(evm_loader)
         .await?
-        .value
         .ok_or(NeonError::AccountNotFound(*evm_loader))?;
 
     if account.owner == bpf_loader::id() || account.owner == bpf_loader_deprecated::id() {
@@ -180,14 +179,9 @@ pub async fn read_program_data_from_account(
             programdata_address,
         }) = account.state()
         {
-            let programdata_account = rpc
-                .get_account_with_commitment(&programdata_address, config.commitment)
-                .await?
-                .value
-                .ok_or(NeonError::AssociatedPdaNotFound(
-                    programdata_address,
-                    config.evm_loader,
-                ))?;
+            let programdata_account = rpc.get_account(&programdata_address).await?.ok_or(
+                NeonError::AssociatedPdaNotFound(programdata_address, config.evm_loader),
+            )?;
 
             if let Ok(UpgradeableLoaderState::ProgramData {
                 upgrade_authority_address,

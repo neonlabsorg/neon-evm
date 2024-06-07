@@ -16,13 +16,10 @@ use evm_loader::{
     types::Address,
 };
 use log::{debug, info, trace};
-use solana_client::client_error::{self, Result as ClientResult};
-use solana_client::rpc_response::{Response, RpcResponseContext, RpcResult};
 use solana_sdk::{
     account::Account,
     account_info::{AccountInfo, IntoAccountInfo},
-    clock::{Clock, Slot, UnixTimestamp},
-    commitment_config::CommitmentConfig,
+    clock::Clock,
     instruction::Instruction,
     program_error::ProgramError,
     pubkey,
@@ -34,7 +31,7 @@ use solana_sdk::{
 };
 use std::collections::{HashMap, HashSet};
 use std::{
-    cell::{RefCell, RefMut},
+    cell::{Ref, RefCell, RefMut},
     convert::TryInto,
     rc::Rc,
 };
@@ -119,65 +116,6 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     return_data: RefCell<Option<TransactionReturnData>>,
 }
 
-#[async_trait(?Send)]
-impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
-    async fn get_account(&self, key: &Pubkey) -> RpcResult<Option<Account>> {
-        let account = if *key == self.operator {
-            Some(Account {
-                lamports: 100 * 1_000_000_000,
-                data: vec![],
-                owner: system_program::ID,
-                executable: false,
-                rent_epoch: 0,
-            })
-        } else if let Some(account) = self.accounts.get(key) {
-            let acc = &*account.borrow();
-            Some(acc.into())
-        } else {
-            self._get_account_from_rpc(*key).await?.cloned()
-        };
-
-        Ok(Response {
-            context: RpcResponseContext {
-                slot: self.block_number,
-                api_version: None,
-            },
-            value: account,
-        })
-    }
-
-    async fn get_account_with_commitment(
-        &self,
-        _key: &Pubkey,
-        _commitment: CommitmentConfig,
-    ) -> RpcResult<Option<Account>> {
-        unimplemented!();
-    }
-
-    async fn get_multiple_accounts(
-        &self,
-        pubkeys: &[Pubkey],
-    ) -> ClientResult<Vec<Option<Account>>> {
-        // TODO: Optimize this!!!
-        let mut result = vec![];
-        for key in pubkeys {
-            let account = self.get_account(key).await?.value;
-            result.push(account);
-        }
-        Ok(result)
-    }
-
-    async fn get_block_time(&self, _slot: Slot) -> ClientResult<UnixTimestamp> {
-        // Ok(self.block_timestamp)
-        unimplemented!();
-    }
-
-    async fn get_slot(&self) -> ClientResult<Slot> {
-        //Ok(self.block_number)
-        unimplemented!();
-    }
-}
-
 impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
     pub async fn new(
         rpc: &'rpc T,
@@ -208,8 +146,8 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         let rent_account = rpc
             .get_account(&solana_sdk::sysvar::rent::id())
             .await?
-            .value
             .ok_or(NeonError::AccountNotFound(solana_sdk::sysvar::rent::id()))?;
+
         let rent = bincode::deserialize::<Rent>(&rent_account.data)?;
         info!("Rent: {rent:?}");
 
@@ -342,10 +280,16 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         Ok(())
     }
 
+    pub async fn _get_deactivated_solana_features(
+        &self,
+    ) -> solana_client::client_error::Result<Vec<Pubkey>> {
+        self.rpc.get_deactivated_solana_features().await
+    }
+
     pub async fn _get_account_from_rpc(
         &self,
         pubkey: Pubkey,
-    ) -> client_error::Result<Option<&Account>> {
+    ) -> solana_client::client_error::Result<Option<&Account>> {
         if pubkey == FAKE_OPERATOR {
             return Ok(None);
         }
@@ -355,8 +299,53 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
 
         let response = self.rpc.get_account(&pubkey).await?;
-        let account = self.accounts_cache.insert(pubkey, Box::new(response.value));
+        let account = self.accounts_cache.insert(pubkey, Box::new(response));
         Ok(account.as_ref())
+    }
+
+    pub async fn _get_multiple_accounts_from_rpc(
+        &self,
+        pubkeys: &[Pubkey],
+    ) -> solana_client::client_error::Result<Vec<Option<&Account>>> {
+        let mut accounts = vec![None; pubkeys.len()];
+
+        let mut exists = vec![true; pubkeys.len()];
+        let mut missing_keys = Vec::with_capacity(pubkeys.len());
+
+        for (i, pubkey) in pubkeys.iter().enumerate() {
+            if pubkey == &FAKE_OPERATOR {
+                continue;
+            }
+
+            let Some(account) = self.accounts_cache.get(pubkey) else {
+                exists[i] = false;
+                missing_keys.push(*pubkey);
+                continue;
+            };
+
+            accounts[i] = account.as_ref();
+        }
+
+        let mut response = self.rpc.get_multiple_accounts(&missing_keys).await?;
+
+        let mut j = 0_usize;
+        for i in 0..pubkeys.len() {
+            if exists[i] {
+                continue;
+            }
+
+            let pubkey = missing_keys[j];
+            let account = response[j].take();
+            let account = self.accounts_cache.insert(pubkey, Box::new(account));
+            // ^ .insert() returns the reference to the account that was just inserted
+
+            assert_eq!(pubkeys[i], pubkey);
+            accounts[i] = account.as_ref();
+
+            j += 1;
+        }
+
+        Ok(accounts)
     }
 
     fn mark_account(&self, pubkey: Pubkey, is_writable: bool) {
@@ -839,6 +828,10 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             .collect::<Vec<_>>()
     }
 
+    pub fn accounts_get(&self, pubkey: &Pubkey) -> Option<Ref<AccountData>> {
+        self.accounts.get(pubkey).map(RefCell::borrow)
+    }
+
     pub fn get_upgrade_rent(&self) -> evm_loader::error::Result<u64> {
         let mut lamports_collected = 0u64;
         let mut lamports_spend = 0u64;
@@ -1034,6 +1027,20 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         address.find_solana_address(self.program_id())
     }
 
+    fn balance_pubkey(&self, address: Address, chain_id: u64) -> (Pubkey, u8) {
+        address.find_balance_address(self.program_id(), chain_id)
+    }
+
+    fn storage_cell_pubkey(&self, address: Address, index: U256) -> Pubkey {
+        let base = self.contract_pubkey(address).0;
+        if index < U256::from(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u64) {
+            base
+        } else {
+            let address = StorageCellAddress::new(self.program_id(), &base, &index);
+            *address.pubkey()
+        }
+    }
+
     async fn code_size(&self, address: Address) -> usize {
         info!("code_size {address}");
 
@@ -1091,16 +1098,9 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         info!("clone_solana_account {}", address);
 
         if *address == self.operator() {
-            OwnedAccountInfo {
-                key: self.operator(),
-                is_signer: true,
-                is_writable: false,
-                lamports: 100 * 1_000_000_000,
-                data: vec![],
-                owner: system_program::ID,
-                executable: false,
-                rent_epoch: 0,
-            }
+            let mut account = fake_operator();
+            let info = account_info(address, &mut account);
+            OwnedAccountInfo::from_account_info(self.program_id(), &info)
         } else {
             let account = self
                 .use_account(*address, false)
@@ -1406,6 +1406,17 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
 
     fn commit_snapshot(&mut self) {
         self.call_stack.pop().expect("No snapshots to commit");
+    }
+}
+
+#[must_use]
+pub const fn fake_operator() -> Account {
+    Account {
+        lamports: 100 * 1_000_000_000,
+        data: vec![],
+        owner: system_program::ID,
+        executable: false,
+        rent_epoch: 0,
     }
 }
 

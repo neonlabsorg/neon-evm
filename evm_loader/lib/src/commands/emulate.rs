@@ -174,7 +174,7 @@ async fn emulate_trx<T: Tracer>(
 
     let (exit_status, steps_executed, tracer) = evm.execute(step_limit, &mut backend).await?;
     if exit_status == ExitStatus::StepLimit {
-        return Err(NeonError::TooManySteps);
+        return Ok((EmulateResponse::revert(&NeonError::TooManySteps), None));
     }
 
     debug!("Execute done, result={exit_status:?}");

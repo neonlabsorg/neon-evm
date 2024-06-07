@@ -42,6 +42,8 @@ impl<'a> ProgramAccountStorage<'a> {
         let mut source = BalanceAccount::from_account(&crate::ID, source)?;
 
         let mut target = self.accounts.operator_balance();
+
+        source.increment_revision(&self.rent, &self.accounts)?;
         target.consume_gas(&mut source, value)
     }
 
@@ -82,6 +84,10 @@ impl<'a> ProgramAccountStorage<'a> {
                 } => {
                     let mut source = self.balance_account(source, chain_id)?;
                     let mut target = self.create_balance_account(target, chain_id)?;
+
+                    source.increment_revision(&self.rent, &self.accounts)?;
+                    target.increment_revision(&self.rent, &self.accounts)?;
+
                     source.transfer(&mut target, value)?;
                 }
                 Action::Burn {
@@ -90,6 +96,7 @@ impl<'a> ProgramAccountStorage<'a> {
                     value,
                 } => {
                     let mut account = self.create_balance_account(source, chain_id)?;
+                    account.increment_revision(&self.rent, &self.accounts)?;
                     account.burn(value)?;
                 }
                 Action::EvmSetStorage {

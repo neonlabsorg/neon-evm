@@ -172,7 +172,7 @@ impl NeonError {
             NeonError::IncorrectLibMethod => 263,
             NeonError::StrumParseError(_) => 264,
             NeonError::SolanaSimulatorError(_) => 265,
-            NeonError::DbError => 266,
+            NeonError::RocksDb(_) => 266,
         }
     }
 }

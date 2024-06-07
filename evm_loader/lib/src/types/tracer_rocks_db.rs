@@ -1,6 +1,9 @@
-use rocksdb_storage::storage::RocksDBStorage;
-use tempfile::TempDir;
-// use log::{debug, error, info};
+use jsonrpsee::core::client::ClientT;
+use std::str::FromStr;
+use jsonrpsee::core::Serialize;
+use jsonrpsee::rpc_params;
+use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
+use serde_json::from_str;
 
 #[derive(Error, Debug)]
 pub enum RocksDbError {
@@ -17,36 +20,55 @@ use solana_sdk::{
     clock::{Slot, UnixTimestamp},
     pubkey::Pubkey,
 };
+
+#[derive(Clone, Serialize)]
+pub struct AccountParams{
+    pub pubkey: Pubkey,
+    pub slot: u64,
+    pub tx_index_in_block: Option<u64>,
+}
+
 use thiserror::Error;
+use crate::types::RocksDbConfig;
 
 #[derive(Clone)]
 pub struct RocksDb {
-    // TODO: testing locally for now and will replace with RPC Client sending requests to RocksDB Server
-    pub storage : RocksDBStorage,
+    // pub storage : RocksDBStorage,
+    // TODO: store client here, not url
+    // pub client: &WsClient,
+    pub url: String,
 }
 
 impl RocksDb {
     #[must_use]
-    pub fn new() -> Self {
-        let temp_dir = TempDir::new().unwrap();
-        let db_path = temp_dir.path().to_str().unwrap();
+    pub fn new(config: &RocksDbConfig) -> Self {
+        let addr = &config.rocksdb_url;
+        let url = format!("ws://{}", addr);
 
-        // TODO: default initialization
-        let storage = RocksDBStorage::initialize(db_path);
-
-        Self { storage }
+        Self { url }
     }
 
     pub async fn get_block_time(&self, slot: Slot) -> RocksDbResult<UnixTimestamp> {
-        self.storage.get_block(slot).unwrap()?.block_time.unwrap()?
+        // self.storage.get_block(slot).unwrap()?.block_time.unwrap()?
+        let client: WsClient = WsClientBuilder::default().build(&self.url).await?;
+        let response : String = client.request("get_block_time", rpc_params![slot]).await?;
+        tracing::info!("response: {:?}", response);
+        Ok(i64::from_str(response.as_str())?)
     }
-
     pub async fn get_earliest_rooted_slot(&self) -> RocksDbResult<u64> {
-        self.storage.get_earliest_rooted_slot()
+        // self.storage.get_earliest_rooted_slot()
+        let client: WsClient = WsClientBuilder::default().build(&self.url).await?;
+        let response : String = client.request("get_earliest_rooted_slot", rpc_params![]).await?;
+        tracing::info!("response: {:?}", response);
+        Ok(u64::from_str(response.as_str())?)
     }
 
     pub async fn get_latest_block(&self) -> RocksDbResult<u64> {
-        self.storage.get_latest_slot()
+        // self.storage.get_latest_slot()
+        let client: WsClient = WsClientBuilder::default().build(&self.url).await?;
+        let response : String = client.request("get_last_rooted_slot", rpc_params![]).await?;
+        tracing::info!("response: {:?}", response);
+        Ok(u64::from_str(response.as_str())?)
     }
 
     pub async fn get_account_at(
@@ -55,25 +77,18 @@ impl RocksDb {
         slot: u64,
         tx_index_in_block: Option<u64>,
     ) -> RocksDbResult<Option<Account>> {
-        if let Some(tx_index_in_block) = tx_index_in_block {
-            return if let Some(account) = self
-                .storage
-                .get_account(pubkey.clone().as_ref(), slot, tx_index_in_block as i64).unwrap()
-            {
-                Ok(Some(try_from(account)).unwrap())
-            } else {
-                self
-                    .storage
-                    //  TODO confirm these parameters
-                    .get_account_by_pubkey_and_slot_closest(pubkey.as_ref(), slot - 1, 2)
-                    .unwrap()
-            };
-        }
+        let ap: AccountParams = AccountParams { pubkey: *pubkey, slot, tx_index_in_block};
 
-        self
-            .storage
-            //  TODO confirm these parameters
-            .get_account_by_pubkey_and_slot_closest(pubkey.as_ref(), slot, 2)
+        let client: WsClient = WsClientBuilder::default().build(&self.url).await?;
+        let response : String = client.request("get_account", rpc_params![ap]).await?;
+        tracing::info!("response: {:?}", response);
+
+        if let Some(account) = from_str(response.as_str())? {
+            Ok(Some(account))
+        }
+        else {
+            Ok(None)
+        }
     }
 }
 

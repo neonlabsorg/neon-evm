@@ -1,6 +1,7 @@
 use super::{e, Rpc};
 use crate::types::TracerDb;
 use crate::NeonError;
+use crate::NeonError::RocksDb;
 use async_trait::async_trait;
 use solana_client::{
     client_error::Result as ClientResult,
@@ -13,7 +14,6 @@ use solana_sdk::{
     commitment_config::CommitmentConfig,
     pubkey::Pubkey,
 };
-use crate::NeonError::RocksDb;
 
 pub struct CallDbClient {
     tracer_db: TracerDb,

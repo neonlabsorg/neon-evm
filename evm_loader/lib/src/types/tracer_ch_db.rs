@@ -1,3 +1,5 @@
+#[allow(dead_code)]
+
 use crate::{
     commands::get_neon_elf::get_elf_parameter,
     types::tracer_ch_common::{AccountRow, ChError, RevisionRow, SlotParent, ROOT_BLOCK_DELAY},
@@ -27,8 +29,8 @@ pub struct ClickHouseDb {
     pub client: Client,
 }
 
+#[allow(dead_code)]
 impl ClickHouseDb {
-    #[must_use]
     pub fn new(config: &ChDbConfig) -> Self {
         let url_id = rand::thread_rng().gen_range(0..config.clickhouse_url.len());
         let url = config.clickhouse_url.get(url_id).unwrap();
@@ -251,7 +253,7 @@ impl ClickHouseDb {
         let pubkey_str = format!("{:?}", pubkey.to_bytes());
 
         if let Some(rooted_slot) = self
-            .get_sol_sig_rooted_slotget_account_rooted_slot(&pubkey_str, first)
+            .get_account_rooted_slot(&pubkey_str, first)
             .await
             .map_err(|e| {
                 error!("get_account_rooted_slot error: {:?}", e);

@@ -3,7 +3,7 @@ pub mod tracer_ch_common;
 mod tracer_ch_db;
 
 pub mod tracer_rocks_db;
-
+use crate::tracing::TraceCallConfig;
 pub use evm_loader::types::Address;
 use evm_loader::types::{StorageKey, Transaction};
 use evm_loader::{
@@ -13,10 +13,7 @@ use evm_loader::{
 use serde_with::skip_serializing_none;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::HashMap;
-// pub use tracer_ch_db::ClickHouseDb as TracerDb;
 pub use tracer_rocks_db::RocksDb as TracerDb;
-use crate::tracing::TraceCallConfig;
-
 use ethnum::U256;
 use serde::{Deserialize, Serialize};
 use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
@@ -28,6 +25,11 @@ pub struct ChDbConfig {
     pub clickhouse_url: Vec<String>,
     pub clickhouse_user: Option<String>,
     pub clickhouse_password: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
+pub struct RocksDbConfig {
+    pub rocksdb_url: String,
 }
 
 #[serde_as]

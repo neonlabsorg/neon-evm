@@ -13,6 +13,7 @@ hyper = "0.14"
 evm-loader = { path = "../program", default-features = false, features = ["log", "async-trait"] }
 solana-sdk.workspace = true
 solana-client.workspace = true
+solana-account-decoder.workspace = true
 solana-cli-config.workspace = true
 solana-cli.workspace = true
 solana-program-runtime.workspace = true

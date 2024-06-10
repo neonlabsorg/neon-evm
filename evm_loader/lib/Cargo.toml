@@ -54,7 +54,7 @@ rocksdb = "0.22.0"
 [dev-dependencies]
 hex-literal = "0.4.1"
 #rocksdb_storage = { git = "ssh://git@github.com/neonlabsorg/geyser-neon-filter.git", branch = "NDEV-3050_RocksDbClient" }
-rocksdb_storage = { git = "https://github.com/neonlabsorg/geyser-neon-filter", branch = "NDEV-3050_RocksDbClient" }
+#rocksdb_storage = { git = "https://github.com/neonlabsorg/geyser-neon-filter", branch = "NDEV-3050_RocksDbClient" }
 
 [build-dependencies]
 build-info-build = "0.0.31"

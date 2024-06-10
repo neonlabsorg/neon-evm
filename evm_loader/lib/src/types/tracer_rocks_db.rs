@@ -31,6 +31,7 @@ pub struct AccountParams{
 
 use thiserror::Error;
 use crate::types::RocksDbConfig;
+use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
 // use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
 
 #[derive(Clone)]
@@ -94,17 +95,18 @@ impl RocksDb {
     }
 
 
-    // TODO: These are used by Tracer directly and either need to be implemented or dependency on them redesigned
-    // for Tracer to work against RocksDb instead of Clickhouse
+    // TODO: Implement
+    // These are used by Tracer directly and eventually need to be implemented
 
-    // pub async fn get_neon_revisions(&self, pubkey: &Pubkey) -> RocksDbResult<RevisionMap> {
-    //  TODO implement
-    // }
+    pub async fn get_neon_revisions(&self, _pubkey: &Pubkey) -> RocksDbResult<RevisionMap> {
+        let revision = env!("NEON_REVISION").to_string();
+        let ranges = vec![(1, 100000, revision)];
+        Ok(RevisionMap::new(ranges))
+    }
 
-
-    // pub async fn get_neon_revision(&self, slot: Slot, pubkey: &Pubkey) -> RocksDbResult<String> {
-    //     // TODO implement
-    // }
+    pub async fn get_neon_revision(&self, _slot: Slot, _pubkey: &Pubkey) -> RocksDbResult<String> {
+        Ok(env!("NEON_REVISION").to_string())
+    }
 
     pub async fn get_slot_by_blockhash(&self, blockhash: &str) -> RocksDbResult<u64> {
         let response: String = self.client.request("get_slot_by_blockhash", rpc_params![blockhash]).await?;
@@ -112,9 +114,9 @@ impl RocksDb {
         Ok(u64::from_str(response.as_str())?)
     }
 
-    // pub async fn get_sync_status(&self) -> RocksDbResult<EthSyncStatus> {
-    // TODO implement ?
-    // }
+    pub async fn get_sync_status(&self) -> RocksDbResult<EthSyncStatus> {
+        Ok(EthSyncStatus::new(None))
+    }
 }
 
 // #[cfg(test)]

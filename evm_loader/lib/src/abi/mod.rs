@@ -29,7 +29,13 @@ use serde_json::json;
 
 lazy_static! {
     static ref RUNTIME: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
-    static ref STATE: State = State::new(load_config());
+    static ref STATE: State = state_sync();
+}
+
+pub fn state_sync() -> State {
+    tokio::runtime::Runtime::new().unwrap().block_on(async {
+        State::new(load_config()).await
+    })
 }
 
 pub const _MODULE_WM_: &WithMetadata<NeonEVMLib> = &WithMetadata::new(NeonEVMLib {

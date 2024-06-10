@@ -12,9 +12,9 @@ pub struct State {
 
 impl State {
     #[must_use]
-    pub fn new(config: APIOptions) -> Self {
+    pub async fn new(config: APIOptions) -> Self {
         Self {
-            tracer_db: RocksDb::new(&(config.db_config)),
+            tracer_db: RocksDb::new(&(config.db_config)).await,
             rpc_client: CloneRpcClient::new_from_api_config(&config),
             config,
         }

@@ -157,7 +157,7 @@ async fn build_rpc(options: &ArgMatches<'_>, config: &Config) -> Result<RpcEnum,
     Ok(if let Some(slot) = slot {
         RpcEnum::CallDbClient(
             CallDbClient::new(
-                TracerDb::new(config.db_config.as_ref().expect("db-config not found")),
+                TracerDb::new(config.db_config.as_ref().expect("db-config not found")).await,
                 slot,
                 None,
             )

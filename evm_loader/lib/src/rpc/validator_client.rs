@@ -2,9 +2,13 @@ use crate::{config::APIOptions, Config};
 
 use super::Rpc;
 use async_trait::async_trait;
+use solana_account_decoder::{UiAccount, UiAccountEncoding};
 use solana_client::{
     client_error::{ClientError, ClientErrorKind, Result as ClientResult},
     nonblocking::rpc_client::RpcClient,
+    rpc_config::RpcAccountInfoConfig,
+    rpc_request::RpcRequest,
+    rpc_response::Response,
 };
 use solana_sdk::{
     account::Account,
@@ -109,10 +113,23 @@ impl Deref for CloneRpcClient {
 #[async_trait(?Send)]
 impl Rpc for CloneRpcClient {
     async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
-        let request = || self.get_account_with_commitment(key, self.commitment());
-        with_retries(self.max_retries, request)
-            .await
-            .map(|r| r.value)
+        let request = || {
+            let config = RpcAccountInfoConfig {
+                encoding: Some(UiAccountEncoding::Base64Zstd),
+                commitment: Some(self.commitment()),
+                data_slice: None,
+                min_context_slot: None,
+            };
+            let params = serde_json::json!([key.to_string(), config]);
+
+            self.send(RpcRequest::GetAccountInfo, params)
+        };
+
+        let response: serde_json::Value = with_retries(self.max_retries, request).await?;
+        let response: Response<Option<UiAccount>> = serde_json::from_value(response)?;
+
+        let account = response.value.and_then(|v| v.decode());
+        Ok(account)
     }
 
     async fn get_multiple_accounts(

@@ -16,6 +16,7 @@ solana-clap-utils = "=1.17.34"
 solana-cli = "=1.17.34"
 solana-cli-config = "=1.17.34"
 solana-client = "=1.17.34"
+solana-account-decoder = "=1.17.34"
 solana-program = { version = "=1.17.34", default-features = false }
 solana-sdk = "=1.17.34"
 solana-program-runtime = "=1.17.34"

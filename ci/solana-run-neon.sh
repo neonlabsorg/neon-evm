@@ -47,3 +47,4 @@ neon-cli --url http://localhost:8899 --evm_loader $EVM_LOADER \
   --loglevel trace init-environment --send-trx --keys-dir /opt/keys
 
 tail +1f test-ledger/validator.log
+

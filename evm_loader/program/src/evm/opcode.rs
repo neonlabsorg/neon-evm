@@ -1003,11 +1003,12 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     }
 
     /// Append log record with N topics
-    #[rustfmt::skip]
     #[maybe_async]
-    pub async fn opcode_log_0_4<const N: usize>(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_log_0_4<const N: usize>(&mut self, backend: &mut B) -> Result<Action> {
+        let address = self.context.contract;
+
         if self.is_static {
-            return Err(Error::StaticModeViolation(self.context.contract));
+            return Err(Error::StaticModeViolation(address));
         }
 
         let offset = self.stack.pop_usize()?;
@@ -1023,16 +1024,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             topics
         };
 
-        let address = self.context.contract.as_bytes();
-
-        match N {
-            0 => log_data(&[b"LOG0", address, &[0], data]),                                                
-            1 => log_data(&[b"LOG1", address, &[1], &topics[0], data]),                                    
-            2 => log_data(&[b"LOG2", address, &[2], &topics[0], &topics[1], data]),                        
-            3 => log_data(&[b"LOG3", address, &[3], &topics[0], &topics[1], &topics[2], data]),            
-            4 => log_data(&[b"LOG4", address, &[4], &topics[0], &topics[1], &topics[2], &topics[3], data]),
-            _ => unreachable!(),
-        }
+        backend.collect_log(address.as_bytes(), topics, data);
 
         Ok(Action::Continue)
     }

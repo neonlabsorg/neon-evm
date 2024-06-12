@@ -26,7 +26,7 @@ pub fn execute(
     account_storage.origin(origin, &trx)?.increment_nonce()?;
 
     let (exit_reason, apply_state, steps_executed) = {
-        let mut backend = ExecutorState::new(&account_storage);
+        let mut backend = ExecutorState::new(&mut account_storage);
 
         let mut evm = Machine::new(&trx, origin, &mut backend, None::<NoopEventListener>)?;
         let (result, steps_executed, _) = evm.execute(u64::MAX, &mut backend)?;

@@ -22,7 +22,7 @@ pub fn do_begin<'a>(
 ) -> Result<()> {
     debug_print!("do_begin");
 
-    let account_storage = ProgramAccountStorage::new(accounts)?;
+    let mut account_storage = ProgramAccountStorage::new(accounts)?;
 
     let origin = storage.trx_origin();
 
@@ -43,7 +43,8 @@ pub fn do_begin<'a>(
     origin_account.burn(gas_limit_in_tokens)?;
 
     // Initialize EVM and serialize it to the Holder
-    let mut backend = ExecutorState::new(&account_storage);
+    let mut backend = ExecutorState::new(&mut account_storage);
+
     let evm = Machine::new(storage.trx(), origin, &mut backend, None)?;
 
     serialize_evm_state(&mut storage, &backend, &evm)?;
@@ -74,17 +75,17 @@ pub fn do_continue<'a>(
         )));
     }
 
-    let account_storage = ProgramAccountStorage::new(accounts)?;
+    let mut account_storage = ProgramAccountStorage::new(accounts)?;
     let (mut backend, mut evm) = if reset {
         log_data(&[b"RESET"]);
 
         storage.reset_steps_executed();
 
-        let mut backend = ExecutorState::new(&account_storage);
+        let mut backend = ExecutorState::new(&mut account_storage);
         let evm = Machine::new(storage.trx(), storage.trx_origin(), &mut backend, None)?;
         (backend, evm)
     } else {
-        deserialize_evm_state(&storage, &account_storage)?
+        deserialize_evm_state(&storage, &mut account_storage)?
     };
 
     let mut steps_executed = 0;
@@ -213,7 +214,7 @@ fn serialize_evm_state(
 
 fn deserialize_evm_state<'a, 'r>(
     state: &StateAccount<'a>,
-    account_storage: &'r ProgramAccountStorage<'a>,
+    account_storage: &'r mut ProgramAccountStorage<'a>,
 ) -> Result<(EvmBackend<'a, 'r>, Evm<'a, 'r>)> {
     let (evm_state_len, evm_machine_len) = state.buffer_variables();
     let buffer = state.buffer();

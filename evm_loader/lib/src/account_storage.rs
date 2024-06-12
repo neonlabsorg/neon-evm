@@ -1,8 +1,11 @@
 use crate::account_data::AccountData;
+use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
+use crate::tracing::{AccountOverrides, BlockOverrides};
 use crate::{rpc::Rpc, solana_simulator::SolanaSimulator, NeonError, NeonResult};
 use async_trait::async_trait;
 use elsa::FrozenMap;
 use ethnum::U256;
+use evm_loader::account_storage::LogCollector;
 pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use evm_loader::{
     account::{
@@ -35,9 +38,7 @@ use std::{
     convert::TryInto,
     rc::Rc,
 };
-
-use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
-use crate::tracing::{AccountOverrides, BlockOverrides};
+use web3::types::Log;
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
@@ -114,6 +115,8 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     accounts_cache: FrozenMap<Pubkey, Box<Option<Account>>>,
     used_accounts: FrozenMap<Pubkey, Box<RefCell<SolanaAccount>>>,
     return_data: RefCell<Option<TransactionReturnData>>,
+    logs: Vec<Log>,
+    logs_stack: Vec<usize>,
 }
 
 impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
@@ -175,6 +178,8 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             accounts_cache,
             used_accounts: FrozenMap::new(),
             return_data: RefCell::new(None),
+            logs: vec![],
+            logs_stack: vec![],
         };
 
         let target_chain_id = tx_chain_id.unwrap_or_else(|| storage.default_chain_id());
@@ -207,6 +212,8 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             accounts_cache: other.accounts_cache.clone(),
             used_accounts: other.used_accounts.clone(),
             return_data: RefCell::new(None),
+            logs: other.logs.clone(),
+            logs_stack: other.logs_stack.clone(),
         };
         let target_chain_id = tx_chain_id.unwrap_or_else(|| storage.default_chain_id());
         storage.apply_balance_overrides(target_chain_id).await?;
@@ -908,6 +915,33 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     pub fn is_timestamp_used(&self) -> bool {
         *self.timestamp_used.borrow()
     }
+
+    pub fn logs(&self) -> Vec<Log> {
+        self.logs.clone()
+    }
+}
+
+impl<T: Rpc> LogCollector for EmulatorAccountStorage<'_, T> {
+    fn collect_log<const N: usize>(
+        &mut self,
+        address: &[u8; 20],
+        topics: [[u8; 32]; N],
+        data: &[u8],
+    ) {
+        self.logs.push(Log {
+            address: address.into(),
+            topics: topics.iter().map(Into::into).collect(),
+            data: data.into(),
+            block_hash: None,
+            block_number: None,
+            transaction_hash: None,
+            transaction_index: None,
+            log_index: None,
+            transaction_log_index: None,
+            log_type: None,
+            removed: None,
+        });
+    }
 }
 
 #[async_trait(?Send)]
@@ -1400,6 +1434,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
     fn snapshot(&mut self) {
         info!("snapshot");
         self.call_stack.push(self.accounts.clone());
+        self.logs_stack.push(self.logs.len());
     }
 
     fn revert_snapshot(&mut self) {
@@ -1411,10 +1446,25 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         } else {
             self.execute_status.reverts_before_solana_calls = true;
         }
+
+        let logs_stack_len = self
+            .logs_stack
+            .pop()
+            .expect("Fatal Error: Inconsistent EVM Logs Stack");
+
+        self.logs.truncate(logs_stack_len);
+
+        if self.logs_stack.is_empty() {
+            // sanity check
+            assert!(self.logs.is_empty());
+        }
     }
 
     fn commit_snapshot(&mut self) {
         self.call_stack.pop().expect("No snapshots to commit");
+        self.logs_stack
+            .pop()
+            .expect("Fatal Error: Inconsistent EVM Logs Stack");
     }
 }
 

@@ -4,7 +4,7 @@ use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
 
-use crate::account_storage::{AccountStorage, SyncedAccountStorage};
+use crate::account_storage::{AccountStorage, LogCollector, SyncedAccountStorage};
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
 use crate::evm::Context;
@@ -22,12 +22,12 @@ enum Action {
 }
 
 pub struct SyncedExecutorState<'a, B: AccountStorage> {
-    pub backend: &'a mut B,
+    backend: &'a mut B,
     actions: Vec<Action>,
     stack: Vec<usize>,
 }
 
-impl<'a, B: AccountStorage + SyncedAccountStorage> SyncedExecutorState<'a, B> {
+impl<'a, B: SyncedAccountStorage> SyncedExecutorState<'a, B> {
     #[must_use]
     pub fn new(backend: &'a mut B) -> Self {
         Self {
@@ -36,10 +36,26 @@ impl<'a, B: AccountStorage + SyncedAccountStorage> SyncedExecutorState<'a, B> {
             stack: Vec::with_capacity(16),
         }
     }
+
+    #[must_use]
+    pub fn backend(&self) -> &B {
+        self.backend
+    }
+}
+
+impl<B: AccountStorage> LogCollector for SyncedExecutorState<'_, B> {
+    fn collect_log<const N: usize>(
+        &mut self,
+        address: &[u8; 20],
+        topics: [[u8; 32]; N],
+        data: &[u8],
+    ) {
+        self.backend.collect_log(address, topics, data);
+    }
 }
 
 #[maybe_async(?Send)]
-impl<'a, B: AccountStorage + SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
+impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
     fn program_id(&self) -> &Pubkey {
         self.backend.program_id()
     }

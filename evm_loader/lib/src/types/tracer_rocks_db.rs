@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::Serialize;
 use jsonrpsee::rpc_params;
@@ -93,7 +91,7 @@ impl RocksDb {
         }
     }
 
-    async fn get_transaction_index(&self, signature: Signature) -> RocksDbResult<u64> {
+    pub async fn get_transaction_index(&self, signature: Signature) -> RocksDbResult<u64> {
         let response: String = self
             .client
             .request("get_transaction_index", rpc_params![signature])
@@ -102,13 +100,13 @@ impl RocksDb {
         Ok(u64::from_str(response.as_str())?)
     }
 
-    async fn get_accounts(&self, start: u64, end: u64) -> RocksDbResult<Vec<Vec<u8>>> {
+    pub async fn get_accounts(&self, start: u64, end: u64) -> RocksDbResult<Vec<Vec<u8>>> {
         let response: String = self
             .client
             .request("get_accounts", rpc_params![start, end])
             .await?;
         tracing::info!("response: {:?}", response);
-        let accounts: Vec<Vec<u8>> = from_slice((&response).as_ref()).unwrap();
+        let accounts: Vec<Vec<u8>> = from_slice((response).as_ref()).unwrap();
         Ok(accounts)
     }
 

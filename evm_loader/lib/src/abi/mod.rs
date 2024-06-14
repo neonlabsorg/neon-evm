@@ -32,6 +32,7 @@ lazy_static! {
     static ref STATE: State = state_sync();
 }
 
+#[must_use]
 pub fn state_sync() -> State {
     tokio::runtime::Runtime::new()
         .unwrap()

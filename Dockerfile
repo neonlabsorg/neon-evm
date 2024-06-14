@@ -16,8 +16,8 @@ COPY evm_loader /opt/neon-evm/evm_loader
 WORKDIR /opt/neon-evm/evm_loader
 ARG REVISION
 ENV NEON_REVISION=${REVISION}
-#RUN cargo fmt --check && \
-#    cargo clippy --release && \
+RUN cargo fmt --check && \
+    cargo clippy --release && \
 RUN cargo build --release && \
     cargo test --release && \
     cargo build-bpf --manifest-path program/Cargo.toml --features devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \

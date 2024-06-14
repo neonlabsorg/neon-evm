@@ -33,9 +33,9 @@ lazy_static! {
 }
 
 pub fn state_sync() -> State {
-    tokio::runtime::Runtime::new().unwrap().block_on(async {
-        State::new(load_config()).await
-    })
+    tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(async { State::new(load_config()).await })
 }
 
 pub const _MODULE_WM_: &WithMetadata<NeonEVMLib> = &WithMetadata::new(NeonEVMLib {

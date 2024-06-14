@@ -1,10 +1,12 @@
+#![allow(dead_code)]
+
 use jsonrpsee::core::client::ClientT;
 use std::str::FromStr;
 use std::sync::Arc;
 use jsonrpsee::core::Serialize;
 use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
-use serde_json::from_str;
+use serde_json::{from_slice, from_str};
 
 #[derive(Error, Debug)]
 pub enum RocksDbError {
@@ -21,6 +23,7 @@ use solana_sdk::{
     clock::{Slot, UnixTimestamp},
     pubkey::Pubkey,
 };
+use solana_sdk::signature::Signature;
 
 #[derive(Clone, Serialize)]
 pub struct AccountParams{
@@ -82,9 +85,9 @@ impl RocksDb {
         slot: u64,
         tx_index_in_block: Option<u64>,
     ) -> RocksDbResult<Option<Account>> {
-        let ap: AccountParams = AccountParams { pubkey: *pubkey, slot, tx_index_in_block };
+        // let ap: AccountParams = AccountParams { pubkey: *pubkey, slot, tx_index_in_block };
 
-        let response: String = self.client.request("get_account", rpc_params![ap]).await?;
+        let response: String = self.client.request("get_account", rpc_params![pubkey, slot, tx_index_in_block]).await?;
         tracing::info!("response: {:?}", response);
 
         if let Some(account) = from_str(response.as_str())? {
@@ -94,6 +97,18 @@ impl RocksDb {
         }
     }
 
+    async fn get_transaction_index(&self, signature: Signature) -> RocksDbResult<u64> {
+        let response: String = self.client.request("get_transaction_index", rpc_params![signature]).await?;
+        tracing::info!("response: {:?}", response);
+        Ok(u64::from_str(response.as_str())?)
+    }
+
+    async fn get_accounts(&self, start: u64, end: u64) -> RocksDbResult<Vec<Vec<u8>>> {
+        let response: String = self.client.request("get_accounts", rpc_params![start, end]).await?;
+        tracing::info!("response: {:?}", response);
+        let accounts: Vec<Vec<u8>> = from_slice((&response).as_ref()).unwrap();
+        Ok(accounts)
+    }
 
     // TODO: Implement
     // These are used by Tracer directly and eventually need to be implemented
@@ -134,7 +149,7 @@ impl RocksDb {
 //
 //     async fn setup() -> RocksDb {
 //         // Start and populate server
-//         let port = 9877;
+//         let port = 9888;
 //         let v4_addr = SocketAddr::from(([127, 0, 0, 1], port));
 //         let addrs: &[std::net::SocketAddr] = &[v4_addr];
 //         let server = ServerBuilder::default().build(addrs).await.unwrap();
@@ -190,6 +205,9 @@ impl RocksDb {
 //         let last_slot = client.get_latest_block().await.unwrap();
 //         tracing::info!("Earliest rooted slot {}", last_slot);
 //         assert_eq!(last_slot, 10);
+//
+//         let accounts = client.get_accounts(1, 12);
+//         println!("ACCOUNTS: {}", accounts);
 //     }
 // }
 

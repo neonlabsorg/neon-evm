@@ -29,7 +29,8 @@ pub struct ChDbConfig {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
 pub struct RocksDbConfig {
-    pub rocksdb_url: String,
+    pub rocksdb_host: String,
+    pub rocksdb_port: u16,
 }
 
 #[serde_as]

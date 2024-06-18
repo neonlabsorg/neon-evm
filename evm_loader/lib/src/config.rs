@@ -4,6 +4,8 @@ use crate::types::RocksDbConfig;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair};
 
+const DEFAULT_ROCKSDB_PORT: u16 = 9888;
+
 #[derive(Debug)]
 pub struct Config {
     pub evm_loader: Pubkey,
@@ -77,9 +79,20 @@ pub fn load_api_config_from_environment() -> APIOptions {
 }
 
 fn load_db_config_from_environment() -> RocksDbConfig {
-    let rocksdb_url = env::var("ROCKSDB_URL")
+    let rocksdb_host = env::var("ROCKSDB_HOST")
         .as_deref()
         .unwrap_or("127.0.0.1")
         .to_owned();
-    RocksDbConfig { rocksdb_url }
+
+    let rocksdb_port: u16 = env::var("ROCKSDB_PORT")
+        .ok()
+        .and_then(|port| port.parse::<u16>().ok())
+        .unwrap_or(DEFAULT_ROCKSDB_PORT);
+
+    tracing::info!("rocksdb host {rocksdb_host}, port {rocksdb_port}");
+
+    RocksDbConfig {
+        rocksdb_host,
+        rocksdb_port,
+    }
 }

@@ -159,6 +159,7 @@ pub struct EmulateApiRequest {
     pub body: EmulateRequest,
     pub slot: Option<u64>,
     pub tx_index_in_block: Option<u64>,
+    pub id: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Default, Copy, Clone, Eq, PartialEq)]
@@ -187,6 +188,7 @@ pub struct GetBalanceRequest {
     #[serde_as(as = "OneOrMany<_>")]
     pub account: Vec<BalanceAddress>,
     pub slot: Option<u64>,
+    pub id: Option<String>,
 }
 
 #[serde_as]
@@ -195,6 +197,7 @@ pub struct GetContractRequest {
     #[serde_as(as = "OneOrMany<_>")]
     pub contract: Vec<Address>,
     pub slot: Option<u64>,
+    pub id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -202,6 +205,7 @@ pub struct GetStorageAtRequest {
     pub contract: Address,
     pub index: U256,
     pub slot: Option<u64>,
+    pub id: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Default)]
@@ -234,6 +238,7 @@ pub struct GetHolderRequest {
     #[serde_as(as = "DisplayFromStr")]
     pub pubkey: Pubkey,
     pub slot: Option<u64>,
+    pub id: Option<String>,
 }
 
 #[serde_as]
@@ -247,6 +252,7 @@ pub struct SimulateSolanaRequest {
     pub blockhash: [u8; 32],
     #[serde_as(as = "Vec<Hex>")]
     pub transactions: Vec<Vec<u8>>,
+    pub id: Option<String>,
 }
 
 #[cfg(test)]

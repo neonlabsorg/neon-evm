@@ -1,6 +1,6 @@
 [package]
 name = "neon-api"
-version = "1.13.0-dev"
+version = "1.14.0-dev"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -18,7 +18,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2.3"
 neon-lib = { path = "../lib" }
-actix-web = "4.6.0"
+actix-web = "4.7.0"
 actix-request-identifier = "4.2.0"
 hex = "0.4.2"
 build-info = { version = "0.0.31", features = ["serde"] }

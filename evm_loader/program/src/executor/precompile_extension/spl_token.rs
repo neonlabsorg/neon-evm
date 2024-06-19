@@ -463,6 +463,10 @@ async fn transfer<State: Database>(
     target: Pubkey,
     amount: u64,
 ) -> Result<Vec<u8>> {
+    if (source == target) || (amount == 0) {
+        return Ok(vec![]);
+    }
+
     let signer = context.caller;
     let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
 
@@ -496,6 +500,10 @@ async fn transfer_with_seed<State: Database>(
     target: Pubkey,
     amount: u64,
 ) -> Result<Vec<u8>> {
+    if (source == target) || (amount == 0) {
+        return Ok(vec![]);
+    }
+
     let seeds: &[&[u8]] = &[
         &[ACCOUNT_SEED_VERSION],
         b"AUTH",
@@ -535,6 +543,10 @@ async fn mint_to<State: Database>(
     target: Pubkey,
     amount: u64,
 ) -> Result<Vec<u8>> {
+    if amount == 0 {
+        return Ok(vec![]);
+    }
+
     let signer = context.caller;
     let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
 
@@ -567,6 +579,10 @@ async fn burn<State: Database>(
     source: Pubkey,
     amount: u64,
 ) -> Result<Vec<u8>> {
+    if amount == 0 {
+        return Ok(vec![]);
+    }
+
     let signer = context.caller;
     let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
 

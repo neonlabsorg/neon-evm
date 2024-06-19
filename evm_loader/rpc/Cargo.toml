@@ -1,12 +1,12 @@
 [package]
 name = "neon-rpc"
-version = "1.13.0-dev"
+version = "1.14.0-dev"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-actix-web = "4.6.0"
+actix-web = "4.7.0"
 clap = "2.33.3"
 jsonrpc-v2 = "0.13.0"
 neon-lib-interface = { path = "../lib-interface" }

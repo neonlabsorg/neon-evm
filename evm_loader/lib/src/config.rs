@@ -78,7 +78,7 @@ pub fn load_api_config_from_environment() -> APIOptions {
     }
 }
 
-fn load_db_config_from_environment() -> RocksDbConfig {
+pub fn load_db_config_from_environment() -> RocksDbConfig {
     let rocksdb_host = env::var("ROCKSDB_HOST")
         .as_deref()
         .unwrap_or("127.0.0.1")

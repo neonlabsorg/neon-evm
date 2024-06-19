@@ -61,6 +61,11 @@ COPY ci/operator-keypairs/id.json /root/.config/solana/id.json
 COPY ci/operator-keypairs/id2.json /root/.config/solana/id2.json
 COPY ci/keys/ /opt/keys
 
+ARG ROCKSDB_HOST
+ARG ROCKSDB_PORT
+
 ENV PATH=${PATH}:/opt
+ENV ROCKSDB_HOST=${ROCKSDB_HOST}
+ENV ROCKSDB_PORT=${ROCKSDB_PORT}
 
 ENTRYPOINT [ "/opt/solana-run-neon.sh" ]

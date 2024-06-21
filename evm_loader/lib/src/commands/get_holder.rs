@@ -16,7 +16,7 @@ use crate::{account_storage::account_info, rpc::Rpc, NeonResult};
 
 use serde_with::{hex::Hex, serde_as, skip_serializing_none, DisplayFromStr};
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub enum Status {
     #[default]
     Empty,

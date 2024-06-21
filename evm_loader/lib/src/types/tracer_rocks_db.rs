@@ -5,6 +5,8 @@ use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use serde_json::{from_slice, from_str};
 use std::str::FromStr;
 use std::sync::Arc;
+// use std::time::Duration;
+
 pub type RocksDbResult<T> = std::result::Result<T, anyhow::Error>;
 use solana_sdk::signature::Signature;
 use solana_sdk::{
@@ -23,6 +25,8 @@ pub struct AccountParams {
 use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
 use crate::types::RocksDbConfig;
 
+// use reconnecting_jsonrpsee_ws_client::{Client, CallRetryPolicy, rpc_params, ExponentialBackoff};
+
 #[derive(Clone)]
 pub struct RocksDb {
     pub url: String,
@@ -36,6 +40,11 @@ impl RocksDb {
         let port = &config.rocksdb_port;
         let url = format!("ws://{host}:{port}");
 
+        // match Client::builder()
+        //     .retry_policy(
+        //     ExponentialBackoff::from_millis(100)
+        //         .max_delay(Duration::from_secs(10))
+        //         .take(3),)
         match WsClientBuilder::default().build(&url).await {
             Ok(client) => {
                 let arc_c = Arc::new(client);
@@ -51,7 +60,11 @@ impl RocksDb {
             .client
             .request("get_block_time", rpc_params![slot])
             .await?;
-        tracing::info!("response: {:?}", response);
+        tracing::info!(
+            "get_block_time for slot {:?} response: {:?}",
+            slot,
+            response
+        );
         Ok(i64::from_str(response.as_str())?)
     }
     pub async fn get_earliest_rooted_slot(&self) -> RocksDbResult<u64> {
@@ -59,7 +72,7 @@ impl RocksDb {
             .client
             .request("get_earliest_rooted_slot", rpc_params![])
             .await?;
-        tracing::info!("response: {:?}", response);
+        tracing::info!("get_earliest_rooted_slot response: {:?}", response);
         Ok(u64::from_str(response.as_str())?)
     }
 
@@ -68,7 +81,7 @@ impl RocksDb {
             .client
             .request("get_last_rooted_slot", rpc_params![])
             .await?;
-        tracing::info!("response: {:?}", response);
+        tracing::info!("get_latest_block response: {:?}", response);
         Ok(u64::from_str(response.as_str())?)
     }
 
@@ -82,9 +95,12 @@ impl RocksDb {
 
         let response: String = self
             .client
-            .request("get_account", rpc_params![pubkey, slot, tx_index_in_block])
+            .request(
+                "get_account",
+                rpc_params![pubkey.to_owned(), slot, tx_index_in_block],
+            )
             .await?;
-        tracing::info!("response: {:?}", response);
+        tracing::info!("get_account_at response: {:?}", response);
 
         if let Some(account) = from_str(response.as_str())? {
             Ok(Some(account))
@@ -98,7 +114,7 @@ impl RocksDb {
             .client
             .request("get_transaction_index", rpc_params![signature])
             .await?;
-        tracing::info!("response: {:?}", response);
+        tracing::info!("get_transaction_index response: {:?}", response);
         Ok(u64::from_str(response.as_str())?)
     }
 
@@ -107,7 +123,7 @@ impl RocksDb {
             .client
             .request("get_accounts", rpc_params![start, end])
             .await?;
-        tracing::info!("response: {:?}", response);
+        tracing::info!("get_accounts response: {:?}", response);
         let accounts: Vec<Vec<u8>> = from_slice((response).as_ref()).unwrap();
         Ok(accounts)
     }

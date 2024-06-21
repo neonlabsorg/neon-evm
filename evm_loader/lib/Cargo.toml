@@ -50,7 +50,8 @@ clap = "2.33.3"
 lazy_static = "1.4.0"
 elsa = "1.10.0"
 arrayref = "0.3.6"
-#rocksdb = "0.22.0"
+# TODO revisit as this causes zeroize version conflict
+#reconnecting-jsonrpsee-ws-client = "0.4.2"
 
 [dev-dependencies]
 hex-literal = "0.4.1"

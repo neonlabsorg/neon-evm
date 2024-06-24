@@ -13,7 +13,9 @@ cfg_if! {
         net_specific_config_parser!("config/devnet.toml");
     } else if #[cfg(feature = "govertest")] {
         net_specific_config_parser!("config/govertest.toml");
-    } else {
+    }
+    // Rollup does not need its own config yet, so let it slide to the default one.
+    else {
         net_specific_config_parser!("config/default.toml");
     }
 }

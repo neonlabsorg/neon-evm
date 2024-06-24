@@ -20,6 +20,8 @@ testnet = []
 devnet = []
 ## Builds NeonEVM for CI environment
 ci = []
+## Builds NeonEVM for rollup deployment with settings adjusted.
+rollup = []
 
 ## Builds NeonEVM program for `emergency` mode. In this mode, NeonEVM doesn't process
 ## any transaction and return error `ProgramError::InvalidInstructionData` with comment

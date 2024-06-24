@@ -141,7 +141,7 @@ impl RocksDb {
         Ok(env!("NEON_REVISION").to_string())
     }
 
-    pub async fn get_slot_by_blockhash(&self, blockhash: &str) -> RocksDbResult<u64> {
+    pub async fn get_slot_by_blockhash(&self, blockhash: String) -> RocksDbResult<u64> {
         let response: String = self
             .client
             .request("get_slot_by_blockhash", rpc_params![blockhash])
@@ -250,6 +250,14 @@ impl RocksDb {
 //                 println!("ACCOUNT: {:?}: {:?}", acc.len(), acc);
 //             }
 //         }
+//
+//     #[tokio::test]
+//     async fn test_get_slot_by_blockhash() {
+//         let client = setup().await;
+//         // let block = client.get_block(8).await.unwrap();
+//         let slot8 = client.get_slot_by_blockhash("8HfsUf5H5RcZGENqEfFccrBCtWYC6uGYAQvNkZiEHqCU".to_string()).await.unwrap();
+//         assert_eq!(slot8, 8);
+//     }
 //
 //     #[tokio::test]
 //     async fn test_get_transaction_index() {

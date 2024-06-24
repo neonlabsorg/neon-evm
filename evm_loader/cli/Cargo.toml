@@ -6,13 +6,13 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-clap = "2.33.3"
+clap = "2.34.0"
 evm-loader = { path = "../program", default-features = false, features = ["log"] }
 solana-sdk.workspace = true
 solana-client.workspace = true
 solana-clap-utils.workspace = true
 solana-cli-config.workspace = true
-hex = "0.4.2"
+hex = "0.4.3"
 serde = "1.0.203"
 serde_json = { version = "1.0.117", features = ["preserve_order"] }
 log = "0.4.21"
@@ -20,7 +20,7 @@ fern = "0.6"
 ethnum = { version = "1.5", default-features = false, features = ["serde"] }
 tokio = { version = "1", features = ["full"] }
 neon-lib = { path = "../lib" }
-build-info = { version = "0.0.31", features = ["serde"] }
+build-info = "0.0.36"
 
 [build-dependencies]
-build-info-build = "0.0.31"
+build-info-build = "0.0.36"

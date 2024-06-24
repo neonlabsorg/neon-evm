@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4.8.0"
-clap = "2.33.3"
+clap = "2.34.0"
 jsonrpc-v2 = "0.13.0"
 neon-lib-interface = { path = "../lib-interface" }
 neon-lib = { path = "../lib" }
@@ -15,11 +15,11 @@ semver = "1.0.23"
 serde = "1.0.203"
 serde_json = "1.0.117"
 tokio = { version = "1", features = ["full"] }
-build-info = { version = "0.0.31", features = ["serde"] }
+build-info = "0.0.36"
 thiserror = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2.3"
 
 [build-dependencies]
-build-info-build = "0.0.31"
+build-info-build = "0.0.36"

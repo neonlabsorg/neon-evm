@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt::Display;
 
-use crate::{account_storage::account_info, rpc::Rpc, NeonResult};
+use crate::{account_storage::account_info, rpc::Rpc, types::TxParams, NeonResult};
 
 use serde_with::{hex::Hex, serde_as, skip_serializing_none, DisplayFromStr};
 
@@ -45,6 +45,7 @@ pub struct GetHolderResponse {
 
     #[serde_as(as = "Option<Hex>")]
     pub tx: Option<[u8; 32]>,
+    pub tx_data: Option<TxParams>,
     pub chain_id: Option<u64>,
     pub origin: Option<Address>,
 
@@ -119,13 +120,18 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
             let state = StateAccount::from_account(program_id, info)?;
             let accounts = state.accounts().copied().collect();
 
+            let origin = state.trx_origin();
+            let transaction = state.trx();
+            let tx_params = TxParams::from_transaction(origin, transaction);
+
             Ok(GetHolderResponse {
                 status: Status::Active,
                 len: Some(data_len),
                 owner: Some(state.owner()),
-                tx: Some(state.trx().hash()),
-                chain_id: state.trx().chain_id(),
-                origin: Some(state.trx_origin()),
+                tx: Some(transaction.hash()),
+                tx_data: Some(tx_params),
+                chain_id: transaction.chain_id(),
+                origin: Some(origin),
                 accounts: Some(accounts),
                 steps_executed: state.steps_executed(),
             })

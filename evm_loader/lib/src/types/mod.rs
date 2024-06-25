@@ -106,6 +106,22 @@ impl TxParams {
 
         (self.from, tx)
     }
+
+    #[must_use]
+    pub fn from_transaction(origin: Address, tx: &Transaction) -> Self {
+        Self {
+            from: origin,
+            to: tx.target(),
+            nonce: Some(tx.nonce()),
+            data: Some(tx.call_data().to_vec()),
+            value: Some(tx.value()),
+            gas_limit: Some(tx.gas_limit()),
+            gas_price: Some(tx.gas_price()),
+            chain_id: tx.chain_id(),
+            access_list: None,
+            actual_gas_used: None,
+        }
+    }
 }
 
 impl std::fmt::Debug for TxParams {

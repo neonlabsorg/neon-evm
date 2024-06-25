@@ -837,6 +837,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         let mut lamports_spend = 0u64;
         for (_, used_account) in self.used_accounts.clone().into_tuple_vec() {
             let used_account = used_account.borrow();
+            let pubkey = used_account.pubkey;
             if let Some(lamports_after_upgrade) = used_account.lamports_after_upgrade {
                 let orig_lamports = self
                     .accounts_cache
@@ -844,6 +845,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                     .unwrap_or(&None)
                     .as_ref()
                     .map_or(0, |v| v.lamports);
+                debug!("Upgrade rent: {pubkey} {orig_lamports} -> {lamports_after_upgrade}");
                 if lamports_after_upgrade > orig_lamports {
                     lamports_spend += lamports_after_upgrade - orig_lamports;
                 } else {
@@ -851,12 +853,17 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                 }
             }
         }
+        debug!(
+            "Upgrade rent: {lamports_spend} - {lamports_collected} = {}",
+            lamports_spend.saturating_sub(lamports_collected)
+        );
         Ok(lamports_spend.saturating_sub(lamports_collected))
     }
 
     pub fn get_regular_rent(&self) -> evm_loader::error::Result<u64> {
         let accounts = self.accounts.clone();
-        let mut changes_in_rent = 0u64;
+        let mut old_lamports_sum = 0u64;
+        let mut new_lamports_sum = 0u64;
         for (pubkey, account) in &accounts.into_map() {
             if *pubkey == system_program::ID {
                 continue;
@@ -881,14 +888,16 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                 return Err(ProgramError::AccountNotRentExempt.into());
             }
 
-            if let Some(lamports_after_upgrade) = lamports_after_upgrade {
-                changes_in_rent += new_lamports.saturating_sub(lamports_after_upgrade);
-                info!("Changes in rent: {pubkey} {original_lamports} -> {lamports_after_upgrade} -> {new_lamports} | {original_size} -> {new_size}");
-            } else {
-                changes_in_rent += new_lamports.saturating_sub(original_lamports);
-                info!("Changes in rent: {pubkey} {original_lamports} -> {new_lamports} | {original_size} -> {new_size}");
-            }
+            let old_lamports = lamports_after_upgrade.unwrap_or(original_lamports);
+            old_lamports_sum += old_lamports;
+            new_lamports_sum += new_lamports;
+
+            #[allow(clippy::cast_possible_wrap)]
+            let diff = new_lamports as i64 - old_lamports as i64;
+            debug!("Changes in rent: {pubkey} {old_lamports} -> {new_lamports} = {diff} | {original_size} -> {new_size} {lamports_after_upgrade:?}");
         }
+        let changes_in_rent = new_lamports_sum.saturating_sub(old_lamports_sum);
+        info!("Changes in rent: {changes_in_rent} = {new_lamports_sum} - {old_lamports_sum}");
         Ok(changes_in_rent)
     }
 

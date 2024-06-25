@@ -90,13 +90,11 @@ impl RocksDb {
         slot: u64,
         tx_index_in_block: Option<u64>,
     ) -> RocksDbResult<Option<Account>> {
-        // let ap: AccountParams = AccountParams { pubkey: *pubkey, slot, tx_index_in_block };
-
         let response: String = self
             .client
             .request(
                 "get_account",
-                rpc_params![pubkey.to_owned(), slot, tx_index_in_block],
+                rpc_params![pubkey.to_string(), slot, tx_index_in_block],
             )
             .await?;
         tracing::info!("get_account_at response: {:?}", response);
@@ -249,6 +247,12 @@ impl RocksDb {
 //             for acc in accounts {
 //                 println!("ACCOUNT: {:?}: {:?}", acc.len(), acc);
 //             }
+//
+//             let pubkey_bytes : Vec<u8> = (1..=32).collect();
+//             let pubkey = Pubkey::try_from(pubkey_bytes.as_slice()).unwrap();
+//
+//             let acc = client.get_account_at(&pubkey, 10, None).await.unwrap().unwrap();
+//             println!("ACCOUNT: {acc:?}");
 //         }
 //
 //     #[tokio::test]

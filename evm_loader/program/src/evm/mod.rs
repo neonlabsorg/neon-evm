@@ -6,6 +6,7 @@
 use std::{fmt::Display, marker::PhantomData, ops::Range};
 
 use ethnum::U256;
+use log::error;
 use maybe_async::maybe_async;
 use serde::{Deserialize, Serialize};
 
@@ -324,8 +325,10 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         let target = Address::from_create(&origin, trx.nonce());
         log_data(&[b"ENTER", b"CREATE", target.as_bytes()]);
 
-        if (backend.nonce(target, chain_id).await? != 0) || (backend.code_size(target).await? != 0)
-        {
+        let nonce = backend.nonce(target, chain_id).await?;
+        let code_size = backend.code_size(target).await?;
+        if nonce != 0 || code_size != 0 {
+            error!("deploy_to_existing_account_error nonce={nonce}, code_size={code_size}");
             return Err(Error::DeployToExistingAccount(target, origin));
         }
 

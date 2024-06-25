@@ -76,6 +76,8 @@ pub fn do_continue<'a>(
 
     let account_storage = ProgramAccountStorage::new(accounts)?;
     let (mut backend, mut evm) = if reset {
+        log_data(&[b"RESET"]);
+
         storage.reset_steps_executed();
 
         let mut backend = ExecutorState::new(&account_storage);

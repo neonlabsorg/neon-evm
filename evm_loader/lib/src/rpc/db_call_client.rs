@@ -12,6 +12,7 @@ use solana_sdk::{
     clock::{Slot, UnixTimestamp},
     pubkey::Pubkey,
 };
+use tracing::debug;
 
 pub struct CallDbClient {
     tracer_db: TracerDb,
@@ -62,6 +63,9 @@ impl Rpc for CallDbClient {
         for key in pubkeys {
             result.push(self.get_account_at(key).await?);
         }
+
+        debug!("db_call_client.get_multiple_accounts result: {result:?}");
+
         Ok(result)
     }
 

@@ -18,6 +18,7 @@ use solana_sdk::{
         MessageHash, SanitizedTransaction, TransactionVerificationMode, VersionedTransaction,
     },
 };
+use tracing::debug;
 
 use crate::rpc::Rpc;
 
@@ -90,6 +91,8 @@ impl SolanaSimulator {
         let mut storable_accounts: Vec<(&Pubkey, &Account)> = vec![];
 
         let mut programdata_keys = vec![];
+
+        debug!("SYNC_ACCOUNTS: {keys:?}");
 
         let mut accounts = rpc.get_multiple_accounts(keys).await?;
         for (key, account) in keys.iter().zip(&mut accounts) {

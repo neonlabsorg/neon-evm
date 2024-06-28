@@ -6,6 +6,7 @@ use solana_sdk::{
     clock::{Slot, UnixTimestamp},
     pubkey::Pubkey,
 };
+use tracing::debug;
 
 use crate::account_storage::{fake_operator, EmulatorAccountStorage};
 
@@ -56,6 +57,7 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
 
         let response = self._get_multiple_accounts_from_rpc(&missing_keys).await?;
 
+        debug!("emulator_client.get_multiple_accounts response: {response:?}");
         let mut j = 0_usize;
         for i in 0..pubkeys.len() {
             if exists[i] {
@@ -67,6 +69,8 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
 
             j += 1;
         }
+
+        debug!("emulator_client.get_multiple_accounts accounts: {accounts:?}");
 
         Ok(accounts)
     }

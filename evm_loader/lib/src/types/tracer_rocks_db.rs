@@ -1,3 +1,4 @@
+use abi_stable::traits::IntoOwned;
 use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::Serialize;
 use jsonrpsee::rpc_params;
@@ -13,6 +14,7 @@ use solana_sdk::{
     clock::{Slot, UnixTimestamp},
     pubkey::Pubkey,
 };
+use tracing::info;
 
 #[derive(Clone, Serialize)]
 pub struct AccountParams {
@@ -91,11 +93,16 @@ impl RocksDb {
         slot: u64,
         tx_index_in_block: Option<u64>,
     ) -> RocksDbResult<Option<Account>> {
+        info!("get_account_at {pubkey:?}, slot: {slot:?}, tx_index: {tx_index_in_block:?}");
+
         let response: String = self
             .client
-            .request("get_account", rpc_params![pubkey, slot, tx_index_in_block])
+            .request(
+                "get_account",
+                rpc_params![pubkey.into_owned(), slot, tx_index_in_block],
+            )
             .await?;
-        tracing::info!("get_account_at response: {:?}", response);
+        info!("get_account_at response: {:?}", response);
 
         if let Some(account) = from_str(response.as_str())? {
             Ok(Some(account))

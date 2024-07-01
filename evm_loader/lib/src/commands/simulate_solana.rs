@@ -1,6 +1,13 @@
 use std::collections::HashSet;
 
+use crate::{
+    rpc::Rpc,
+    solana_simulator::{SolanaSimulator, SyncState},
+    types::SimulateSolanaRequest,
+    NeonResult,
+};
 use bincode::Options;
+use log::info;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use solana_program_runtime::compute_budget::ComputeBudget;
@@ -9,13 +16,7 @@ use solana_sdk::{
     pubkey::Pubkey,
     transaction::{SanitizedTransaction, Transaction, VersionedTransaction},
 };
-
-use crate::{
-    rpc::Rpc,
-    solana_simulator::{SolanaSimulator, SyncState},
-    types::SimulateSolanaRequest,
-    NeonResult,
-};
+use solana_transaction_status::EncodableWithMeta;
 
 #[serde_as]
 #[derive(Deserialize, Serialize, Debug, Default)]
@@ -101,6 +102,10 @@ pub async fn execute(
     let mut transactions: Vec<VersionedTransaction> = vec![];
     for data in request.transactions {
         let tx = decode_transaction(&data)?;
+        info!(
+            "Encoded transaction: {}",
+            serde_json::to_string(&tx.json_encode()).unwrap()
+        );
         transactions.push(tx);
     }
 
@@ -119,16 +124,14 @@ pub async fn execute(
     let accounts = account_keys(&sanitized_transactions);
     simulator.sync_accounts(rpc, &accounts).await?;
 
-    simulator.replace_blockhash(&request.blockhash.into());
-
     // Process transactions
     let mut results = Vec::new();
     for tx in sanitized_transactions {
-        let r = simulator.process_transaction(tx)?;
+        let r = simulator.process_transaction(request.blockhash.into(), &tx)?;
         results.push(SimulateSolanaTransactionResult {
-            error: r.status.err(),
-            logs: r.log_messages.unwrap_or_default(),
-            executed_units: r.executed_units,
+            error: r.result.err(),
+            logs: r.logs,
+            executed_units: r.units_consumed,
         });
     }
 

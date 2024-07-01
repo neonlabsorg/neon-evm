@@ -1351,7 +1351,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             .await
             .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
 
-        solana_simulator.set_sysvar(&Clock {
+        solana_simulator.set_clock(Clock {
             slot: self.block_number,
             epoch_start_timestamp: self.block_timestamp,
             epoch: 0,
@@ -1390,10 +1390,9 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             .await
             .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
 
-        let trx = Transaction::new_unsigned(Message::new_with_blockhash(
+        let trx = Transaction::new_unsigned(Message::new(
             &[instruction.clone()],
             Some(&solana_simulator.payer().pubkey()),
-            &solana_simulator.blockhash(),
         ));
 
         let result = solana_simulator

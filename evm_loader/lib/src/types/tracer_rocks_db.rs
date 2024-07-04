@@ -102,13 +102,10 @@ impl RocksDb {
                 rpc_params![pubkey.into_owned(), slot, tx_index_in_block],
             )
             .await?;
-        info!("get_account_at response: {:?}", response);
 
-        if let Some(account) = from_str(response.as_str())? {
-            Ok(Some(account))
-        } else {
-            Ok(None)
-        }
+        let account = from_str::<Account>(response.as_str())?;
+        info!("Got Account by {pubkey:?}: owner: {:?} lamports: {:?} executable: {:?} rent_epoch: {:?}", account.owner, account.lamports, account.executable, account.rent_epoch);
+        Ok(Some(account))
     }
 
     pub async fn get_transaction_index(&self, signature: Signature) -> RocksDbResult<u64> {

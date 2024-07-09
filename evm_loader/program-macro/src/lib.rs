@@ -66,6 +66,7 @@ pub fn net_specific_config_parser(tokens: TokenStream) -> TokenStream {
         neon_chain_id,
         neon_token_mint,
         operators_whitelist,
+        no_update_tracking_owners,
         mut chains,
     } = parse_macro_input!(tokens as NetSpecificConfig);
 
@@ -76,6 +77,14 @@ pub fn net_specific_config_parser(tokens: TokenStream) -> TokenStream {
 
     operators.sort_unstable();
     let operators_len = operators.len();
+
+    let mut no_update_tracking_owners: Vec<Vec<u8>> = no_update_tracking_owners
+        .iter()
+        .map(|key| bs58::decode(key).into_vec().unwrap())
+        .collect();
+
+    no_update_tracking_owners.sort_unstable();
+    let no_update_tracking_owners_len = no_update_tracking_owners.len();
 
     chains.sort_unstable_by_key(|c| c.id);
     let chains_len = chains.len();
@@ -98,6 +107,10 @@ pub fn net_specific_config_parser(tokens: TokenStream) -> TokenStream {
 
         pub const AUTHORIZED_OPERATOR_LIST: [::solana_program::pubkey::Pubkey; #operators_len] = [
             #(::solana_program::pubkey::Pubkey::new_from_array([#((#operators),)*]),)*
+        ];
+
+        pub const NO_UPDATE_TRACKING_OWNERS: [::solana_program::pubkey::Pubkey; #no_update_tracking_owners_len] = [
+            #(::solana_program::pubkey::Pubkey::new_from_array([#((#no_update_tracking_owners),)*]),)*
         ];
 
         pub const CHAIN_ID_LIST: [(u64, &str, ::solana_program::pubkey::Pubkey); #chains_len] = [

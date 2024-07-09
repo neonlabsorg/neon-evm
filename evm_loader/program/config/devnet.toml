@@ -1,4 +1,10 @@
 program_id = "eeLSJgWzzxrqKv1UxtRVVH8FX3qCQWUs9QuAjJpETGU"
+
+no_update_tracking_owners = [
+    "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny",  # Chainlink oracle
+    "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ",   # Pyth oracle
+]
+
 operators_whitelist = [
     "NeoQM3utcHGxhKT41Nq81g8t4xGcPNFpkAgYj1N2N8v",
     "Gw3Xiwve6HdvpJeQguhwT23cpK9nRjSy1NpNYCFY4XU9",

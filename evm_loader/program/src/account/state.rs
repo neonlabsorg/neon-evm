@@ -10,6 +10,7 @@ use crate::types::serde::bytes_32;
 use crate::types::{Address, Transaction};
 use ethnum::U256;
 use serde::{Deserialize, Serialize};
+use solana_program::hash::Hash;
 use solana_program::system_program;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
@@ -34,6 +35,13 @@ enum AccountRevision {
 impl AccountRevision {
     pub fn new(program_id: &Pubkey, info: &AccountInfo) -> Self {
         if (info.owner != program_id) && !system_program::check_id(info.owner) {
+            if crate::config::NO_UPDATE_TRACKING_OWNERS
+                .binary_search(info.owner)
+                .is_ok()
+            {
+                return AccountRevision::Hash(Hash::default().to_bytes());
+            }
+
             let hash = solana_program::hash::hashv(&[
                 info.owner.as_ref(),
                 &info.lamports().to_le_bytes(),

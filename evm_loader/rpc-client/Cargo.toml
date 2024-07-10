@@ -13,7 +13,7 @@ thiserror = "1.0.61"
 async-trait = "0.1.80"
 jsonrpsee-core = "0.22.3"
 jsonrpsee-http-client = "0.22.3"
-jsonrpsee-types = "0.22.3"
+jsonrpsee-types = "0.24.0"
 tokio = { version = "1", features = ["full"] }
 build-info = "0.0.37"
 

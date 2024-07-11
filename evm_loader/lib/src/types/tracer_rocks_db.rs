@@ -140,13 +140,13 @@ impl RocksDb {
         Ok(env!("NEON_REVISION").to_string())
     }
 
-    pub async fn get_slot_by_blockhash(&self, blockhash: String) -> RocksDbResult<u64> {
+    pub async fn get_slot_by_blockhash(&self, blockhash: String) -> RocksDbResult<Option<u64>> {
         let response: String = self
             .client
             .request("get_slot_by_blockhash", rpc_params![blockhash])
             .await?;
         tracing::info!("response: {:?}", response);
-        Ok(u64::from_str(response.as_str())?)
+        Ok(from_str(response.as_str())?)
     }
 
     pub async fn get_sync_status(&self) -> RocksDbResult<EthSyncStatus> {

@@ -12,7 +12,7 @@ jsonrpc-v2 = "0.13.0"
 neon-lib-interface = { path = "../lib-interface" }
 neon-lib = { path = "../lib" }
 semver = "1.0.23"
-serde = "1.0.203"
+serde = "1.0.204"
 serde_json = "1.0.120"
 tokio = { version = "1", features = ["full"] }
 build-info = "0.0.37"

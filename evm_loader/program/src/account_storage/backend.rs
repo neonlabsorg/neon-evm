@@ -73,7 +73,7 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         solana_program::program::get_return_data()
     }
 
-    fn set_return_data(&self, data: &[u8]) {
+    fn set_return_data(&mut self, data: &[u8]) {
         solana_program::program::set_return_data(data);
     }
 

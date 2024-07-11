@@ -114,7 +114,7 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     state_overrides: Option<AccountOverrides>,
     accounts_cache: FrozenMap<Pubkey, Box<Option<Account>>>,
     used_accounts: FrozenMap<Pubkey, Box<RefCell<SolanaAccount>>>,
-    return_data: RefCell<Option<TransactionReturnData>>,
+    return_data: Option<TransactionReturnData>,
     logs: Vec<Log>,
     logs_stack: Vec<usize>,
 }
@@ -177,7 +177,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             rent,
             accounts_cache,
             used_accounts: FrozenMap::new(),
-            return_data: RefCell::new(None),
+            return_data: None,
             logs: vec![],
             logs_stack: vec![],
         };
@@ -211,7 +211,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             state_overrides: other.state_overrides.clone(),
             accounts_cache: other.accounts_cache.clone(),
             used_accounts: other.used_accounts.clone(),
-            return_data: RefCell::new(None),
+            return_data: None,
             logs: other.logs.clone(),
             logs_stack: other.logs_stack.clone(),
         };
@@ -974,14 +974,13 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
         info!("return_data");
         self.return_data
-            .borrow()
             .as_ref()
             .map(|data| (data.program_id, data.data.clone()))
     }
 
-    fn set_return_data(&self, data: &[u8]) {
+    fn set_return_data(&mut self, data: &[u8]) {
         info!("set_return_data");
-        *self.return_data.borrow_mut() = Some(TransactionReturnData {
+        self.return_data = Some(TransactionReturnData {
             program_id: self.program_id,
             data: data.to_vec(),
         });
@@ -1401,7 +1400,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         }
 
         if let Some(return_data) = result.return_data {
-            *self.return_data.borrow_mut() = Some(return_data);
+            self.return_data = Some(return_data);
         }
 
         for meta in &instruction.accounts {

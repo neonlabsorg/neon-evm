@@ -8,7 +8,8 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 use crate::{
     error::{Error, Result},
     evm::database::Database,
-    types::Address,
+    types::{vector::VectorSliceExt, Address, Vector},
+    vector,
 };
 
 // QueryAccount method DEPRECATED ids:
@@ -37,7 +38,7 @@ pub async fn query_account<State: Database>(
     input: &[u8],
     context: &crate::evm::Context,
     _is_static: bool,
-) -> Result<Vec<u8>> {
+) -> Result<Vector<u8>> {
     debug_print!("query_account({})", hex::encode(input));
 
     if context.value != 0 {
@@ -54,7 +55,7 @@ pub async fn query_account<State: Database>(
         [0x2b, 0x3c, 0x83, 0x22] => {
             // cache(uint256,uint64,uint64)
             // deprecated
-            Ok(Vec::new())
+            Ok(vector![])
         }
         [0xa1, 0x23, 0xc3, 0x3e] | [0x02, 0x57, 0x1b, 0xe3] => {
             debug_print!("query_account.owner({})", &account_address);
@@ -102,36 +103,39 @@ pub async fn query_account<State: Database>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_owner<State: Database>(state: &State, address: &Pubkey) -> Result<Vec<u8>> {
+async fn account_owner<State: Database>(state: &State, address: &Pubkey) -> Result<Vector<u8>> {
     let owner = state
         .map_solana_account(address, |info| info.owner.to_bytes())
         .await;
 
-    Ok(owner.to_vec())
+    Ok(owner.to_vector())
 }
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_lamports<State: Database>(state: &State, address: &Pubkey) -> Result<Vec<u8>> {
+async fn account_lamports<State: Database>(state: &State, address: &Pubkey) -> Result<Vector<u8>> {
     let lamports: U256 = state
         .map_solana_account(address, |info| **info.lamports.borrow())
         .await
         .into();
 
-    let bytes = lamports.to_be_bytes().to_vec();
+    let bytes = lamports.to_be_bytes().to_vector();
 
     Ok(bytes)
 }
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_rent_epoch<State: Database>(state: &State, address: &Pubkey) -> Result<Vec<u8>> {
+async fn account_rent_epoch<State: Database>(
+    state: &State,
+    address: &Pubkey,
+) -> Result<Vector<u8>> {
     let epoch: U256 = state
         .map_solana_account(address, |info| info.rent_epoch)
         .await
         .into();
 
-    let bytes = epoch.to_be_bytes().to_vec();
+    let bytes = epoch.to_be_bytes().to_vector();
 
     Ok(bytes)
 }
@@ -141,26 +145,29 @@ async fn account_rent_epoch<State: Database>(state: &State, address: &Pubkey) ->
 async fn account_is_executable<State: Database>(
     state: &State,
     address: &Pubkey,
-) -> Result<Vec<u8>> {
+) -> Result<Vector<u8>> {
     let executable: U256 = state
         .map_solana_account(address, |info| info.executable)
         .await
         .into();
 
-    let bytes = executable.to_be_bytes().to_vec();
+    let bytes = executable.to_be_bytes().to_vector();
 
     Ok(bytes)
 }
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_data_length<State: Database>(state: &State, address: &Pubkey) -> Result<Vec<u8>> {
+async fn account_data_length<State: Database>(
+    state: &State,
+    address: &Pubkey,
+) -> Result<Vector<u8>> {
     let length: U256 = state
         .map_solana_account(address, |info| info.data.borrow().len())
         .await
         .try_into()?;
 
-    let bytes = length.to_be_bytes().to_vec();
+    let bytes = length.to_be_bytes().to_vector();
 
     Ok(bytes)
 }
@@ -172,7 +179,7 @@ async fn account_data<State: Database>(
     address: &Pubkey,
     offset: usize,
     length: usize,
-) -> Result<Vec<u8>> {
+) -> Result<Vector<u8>> {
     if length == 0 {
         return Err(Error::Custom(
             "Query Account: data() - length == 0".to_string(),
@@ -184,7 +191,7 @@ async fn account_data<State: Database>(
             info.data
                 .borrow()
                 .get(offset..offset + length)
-                .map(<[u8]>::to_vec)
+                .map(<[u8]>::to_vector)
         })
         .await
         .ok_or_else(|| Error::Custom("Query Account: data() - out of bounds".to_string()))
@@ -192,8 +199,8 @@ async fn account_data<State: Database>(
 
 #[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_info<State: Database>(state: &State, address: &Pubkey) -> Result<Vec<u8>> {
-    fn to_solidity_account_value(info: &AccountInfo) -> Vec<u8> {
+async fn account_info<State: Database>(state: &State, address: &Pubkey) -> Result<Vector<u8>> {
+    fn to_solidity_account_value(info: &AccountInfo) -> Vector<u8> {
         let mut buffer = [0_u8; 5 * 32];
         let (key, _, lamports, owner, _, executable, _, rent_epoch) =
             arrayref::mut_array_refs![&mut buffer, 32, 24, 8, 32, 31, 1, 24, 8];
@@ -204,7 +211,7 @@ async fn account_info<State: Database>(state: &State, address: &Pubkey) -> Resul
         executable[0] = info.executable.into();
         *rent_epoch = info.rent_epoch.to_be_bytes();
 
-        buffer.to_vec()
+        buffer.to_vector()
     }
 
     let info = state

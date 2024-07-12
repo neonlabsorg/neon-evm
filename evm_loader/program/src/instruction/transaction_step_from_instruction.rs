@@ -1,13 +1,14 @@
 use crate::account::legacy::{TAG_HOLDER_DEPRECATED, TAG_STATE_FINALIZED_DEPRECATED};
 use crate::account::{
-    program, AccountsDB, AccountsStatus, Operator, OperatorBalanceAccount,
-    OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
+    init_heap, program, write_heap_offset, AccountsDB, AccountsStatus, Operator,
+    OperatorBalanceAccount, OperatorBalanceValidator, StateAccount, Treasury, MIN_HEAP_OFFSET,
+    TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
 use crate::instruction::transaction_step::{do_begin, do_continue};
-use crate::types::Transaction;
+use crate::types::{boxx::boxx, Transaction};
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
@@ -50,7 +51,11 @@ pub fn process<'a>(
 
     match tag {
         TAG_HOLDER | TAG_STATE_FINALIZED => {
-            let trx = Transaction::from_rlp(message)?;
+            {
+                let actual_heap_offset = init_heap(&accounts[0], MIN_HEAP_OFFSET);
+                write_heap_offset(&accounts[0], actual_heap_offset);
+            }
+            let trx = boxx(Transaction::from_rlp(message)?);
             let origin = trx.recover_caller_address()?;
 
             operator_balance.validate_transaction(&trx)?;
@@ -72,7 +77,7 @@ pub fn process<'a>(
         }
         TAG_STATE => {
             let (storage, accounts_status) =
-                StateAccount::restore(program_id, storage_info, &accounts_db)?;
+                StateAccount::restore(program_id, &storage_info, &accounts_db)?;
 
             operator_balance.validate_transaction(storage.trx())?;
             let miner_address = operator_balance.miner(storage.trx_origin());

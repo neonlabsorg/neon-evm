@@ -1,8 +1,10 @@
 use crate::error::{Error, Result};
+use linked_list_allocator::Heap;
 use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
 use std::cell::{Ref, RefMut};
+use std::mem::{align_of, size_of};
 
 pub use crate::{account_storage::FAKE_OPERATOR, config::ACCOUNT_SEED_VERSION};
 
@@ -32,6 +34,9 @@ mod state;
 mod state_finalized;
 pub mod token;
 mod treasury;
+
+pub const HEAP_OFFSET_PTR: usize = holder::HEAP_OFFSET_OFFSET;
+pub const MIN_HEAP_OFFSET: usize = holder::BUFFER_OFFSET;
 
 pub const TAG_EMPTY: u8 = 0;
 pub const TAG_STATE: u8 = 24;
@@ -174,6 +179,59 @@ pub fn validate_tag(program_id: &Pubkey, info: &AccountInfo, tag: u8) -> Result<
     } else {
         Err(Error::AccountInvalidTag(*info.key, tag))
     }
+}
+
+// Write heap offset.
+pub fn write_heap_offset(account: &AccountInfo, actual_heap_offset: usize) {
+    let data = account.data.borrow();
+    #[allow(clippy::cast_ptr_alignment)]
+    let offset_ptr = data
+        .as_ptr()
+        .wrapping_add(HEAP_OFFSET_PTR)
+        .cast::<usize>()
+        .cast_mut();
+    unsafe { std::ptr::write_unaligned(offset_ptr, actual_heap_offset) };
+}
+
+// Init heap.
+#[must_use]
+pub fn init_heap(account: &AccountInfo, min_heap_object_offset: usize) -> usize {
+    // Calculate the actual heap object ptr and its offset.
+    let (heap_ptr, heap_object_offset) = {
+        // Locate heap object with offset no less than min_heap_object_offset.
+        let mut heap_object_offset = min_heap_object_offset;
+        let data = account.data.borrow();
+        let mut heap_ptr = data.as_ptr().wrapping_add(heap_object_offset);
+
+        // Calculate alignment and offset the heap pointer.
+        let padding = heap_ptr.align_offset(align_of::<Heap>());
+        heap_ptr = heap_ptr.wrapping_add(padding);
+        assert_eq!(heap_ptr.align_offset(align_of::<Heap>()), 0);
+        heap_object_offset += padding;
+
+        (heap_ptr, heap_object_offset)
+    };
+
+    // Initialize the heap
+    let heap_ptr = heap_ptr.cast_mut();
+    unsafe {
+        // First, zero out underlying bytes of the future heap representation.
+        heap_ptr.write_bytes(0, size_of::<Heap>());
+        // Calculate the bottom of the heap, right after the Heap object.
+        let heap_bottom = heap_ptr.add(size_of::<Heap>());
+        // Size is equal to account data length minus the length of prefix.
+        let heap_size = account
+            .data_len()
+            .saturating_sub(heap_object_offset + size_of::<Heap>());
+        // Cast to reference and init.
+        // Zeroed memory is a valid representation of the Heap and hence we can safely do it.
+        // That's a safety reason we zeroed the memory above.
+        #[allow(clippy::cast_ptr_alignment)]
+        let heap = &mut *(heap_ptr.cast::<Heap>());
+        heap.init(heap_bottom, heap_size);
+    };
+
+    heap_object_offset
 }
 
 /// # Safety

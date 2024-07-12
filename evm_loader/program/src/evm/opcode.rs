@@ -1,5 +1,7 @@
 #![allow(clippy::needless_pass_by_ref_mut)]
 
+use std::mem::ManuallyDrop;
+
 /// <https://ethereum.github.io/yellowpaper/paper.pdf>
 use ethnum::{I256, U256};
 use maybe_async::maybe_async;
@@ -10,6 +12,8 @@ use super::{
     end_vm, tracing_event, Context, Machine, Reason,
 };
 use crate::evm::tracing::EventListener;
+use crate::types::vector::VectorSliceExt;
+use crate::types::Vector;
 use crate::{
     debug::log_data,
     error::{Error, Result},
@@ -22,8 +26,8 @@ pub enum Action {
     Continue,
     Jump(usize),
     Stop,
-    Return(Vec<u8>),
-    Revert(Vec<u8>),
+    Return(Vector<u8>),
+    Revert(Vector<u8>),
     Suicide,
     Noop,
 }
@@ -1350,7 +1354,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let return_data = self.memory.read(offset, length)?.to_vec();
+        let return_data = self.memory.read(offset, length)?.to_vector();
 
         self.opcode_return_impl(return_data, backend).await
     }
@@ -1359,13 +1363,12 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     #[maybe_async]
     pub async fn opcode_return_impl(
         &mut self,
-        mut return_data: Vec<u8>,
+        return_data: Vector<u8>,
         backend: &mut B,
     ) -> Result<Action> {
         if self.reason == Reason::Create {
-            let code = std::mem::take(&mut return_data);
             backend
-                .set_code(self.context.contract, self.chain_id, code)
+                .set_code(self.context.contract, self.chain_id, return_data.clone())
                 .await?;
         }
 
@@ -1382,13 +1385,13 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             return Ok(Action::Return(return_data));
         }
 
-        let returned = self.join();
+        let mut returned = self.join();
         match returned.reason {
             Reason::Call => {
                 self.memory.write_range(&self.return_range, &return_data)?;
                 self.stack.push_bool(true)?; // success
 
-                self.return_data = Buffer::from_vec(return_data);
+                self.return_data = Buffer::from_vector(return_data);
             }
             Reason::Create => {
                 let address = returned.context.contract;
@@ -1396,6 +1399,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             }
         }
 
+        unsafe { ManuallyDrop::drop(&mut returned) };
         Ok(Action::Continue)
     }
 
@@ -1405,7 +1409,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let return_data = self.memory.read(offset, length)?.to_vec();
+        let return_data = self.memory.read(offset, length)?.to_vector();
 
         self.opcode_revert_impl(return_data, backend).await
     }
@@ -1413,7 +1417,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     #[maybe_async]
     pub async fn opcode_revert_impl(
         &mut self,
-        return_data: Vec<u8>,
+        return_data: Vector<u8>,
         backend: &mut B,
     ) -> Result<Action> {
         log_data(&[b"EXIT", b"REVERT", &return_data]);
@@ -1429,7 +1433,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             return Ok(Action::Revert(return_data));
         }
 
-        let returned = self.join();
+        let mut returned = self.join();
         match returned.reason {
             Reason::Call => {
                 self.memory.write_range(&self.return_range, &return_data)?;
@@ -1440,7 +1444,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             }
         }
 
-        self.return_data = Buffer::from_vec(return_data);
+        self.return_data = Buffer::from_vector(return_data);
+
+        unsafe {
+            ManuallyDrop::drop(&mut returned);
+        }
 
         Ok(Action::Continue)
     }
@@ -1478,7 +1486,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             return Ok(Action::Suicide);
         }
 
-        let returned = self.join();
+        let mut returned = self.join();
         match returned.reason {
             Reason::Call => {
                 self.memory.write_range(&self.return_range, &[])?;
@@ -1487,6 +1495,10 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             Reason::Create => {
                 self.stack.push_zero()?;
             }
+        }
+
+        unsafe {
+            ManuallyDrop::drop(&mut returned);
         }
 
         Ok(Action::Continue)
@@ -1504,7 +1516,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             return Ok(Action::Stop);
         }
 
-        let returned = self.join();
+        let mut returned = self.join();
         match returned.reason {
             Reason::Call => {
                 self.memory.write_range(&self.return_range, &[])?;
@@ -1513,6 +1525,10 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             Reason::Create => {
                 self.stack.push_zero()?;
             }
+        }
+
+        unsafe {
+            ManuallyDrop::drop(&mut returned);
         }
 
         Ok(Action::Continue)

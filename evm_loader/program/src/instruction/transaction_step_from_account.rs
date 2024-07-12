@@ -7,6 +7,7 @@ use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
 use crate::instruction::transaction_step::{do_begin, do_continue};
+use crate::types::boxx::boxx;
 use crate::types::Transaction;
 use arrayref::array_ref;
 use ethnum::U256;
@@ -58,11 +59,27 @@ pub fn process_inner<'a>(
     match tag {
         TAG_HOLDER | TAG_HOLDER_DEPRECATED => {
             let mut trx = {
-                let holder = Holder::from_account(program_id, holder_or_storage.clone())?;
+                let mut holder = Holder::from_account(program_id, holder_or_storage.clone())?;
+
+                // We have to initialize the heap before creating Transaction object, but since
+                // transaction's rlp itself is stored in the holder account, we have two options:
+                // 1. Copy the rlp and initialize the heap right after the holder's header.
+                //   This way, the space occupied by the rlp within holder will be reused.
+                // 2. Don't copy the rlp, initialize the heap after transaction rlp in the holder.
+                // The first option (chosen) saves the holder space in exchange for compute units.
+                // The second option wastes the holder space (because transaction bytes will be
+                // stored two times), but doesnt copy.
+                let transaction_rlp_copy = {
+                    let holder_transaction_ref = holder.transaction();
+                    let mut transaction_copy = vec![0u8; holder_transaction_ref.len()];
+                    transaction_copy.copy_from_slice(&holder_transaction_ref);
+                    transaction_copy
+                };
+
+                holder.init_heap(0)?;
                 holder.validate_owner(&operator)?;
 
-                let message = holder.transaction();
-                let trx = Transaction::from_rlp(&message)?;
+                let trx = boxx(Transaction::from_rlp(&transaction_rlp_copy)?);
 
                 holder.validate_transaction(&trx)?;
 
@@ -96,7 +113,7 @@ pub fn process_inner<'a>(
         }
         TAG_STATE => {
             let (storage, accounts_status) =
-                StateAccount::restore(program_id, holder_or_storage, &accounts_db)?;
+                StateAccount::restore(program_id, &holder_or_storage, &accounts_db)?;
 
             operator_balance.validate_transaction(storage.trx())?;
             let miner_address = operator_balance.miner(storage.trx_origin());

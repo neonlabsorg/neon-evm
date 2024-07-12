@@ -67,6 +67,7 @@ pub enum EvmInstruction {
     /// Execute Transaction from Instruction in single iteration
     ///
     /// Accounts:
+    ///  `[WRITE]` Holder
     ///  `[WRITE,SIGNER]` Operator
     ///  `[WRITE]` Treasury
     ///  `[WRITE]` Operator Balance
@@ -80,7 +81,7 @@ pub enum EvmInstruction {
     /// Execute Transaction from Account in single iteration
     ///
     /// Accounts:
-    ///  `[]` Holder
+    ///  `[WRITE]` Holder
     ///  `[WRITE,SIGNER]` Operator
     ///  `[WRITE]` Treasury
     ///  `[WRITE]` Operator Balance
@@ -172,6 +173,7 @@ pub enum EvmInstruction {
     /// Execute Transaction from Instruction in a single iteration with a call to Solana programs
     ///
     /// Accounts:
+    ///  `[WRITE]` Holder
     ///  `[WRITE,SIGNER]` Operator
     ///  `[WRITE]` Treasury
     ///  `[WRITE]` Operator Balance
@@ -185,7 +187,7 @@ pub enum EvmInstruction {
     /// Execute Transaction from Account in a single iteration
     ///
     /// Accounts:
-    ///  `[]` Holder
+    ///  `[WRITE]` Holder
     ///  `[WRITE,SIGNER]` Operator
     ///  `[WRITE]` Treasury
     ///  `[WRITE]` Operator Balance
@@ -224,13 +226,13 @@ impl EvmInstruction {
 
             0x30 => Self::AccountCreateBalance,              // 48
             0x31 => Self::Deposit,                           // 49
-            0x32 => Self::TransactionExecuteFromInstruction, // 50
+            0x3D => Self::TransactionExecuteFromInstruction, // 61
             0x33 => Self::TransactionExecuteFromAccount,     // 51
             0x34 => Self::TransactionStepFromInstruction,    // 52
             0x35 => Self::TransactionStepFromAccount,        // 53
             0x36 => Self::TransactionStepFromAccountNoChainId, // 54
             0x37 => Self::Cancel,                            // 55
-            0x38 => Self::TransactionExecuteFromInstructionWithSolanaCall, // 56
+            0x3E => Self::TransactionExecuteFromInstructionWithSolanaCall, // 62
             0x39 => Self::TransactionExecuteFromAccountWithSolanaCall, // 57
 
             0x3A => Self::OperatorBalanceCreate,   // 58

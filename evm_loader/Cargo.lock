@@ -359,6 +359,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "allocator-api2"
+version = "0.2.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c6cb57a04249c6480766f7f7cef5467412af1490f8d1e243141daddada3264f"
+
+[[package]]
 name = "android-tzdata"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1999,6 +2005,7 @@ checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 name = "evm-loader"
 version = "1.14.0-dev"
 dependencies = [
+ "allocator-api2",
  "arrayref",
  "async-trait",
  "bincode",
@@ -2015,7 +2022,6 @@ dependencies = [
  "rlp",
  "serde",
  "serde_bytes",
- "serde_json",
  "solana-program",
  "solana-sdk",
  "spl-associated-token-account",

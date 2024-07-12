@@ -1,17 +1,16 @@
 use ethnum::U256;
-use serde::{Deserialize, Serialize};
 use solana_program::{instruction::AccountMeta, pubkey::Pubkey};
 
-use crate::types::{serde::bytes_32, Address};
+use crate::types::{vector::Vector, Address};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
+// TODO heap: check if repr is needed.
 pub enum Action {
     ExternalInstruction {
         program_id: Pubkey,
-        accounts: Vec<AccountMeta>,
-        #[serde(with = "serde_bytes")]
-        data: Vec<u8>,
-        seeds: Vec<Vec<Vec<u8>>>,
+        accounts: Vector<AccountMeta>,
+        data: Vector<u8>,
+        seeds: Vector<Vector<Vector<u8>>>,
         fee: u64,
         emulated_internally: bool,
     },
@@ -19,27 +18,21 @@ pub enum Action {
         source: Address,
         target: Address,
         chain_id: u64,
-        #[serde(with = "ethnum::serde::bytes::le")]
         value: U256,
     },
     Burn {
         source: Address,
         chain_id: u64,
-        #[serde(with = "ethnum::serde::bytes::le")]
         value: U256,
     },
     EvmSetStorage {
         address: Address,
-        #[serde(with = "ethnum::serde::bytes::le")]
         index: U256,
-        #[serde(with = "bytes_32")]
         value: [u8; 32],
     },
     EvmSetTransientStorage {
         address: Address,
-        #[serde(with = "ethnum::serde::bytes::le")]
         index: U256,
-        #[serde(with = "bytes_32")]
         value: [u8; 32],
     },
     EvmIncrementNonce {
@@ -49,7 +42,6 @@ pub enum Action {
     EvmSetCode {
         address: Address,
         chain_id: u64,
-        #[serde(with = "serde_bytes")]
-        code: Vec<u8>,
+        code: Vector<u8>,
     },
 }

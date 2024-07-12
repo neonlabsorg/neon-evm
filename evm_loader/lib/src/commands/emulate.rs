@@ -173,25 +173,28 @@ async fn emulate_trx<T: Tracer>(
     let chain_id = tx.chain_id().unwrap_or_else(|| storage.default_chain_id());
     storage.increment_nonce(origin, chain_id).await?;
 
-    let mut backend = SyncedExecutorState::new(storage);
-    let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
-        Ok(evm) => evm,
-        Err(e) => {
-            error!("EVM creation failed {e:?}");
-            return Ok((EmulateResponse::revert(&e, &backend), None));
+    let (exit_status, steps_executed, tracer, logs) = {
+        let mut backend = SyncedExecutorState::new(storage);
+        let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
+            Ok(evm) => evm,
+            Err(e) => { 
+                error!("EVM creation failed {e:?}");
+                return Ok((EmulateResponse::revert(&e, &backend), None));
+            }
+        };
+
+        let (exit_status, steps_executed, tracer) = evm.execute(step_limit, &mut backend).await?;
+        if exit_status == ExitStatus::StepLimit {
+            error!("Step_limit={step_limit} exceeded");
+            return Ok((
+                EmulateResponse::revert(&NeonError::TooManySteps, &backend),
+                None,
+            ));
         }
+
+        let logs = backend.backend().logs();
+        (exit_status, steps_executed, tracer, logs)
     };
-
-    let (exit_status, steps_executed, tracer) = evm.execute(step_limit, &mut backend).await?;
-    if exit_status == ExitStatus::StepLimit {
-        error!("Step_limit={step_limit} exceeded");
-        return Ok((
-            EmulateResponse::revert(&NeonError::TooManySteps, &backend),
-            None,
-        ));
-    }
-
-    let logs = backend.backend().logs();
 
     debug!("Execute done, result={exit_status:?}");
     debug!("{steps_executed} steps executed");

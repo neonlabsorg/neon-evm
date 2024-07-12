@@ -1,6 +1,7 @@
 use std::alloc::{GlobalAlloc, Layout};
 use std::ops::Range;
 
+use crate::allocator::acc_allocator;
 use solana_program::program_memory::{sol_memcpy, sol_memmove, sol_memset};
 
 use crate::error::Error;
@@ -14,6 +15,7 @@ const MEMORY_ALIGN: usize = 1;
 
 static_assertions::const_assert!(MEMORY_ALIGN.is_power_of_two());
 
+#[repr(C)]
 pub struct Memory {
     data: *mut u8,
     capacity: usize,
@@ -28,7 +30,7 @@ impl Memory {
     pub fn with_capacity(capacity: usize) -> Self {
         unsafe {
             let layout = Layout::from_size_align_unchecked(capacity, MEMORY_ALIGN);
-            let data = crate::allocator::EVM.alloc_zeroed(layout);
+            let data = acc_allocator().alloc_zeroed(layout);
             if data.is_null() {
                 std::alloc::handle_alloc_error(layout);
             }
@@ -37,26 +39,6 @@ impl Memory {
                 data,
                 capacity,
                 size: 0,
-            }
-        }
-    }
-
-    pub fn from_buffer(v: &[u8]) -> Self {
-        let capacity = v.len().next_power_of_two().max(MEMORY_CAPACITY);
-
-        unsafe {
-            let layout = Layout::from_size_align_unchecked(capacity, MEMORY_ALIGN);
-            let data = crate::allocator::EVM.alloc_zeroed(layout);
-            if data.is_null() {
-                std::alloc::handle_alloc_error(layout);
-            }
-
-            std::ptr::copy_nonoverlapping(v.as_ptr(), data, v.len());
-
-            Self {
-                data,
-                capacity,
-                size: v.len(),
             }
         }
     }
@@ -93,7 +75,7 @@ impl Memory {
 
         unsafe {
             let old_layout = Layout::from_size_align_unchecked(self.capacity, MEMORY_ALIGN);
-            let new_data = crate::allocator::EVM.realloc(self.data, old_layout, new_capacity);
+            let new_data = acc_allocator().realloc(self.data, old_layout, new_capacity);
             if new_data.is_null() {
                 let layout = Layout::from_size_align_unchecked(new_capacity, MEMORY_ALIGN);
                 std::alloc::handle_alloc_error(layout);
@@ -240,47 +222,7 @@ impl Drop for Memory {
     fn drop(&mut self) {
         unsafe {
             let layout = Layout::from_size_align_unchecked(self.capacity, MEMORY_ALIGN);
-            crate::allocator::EVM.dealloc(self.data, layout);
+            acc_allocator().dealloc(self.data, layout);
         }
-    }
-}
-
-impl serde::Serialize for Memory {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let data = unsafe { std::slice::from_raw_parts(self.data, self.capacity) };
-        serializer.serialize_bytes(&data[..self.size()])
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Memory {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct BytesVisitor;
-
-        impl<'de> serde::de::Visitor<'de> for BytesVisitor {
-            type Value = Memory;
-
-            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                f.write_str("EVM Memory")
-            }
-
-            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                if v.len() % 32 != 0 {
-                    return Err(E::invalid_length(v.len(), &self));
-                }
-
-                Ok(Memory::from_buffer(v))
-            }
-        }
-
-        deserializer.deserialize_bytes(BytesVisitor)
     }
 }

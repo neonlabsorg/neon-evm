@@ -3,20 +3,18 @@ use maybe_async::maybe_async;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 
+use crate::types::vector::VectorVecExt;
 use crate::{
-    account_storage::AccountStorage, config::GAS_LIMIT_MULTIPLIER_NO_CHAINID, error::Error,
+    account_storage::AccountStorage, config::GAS_LIMIT_MULTIPLIER_NO_CHAINID, error::Error, vector,
 };
 
-use super::{
-    serde::{bytes_32, option_u256},
-    Address,
-};
+use super::{Address, Vector};
 
 #[repr(transparent)]
 #[derive(
     Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
 )]
-pub struct StorageKey(#[serde(with = "bytes_32")] [u8; 32]);
+pub struct StorageKey([u8; 32]);
 
 impl rlp::Decodable for StorageKey {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
@@ -76,25 +74,18 @@ impl TransactionEnvelope {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+#[repr(C)]
 pub struct LegacyTx {
     pub nonce: u64,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub gas_price: U256,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub gas_limit: U256,
     pub target: Option<Address>,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub value: U256,
-    #[serde(with = "serde_bytes")]
-    pub call_data: Vec<u8>,
-    #[serde(with = "ethnum::serde::bytes::le")]
+    pub call_data: Vector<u8>,
     pub v: U256,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub r: U256,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub s: U256,
-    #[serde(with = "option_u256")]
     pub chain_id: Option<U256>,
     pub recovery_id: u8,
 }
@@ -126,7 +117,7 @@ impl rlp::Decodable for LegacyTx {
             }
         };
         let value: U256 = u256(&rlp.at(4)?)?;
-        let call_data = rlp.val_at(5)?;
+        let call_data = rlp.val_at::<Vec<_>>(5)?.into_vector();
         let v: U256 = u256(&rlp.at(6)?)?;
         let r: U256 = u256(&rlp.at(7)?)?;
         let s: U256 = u256(&rlp.at(8)?)?;
@@ -165,26 +156,20 @@ impl rlp::Decodable for LegacyTx {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+#[repr(C)]
 pub struct AccessListTx {
     pub nonce: u64,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub gas_price: U256,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub gas_limit: U256,
     pub target: Option<Address>,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub value: U256,
-    #[serde(with = "serde_bytes")]
-    pub call_data: Vec<u8>,
-    #[serde(with = "ethnum::serde::bytes::le")]
+    pub call_data: Vector<u8>,
     pub r: U256,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub s: U256,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub chain_id: U256,
     pub recovery_id: u8,
-    pub access_list: Vec<(Address, Vec<StorageKey>)>,
+    pub access_list: Vector<(Address, Vector<StorageKey>)>,
 }
 
 impl rlp::Decodable for AccessListTx {
@@ -216,10 +201,10 @@ impl rlp::Decodable for AccessListTx {
         };
 
         let value: U256 = u256(&rlp.at(5)?)?;
-        let call_data = rlp.val_at(6)?;
+        let call_data = rlp.val_at::<Vec<_>>(6)?.into_vector();
 
         let rlp_access_list = rlp.at(7)?;
-        let mut access_list = vec![];
+        let mut access_list = vector![];
 
         for entry in &rlp_access_list {
             // Check if entry is a list
@@ -228,7 +213,7 @@ impl rlp::Decodable for AccessListTx {
                 let address: Address = entry.at(0)?.as_val()?;
 
                 // Get storage keys from second element
-                let mut storage_keys: Vec<StorageKey> = vec![];
+                let mut storage_keys: Vector<StorageKey> = vector![];
 
                 for key in &entry.at(1)? {
                     storage_keys.push(key.as_val()?);
@@ -269,19 +254,19 @@ impl rlp::Decodable for AccessListTx {
 // TODO: Will be added as a part of EIP-1559
 // struct DynamicFeeTx {}
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+#[repr(C, usize)]
 pub enum TransactionPayload {
     Legacy(LegacyTx),
     AccessList(AccessListTx),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
+#[repr(C)]
 pub struct Transaction {
     pub transaction: TransactionPayload,
     pub byte_len: usize,
-    #[serde(with = "bytes_32")]
     pub hash: [u8; 32],
-    #[serde(with = "bytes_32")]
     pub signed_hash: [u8; 32],
 }
 
@@ -598,7 +583,7 @@ impl Transaction {
     }
 
     #[must_use]
-    pub fn access_list(&self) -> Option<&Vec<(Address, Vec<StorageKey>)>> {
+    pub fn access_list(&self) -> Option<&Vector<(Address, Vector<StorageKey>)>> {
         match &self.transaction {
             TransactionPayload::AccessList(AccessListTx { access_list, .. }) => Some(access_list),
             TransactionPayload::Legacy(_) => None,

@@ -2,7 +2,10 @@ use crate::account_storage::{AccountStorage, LogCollector, ProgramAccountStorage
 use crate::config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 use crate::error::Result;
 use crate::executor::OwnedAccountInfo;
-use crate::types::Address;
+use crate::types::{
+    vector::{Vector, VectorVecExt},
+    Address,
+};
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
 use solana_program::{pubkey::Pubkey, rent::Rent, sysvar::slot_hashes};
@@ -69,8 +72,8 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         &self.rent
     }
 
-    fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
-        solana_program::program::get_return_data()
+    fn return_data(&self) -> Option<(Pubkey, Vector<u8>)> {
+        solana_program::program::get_return_data().map(|res| (res.0, res.1.into_vector()))
     }
 
     fn set_return_data(&mut self, data: &[u8]) {

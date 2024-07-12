@@ -6,7 +6,7 @@ use evm_loader::{
         },
         Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
     },
-    types::Address,
+    types::{Address, Transaction},
 };
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
@@ -117,23 +117,28 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
             })
         }
         TAG_STATE => {
-            let state = StateAccount::from_account(program_id, info)?;
-            let accounts = state.accounts().copied().collect();
+            // StateAccount::from_account doesn't work here because state contains heap
+            // and data should be read by pointers with offsets.
+            let (owner, hash, chain_id, accounts, steps) =
+                StateAccount::get_state_account_view(program_id, &info)?;
 
-            let origin = state.trx_origin();
-            let transaction = state.trx();
-            let tx_params = TxParams::from_transaction(origin, transaction);
+            // TODO heap.
+            let origin = Address::default();
+            let transaction = Transaction::from_rlp(&[])?;
+            //let origin = state.trx_origin();
+            //let transaction = state.trx();
+            let tx_params = TxParams::from_transaction(origin, &transaction);
 
             Ok(GetHolderResponse {
                 status: Status::Active,
                 len: Some(data_len),
-                owner: Some(state.owner()),
-                tx: Some(transaction.hash()),
+                owner: Some(owner),
+                tx: Some(hash),
                 tx_data: Some(tx_params),
-                chain_id: transaction.chain_id(),
+                chain_id,
                 origin: Some(origin),
                 accounts: Some(accounts),
-                steps_executed: state.steps_executed(),
+                steps_executed: steps,
             })
         }
         _ => Err(ProgramError::InvalidAccountData.into()),

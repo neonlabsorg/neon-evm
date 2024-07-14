@@ -14,7 +14,9 @@ use crate::evm::tracing::EventListener;
 use crate::evm::Machine;
 use crate::executor::ExecutorStateData;
 use crate::types::boxx::{boxx, Boxx};
-use crate::types::{AccessListTx, Address, LegacyTx, Transaction, TreeMap};
+use crate::types::vector::VectorVecExt;
+use crate::types::{AccessListTx, Address, LegacyTx, Transaction, TransactionPayload, TreeMap};
+use crate::vector;
 use ethnum::U256;
 use solana_program::hash::Hash;
 use solana_program::system_program;
@@ -112,10 +114,9 @@ pub struct StateAccount<'a> {
     data: ManuallyDrop<Boxx<Data>>,
 }
 
-const BUFFER_OFFSET: usize = ACCOUNT_PREFIX_LEN + size_of::<Header>();
+type StateAccountCoreApiView = (Transaction, Pubkey, Address, Vec<Pubkey>, u64);
 
-// TODO  heap: adjust the view.
-type StateAccountCoreApiView = (Pubkey, [u8; 32], Option<u64>, Vec<Pubkey>, u64);
+const BUFFER_OFFSET: usize = ACCOUNT_PREFIX_LEN + size_of::<Header>();
 
 impl<'a> StateAccount<'a> {
     #[must_use]
@@ -143,110 +144,6 @@ impl<'a> StateAccount<'a> {
             account: account.clone(),
             data: ManuallyDrop::new(unsafe { Boxx::from_raw_in(data_ptr, acc_allocator()) }),
         })
-    }
-
-    /// Function to squeeze bits of information from the state account.
-    ///
-    /// N.B.
-    /// 1. `StateAccount` contains objects and pointers allocated by the state account allocator, so reading
-    /// objects inside requires jumping on the offset (between the real account address as allocated by the
-    /// current allocator) and "intended" address of the first account as provided by the Solana runtime.
-    /// 2. `addr_of!` and `read_unaligned` is heavily used to facilitate the reading of fields by raw pointers.
-    pub fn get_state_account_view(
-        program_id: &Pubkey,
-        account: &AccountInfo<'a>,
-    ) -> Result<StateAccountCoreApiView> {
-        super::validate_tag(program_id, account, TAG_STATE)?;
-
-        let header = super::header::<Header>(account);
-        let memory_space_delta = {
-            account.data.borrow().as_ptr() as isize
-                - isize::try_from(crate::allocator::STATE_ACCOUNT_DATA_ADDRESS)?
-        };
-        let data_ptr = unsafe {
-            // We do not perform any unaligned reads, pointer to the Data is needed to get pointers
-            // to the fields in a safe way (using addr_of!).
-            #[allow(clippy::cast_ptr_alignment)]
-            account
-                .data
-                .borrow()
-                .as_ptr()
-                .add(header.data_offset)
-                .cast::<Data>()
-                .cast_mut()
-        };
-
-        unsafe {
-            let owner_ptr = addr_of!((*data_ptr).owner);
-            let owner = read_unaligned(owner_ptr);
-
-            let transaction_ptr = addr_of!((*data_ptr).transaction);
-            let transaction_hash_ptr = addr_of!((*transaction_ptr).hash);
-            let hash = read_unaligned(transaction_hash_ptr);
-
-            // Calculating pointer to the chaid_id and reading it.
-            // Memory layout for transaction payload is: tag of enum's variant (usize) followed by the variant value.
-            let transaction_payload_ptr = addr_of!((*transaction_ptr).transaction).cast::<usize>();
-            let chain_id: Option<u64> = match read_unaligned(transaction_payload_ptr) {
-                0 => {
-                    #[allow(clippy::cast_ptr_alignment)]
-                    let legacy_tx_ptr = transaction_payload_ptr.add(1).cast::<LegacyTx>();
-                    let chain_id_ptr = addr_of!((*legacy_tx_ptr).chain_id);
-                    read_unaligned(chain_id_ptr)
-                        .map(std::convert::TryInto::try_into)
-                        .transpose()
-                        .expect("chain_id < u64::max")
-                }
-                1 => {
-                    #[allow(clippy::cast_ptr_alignment)]
-                    let access_list_tx_ptr = transaction_payload_ptr.add(1).cast::<AccessListTx>();
-                    let chain_id_ptr = addr_of!((*access_list_tx_ptr).chain_id);
-                    Some(read_unaligned(chain_id_ptr).as_u64())
-                }
-                _ => {
-                    return Err(Error::Custom(
-                        "Incorrect transaction payload type.".to_owned(),
-                    ));
-                }
-            };
-
-            // TODO heap: make changes for touched accounts as well.
-            let revisions_ptr = addr_of!((*data_ptr).revisions);
-            let keys_ptr = revisions_ptr.cast::<usize>();
-            // 1. The Vector's memory layout consists of three usizes: ptr to the buffer, capacity and length.
-            // 2. There's no alignment between the fields, the Vector occupies exactly the 3*sizeof<usize> bytes.
-            // 3. The order of those fields in the memory is unspecified (no repr is set on the vector struct).
-            // The len is the smallest of those three usizes, because it can't realistically be more than the ptr
-            // value and it's no more than capacity.
-            // The buffer ptr is the biggest among them.
-            let keys_vector_parts = (
-                read_unaligned(keys_ptr),
-                read_unaligned(keys_ptr.add(1)),
-                read_unaligned(keys_ptr.add(2)),
-            );
-            let accounts_len = min(
-                min(keys_vector_parts.0, keys_vector_parts.1),
-                keys_vector_parts.2,
-            );
-            let accounts_buf_ptr_unadjusted = max(
-                max(keys_vector_parts.0, keys_vector_parts.1),
-                keys_vector_parts.2,
-            ) as *const u8;
-            // Offset the buffer pointer from the state account allocator memory space into the current allocator.
-            let accounts_buf_ptr_adjusted = accounts_buf_ptr_unadjusted
-                .offset(memory_space_delta)
-                .cast::<Pubkey>()
-                .cast_mut();
-            let account_slice = slice::from_raw_parts(accounts_buf_ptr_adjusted, accounts_len);
-            // Allocate a new vector and with the exact number of elements and copy the memory.
-            let mut accounts = vec![Pubkey::default(); accounts_len];
-            accounts.copy_from_slice(account_slice);
-
-            let steps_ptr = addr_of!((*data_ptr).steps_executed);
-            let steps = read_unaligned(steps_ptr);
-
-            Ok((owner, hash, chain_id, accounts, steps))
-        }
     }
 
     pub fn new(
@@ -552,5 +449,146 @@ impl<'a> StateAccount<'a> {
 
             ManuallyDrop::new(Boxx::from_raw_in(data_ptr, acc_allocator()))
         }
+    }
+}
+
+impl<'a> StateAccount<'a> {
+    /// Implementation to squeeze bits of information from the state account.
+    /// N.B.
+    /// 1. `StateAccount` contains objects and pointers allocated by the state account allocator, so reading
+    ///     objects inside requires jumping on the offset (between the real account address as allocated by the
+    ///     current allocator) and "intended" address of the first account as provided by the Solana runtime.
+    /// 2. `addr_of!` and `read_unaligned` is heavily used to facilitate the reading of fields by raw pointers.
+    /// 3. There are upcasts from *const u8 to *const T, but since T was allocated by the allocator previously,
+    ///     it has the correct alignment and the upcast is sound.
+    #[allow(clippy::cast_ptr_alignment)]
+    pub fn get_state_account_view(
+        program_id: &Pubkey,
+        account: &AccountInfo<'a>,
+    ) -> Result<StateAccountCoreApiView> {
+        super::validate_tag(program_id, account, TAG_STATE)?;
+
+        let header = super::header::<Header>(account);
+        let memory_space_delta = {
+            account.data.borrow().as_ptr() as isize
+                - isize::try_from(crate::allocator::STATE_ACCOUNT_DATA_ADDRESS)?
+        };
+        // Pointer to the Data is needed to get pointers to the fields in a safe way (using addr_of!).
+        let data_ptr = unsafe {
+            account
+                .data
+                .borrow()
+                .as_ptr()
+                .add(header.data_offset)
+                .cast::<Data>()
+                .cast_mut()
+        };
+
+        unsafe {
+            // Reading full `Transaction`.
+            let transaction_ptr = addr_of!((*data_ptr).transaction);
+            // Memory layout for transaction payload is: tag of enum's variant (usize) followed by the variant value.
+            let tx_payload_ptr = addr_of!((*transaction_ptr).transaction).cast::<usize>();
+            let payload_ptr = tx_payload_ptr.add(1);
+
+            // TODO: ugly manual piece of code that likely can be substituted with the macro.
+            let tx_payload: TransactionPayload = match read_unaligned(tx_payload_ptr) {
+                0 => {
+                    let legacy_payload_ptr = payload_ptr.cast::<LegacyTx>();
+
+                    let call_data_ptr = addr_of!((*legacy_payload_ptr).call_data).cast::<usize>();
+                    let call_data = Self::read_vec(call_data_ptr, memory_space_delta);
+
+                    TransactionPayload::Legacy(LegacyTx {
+                        nonce: read_unaligned(addr_of!((*legacy_payload_ptr).nonce)),
+                        gas_price: read_unaligned(addr_of!((*legacy_payload_ptr).gas_price)),
+                        gas_limit: read_unaligned(addr_of!((*legacy_payload_ptr).gas_limit)),
+                        target: read_unaligned(addr_of!((*legacy_payload_ptr).target)),
+                        value: read_unaligned(addr_of!((*legacy_payload_ptr).value)),
+                        call_data: call_data.into_vector(),
+                        v: read_unaligned(addr_of!((*legacy_payload_ptr).v)),
+                        r: read_unaligned(addr_of!((*legacy_payload_ptr).r)),
+                        s: read_unaligned(addr_of!((*legacy_payload_ptr).s)),
+                        chain_id: read_unaligned(addr_of!((*legacy_payload_ptr).chain_id)),
+                        recovery_id: read_unaligned(addr_of!((*legacy_payload_ptr).recovery_id)),
+                    })
+                }
+                1 => {
+                    let access_list_tx_ptr = payload_ptr.cast::<AccessListTx>();
+
+                    let call_data_ptr = addr_of!((*access_list_tx_ptr).call_data).cast::<usize>();
+                    let call_data = Self::read_vec(call_data_ptr, memory_space_delta);
+
+                    TransactionPayload::AccessList(AccessListTx {
+                        nonce: read_unaligned(addr_of!((*access_list_tx_ptr).nonce)),
+                        gas_price: read_unaligned(addr_of!((*access_list_tx_ptr).gas_price)),
+                        gas_limit: read_unaligned(addr_of!((*access_list_tx_ptr).gas_limit)),
+                        target: read_unaligned(addr_of!((*access_list_tx_ptr).target)),
+                        value: read_unaligned(addr_of!((*access_list_tx_ptr).value)),
+                        call_data: call_data.into_vector(),
+                        r: read_unaligned(addr_of!((*access_list_tx_ptr).r)),
+                        s: read_unaligned(addr_of!((*access_list_tx_ptr).s)),
+                        chain_id: read_unaligned(addr_of!((*access_list_tx_ptr).chain_id)),
+                        recovery_id: read_unaligned(addr_of!((*access_list_tx_ptr).recovery_id)),
+                        access_list: vector![],
+                    })
+                }
+                _ => {
+                    return Err(Error::Custom(
+                        "Incorrect transaction payload type.".to_owned(),
+                    ));
+                }
+            };
+
+            let byte_len = read_unaligned(addr_of!((*transaction_ptr).byte_len));
+            let hash = read_unaligned(addr_of!((*transaction_ptr).hash));
+            let signed_hash = read_unaligned(addr_of!((*transaction_ptr).signed_hash));
+            let tx = Transaction {
+                transaction: tx_payload,
+                byte_len,
+                hash,
+                signed_hash,
+            };
+
+            // Reading parts of `StateAccount`.
+            let owner = read_unaligned(addr_of!((*data_ptr).owner));
+            let origin = read_unaligned(addr_of!((*data_ptr).origin));
+            let keys_ptr = addr_of!((*data_ptr).revisions).cast::<usize>();
+            let accounts = Self::read_vec(keys_ptr, memory_space_delta);
+
+            let steps = read_unaligned(addr_of!((*data_ptr).steps_executed));
+
+            Ok((tx, owner, origin, accounts, steps))
+        }
+    }
+
+    unsafe fn read_vec<T: Default + Copy>(
+        vec_start_ptr: *const usize,
+        memory_space_delta: isize,
+    ) -> Vec<T> {
+        // 1. The Vector's memory layout consists of three usizes: ptr to the buffer, capacity and length.
+        // 2. There's no alignment between the fields, the Vector occupies exactly the 3*sizeof<usize> bytes.
+        // 3. The order of those fields in the memory is unspecified (no repr is set on the vec struct).
+        // => The len is the smallest of those three usizes, because it can't realistically be more than the buffer
+        // ptr value and it's no more than capacity.
+        // => The buffer ptr is the biggest among them.
+        let vec_parts = (
+            read_unaligned(vec_start_ptr),
+            read_unaligned(vec_start_ptr.add(1)),
+            read_unaligned(vec_start_ptr.add(2)),
+        );
+        let vec_len = min(min(vec_parts.0, vec_parts.1), vec_parts.2);
+        let accounts_buf_ptr_unadjusted =
+            max(max(vec_parts.0, vec_parts.1), vec_parts.2) as *const u8;
+        // Offset the buffer pointer from the state account allocator memory space into the current allocator.
+        let accounts_buf_ptr_adjusted = accounts_buf_ptr_unadjusted
+            .offset(memory_space_delta)
+            .cast::<T>()
+            .cast_mut();
+        let account_slice = slice::from_raw_parts(accounts_buf_ptr_adjusted, vec_len);
+        // Allocate a new vec and with the exact number of elements and copy the memory.
+        let mut accounts = vec![T::default(); vec_len];
+        accounts.copy_from_slice(account_slice);
+        accounts
     }
 }

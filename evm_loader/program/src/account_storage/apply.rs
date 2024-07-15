@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
 use ethnum::U256;
-use solana_program::account_info::AccountInfo;
-use solana_program::instruction::Instruction;
+use solana_program::instruction::{AccountMeta, Instruction};
 use solana_program::program::{invoke_signed_unchecked, invoke_unchecked};
 use solana_program::system_program;
 
@@ -144,22 +143,30 @@ impl<'a> ProgramAccountStorage<'a> {
                     let seeds = seeds.iter().map(|s| s.as_slice()).collect::<Vec<_>>();
 
                     let mut accounts_info = Vec::with_capacity(accounts.len() + 1);
+                    let mut accounts_changed = Vec::with_capacity(accounts.len());
 
                     let program = self.accounts.get(&program_id).clone();
                     accounts_info.push(program);
 
                     for meta in &accounts {
-                        let account: AccountInfo<'a> = if meta.pubkey == FAKE_OPERATOR {
-                            self.accounts.operator_info().clone()
+                        let (account, meta) = if meta.pubkey == FAKE_OPERATOR {
+                            (
+                                self.accounts.operator_info().clone(),
+                                AccountMeta {
+                                    pubkey: self.accounts.operator_key(),
+                                    ..meta.clone()
+                                },
+                            )
                         } else {
-                            self.accounts.get(&meta.pubkey).clone()
+                            (self.accounts.get(&meta.pubkey).clone(), meta.clone())
                         };
                         accounts_info.push(account);
+                        accounts_changed.push(meta);
                     }
 
                     let instruction = Instruction {
                         program_id,
-                        accounts,
+                        accounts: accounts_changed,
                         data,
                     };
 

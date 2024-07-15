@@ -1,4 +1,5 @@
 use crate::{
+    account_storage::FAKE_OPERATOR,
     error::Result,
     evm::{database::Database, Context},
     types::Address,
@@ -89,7 +90,7 @@ pub async fn create_account<State: Database>(
 
     if required_lamports > 0 {
         let transfer =
-            system_instruction::transfer(&state.operator(), &account.key, required_lamports);
+            system_instruction::transfer(&FAKE_OPERATOR, &account.key, required_lamports);
         state
             .queue_external_instruction(transfer, vec![], required_lamports, true)
             .await?;

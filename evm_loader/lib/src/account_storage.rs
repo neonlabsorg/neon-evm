@@ -9,7 +9,7 @@ use evm_loader::{
         legacy::{LegacyEtherData, LegacyStorageData},
         BalanceAccount, ContractAccount, StorageCell, StorageCellAddress,
     },
-    account_storage::find_slot_hash,
+    account_storage::{find_slot_hash, FAKE_OPERATOR},
     config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
     error::Error as EvmLoaderError,
     executor::OwnedAccountInfo,
@@ -22,7 +22,6 @@ use solana_sdk::{
     clock::Clock,
     instruction::Instruction,
     program_error::ProgramError,
-    pubkey,
     pubkey::{Pubkey, PubkeyError},
     rent::Rent,
     system_program,
@@ -38,8 +37,6 @@ use std::{
 
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
 use crate::tracing::{AccountOverrides, BlockOverrides};
-
-const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
 #[derive(Default, Clone, Copy)]
 pub struct ExecuteStatus {
@@ -1333,7 +1330,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         self.mark_account(instruction.program_id, false);
 
         for meta in &instruction.accounts {
-            if meta.pubkey != self.operator {
+            if meta.pubkey != FAKE_OPERATOR {
                 self.use_account(meta.pubkey, meta.is_writable)
                     .await
                     .map_err(map_neon_error)?;

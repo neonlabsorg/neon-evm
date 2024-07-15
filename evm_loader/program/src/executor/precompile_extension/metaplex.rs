@@ -14,6 +14,7 @@ use solana_program::pubkey::Pubkey;
 
 use crate::{
     account::ACCOUNT_SEED_VERSION,
+    account_storage::FAKE_OPERATOR,
     error::{Error, Result},
     evm::database::Database,
     types::Address,
@@ -201,7 +202,7 @@ async fn create_metadata<State: Database>(
         .mint(mint)
         .mint_authority(signer_pubkey)
         .update_authority(signer_pubkey, true)
-        .payer(state.operator())
+        .payer(FAKE_OPERATOR)
         .is_mutable(true)
         .data(DataV2 {
             name,
@@ -259,7 +260,7 @@ async fn create_master_edition<State: Database>(
         .mint(mint)
         .mint_authority(signer_pubkey)
         .update_authority(signer_pubkey)
-        .payer(state.operator());
+        .payer(FAKE_OPERATOR);
 
     if let Some(max_supply) = max_supply {
         instruction_builder.max_supply(max_supply);

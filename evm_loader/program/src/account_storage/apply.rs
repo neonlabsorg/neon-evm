@@ -149,12 +149,11 @@ impl<'a> ProgramAccountStorage<'a> {
                     accounts_info.push(program);
 
                     for meta in &accounts {
-                        let account: AccountInfo<'a> =
-                            if meta.pubkey == self.accounts.operator_key() {
-                                self.accounts.operator_info().clone()
-                            } else {
-                                self.accounts.get(&meta.pubkey).clone()
-                            };
+                        let account: AccountInfo<'a> = if meta.pubkey == FAKE_OPERATOR {
+                            self.accounts.operator_info().clone()
+                        } else {
+                            self.accounts.get(&meta.pubkey).clone()
+                        };
                         accounts_info.push(account);
                     }
 

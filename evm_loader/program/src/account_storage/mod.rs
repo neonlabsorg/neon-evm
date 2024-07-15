@@ -38,7 +38,7 @@ pub const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111
 /// Account storage
 /// Trait to access account info
 #[maybe_async(?Send)]
-pub trait AccountStorage {
+pub trait AccountStorage: LogCollector {
     /// Get `NeonEVM` program id
     fn program_id(&self) -> &Pubkey;
     /// Get operator pubkey
@@ -58,7 +58,7 @@ pub trait AccountStorage {
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)>;
 
     /// Set return data to Solana
-    fn set_return_data(&self, data: &[u8]);
+    fn set_return_data(&mut self, data: &[u8]);
 
     /// Get account nonce
     async fn nonce(&self, address: Address, chain_id: u64) -> u64;
@@ -97,7 +97,7 @@ pub trait AccountStorage {
 }
 
 #[maybe_async(?Send)]
-pub trait SyncedAccountStorage {
+pub trait SyncedAccountStorage: AccountStorage {
     async fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()>;
     async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
     async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()>;
@@ -120,4 +120,13 @@ pub trait SyncedAccountStorage {
     fn snapshot(&mut self);
     fn revert_snapshot(&mut self);
     fn commit_snapshot(&mut self);
+}
+
+pub trait LogCollector {
+    fn collect_log<const N: usize>(
+        &mut self,
+        address: &[u8; 20],
+        topics: [[u8; 32]; N],
+        data: &[u8],
+    );
 }

@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::{hex::Hex, serde_as, DisplayFromStr};
 use solana_sdk::{account::Account, pubkey::Pubkey};
+use web3::types::Log;
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,10 +43,14 @@ pub struct EmulateResponse {
     pub used_gas: u64,
     pub iterations: u64,
     pub solana_accounts: Vec<SolanaAccount>,
+    pub logs: Vec<Log>,
 }
 
 impl EmulateResponse {
-    pub fn revert<E: ToString>(e: &E) -> Self {
+    pub fn revert<E: ToString>(
+        e: &E,
+        backend: &SyncedExecutorState<EmulatorAccountStorage<impl Rpc>>,
+    ) -> Self {
         let revert_message = build_revert_message(&e.to_string());
         let exit_status = ExitStatus::Revert(revert_message);
         Self {
@@ -58,6 +63,7 @@ impl EmulateResponse {
             used_gas: 0,
             iterations: 0,
             solana_accounts: vec![],
+            logs: backend.backend().logs(),
         }
     }
 }
@@ -141,6 +147,7 @@ pub async fn execute<T: Tracer>(
                 used_gas: response.used_gas.max(response2.used_gas),
                 iterations: response.iterations.max(response2.iterations),
                 solana_accounts: combined_solana_accounts,
+                logs: response.logs.clone(),
             };
 
             return Ok((emul_response, result.1));
@@ -169,13 +176,18 @@ async fn emulate_trx<T: Tracer>(
     let mut backend = SyncedExecutorState::new(storage);
     let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
         Ok(evm) => evm,
-        Err(e) => return Ok((EmulateResponse::revert(&e), None)),
+        Err(e) => return Ok((EmulateResponse::revert(&e, &backend), None)),
     };
 
     let (exit_status, steps_executed, tracer) = evm.execute(step_limit, &mut backend).await?;
     if exit_status == ExitStatus::StepLimit {
-        return Ok((EmulateResponse::revert(&NeonError::TooManySteps), None));
+        return Ok((
+            EmulateResponse::revert(&NeonError::TooManySteps, &backend),
+            None,
+        ));
     }
+
+    let logs = backend.backend().logs();
 
     debug!("Execute done, result={exit_status:?}");
     debug!("{steps_executed} steps executed");
@@ -214,6 +226,7 @@ async fn emulate_trx<T: Tracer>(
             solana_accounts,
             result: exit_status.into_result().unwrap_or_default(),
             iterations,
+            logs,
         },
         tracer.map(|tracer| tracer.into_traces(used_gas)),
     ))

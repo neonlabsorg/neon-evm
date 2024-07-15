@@ -1,4 +1,4 @@
-use crate::account_storage::{AccountStorage, ProgramAccountStorage};
+use crate::account_storage::{AccountStorage, ProgramAccountStorage, FAKE_OPERATOR};
 use crate::config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 use crate::error::Result;
 use crate::executor::OwnedAccountInfo;
@@ -127,7 +127,7 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     fn clone_solana_account(&self, address: &Pubkey) -> OwnedAccountInfo {
         // This is used to emulate external instruction
         // One of instruction accounts can be operator
-        let info = if address == &self.accounts.operator_key() {
+        let info = if address == &FAKE_OPERATOR || address == &self.accounts.operator_key() {
             self.accounts.operator_info()
         } else {
             self.accounts.get(address)

@@ -7,7 +7,7 @@ use solana_program::program::{invoke_signed_unchecked, invoke_unchecked};
 use solana_program::system_program;
 
 use crate::account::{AllocateResult, BalanceAccount, ContractAccount, StorageCell};
-use crate::account_storage::ProgramAccountStorage;
+use crate::account_storage::{ProgramAccountStorage, FAKE_OPERATOR};
 use crate::config::{
     ACCOUNT_SEED_VERSION, PAYMENT_TO_TREASURE, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
 };

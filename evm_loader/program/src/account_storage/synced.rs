@@ -5,7 +5,7 @@ use solana_program::program::{invoke_signed_unchecked, invoke_unchecked};
 use solana_program::system_program;
 
 use crate::account::{AllocateResult, ContractAccount, StorageCell};
-use crate::account_storage::SyncedAccountStorage;
+use crate::account_storage::{SyncedAccountStorage, FAKE_OPERATOR};
 use crate::config::{ACCOUNT_SEED_VERSION, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT};
 use crate::error::Result;
 use crate::types::Address;

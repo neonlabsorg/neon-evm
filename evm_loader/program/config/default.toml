@@ -41,10 +41,6 @@ token = "HPsV9Deocecw3GeZv1FkAPNCBRfuVyfw9MMwjwRe1xaU"
 id = 112
 token = "So11111111111111111111111111111111111111112"
 
-[chain.usdt]
+[chain.usdc]
 id = 113
-token = "2duuuuhNJHUYqcnZ7LKfeufeeTBgSJdftf2zM3cZV6ym"
-
-[chain.eth]
-id = 114
-token = "EwJYd3UAFAgzodVeHprB2gMQ68r4ZEbbvpoVzCZ1dGq5"
+token = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"

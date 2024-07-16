@@ -103,9 +103,13 @@ impl RocksDb {
             )
             .await?;
 
-        let account = from_str::<Account>(response.as_str())?;
-        info!("Got Account by {pubkey:?}: owner: {:?} lamports: {:?} executable: {:?} rent_epoch: {:?}", account.owner, account.lamports, account.executable, account.rent_epoch);
-        Ok(Some(account))
+        let account = from_str::<Option<Account>>(response.as_str())?;
+        if let Some(account) = &account {
+            info!("Got Account by {pubkey:?} owner: {:?} lamports: {:?} executable: {:?} rent_epoch: {:?}", account.owner, account.lamports, account.executable, account.rent_epoch);
+        } else {
+            info!("Got None for Account by {pubkey:?}");
+        }
+        Ok(account)
     }
 
     pub async fn get_transaction_index(&self, signature: Signature) -> RocksDbResult<u64> {

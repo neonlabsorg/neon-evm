@@ -1,18 +1,17 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
+use crate::account_storage::{AccountStorage, LogCollector};
+use crate::error::{Error, Result};
+use crate::evm::database::Database;
+use crate::evm::{Context, ExitStatus};
+use crate::types::Address;
 use ethnum::{AsU256, U256};
 use maybe_async::maybe_async;
 use mpl_token_metadata::programs::MPL_TOKEN_METADATA_ID;
 use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
-
-use crate::account_storage::AccountStorage;
-use crate::error::{Error, Result};
-use crate::evm::database::Database;
-use crate::evm::{Context, ExitStatus};
-use crate::types::Address;
 
 use super::action::Action;
 use super::cache::Cache;
@@ -25,7 +24,7 @@ pub type TouchedAccounts = BTreeMap<Pubkey, u64>;
 /// Represents the state of executor abstracted away from a self.backend.
 /// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
 pub struct ExecutorState<'a, B: AccountStorage> {
-    pub backend: &'a B,
+    backend: &'a mut B,
     cache: RefCell<Cache>,
     actions: Vec<Action>,
     stack: Vec<usize>,
@@ -44,7 +43,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
         cursor.position().try_into().map_err(Error::from)
     }
 
-    pub fn deserialize_from(buffer: &[u8], backend: &'a B) -> Result<Self> {
+    pub fn deserialize_from(buffer: &[u8], backend: &'a mut B) -> Result<Self> {
         let (cache, actions, stack, exit_status) = bincode::deserialize(buffer)?;
         Ok(Self {
             backend,
@@ -57,7 +56,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     }
 
     #[must_use]
-    pub fn new(backend: &'a B) -> Self {
+    pub fn new(backend: &'a mut B) -> Self {
         let cache = Cache {
             block_number: backend.block_number(),
             block_timestamp: backend.block_timestamp(),
@@ -165,6 +164,17 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 
         let counter = touched_accounts.entry(pubkey).or_insert(0);
         *counter = counter.checked_add(count).unwrap(); // Technically, this could overflow with infinite compute budget
+    }
+}
+
+impl<B: AccountStorage> LogCollector for ExecutorState<'_, B> {
+    fn collect_log<const N: usize>(
+        &mut self,
+        address: &[u8; 20],
+        topics: [[u8; 32]; N],
+        data: &[u8],
+    ) {
+        self.backend.collect_log(address, topics, data);
     }
 }
 

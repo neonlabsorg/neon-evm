@@ -1,4 +1,4 @@
-use crate::account_storage::{AccountStorage, ProgramAccountStorage};
+use crate::account_storage::{AccountStorage, LogCollector, ProgramAccountStorage};
 use crate::config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 use crate::error::Result;
 use crate::executor::OwnedAccountInfo;
@@ -7,6 +7,43 @@ use ethnum::U256;
 use solana_program::account_info::AccountInfo;
 use solana_program::{pubkey::Pubkey, rent::Rent, sysvar::slot_hashes};
 use std::convert::TryInto;
+
+use crate::debug::log_data;
+
+impl LogCollector for ProgramAccountStorage<'_> {
+    fn collect_log<const N: usize>(
+        &mut self,
+        address: &[u8; 20],
+        topics: [[u8; 32]; N],
+        data: &[u8],
+    ) {
+        match N {
+            0 => log_data(&[b"LOG0", address, &[0], data]),
+            1 => log_data(&[b"LOG1", address, &[1], &topics[0], data]),
+            2 => log_data(&[b"LOG2", address, &[2], &topics[0], &topics[1], data]),
+            3 => log_data(&[
+                b"LOG3",
+                address,
+                &[3],
+                &topics[0],
+                &topics[1],
+                &topics[2],
+                data,
+            ]),
+            4 => log_data(&[
+                b"LOG4",
+                address,
+                &[4],
+                &topics[0],
+                &topics[1],
+                &topics[2],
+                &topics[3],
+                data,
+            ]),
+            _ => unreachable!(),
+        }
+    }
+}
 
 impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     fn program_id(&self) -> &Pubkey {
@@ -36,7 +73,7 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         solana_program::program::get_return_data()
     }
 
-    fn set_return_data(&self, data: &[u8]) {
+    fn set_return_data(&mut self, data: &[u8]) {
         solana_program::program::set_return_data(data);
     }
 

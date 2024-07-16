@@ -6,13 +6,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-serde = "1.0.203"
-serde_json = "1.0.117"
+serde = "1.0.204"
+serde_json = "1.0.120"
 neon-lib = { path = "../lib" }
-thiserror = "1.0.61"
+thiserror = "1.0.62"
 async-trait = "0.1.80"
 jsonrpsee-core = "0.22.3"
 jsonrpsee-http-client = "0.22.3"
 jsonrpsee-types = "0.22.3"
 tokio = { version = "1", features = ["full"] }
-build-info = { version = "0.0.31", features = ["serde"] }
+build-info = "0.0.37"
+
+[build-dependencies]
+build-info-build = "0.0.37"

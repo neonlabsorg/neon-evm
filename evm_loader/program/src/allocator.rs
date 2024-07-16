@@ -8,7 +8,14 @@ use linked_list_allocator::Heap;
 use solana_program::entrypoint::HEAP_START_ADDRESS;
 use static_assertions::{const_assert, const_assert_eq};
 
-const HEAP_SIZE: usize = 256 * 1024;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "rollup")] {
+        // NeonEVM under rollup is intended to be deployed with a forked version of Solana that supports such bigger heap.
+        const HEAP_SIZE: usize = 1024 * 1024;
+    } else {
+        const HEAP_SIZE: usize = 256 * 1024;
+    }
+}
 
 #[allow(clippy::cast_possible_truncation)] // HEAP_START_ADDRESS < usize::max
 const EVM_HEAP_START_ADDRESS: usize = HEAP_START_ADDRESS as usize;

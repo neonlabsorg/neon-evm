@@ -1,8 +1,11 @@
 use crate::account_data::AccountData;
+use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
+use crate::tracing::{AccountOverrides, BlockOverrides};
 use crate::{rpc::Rpc, solana_simulator::SolanaSimulator, NeonError, NeonResult};
 use async_trait::async_trait;
 use elsa::FrozenMap;
 use ethnum::U256;
+use evm_loader::account_storage::LogCollector;
 pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use evm_loader::{
     account::{
@@ -35,9 +38,7 @@ use std::{
     convert::TryInto,
     rc::Rc,
 };
-
-use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
-use crate::tracing::{AccountOverrides, BlockOverrides};
+use web3::types::Log;
 
 const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
@@ -113,7 +114,9 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     state_overrides: Option<AccountOverrides>,
     accounts_cache: FrozenMap<Pubkey, Box<Option<Account>>>,
     used_accounts: FrozenMap<Pubkey, Box<RefCell<SolanaAccount>>>,
-    return_data: RefCell<Option<TransactionReturnData>>,
+    return_data: Option<TransactionReturnData>,
+    logs: Vec<Log>,
+    logs_stack: Vec<usize>,
 }
 
 impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
@@ -174,7 +177,9 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             rent,
             accounts_cache,
             used_accounts: FrozenMap::new(),
-            return_data: RefCell::new(None),
+            return_data: None,
+            logs: vec![],
+            logs_stack: vec![],
         };
 
         let target_chain_id = tx_chain_id.unwrap_or_else(|| storage.default_chain_id());
@@ -206,7 +211,9 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             state_overrides: other.state_overrides.clone(),
             accounts_cache: other.accounts_cache.clone(),
             used_accounts: other.used_accounts.clone(),
-            return_data: RefCell::new(None),
+            return_data: None,
+            logs: other.logs.clone(),
+            logs_stack: other.logs_stack.clone(),
         };
         let target_chain_id = tx_chain_id.unwrap_or_else(|| storage.default_chain_id());
         storage.apply_balance_overrides(target_chain_id).await?;
@@ -837,6 +844,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         let mut lamports_spend = 0u64;
         for (_, used_account) in self.used_accounts.clone().into_tuple_vec() {
             let used_account = used_account.borrow();
+            let pubkey = used_account.pubkey;
             if let Some(lamports_after_upgrade) = used_account.lamports_after_upgrade {
                 let orig_lamports = self
                     .accounts_cache
@@ -844,6 +852,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                     .unwrap_or(&None)
                     .as_ref()
                     .map_or(0, |v| v.lamports);
+                debug!("Upgrade rent: {pubkey} {orig_lamports} -> {lamports_after_upgrade}");
                 if lamports_after_upgrade > orig_lamports {
                     lamports_spend += lamports_after_upgrade - orig_lamports;
                 } else {
@@ -851,12 +860,17 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                 }
             }
         }
+        debug!(
+            "Upgrade rent: {lamports_spend} - {lamports_collected} = {}",
+            lamports_spend.saturating_sub(lamports_collected)
+        );
         Ok(lamports_spend.saturating_sub(lamports_collected))
     }
 
     pub fn get_regular_rent(&self) -> evm_loader::error::Result<u64> {
         let accounts = self.accounts.clone();
-        let mut changes_in_rent = 0u64;
+        let mut old_lamports_sum = 0u64;
+        let mut new_lamports_sum = 0u64;
         for (pubkey, account) in &accounts.into_map() {
             if *pubkey == system_program::ID {
                 continue;
@@ -881,14 +895,16 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                 return Err(ProgramError::AccountNotRentExempt.into());
             }
 
-            if let Some(lamports_after_upgrade) = lamports_after_upgrade {
-                changes_in_rent += new_lamports.saturating_sub(lamports_after_upgrade);
-                info!("Changes in rent: {pubkey} {original_lamports} -> {lamports_after_upgrade} -> {new_lamports} | {original_size} -> {new_size}");
-            } else {
-                changes_in_rent += new_lamports.saturating_sub(original_lamports);
-                info!("Changes in rent: {pubkey} {original_lamports} -> {new_lamports} | {original_size} -> {new_size}");
-            }
+            let old_lamports = lamports_after_upgrade.unwrap_or(original_lamports);
+            old_lamports_sum += old_lamports;
+            new_lamports_sum += new_lamports;
+
+            #[allow(clippy::cast_possible_wrap)]
+            let diff = new_lamports as i64 - old_lamports as i64;
+            debug!("Changes in rent: {pubkey} {old_lamports} -> {new_lamports} = {diff} | {original_size} -> {new_size} {lamports_after_upgrade:?}");
         }
+        let changes_in_rent = new_lamports_sum.saturating_sub(old_lamports_sum);
+        info!("Changes in rent: {changes_in_rent} = {new_lamports_sum} - {old_lamports_sum}");
         Ok(changes_in_rent)
     }
 
@@ -898,6 +914,33 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
 
     pub fn is_timestamp_used(&self) -> bool {
         *self.timestamp_used.borrow()
+    }
+
+    pub fn logs(&self) -> Vec<Log> {
+        self.logs.clone()
+    }
+}
+
+impl<T: Rpc> LogCollector for EmulatorAccountStorage<'_, T> {
+    fn collect_log<const N: usize>(
+        &mut self,
+        address: &[u8; 20],
+        topics: [[u8; 32]; N],
+        data: &[u8],
+    ) {
+        self.logs.push(Log {
+            address: address.into(),
+            topics: topics.iter().map(Into::into).collect(),
+            data: data.into(),
+            block_hash: None,
+            block_number: None,
+            transaction_hash: None,
+            transaction_index: None,
+            log_index: None,
+            transaction_log_index: None,
+            log_type: None,
+            removed: None,
+        });
     }
 }
 
@@ -931,14 +974,13 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
         info!("return_data");
         self.return_data
-            .borrow()
             .as_ref()
             .map(|data| (data.program_id, data.data.clone()))
     }
 
-    fn set_return_data(&self, data: &[u8]) {
+    fn set_return_data(&mut self, data: &[u8]) {
         info!("set_return_data");
-        *self.return_data.borrow_mut() = Some(TransactionReturnData {
+        self.return_data = Some(TransactionReturnData {
             program_id: self.program_id,
             data: data.to_vec(),
         });
@@ -1358,7 +1400,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         }
 
         if let Some(return_data) = result.return_data {
-            *self.return_data.borrow_mut() = Some(return_data);
+            self.return_data = Some(return_data);
         }
 
         for meta in &instruction.accounts {
@@ -1391,6 +1433,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
     fn snapshot(&mut self) {
         info!("snapshot");
         self.call_stack.push(self.accounts.clone());
+        self.logs_stack.push(self.logs.len());
     }
 
     fn revert_snapshot(&mut self) {
@@ -1402,10 +1445,25 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         } else {
             self.execute_status.reverts_before_solana_calls = true;
         }
+
+        let logs_stack_len = self
+            .logs_stack
+            .pop()
+            .expect("Fatal Error: Inconsistent EVM Logs Stack");
+
+        self.logs.truncate(logs_stack_len);
+
+        if self.logs_stack.is_empty() {
+            // sanity check
+            assert!(self.logs.is_empty());
+        }
     }
 
     fn commit_snapshot(&mut self) {
         self.call_stack.pop().expect("No snapshots to commit");
+        self.logs_stack
+            .pop()
+            .expect("Fatal Error: Inconsistent EVM Logs Stack");
     }
 }
 

@@ -1,4 +1,5 @@
 use super::{Buffer, Context};
+use crate::account_storage::LogCollector;
 use crate::{error::Result, executor::OwnedAccountInfo, types::Address};
 use ethnum::U256;
 use maybe_async::maybe_async;
@@ -7,7 +8,7 @@ use solana_program::{
 };
 
 #[maybe_async(?Send)]
-pub trait Database {
+pub trait Database: LogCollector {
     fn program_id(&self) -> &Pubkey;
     fn operator(&self) -> Pubkey;
     fn chain_id_to_token(&self, chain_id: u64) -> Pubkey;

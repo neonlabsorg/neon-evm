@@ -10,6 +10,10 @@ use crate::{
 
 use super::{Address, Vector};
 
+use super::read_raw_utils::ReconstructRaw;
+use crate::types::read_raw_utils::read_vec;
+use evm_loader_macro::ReconstructRaw;
+
 #[repr(transparent)]
 #[derive(
     Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
@@ -74,7 +78,7 @@ impl TransactionEnvelope {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, ReconstructRaw)]
 #[repr(C)]
 pub struct LegacyTx {
     pub nonce: u64,
@@ -156,7 +160,7 @@ impl rlp::Decodable for LegacyTx {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, ReconstructRaw)]
 #[repr(C)]
 pub struct AccessListTx {
     pub nonce: u64,

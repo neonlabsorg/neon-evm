@@ -1,6 +1,4 @@
-use core::slice;
 use std::cell::{Ref, RefMut};
-use std::cmp::{max, min};
 use std::mem::{align_of, size_of, ManuallyDrop};
 use std::ptr::{addr_of, read_unaligned};
 
@@ -14,9 +12,11 @@ use crate::evm::tracing::EventListener;
 use crate::evm::Machine;
 use crate::executor::ExecutorStateData;
 use crate::types::boxx::{boxx, Boxx};
-use crate::types::vector::VectorVecExt;
-use crate::types::{AccessListTx, Address, LegacyTx, Transaction, TransactionPayload, TreeMap};
-use crate::vector;
+use crate::types::{
+    read_raw_utils::{read_vec, ReconstructRaw},
+    AccessListTx, Address, LegacyTx, Transaction, TransactionPayload, TreeMap,
+};
+
 use ethnum::U256;
 use solana_program::hash::Hash;
 use solana_program::system_program;
@@ -495,43 +495,17 @@ impl<'a> StateAccount<'a> {
             let tx_payload: TransactionPayload = match read_unaligned(tx_payload_ptr) {
                 0 => {
                     let legacy_payload_ptr = payload_ptr.cast::<LegacyTx>();
-
-                    let call_data_ptr = addr_of!((*legacy_payload_ptr).call_data).cast::<usize>();
-                    let call_data = Self::read_vec(call_data_ptr, memory_space_delta);
-
-                    TransactionPayload::Legacy(LegacyTx {
-                        nonce: read_unaligned(addr_of!((*legacy_payload_ptr).nonce)),
-                        gas_price: read_unaligned(addr_of!((*legacy_payload_ptr).gas_price)),
-                        gas_limit: read_unaligned(addr_of!((*legacy_payload_ptr).gas_limit)),
-                        target: read_unaligned(addr_of!((*legacy_payload_ptr).target)),
-                        value: read_unaligned(addr_of!((*legacy_payload_ptr).value)),
-                        call_data: call_data.into_vector(),
-                        v: read_unaligned(addr_of!((*legacy_payload_ptr).v)),
-                        r: read_unaligned(addr_of!((*legacy_payload_ptr).r)),
-                        s: read_unaligned(addr_of!((*legacy_payload_ptr).s)),
-                        chain_id: read_unaligned(addr_of!((*legacy_payload_ptr).chain_id)),
-                        recovery_id: read_unaligned(addr_of!((*legacy_payload_ptr).recovery_id)),
-                    })
+                    TransactionPayload::Legacy(LegacyTx::build(
+                        legacy_payload_ptr,
+                        memory_space_delta,
+                    ))
                 }
                 1 => {
                     let access_list_tx_ptr = payload_ptr.cast::<AccessListTx>();
-
-                    let call_data_ptr = addr_of!((*access_list_tx_ptr).call_data).cast::<usize>();
-                    let call_data = Self::read_vec(call_data_ptr, memory_space_delta);
-
-                    TransactionPayload::AccessList(AccessListTx {
-                        nonce: read_unaligned(addr_of!((*access_list_tx_ptr).nonce)),
-                        gas_price: read_unaligned(addr_of!((*access_list_tx_ptr).gas_price)),
-                        gas_limit: read_unaligned(addr_of!((*access_list_tx_ptr).gas_limit)),
-                        target: read_unaligned(addr_of!((*access_list_tx_ptr).target)),
-                        value: read_unaligned(addr_of!((*access_list_tx_ptr).value)),
-                        call_data: call_data.into_vector(),
-                        r: read_unaligned(addr_of!((*access_list_tx_ptr).r)),
-                        s: read_unaligned(addr_of!((*access_list_tx_ptr).s)),
-                        chain_id: read_unaligned(addr_of!((*access_list_tx_ptr).chain_id)),
-                        recovery_id: read_unaligned(addr_of!((*access_list_tx_ptr).recovery_id)),
-                        access_list: vector![],
-                    })
+                    TransactionPayload::AccessList(AccessListTx::build(
+                        access_list_tx_ptr,
+                        memory_space_delta,
+                    ))
                 }
                 _ => {
                     return Err(Error::Custom(
@@ -554,41 +528,11 @@ impl<'a> StateAccount<'a> {
             let owner = read_unaligned(addr_of!((*data_ptr).owner));
             let origin = read_unaligned(addr_of!((*data_ptr).origin));
             let keys_ptr = addr_of!((*data_ptr).revisions).cast::<usize>();
-            let accounts = Self::read_vec(keys_ptr, memory_space_delta);
+            let accounts = read_vec(keys_ptr, memory_space_delta);
 
             let steps = read_unaligned(addr_of!((*data_ptr).steps_executed));
 
             Ok((tx, owner, origin, accounts, steps))
         }
-    }
-
-    unsafe fn read_vec<T: Default + Copy>(
-        vec_start_ptr: *const usize,
-        memory_space_delta: isize,
-    ) -> Vec<T> {
-        // 1. The Vector's memory layout consists of three usizes: ptr to the buffer, capacity and length.
-        // 2. There's no alignment between the fields, the Vector occupies exactly the 3*sizeof<usize> bytes.
-        // 3. The order of those fields in the memory is unspecified (no repr is set on the vec struct).
-        // => The len is the smallest of those three usizes, because it can't realistically be more than the buffer
-        // ptr value and it's no more than capacity.
-        // => The buffer ptr is the biggest among them.
-        let vec_parts = (
-            read_unaligned(vec_start_ptr),
-            read_unaligned(vec_start_ptr.add(1)),
-            read_unaligned(vec_start_ptr.add(2)),
-        );
-        let vec_len = min(min(vec_parts.0, vec_parts.1), vec_parts.2);
-        let accounts_buf_ptr_unadjusted =
-            max(max(vec_parts.0, vec_parts.1), vec_parts.2) as *const u8;
-        // Offset the buffer pointer from the state account allocator memory space into the current allocator.
-        let accounts_buf_ptr_adjusted = accounts_buf_ptr_unadjusted
-            .offset(memory_space_delta)
-            .cast::<T>()
-            .cast_mut();
-        let account_slice = slice::from_raw_parts(accounts_buf_ptr_adjusted, vec_len);
-        // Allocate a new vec and with the exact number of elements and copy the memory.
-        let mut accounts = vec![T::default(); vec_len];
-        accounts.copy_from_slice(account_slice);
-        accounts
     }
 }

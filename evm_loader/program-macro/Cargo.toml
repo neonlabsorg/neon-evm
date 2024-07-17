@@ -9,7 +9,7 @@ authors = ["NeonLabs Maintainers <maintainers@neonlabs.org>"]
 proc-macro = true
 
 [dependencies]
-syn = "2"
+syn = {version = "2", features = ["full"] }
 proc-macro2 = "1"
 quote = "1"
 itertools = "0.13"

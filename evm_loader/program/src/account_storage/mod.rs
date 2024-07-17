@@ -4,7 +4,7 @@ use crate::types::Address;
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::{
-    account_info::AccountInfo, instruction::Instruction, pubkey::Pubkey, rent::Rent,
+    account_info::AccountInfo, instruction::Instruction, pubkey, pubkey::Pubkey, rent::Rent,
 };
 #[cfg(target_os = "solana")]
 use {crate::account::AccountsDB, solana_program::clock::Clock};
@@ -32,6 +32,8 @@ pub struct ProgramAccountStorage<'a> {
     keys: keys_cache::KeysCache,
     synced_modified_contracts: std::collections::HashSet<Pubkey>,
 }
+
+pub const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
 /// Account storage
 /// Trait to access account info

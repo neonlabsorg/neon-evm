@@ -12,7 +12,7 @@ use evm_loader::{
         legacy::{LegacyEtherData, LegacyStorageData},
         BalanceAccount, ContractAccount, StorageCell, StorageCellAddress,
     },
-    account_storage::find_slot_hash,
+    account_storage::{find_slot_hash, FAKE_OPERATOR},
     config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
     error::Error as EvmLoaderError,
     executor::OwnedAccountInfo,
@@ -25,7 +25,6 @@ use solana_sdk::{
     clock::Clock,
     instruction::Instruction,
     program_error::ProgramError,
-    pubkey,
     pubkey::{Pubkey, PubkeyError},
     rent::Rent,
     system_program,
@@ -39,8 +38,6 @@ use std::{
     rc::Rc,
 };
 use web3::types::Log;
-
-const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
 
 #[derive(Default, Clone, Copy)]
 pub struct ExecuteStatus {

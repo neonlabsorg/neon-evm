@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 
 use ethnum::U256;
-use solana_program::account_info::AccountInfo;
 use solana_program::instruction::Instruction;
 use solana_program::program::{invoke_signed_unchecked, invoke_unchecked};
 use solana_program::system_program;
 
 use crate::account::{AllocateResult, BalanceAccount, ContractAccount, StorageCell};
-use crate::account_storage::ProgramAccountStorage;
+use crate::account_storage::{ProgramAccountStorage, FAKE_OPERATOR};
 use crate::config::{
     ACCOUNT_SEED_VERSION, PAYMENT_TO_TREASURE, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
 };
@@ -132,7 +131,7 @@ impl<'a> ProgramAccountStorage<'a> {
                 }
                 Action::ExternalInstruction {
                     program_id,
-                    accounts,
+                    mut accounts,
                     data,
                     seeds,
                     ..
@@ -148,13 +147,11 @@ impl<'a> ProgramAccountStorage<'a> {
                     let program = self.accounts.get(&program_id).clone();
                     accounts_info.push(program);
 
-                    for meta in &accounts {
-                        let account: AccountInfo<'a> =
-                            if meta.pubkey == self.accounts.operator_key() {
-                                self.accounts.operator_info().clone()
-                            } else {
-                                self.accounts.get(&meta.pubkey).clone()
-                            };
+                    for meta in &mut accounts {
+                        if meta.pubkey == FAKE_OPERATOR {
+                            meta.pubkey = self.accounts.operator_key();
+                        }
+                        let account = self.accounts.get(&meta.pubkey).clone();
                         accounts_info.push(account);
                     }
 

@@ -8,6 +8,7 @@ use spl_associated_token_account::get_associated_token_address;
 
 use crate::{
     account::token,
+    account_storage::FAKE_OPERATOR,
     error::{Error, Result},
     evm::database::Database,
     types::Address,
@@ -107,12 +108,8 @@ async fn withdraw<State: Database>(
     if !spl_token::check_id(&account.owner) {
         use spl_associated_token_account::instruction::create_associated_token_account;
 
-        let create_associated = create_associated_token_account(
-            &state.operator(),
-            &target,
-            &mint_address,
-            &spl_token::ID,
-        );
+        let create_associated =
+            create_associated_token_account(&FAKE_OPERATOR, &target, &mint_address, &spl_token::ID);
 
         let fee = state.rent().minimum_balance(spl_token::state::Account::LEN);
         state

@@ -1,4 +1,5 @@
 use crate::{
+    account_storage::FAKE_OPERATOR,
     config::ACCOUNT_SEED_VERSION,
     error::{Error, Result},
     evm::database::Database,
@@ -321,7 +322,10 @@ async fn execute_external_instruction<State: Database>(
     }
 
     for meta in &instruction.accounts {
-        if meta.pubkey == state.operator() || meta.pubkey == *state.program_id() {
+        if meta.pubkey == FAKE_OPERATOR
+            || meta.pubkey == state.operator()
+            || meta.pubkey == *state.program_id()
+        {
             return Err(Error::InvalidAccountForCall(meta.pubkey));
         }
     }
@@ -345,7 +349,7 @@ async fn execute_external_instruction<State: Database>(
         let payer = state.external_account(payer_pubkey).await?;
         if payer.lamports < required_lamports {
             let transfer_instruction = solana_program::system_instruction::transfer(
-                &state.operator(),
+                &FAKE_OPERATOR,
                 &payer_pubkey,
                 required_lamports - payer.lamports,
             );
@@ -367,7 +371,7 @@ async fn execute_external_instruction<State: Database>(
         if payer.lamports > 0 {
             let transfer_instruction = solana_program::system_instruction::transfer(
                 &payer_pubkey,
-                &state.operator(),
+                &FAKE_OPERATOR,
                 payer.lamports,
             );
             state

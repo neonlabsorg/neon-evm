@@ -4,7 +4,7 @@ use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
 use std::cell::{Ref, RefMut};
 
-pub use crate::config::ACCOUNT_SEED_VERSION;
+pub use crate::{account_storage::FAKE_OPERATOR, config::ACCOUNT_SEED_VERSION};
 
 pub use ether_balance::{BalanceAccount, Header as BalanceHeader};
 pub use ether_contract::{AllocateResult, ContractAccount, Header as ContractHeader};
@@ -272,6 +272,9 @@ impl<'a> AccountsDB<'a> {
 
     #[must_use]
     pub fn get(&self, pubkey: &Pubkey) -> &AccountInfo<'a> {
+        if pubkey == &FAKE_OPERATOR || pubkey == self.operator.key {
+            return self.operator_info();
+        }
         let index = self
             .sorted_accounts
             .binary_search_by_key(&pubkey, |a| a.key)

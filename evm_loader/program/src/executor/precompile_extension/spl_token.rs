@@ -9,6 +9,7 @@ use solana_program::{
 use super::create_account;
 use crate::{
     account::ACCOUNT_SEED_VERSION,
+    account_storage::FAKE_OPERATOR,
     error::{Error, Result},
     evm::database::Database,
     types::Address,
@@ -389,7 +390,7 @@ async fn close_account<State: Database>(
     let close_account = spl_token::instruction::close_account(
         &spl_token::ID,
         &account,
-        &state.operator(),
+        &FAKE_OPERATOR,
         &signer_pubkey,
         &[],
     )?;

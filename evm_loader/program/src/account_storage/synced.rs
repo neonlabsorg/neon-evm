@@ -1,11 +1,10 @@
 use ethnum::U256;
-use solana_program::account_info::AccountInfo;
 use solana_program::instruction::Instruction;
 use solana_program::program::{invoke_signed_unchecked, invoke_unchecked};
 use solana_program::system_program;
 
 use crate::account::{AllocateResult, ContractAccount, StorageCell};
-use crate::account_storage::SyncedAccountStorage;
+use crate::account_storage::{SyncedAccountStorage, FAKE_OPERATOR};
 use crate::config::{ACCOUNT_SEED_VERSION, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT};
 use crate::error::Result;
 use crate::types::Address;
@@ -102,7 +101,7 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
 
     fn execute_external_instruction(
         &mut self,
-        instruction: Instruction,
+        mut instruction: Instruction,
         seeds: Vec<Vec<Vec<u8>>>,
         _fee: u64,
         _emulated_internally: bool,
@@ -118,12 +117,11 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
         let program = self.accounts.get(&instruction.program_id).clone();
         accounts_info.push(program);
 
-        for meta in &instruction.accounts {
-            let account: AccountInfo<'a> = if meta.pubkey == self.accounts.operator_key() {
-                self.accounts.operator_info().clone()
-            } else {
-                self.accounts.get(&meta.pubkey).clone()
-            };
+        for meta in &mut instruction.accounts {
+            if meta.pubkey == FAKE_OPERATOR {
+                meta.pubkey = self.accounts.operator_key();
+            }
+            let account = self.accounts.get(&meta.pubkey).clone();
             accounts_info.push(account);
         }
 

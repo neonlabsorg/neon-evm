@@ -446,7 +446,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             self.touch_solana(m.pubkey);
 
             let account = self.backend.clone_solana_account(&m.pubkey).await;
-            accounts.insert(account.key, account);
+            accounts.insert(m.pubkey, account);
         }
 
         for action in &self.actions {

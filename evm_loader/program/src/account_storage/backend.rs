@@ -127,12 +127,7 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     fn clone_solana_account(&self, address: &Pubkey) -> OwnedAccountInfo {
         // This is used to emulate external instruction
         // One of instruction accounts can be operator
-        let info = if address == &self.accounts.operator_key() {
-            self.accounts.operator_info()
-        } else {
-            self.accounts.get(address)
-        };
-
+        let info = self.accounts.get(address);
         OwnedAccountInfo::from_account_info(self.program_id(), info)
     }
 

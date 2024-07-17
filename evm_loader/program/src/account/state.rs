@@ -5,6 +5,7 @@ use std::mem::size_of;
 
 use crate::account_storage::AccountStorage;
 use crate::config::DEFAULT_CHAIN_ID;
+use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::types::serde::bytes_32;
 use crate::types::{Address, Transaction};
@@ -198,6 +199,7 @@ impl<'a> StateAccount<'a> {
             let revision_entry = &state.data.revisions[account.key];
 
             if revision_entry != &account_revision {
+                log_data(&[b"INVALID_REVISION", account.key.as_ref()]);
                 status = AccountsStatus::NeedRestart;
                 break;
             }

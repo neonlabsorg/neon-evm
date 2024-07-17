@@ -1363,7 +1363,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         self.mark_account(instruction.program_id, false);
 
         for meta in &instruction.accounts {
-            if meta.pubkey != FAKE_OPERATOR {
+            if meta.pubkey != self.operator {
                 self.use_account(meta.pubkey, meta.is_writable)
                     .await
                     .map_err(map_neon_error)?;

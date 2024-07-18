@@ -13,6 +13,8 @@ cfg_if! {
         net_specific_config_parser!("config/devnet.toml");
     } else if #[cfg(feature = "govertest")] {
         net_specific_config_parser!("config/govertest.toml");
+    } else if #[cfg(feature = "shadow-mainnet")] {
+        net_specific_config_parser!("config/shadow-mainnet.toml");
     } else {
         net_specific_config_parser!("config/default.toml");
     }

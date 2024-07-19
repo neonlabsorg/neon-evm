@@ -6,6 +6,7 @@ use solana_clap_utils::{
     keypair::keypair_from_path,
 };
 use solana_sdk::{commitment_config::CommitmentConfig, signature::Keypair, signer::Signer};
+use std::env;
 use std::str::FromStr;
 
 /// # Panics
@@ -54,9 +55,15 @@ pub fn create(options: &ArgMatches) -> Result<Config, NeonError> {
             .ok_or(NeonError::SolanaKeyForConfigNotSpecified)?
     };
 
-    let db_config = options
-        .value_of("db_config")
-        .map(|path| solana_cli_config::load_config_file(path).expect("load db-config error"));
+    let tracer_db_type = env::var("TRACER_DB_TYPE")
+        .map(|db_type| match db_type.to_lowercase().as_str() {
+            "clickhouse" => Ok("clickhouse"),
+            "rocksdb" => Ok("rocksdb"),
+            _ => Err("Invalid tracer_db type!"),
+        })
+        .unwrap()
+        .expect("TRACER_DB_TYPE variable must be either 'clickhouse' or 'rocksdb'")
+        .to_string();
 
     Ok(Config {
         evm_loader,
@@ -64,7 +71,7 @@ pub fn create(options: &ArgMatches) -> Result<Config, NeonError> {
         fee_payer,
         commitment,
         solana_cli_config,
-        db_config,
+        tracer_db_type: Some(tracer_db_type),
         json_rpc_url,
         keypair_path,
     })

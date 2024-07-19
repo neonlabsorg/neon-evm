@@ -1,10 +1,16 @@
 pub mod tracer_ch_common;
 
-mod tracer_ch_db;
-
+pub(crate) mod tracer_ch_db;
 pub mod tracer_rocks_db;
+
 use crate::tracing::TraceCallConfig;
+pub use crate::types::tracer_ch_db::ClickHouseDb;
+pub use crate::types::tracer_rocks_db::RocksDb;
+use abi_stable::traits::IntoOwned;
+use async_trait::async_trait;
+use enum_dispatch::enum_dispatch;
 use ethnum::U256;
+use evm_loader::solana_program::clock::{Slot, UnixTimestamp};
 pub use evm_loader::types::Address;
 use evm_loader::types::{StorageKey, Transaction};
 use evm_loader::{
@@ -14,11 +20,13 @@ use evm_loader::{
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
+use solana_sdk::signature::Signature;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::HashMap;
-pub use tracer_rocks_db::RocksDb as TracerDb;
 
 use crate::commands::get_config::ChainInfo;
+use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
+pub type DbResult<T> = Result<T, anyhow::Error>;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
 pub struct ChDbConfig {
@@ -31,6 +39,48 @@ pub struct ChDbConfig {
 pub struct RocksDbConfig {
     pub rocksdb_host: String,
     pub rocksdb_port: u16,
+}
+
+// #[derive(Clone)]
+#[enum_dispatch]
+pub enum TracerDbType {
+    ClickHouseDb,
+    RocksDb,
+}
+
+impl Clone for TracerDbType {
+    fn clone(&self) -> TracerDbType {
+        self.into_owned()
+    }
+}
+
+#[async_trait(?Send)]
+#[enum_dispatch(TracerDbType)]
+pub trait TracerDb {
+    async fn get_block_time(&self, slot: Slot) -> DbResult<UnixTimestamp>;
+
+    async fn get_earliest_rooted_slot(&self) -> DbResult<u64>;
+
+    async fn get_latest_block(&self) -> DbResult<u64>;
+
+    async fn get_account_at(
+        &self,
+        pubkey: &Pubkey,
+        slot: u64,
+        tx_index_in_block: Option<u64>,
+    ) -> DbResult<Option<Account>>;
+
+    async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64>;
+
+    async fn get_accounts(&self, start: u64, end: u64) -> DbResult<Vec<Vec<u8>>>;
+
+    async fn get_neon_revisions(&self, _pubkey: &Pubkey) -> DbResult<RevisionMap>;
+
+    async fn get_neon_revision(&self, _slot: Slot, _pubkey: &Pubkey) -> DbResult<String>;
+
+    async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<Option<u64>>;
+
+    async fn get_sync_status(&self) -> DbResult<EthSyncStatus>;
 }
 
 #[serde_as]

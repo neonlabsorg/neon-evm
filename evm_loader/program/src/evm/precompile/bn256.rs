@@ -2,17 +2,17 @@ use ethnum::U256;
 use solana_program::alt_bn128::prelude::*;
 
 /// Call inner `bn256Add`
-#[must_use]
-pub fn bn256_add(input: &[u8]) -> Vec<u8> {
-    if input.len() >= ALT_BN128_ADDITION_INPUT_LEN {
-        alt_bn128_addition(&input[..ALT_BN128_ADDITION_INPUT_LEN])
-    } else {
-        let mut buffer = vec![0_u8; ALT_BN128_ADDITION_INPUT_LEN];
-        buffer[..input.len()].copy_from_slice(input);
-        alt_bn128_addition(&buffer)
-    }
-    .unwrap_or_default()
-}
+// #[must_use]
+// pub fn bn256_add(input: &[u8]) -> Vec<u8> {
+//     if input.len() >= ALT_BN128_ADDITION_INPUT_LEN {
+//         alt_bn128_addition(&input[..ALT_BN128_ADDITION_INPUT_LEN])
+//     } else {
+//         let mut buffer = vec![0_u8; ALT_BN128_ADDITION_INPUT_LEN];
+//         buffer[..input.len()].copy_from_slice(input);
+//         alt_bn128_addition(&buffer)
+//     }
+//     .unwrap_or_default()
+// }
 
 /// Call inner `bn256ScalarMul`
 #[must_use]

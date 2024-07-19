@@ -536,6 +536,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                     self._add_legacy_storage(&legacy_storage, &info, pubkey)
                         .await
                 }
+                evm_loader::account::TAG_EMPTY => Ok(self.add_empty_account(pubkey)),
                 _ => {
                     unimplemented!();
                 }

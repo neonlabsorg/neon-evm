@@ -32,7 +32,7 @@ use evm_loader::types::Address;
 use neon_lib::errors::NeonError;
 use neon_lib::rpc::{CallDbClient, RpcEnum};
 use neon_lib::tracing::tracers::TracerTypeEnum;
-use neon_lib::types::TracerDb;
+use neon_lib::types::{ClickHouseDb, RocksDb};
 use solana_clap_utils::keypair::signer_from_path;
 use solana_sdk::signature::Signer;
 
@@ -154,15 +154,18 @@ async fn build_rpc(options: &ArgMatches<'_>, config: &Config) -> Result<RpcEnum,
         .value_of("slot")
         .map(|slot_str| slot_str.parse().expect("slot parse error"));
 
+    let tracer_db_config = config
+        .tracer_db_type
+        .clone()
+        .ok_or(NeonError::LoadingDBConfigError)?;
+    let tracer_db = match tracer_db_config.as_str() {
+        "rocksdb" => RocksDb::new().await.into(),
+        "clickhousedb" => ClickHouseDb::new().await.into(),
+        _ => panic!("TRACER_DB_TYPE must be either 'ClickHouseDb' or 'RocksDb'"),
+    };
+
     Ok(if let Some(slot) = slot {
-        RpcEnum::CallDbClient(
-            CallDbClient::new(
-                TracerDb::new(config.db_config.as_ref().expect("db-config not found")).await,
-                slot,
-                None,
-            )
-            .await?,
-        )
+        RpcEnum::CallDbClient(CallDbClient::new(tracer_db, slot, None).await?)
     } else {
         RpcEnum::CloneRpcClient(CloneRpcClient::new_from_config(config))
     })

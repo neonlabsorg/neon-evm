@@ -1,6 +1,6 @@
+use crate::types::{ChDbConfig, RocksDbConfig};
 use std::{env, str::FromStr};
 
-use crate::types::RocksDbConfig;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair};
 
@@ -13,7 +13,7 @@ pub struct Config {
     pub fee_payer: Option<Keypair>,
     pub commitment: CommitmentConfig,
     pub solana_cli_config: solana_cli_config::Config,
-    pub db_config: Option<RocksDbConfig>,
+    pub tracer_db_type: Option<String>,
     pub json_rpc_url: String,
     pub keypair_path: String,
 }
@@ -27,7 +27,7 @@ pub struct APIOptions {
     pub solana_max_retries: usize,
     pub evm_loader: Pubkey,
     pub key_for_config: Pubkey,
-    pub db_config: RocksDbConfig,
+    pub tracer_db_type: String,
 }
 
 /// # Errors
@@ -47,7 +47,7 @@ pub fn load_api_config_from_environment() -> APIOptions {
     let solana_timeout = env::var("SOLANA_TIMEOUT").unwrap_or_else(|_| "30".to_string());
     let solana_timeout = solana_timeout
         .parse()
-        .expect("SOLANA_TIMEOUT variable must be a valid number");
+        .expect("SOLANA_TIMEOUT var#[derive(Debug)]iable must be a valid number");
 
     let solana_max_retries = env::var("SOLANA_MAX_RETRIES").unwrap_or_else(|_| "10".to_string());
     let solana_max_retries = solana_max_retries
@@ -64,7 +64,15 @@ pub fn load_api_config_from_environment() -> APIOptions {
         .and_then(|v| Pubkey::from_str(&v).ok())
         .expect("SOLANA_KEY_FOR_CONFIG variable must be a valid pubkey");
 
-    let db_config = load_db_config_from_environment();
+    let tracer_db_type = env::var("TRACER_DB_TYPE")
+        .map(|db_type| match db_type.to_lowercase().as_str() {
+            "clickhouse" => Ok("clickhouse"),
+            "rocksdb" => Ok("rocksdb"),
+            _ => Err("Invalid tracer_db type!"),
+        })
+        .unwrap()
+        .expect("TRACER_DB_TYPE variable must be either 'clickhouse' or 'rocksdb'")
+        .to_string();
 
     APIOptions {
         solana_cli_config_path,
@@ -74,11 +82,35 @@ pub fn load_api_config_from_environment() -> APIOptions {
         solana_max_retries,
         evm_loader,
         key_for_config,
-        db_config,
+        tracer_db_type,
     }
 }
 
-pub fn load_db_config_from_environment() -> RocksDbConfig {
+pub(crate) fn load_ch_db_config_from_environment() -> ChDbConfig {
+    let clickhouse_url = env::var("NEON_DB_CLICKHOUSE_URLS")
+        .map(|urls| {
+            urls.split(';')
+                .map(std::borrow::ToOwned::to_owned)
+                .collect::<Vec<String>>()
+        })
+        .expect("neon clickhouse db urls valiable must be set");
+
+    let clickhouse_user = env::var("NEON_DB_CLICKHOUSE_USER")
+        .map(Some)
+        .unwrap_or(None);
+
+    let clickhouse_password = env::var("NEON_DB_CLICKHOUSE_PASSWORD")
+        .map(Some)
+        .unwrap_or(None);
+
+    ChDbConfig {
+        clickhouse_url,
+        clickhouse_user,
+        clickhouse_password,
+    }
+}
+
+pub fn load_rocks_db_config_from_environment() -> RocksDbConfig {
     let rocksdb_host = env::var("ROCKSDB_HOST")
         .as_deref()
         .unwrap_or("127.0.0.1")

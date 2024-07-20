@@ -47,7 +47,7 @@ strum_macros = "0.26.4"
 clap = "2.33.3"
 lazy_static = "1.5.0"
 elsa = "1.10.0"
-arrayref = "0.3.6"
+arrayref = "0.3.8"
 
 [dev-dependencies]
 hex-literal = "0.4.1"

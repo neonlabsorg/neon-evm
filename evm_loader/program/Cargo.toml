@@ -44,7 +44,7 @@ spl-token = { version = "~4.0", default-features = false, features = ["no-entryp
 spl-associated-token-account = { version = "~2.3", default-features = false, features = ["no-entrypoint"] }
 mpl-token-metadata = { version = "~4.1", default-features = false }
 thiserror = "1.0"
-arrayref = "0.3.6"
+arrayref = "0.3.8"
 hex = "0.4.2"
 ripemd = "0.1"
 rlp = "0.5"

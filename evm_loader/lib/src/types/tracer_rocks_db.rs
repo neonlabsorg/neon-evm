@@ -8,7 +8,6 @@ use serde_json::{from_slice, from_str};
 use std::str::FromStr;
 use std::sync::Arc;
 // pub type RocksDbResult<T> = std::result::Result<T, anyhow::Error>;
-use crate::config;
 use solana_sdk::signature::Signature;
 use solana_sdk::{
     account::Account,
@@ -25,7 +24,7 @@ pub struct AccountParams {
 }
 
 use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
-use crate::types::{DbResult, TracerDb};
+use crate::types::{DbResult, RocksDbConfig, TracerDb};
 // use reconnecting_jsonrpsee_ws_client::{Client, CallRetryPolicy, rpc_params, ExponentialBackoff};
 
 #[derive(Clone, Debug)]
@@ -37,9 +36,7 @@ pub struct RocksDb {
 
 impl RocksDb {
     #[must_use]
-    pub async fn new() -> Self {
-        let config = config::load_rocks_db_config_from_environment();
-
+    pub async fn new(config: &RocksDbConfig) -> Self {
         let host = &config.rocksdb_host;
         let port = &config.rocksdb_port;
         let url = format!("ws://{host}:{port}");

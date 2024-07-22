@@ -29,6 +29,11 @@ use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
 pub type DbResult<T> = Result<T, anyhow::Error>;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
+pub struct DbConfig {
+    pub rocksdb_config: Option<RocksDbConfig>,
+    pub chdb_config: Option<ChDbConfig>,
+}
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
 pub struct ChDbConfig {
     pub clickhouse_url: Vec<String>,
     pub clickhouse_user: Option<String>,
@@ -46,6 +51,18 @@ pub struct RocksDbConfig {
 pub enum TracerDbType {
     ClickHouseDb,
     RocksDb,
+}
+
+impl TracerDbType {
+    pub async fn from_config(db_config: &DbConfig) -> TracerDbType {
+        if let Some(rocksdb_config) = &db_config.rocksdb_config {
+            RocksDb::new(rocksdb_config).await.into()
+        } else {
+            ClickHouseDb::new(&db_config.clone().chdb_config.unwrap())
+                .await
+                .into()
+        }
+    }
 }
 
 impl Clone for TracerDbType {

@@ -1,4 +1,4 @@
-use crate::types::{ChDbConfig, RocksDbConfig};
+use crate::types::{ChDbConfig, DbConfig, RocksDbConfig};
 use std::{env, str::FromStr};
 
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ pub struct Config {
     pub fee_payer: Option<Keypair>,
     pub commitment: CommitmentConfig,
     pub solana_cli_config: solana_cli_config::Config,
-    pub tracer_db_type: Option<String>,
+    pub db_config: Option<DbConfig>,
     pub json_rpc_url: String,
     pub keypair_path: String,
 }
@@ -27,7 +27,7 @@ pub struct APIOptions {
     pub solana_max_retries: usize,
     pub evm_loader: Pubkey,
     pub key_for_config: Pubkey,
-    pub tracer_db_type: String,
+    pub db_config: DbConfig,
 }
 
 /// # Errors
@@ -64,15 +64,20 @@ pub fn load_api_config_from_environment() -> APIOptions {
         .and_then(|v| Pubkey::from_str(&v).ok())
         .expect("SOLANA_KEY_FOR_CONFIG variable must be a valid pubkey");
 
-    let tracer_db_type = env::var("TRACER_DB_TYPE")
-        .map(|db_type| match db_type.to_lowercase().as_str() {
-            "clickhouse" => Ok("clickhouse"),
-            "rocksdb" => Ok("rocksdb"),
-            _ => Err("Invalid tracer_db type!"),
+    let db_config = env::var("TRACER_DB_TYPE")
+        .ok()
+        .and_then(|db_type| match db_type.to_lowercase().as_str() {
+            "rocksdb" => Option::from(DbConfig {
+                rocksdb_config: Option::from(load_rocks_db_config_from_environment()),
+                chdb_config: None,
+            }),
+            "clickhouse" => Option::from(DbConfig {
+                rocksdb_config: None,
+                chdb_config: Option::from(load_ch_db_config_from_environment()),
+            }),
+            _ => None,
         })
-        .unwrap()
-        .expect("TRACER_DB_TYPE variable must be either 'clickhouse' or 'rocksdb'")
-        .to_string();
+        .expect("TRACER_DB_TYPE variable must be either 'clickhouse' or 'rocksdb'");
 
     APIOptions {
         solana_cli_config_path,
@@ -82,11 +87,11 @@ pub fn load_api_config_from_environment() -> APIOptions {
         solana_max_retries,
         evm_loader,
         key_for_config,
-        tracer_db_type,
+        db_config,
     }
 }
 
-pub(crate) fn load_ch_db_config_from_environment() -> ChDbConfig {
+pub fn load_ch_db_config_from_environment() -> ChDbConfig {
     let clickhouse_url = env::var("NEON_DB_CLICKHOUSE_URLS")
         .map(|urls| {
             urls.split(';')

@@ -66,7 +66,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             SYSTEM_ACCOUNT_RIPEMD160 => Some(ripemd160::ripemd160(data)),
             SYSTEM_ACCOUNT_DATACOPY => Some(datacopy::datacopy(data)),
             SYSTEM_ACCOUNT_BIGMODEXP => Some(big_mod_exp::big_mod_exp(data)),
-            // SYSTEM_ACCOUNT_BN256_ADD => Some(bn256::bn256_add(data)),
+            SYSTEM_ACCOUNT_BN256_ADD => Some(bn256::bn256_add(data)),
             SYSTEM_ACCOUNT_BN256_SCALAR_MUL => Some(bn256::bn256_scalar_mul(data)),
             SYSTEM_ACCOUNT_BN256_PAIRING => Some(bn256::bn256_pairing(data)),
             SYSTEM_ACCOUNT_BLAKE2F => Some(blake2_f::blake2_f(data)),

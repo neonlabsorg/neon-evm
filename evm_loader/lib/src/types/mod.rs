@@ -3,7 +3,9 @@ pub mod tracer_ch_common;
 pub(crate) mod tracer_ch_db;
 pub mod tracer_rocks_db;
 
+use crate::commands::get_config::ChainInfo;
 use crate::tracing::TraceCallConfig;
+use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
 pub use crate::types::tracer_ch_db::ClickHouseDb;
 pub use crate::types::tracer_rocks_db::RocksDb;
 use abi_stable::traits::IntoOwned;
@@ -23,9 +25,6 @@ use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
 use solana_sdk::signature::Signature;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::HashMap;
-
-use crate::commands::get_config::ChainInfo;
-use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
 pub type DbResult<T> = Result<T, anyhow::Error>;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
@@ -46,7 +45,6 @@ pub struct RocksDbConfig {
     pub rocksdb_port: u16,
 }
 
-// #[derive(Clone)]
 #[enum_dispatch]
 pub enum TracerDbType {
     ClickHouseDb,
@@ -71,7 +69,7 @@ impl Clone for TracerDbType {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 #[enum_dispatch(TracerDbType)]
 pub trait TracerDb {
     async fn get_block_time(&self, slot: Slot) -> DbResult<UnixTimestamp>;

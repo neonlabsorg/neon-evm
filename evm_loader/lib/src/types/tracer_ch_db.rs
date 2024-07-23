@@ -33,7 +33,7 @@ pub struct ClickHouseDb {
 }
 
 #[allow(dead_code)]
-#[async_trait(?Send)]
+#[async_trait]
 impl TracerDb for ClickHouseDb {
     // Returned value is not used for tracer methods.
     async fn get_block_time(&self, slot: Slot) -> DbResult<UnixTimestamp> {

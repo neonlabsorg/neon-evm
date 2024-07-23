@@ -64,7 +64,22 @@ pub fn load_api_config_from_environment() -> APIOptions {
         .and_then(|v| Pubkey::from_str(&v).ok())
         .expect("SOLANA_KEY_FOR_CONFIG variable must be a valid pubkey");
 
-    let db_config = env::var("TRACER_DB_TYPE")
+    let db_config = load_db_config_from_environment();
+
+    APIOptions {
+        solana_cli_config_path,
+        commitment,
+        solana_url,
+        solana_timeout,
+        solana_max_retries,
+        evm_loader,
+        key_for_config,
+        db_config,
+    }
+}
+
+pub fn load_db_config_from_environment() -> DbConfig {
+    env::var("TRACER_DB_TYPE")
         .ok()
         .and_then(|db_type| match db_type.to_lowercase().as_str() {
             "rocksdb" => Option::from(DbConfig {
@@ -77,18 +92,7 @@ pub fn load_api_config_from_environment() -> APIOptions {
             }),
             _ => None,
         })
-        .expect("TRACER_DB_TYPE variable must be either 'clickhouse' or 'rocksdb'");
-
-    APIOptions {
-        solana_cli_config_path,
-        commitment,
-        solana_url,
-        solana_timeout,
-        solana_max_retries,
-        evm_loader,
-        key_for_config,
-        db_config,
-    }
+        .expect("TRACER_DB_TYPE variable must be either 'clickhouse' or 'rocksdb'")
 }
 
 pub fn load_ch_db_config_from_environment() -> ChDbConfig {

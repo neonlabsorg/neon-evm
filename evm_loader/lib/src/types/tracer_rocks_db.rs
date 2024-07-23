@@ -26,7 +26,6 @@ pub struct AccountParams {
 use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
 use crate::types::{DbResult, RocksDbConfig, TracerDb};
 // use reconnecting_jsonrpsee_ws_client::{Client, CallRetryPolicy, rpc_params, ExponentialBackoff};
-
 #[derive(Clone, Debug)]
 pub struct RocksDb {
     #[allow(dead_code)]
@@ -57,17 +56,16 @@ impl RocksDb {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl TracerDb for RocksDb {
     async fn get_block_time(&self, slot: Slot) -> DbResult<UnixTimestamp> {
         let response: String = self
             .client
             .request("get_block_time", rpc_params![slot])
             .await?;
-        tracing::info!(
+        info!(
             "get_block_time for slot {:?} response: {:?}",
-            slot,
-            response
+            slot, response
         );
         Ok(i64::from_str(response.as_str())?)
     }
@@ -77,7 +75,7 @@ impl TracerDb for RocksDb {
             .client
             .request("get_earliest_rooted_slot", rpc_params![])
             .await?;
-        tracing::info!("get_earliest_rooted_slot response: {:?}", response);
+        info!("get_earliest_rooted_slot response: {:?}", response);
         Ok(u64::from_str(response.as_str())?)
     }
 
@@ -86,7 +84,7 @@ impl TracerDb for RocksDb {
             .client
             .request("get_last_rooted_slot", rpc_params![])
             .await?;
-        tracing::info!("get_latest_block response: {:?}", response);
+        info!("get_latest_block response: {:?}", response);
         Ok(u64::from_str(response.as_str())?)
     }
 
@@ -129,7 +127,7 @@ impl TracerDb for RocksDb {
             .client
             .request("get_accounts", rpc_params![start, end])
             .await?;
-        tracing::info!("get_accounts response: {:?}", response);
+        info!("get_accounts response: {:?}", response);
         let accounts: Vec<Vec<u8>> = from_slice((response).as_ref()).unwrap();
         Ok(accounts)
     }
@@ -149,7 +147,7 @@ impl TracerDb for RocksDb {
             .client
             .request("get_slot_by_blockhash", rpc_params![blockhash])
             .await?;
-        tracing::info!("response: {:?}", response);
+        info!("response: {:?}", response);
         Ok(from_str(response.as_str())?)
     }
 

@@ -22,7 +22,7 @@ use super::cache::Cache;
 use super::precompile_extension::PrecompiledContracts;
 use super::OwnedAccountInfo;
 
-pub type ExecutionResult = Option<(ExitStatus, Vector<Action>)>;
+pub type ExecutionResult<'a> = Option<(&'a ExitStatus, &'a Vector<Action>)>;
 pub type TouchedAccounts = TreeMap<Pubkey, u64>;
 
 /// Represents the state of executor abstracted away from a self.backend.
@@ -41,7 +41,7 @@ pub struct ExecutorState<'a, B: AccountStorage> {
     pub data: &'a mut ExecutorStateData,
 }
 
-impl ExecutorStateData {
+impl<'a> ExecutorStateData {
     pub fn new<B: AccountStorage>(backend: &B) -> Self {
         let cache = Cache {
             block_number: backend.block_number(),
@@ -56,30 +56,32 @@ impl ExecutorStateData {
             touched_accounts: RefCell::new(TouchedAccounts::new()),
         }
     }
+
+    #[must_use]
+    pub fn deconstruct(&'a mut self) -> (ExecutionResult<'a>, TouchedAccounts) {
+        let result = if let Some(exit_status) = self.exit_status.as_ref() {
+            Some((exit_status, &self.actions))
+        } else {
+            None
+        };
+        // Move out the current touched_accounts and replace with a new empty one. The previous touched_accounts object
+        // is consumed by the caller to update touched_accounts inside StateAccount's Data.
+        (
+            result,
+            self.touched_accounts.replace(TouchedAccounts::new()),
+        )
+    }
+
+    #[must_use]
+    pub fn into_actions(&'a self) -> &'a Vector<Action> {
+        &self.actions
+    }
 }
 
 impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     #[must_use]
     pub fn new(backend: &'a mut B, data: &'a mut ExecutorStateData) -> Self {
         Self { backend, data }
-    }
-
-    #[must_use]
-    pub fn deconstruct(self) -> (ExecutionResult, TouchedAccounts) {
-        let result = if let Some(exit_status) = self.data.exit_status.clone() {
-            Some((exit_status, self.data.actions.clone()))
-        } else {
-            None
-        };
-
-        // TODO heap: check if clone is needed.
-        (result, self.data.touched_accounts.clone().into_inner())
-    }
-
-    #[must_use]
-    pub fn into_actions(self) -> Vector<Action> {
-        assert!(self.data.stack.is_empty());
-        self.data.actions.clone()
     }
 
     #[must_use]

@@ -68,7 +68,8 @@ impl<'a> ProgramAccountStorage<'a> {
         Ok(total_result)
     }
 
-    pub fn apply_state_change(&mut self, actions: Vector<Action>) -> Result<()> {
+    /// Takes an *immutable borrow* of Actions from the accumulated state changes and applies it.
+    pub fn apply_state_change(&mut self, actions: &Vector<Action>) -> Result<()> {
         debug_print!("Applies begin");
 
         let mut storage = HashMap::with_capacity(16);
@@ -81,22 +82,22 @@ impl<'a> ProgramAccountStorage<'a> {
                     chain_id,
                     value,
                 } => {
-                    let mut source = self.balance_account(source, chain_id)?;
-                    let mut target = self.create_balance_account(target, chain_id)?;
+                    let mut source = self.balance_account(*source, *chain_id)?;
+                    let mut target = self.create_balance_account(*target, *chain_id)?;
 
                     source.increment_revision(&self.rent, &self.accounts)?;
                     target.increment_revision(&self.rent, &self.accounts)?;
 
-                    source.transfer(&mut target, value)?;
+                    source.transfer(&mut target, *value)?;
                 }
                 Action::Burn {
                     source,
                     chain_id,
                     value,
                 } => {
-                    let mut account = self.create_balance_account(source, chain_id)?;
+                    let mut account = self.create_balance_account(*source, *chain_id)?;
                     account.increment_revision(&self.rent, &self.accounts)?;
-                    account.burn(value)?;
+                    account.burn(*value)?;
                 }
                 Action::EvmSetStorage {
                     address,
@@ -104,15 +105,15 @@ impl<'a> ProgramAccountStorage<'a> {
                     value,
                 } => {
                     storage
-                        .entry(address)
+                        .entry(*address)
                         .or_insert_with(|| HashMap::with_capacity(64))
-                        .insert(index, value);
+                        .insert(*index, *value);
                 }
                 Action::EvmSetTransientStorage { .. } => {
                     // do nothing, transient storage is discarded at the end of the transaction
                 }
                 Action::EvmIncrementNonce { address, chain_id } => {
-                    let mut account = self.create_balance_account(address, chain_id)?;
+                    let mut account = self.create_balance_account(*address, *chain_id)?;
                     account.increment_nonce()?;
                 }
                 Action::EvmSetCode {
@@ -121,17 +122,17 @@ impl<'a> ProgramAccountStorage<'a> {
                     code,
                 } => {
                     ContractAccount::create(
-                        address,
-                        chain_id,
+                        *address,
+                        *chain_id,
                         0,
-                        &code,
+                        code,
                         &self.accounts,
                         Some(&self.keys),
                     )?;
                 }
                 Action::ExternalInstruction {
                     program_id,
-                    mut accounts,
+                    accounts,
                     data,
                     seeds,
                     ..
@@ -147,7 +148,9 @@ impl<'a> ProgramAccountStorage<'a> {
                     let program = self.accounts.get(&program_id).clone();
                     accounts_info.push(program);
 
-                    for meta in &mut accounts {
+                    // Convert from persistent Vector to std::Vec, as required by the solana Instruction.
+                    let mut ixn_accounts = accounts.to_vec();
+                    for meta in &mut ixn_accounts {
                         if meta.pubkey == FAKE_OPERATOR {
                             meta.pubkey = self.accounts.operator_key();
                         }
@@ -156,8 +159,8 @@ impl<'a> ProgramAccountStorage<'a> {
                     }
 
                     let instruction = Instruction {
-                        program_id,
-                        accounts: accounts.to_vec(),
+                        program_id: *program_id,
+                        accounts: ixn_accounts,
                         data: data.to_vec(),
                     };
 

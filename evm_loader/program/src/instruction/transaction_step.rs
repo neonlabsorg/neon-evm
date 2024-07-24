@@ -45,9 +45,8 @@ pub fn do_begin<'a>(
 
     allocate_or_reinit_state(&mut account_storage, &mut storage, true)?;
     let mut state_data = storage.read_executor_state();
-    let backend = ExecutorState::new(&mut account_storage, &mut state_data);
 
-    let (_, touched_accounts) = backend.deconstruct();
+    let (_, touched_accounts) = state_data.deconstruct();
     finalize(
         0,
         storage,
@@ -93,7 +92,7 @@ pub fn do_continue<'a>(
         steps_executed = steps_returned;
     }
 
-    let (mut results, touched_accounts) = backend.deconstruct();
+    let (mut results, touched_accounts) = state_data.deconstruct();
     if steps_executed > EVM_STEPS_LAST_ITERATION_MAX {
         results = None;
     }
@@ -135,11 +134,11 @@ fn allocate_or_reinit_state(
     Ok(())
 }
 
-fn finalize<'a>(
+fn finalize<'a, 'b>(
     steps_executed: u64,
     mut storage: StateAccount<'a>,
     mut accounts: ProgramAccountStorage<'a>,
-    results: Option<(ExitStatus, Vector<Action>)>,
+    results: Option<(&'b ExitStatus, &'b Vector<Action>)>,
     mut gasometer: Gasometer,
     touched_accounts: TreeMap<Pubkey, u64>,
 ) -> Result<()> {
@@ -158,7 +157,7 @@ fn finalize<'a>(
     }
 
     let status = if let Some((status, actions)) = results {
-        if accounts.allocate(&actions)? == AllocateResult::Ready {
+        if accounts.allocate(actions)? == AllocateResult::Ready {
             accounts.apply_state_change(actions)?;
             Some(status)
         } else {

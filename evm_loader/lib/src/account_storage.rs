@@ -981,7 +981,6 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
 
     fn return_data(&self) -> Option<(Pubkey, Vector<u8>)> {
         info!("return_data");
-        // TODO heap: check is clone is required.
         self.return_data
             .as_ref()
             .map(|data| (data.program_id, data.data.clone().into_vector()))
@@ -1363,7 +1362,6 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         let signers = seeds
             .iter()
             .map(|s| {
-                // TODO heap: check if collecting to Vec is ok.
                 let seed = s.iter().map(Vector::as_slice).collect::<Vec<_>>();
                 let signer = Pubkey::create_program_address(&seed, &self.program_id)?;
                 Ok(signer)

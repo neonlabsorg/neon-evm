@@ -1,10 +1,12 @@
+use std::fmt::Debug;
+
 use ethnum::U256;
 use solana_program::{instruction::AccountMeta, pubkey::Pubkey};
 
 use crate::types::{vector::Vector, Address};
 
 #[derive(Debug, Clone)]
-// TODO heap: check if repr is needed.
+#[repr(C)]
 pub enum Action {
     ExternalInstruction {
         program_id: Pubkey,

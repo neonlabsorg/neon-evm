@@ -5,6 +5,7 @@ use jsonrpsee::core::Serialize;
 use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use serde_json::{from_slice, from_str};
+use std::env;
 use std::str::FromStr;
 use std::sync::Arc;
 // pub type RocksDbResult<T> = std::result::Result<T, anyhow::Error>;
@@ -133,7 +134,9 @@ impl TracerDb for RocksDb {
     }
 
     async fn get_neon_revisions(&self, _pubkey: &Pubkey) -> DbResult<RevisionMap> {
-        let revision = env!("NEON_REVISION").to_string();
+        let revision = env::var("NEON_REVISION")
+            .expect("NEON_REVISION should be set")
+            .to_string();
         info!("get_neon_revisions for {revision:?}");
         let ranges = vec![(1, 100_000, revision)];
         Ok(RevisionMap::new(ranges))

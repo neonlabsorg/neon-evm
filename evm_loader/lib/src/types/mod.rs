@@ -8,7 +8,6 @@ use crate::tracing::TraceCallConfig;
 use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
 pub use crate::types::tracer_ch_db::ClickHouseDb;
 pub use crate::types::tracer_rocks_db::RocksDb;
-use abi_stable::traits::IntoOwned;
 use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
 use ethnum::U256;
@@ -65,7 +64,11 @@ impl TracerDbType {
 
 impl Clone for TracerDbType {
     fn clone(&self) -> TracerDbType {
-        self.into_owned()
+        // self.to_owned().clone()
+        match self {
+            TracerDbType::RocksDb(r) => r.clone().into(),
+            TracerDbType::ClickHouseDb(c) => c.clone().into(),
+        }
     }
 }
 

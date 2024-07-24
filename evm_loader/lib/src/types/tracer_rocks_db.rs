@@ -147,7 +147,7 @@ impl TracerDb for RocksDb {
         Ok(env!("NEON_REVISION").to_string())
     }
 
-    async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<Option<u64>> {
+    async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<u64> {
         let response: String = self
             .client
             .request("get_slot_by_blockhash", rpc_params![blockhash])

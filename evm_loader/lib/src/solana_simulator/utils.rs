@@ -1,8 +1,6 @@
 use super::error::Error;
-use solana_runtime::{
-    bank::Bank,
-    genesis_utils::{create_genesis_config_with_leader_ex, GenesisConfigInfo},
-};
+use log::debug;
+use solana_program_runtime::sysvar_cache::SysvarCache;
 use solana_sdk::{
     account::Account,
     account_utils::StateMut,
@@ -11,11 +9,7 @@ use solana_sdk::{
         state::{AddressLookupTable, LookupTableMeta},
     },
     bpf_loader_upgradeable::{self, UpgradeableLoaderState},
-    fee_calculator::DEFAULT_TARGET_LAMPORTS_PER_SIGNATURE,
-    native_token::sol_to_lamports,
     pubkey::Pubkey,
-    signature::Keypair,
-    signer::Signer,
     sysvar,
 };
 
@@ -27,54 +21,10 @@ pub enum SyncState {
     Yes,
 }
 
-pub async fn genesis_config_info(
+pub async fn sync_sysvar_accounts(
     rpc: &impl Rpc,
-    sync: SyncState,
-    mint_sol: f64,
-) -> Result<GenesisConfigInfo, Error> {
-    let rent = sysvar::rent::Rent::default();
-    let fee_rate_governor = solana_sdk::fee_calculator::FeeRateGovernor {
-        // Initialize with a non-zero fee
-        lamports_per_signature: DEFAULT_TARGET_LAMPORTS_PER_SIGNATURE / 2,
-        ..solana_sdk::fee_calculator::FeeRateGovernor::default()
-    };
-    let validator_pubkey = Pubkey::new_unique();
-    let validator_stake_lamports = rent
-        .minimum_balance(solana_sdk::vote::state::VoteState::size_of())
-        + sol_to_lamports(1_000_000.0);
-
-    let mint_keypair = Keypair::new();
-    let voting_keypair = Keypair::new();
-
-    let mut genesis_config = create_genesis_config_with_leader_ex(
-        sol_to_lamports(mint_sol),
-        &mint_keypair.pubkey(),
-        &validator_pubkey,
-        &voting_keypair.pubkey(),
-        &Pubkey::new_unique(),
-        validator_stake_lamports,
-        42,
-        fee_rate_governor,
-        rent,
-        solana_sdk::genesis_config::ClusterType::Development,
-        vec![],
-    );
-
-    if sync == SyncState::Yes {
-        for feature in rpc.get_deactivated_solana_features().await? {
-            genesis_config.accounts.remove(&feature);
-        }
-    }
-
-    Ok(GenesisConfigInfo {
-        genesis_config,
-        mint_keypair,
-        voting_keypair,
-        validator_pubkey,
-    })
-}
-
-pub async fn sync_sysvar_accounts(rpc: &impl Rpc, bank: &Bank) -> Result<(), Error> {
+    sysvar_cache: &mut SysvarCache,
+) -> Result<(), Error> {
     let keys = sysvar::ALL_IDS.clone();
     let accounts = rpc.get_multiple_accounts(&keys).await?;
     for (key, account) in keys.into_iter().zip(accounts) {
@@ -87,57 +37,57 @@ pub async fn sync_sysvar_accounts(rpc: &impl Rpc, bank: &Bank) -> Result<(), Err
                 use sysvar::clock::Clock;
 
                 let clock: Clock = bincode::deserialize(&account.data)?;
-                bank.set_sysvar_for_tests(&clock);
+                sysvar_cache.set_clock(clock);
+            }
+            sysvar::epoch_rewards::ID => {
+                use sysvar::epoch_rewards::EpochRewards;
+
+                let epoch_rewards: EpochRewards = bincode::deserialize(&account.data)?;
+                sysvar_cache.set_epoch_rewards(epoch_rewards);
             }
             sysvar::epoch_schedule::ID => {
                 use sysvar::epoch_schedule::EpochSchedule;
 
                 let epoch_schedule: EpochSchedule = bincode::deserialize(&account.data)?;
-                bank.set_sysvar_for_tests(&epoch_schedule);
+                sysvar_cache.set_epoch_schedule(epoch_schedule);
             }
             sysvar::rent::ID => {
                 use sysvar::rent::Rent;
 
                 let rent: Rent = bincode::deserialize(&account.data)?;
-                bank.set_sysvar_for_tests(&rent);
-            }
-            sysvar::rewards::ID => {
-                use sysvar::rewards::Rewards;
-
-                let rewards: Rewards = bincode::deserialize(&account.data)?;
-                bank.set_sysvar_for_tests(&rewards);
+                sysvar_cache.set_rent(rent);
             }
             sysvar::slot_hashes::ID => {
                 use sysvar::slot_hashes::SlotHashes;
 
                 let slot_hashes: SlotHashes = bincode::deserialize(&account.data)?;
-                bank.set_sysvar_for_tests(&slot_hashes);
-            }
-            sysvar::slot_history::ID => {
-                use sysvar::slot_history::SlotHistory;
-
-                let slot_history: SlotHistory = bincode::deserialize(&account.data)?;
-                bank.set_sysvar_for_tests(&slot_history);
+                sysvar_cache.set_slot_hashes(slot_hashes);
             }
             sysvar::stake_history::ID => {
                 use sysvar::stake_history::StakeHistory;
 
                 let stake_history: StakeHistory = bincode::deserialize(&account.data)?;
-                bank.set_sysvar_for_tests(&stake_history);
+                sysvar_cache.set_stake_history(stake_history);
             }
             #[allow(deprecated)]
             id if sysvar::fees::check_id(&id) => {
                 use sysvar::fees::Fees;
 
                 let fees: Fees = bincode::deserialize(&account.data)?;
-                bank.set_sysvar_for_tests(&fees);
+                sysvar_cache.set_fees(fees);
+            }
+            sysvar::last_restart_slot::ID => {
+                use sysvar::last_restart_slot::LastRestartSlot;
+
+                let last_restart_slot: LastRestartSlot = bincode::deserialize(&account.data)?;
+                sysvar_cache.set_last_restart_slot(last_restart_slot);
             }
             #[allow(deprecated)]
             id if sysvar::recent_blockhashes::check_id(&id) => {
                 use sysvar::recent_blockhashes::RecentBlockhashes;
 
                 let recent_blockhashes: RecentBlockhashes = bincode::deserialize(&account.data)?;
-                bank.set_sysvar_for_tests(&recent_blockhashes);
+                sysvar_cache.set_recent_blockhashes(recent_blockhashes);
             }
             _ => {}
         }
@@ -148,7 +98,7 @@ pub async fn sync_sysvar_accounts(rpc: &impl Rpc, bank: &Bank) -> Result<(), Err
 
 pub fn program_data_address(account: &Account) -> Result<Pubkey, Error> {
     assert!(account.executable);
-    assert!(account.owner == bpf_loader_upgradeable::id());
+    assert_eq!(account.owner, bpf_loader_upgradeable::id());
 
     let UpgradeableLoaderState::Program {
         programdata_address,
@@ -162,15 +112,19 @@ pub fn program_data_address(account: &Account) -> Result<Pubkey, Error> {
 }
 
 pub fn reset_program_data_slot(account: &mut Account) -> Result<(), Error> {
-    assert!(account.owner == bpf_loader_upgradeable::id());
+    assert_eq!(account.owner, bpf_loader_upgradeable::id());
 
     let UpgradeableLoaderState::ProgramData {
+        slot,
         upgrade_authority_address,
-        ..
     } = account.state()?
     else {
         return Err(Error::ProgramAccountError);
     };
+
+    debug!(
+        "slot_before_update: slot={slot} upgrade_authority_address={upgrade_authority_address:?}"
+    );
 
     let new_state = UpgradeableLoaderState::ProgramData {
         slot: 0,
@@ -178,11 +132,15 @@ pub fn reset_program_data_slot(account: &mut Account) -> Result<(), Error> {
     };
     account.set_state(&new_state)?;
 
+    debug!(
+        "slot_after_update: slot={slot} upgrade_authority_address={upgrade_authority_address:?}"
+    );
+
     Ok(())
 }
 
 pub fn reset_alt_slot(account: &mut Account) -> Result<(), Error> {
-    assert!(account.owner == address_lookup_table::program::id());
+    assert_eq!(account.owner, address_lookup_table::program::id());
 
     let lookup_table = AddressLookupTable::deserialize(&account.data)?;
     let metadata = LookupTableMeta {

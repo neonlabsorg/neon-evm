@@ -17,6 +17,7 @@ pub struct NetSpecificConfig {
     pub neon_chain_id: u64,
     pub neon_token_mint: String,
     pub chains: Vec<Chain>,
+    pub no_update_tracking_owners: Vec<String>,
 }
 
 impl Parse for NetSpecificConfig {
@@ -32,6 +33,13 @@ impl Parse for NetSpecificConfig {
 
         let program_id = root["program_id"].as_str().unwrap().to_string();
         let operators_whitelist = root["operators_whitelist"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+
+        let no_update_tracking_owners = root["no_update_tracking_owners"]
             .as_array()
             .unwrap()
             .iter()
@@ -69,6 +77,7 @@ impl Parse for NetSpecificConfig {
             neon_chain_id,
             neon_token_mint,
             chains,
+            no_update_tracking_owners,
         })
     }
 }

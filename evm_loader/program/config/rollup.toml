@@ -1,4 +1,7 @@
 program_id = "EgbRZxFRQTiZpQGinE5jT6KQq5jtVnjtLdSTkW5UTcAv"
+
+no_update_tracking_owners = []
+
 operators_whitelist = [
     "2Gsipy7yniskehFAccTp4ShhmdTiP8UsLWVFdxsG6ZGt",
     "2fx77qnumM3sw5duzMYod8c8xSLavE4RwJAdNdeYZpFq",

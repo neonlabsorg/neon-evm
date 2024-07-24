@@ -36,7 +36,7 @@ ethnum = { version = "1.5", default-features = false, features = ["serde"] }
 goblin = { version = "0.8.2" }
 scroll = "0.12.0"
 tokio = { version = "1", features = ["full"] }
-clickhouse = "0.11.6"
+clickhouse = "0.12.0"
 tracing = "0.1"
 async-trait = "0.1.81"
 build-info = "0.0.37"

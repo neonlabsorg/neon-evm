@@ -47,7 +47,7 @@ pub fn load_api_config_from_environment() -> APIOptions {
     let solana_timeout = env::var("SOLANA_TIMEOUT").unwrap_or_else(|_| "30".to_string());
     let solana_timeout = solana_timeout
         .parse()
-        .expect("SOLANA_TIMEOUT var#[derive(Debug)]iable must be a valid number");
+        .expect("SOLANA_TIMEOUT variable must be a valid number");
 
     let solana_max_retries = env::var("SOLANA_MAX_RETRIES").unwrap_or_else(|_| "10".to_string());
     let solana_max_retries = solana_max_retries

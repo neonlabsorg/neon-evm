@@ -177,7 +177,7 @@ async fn emulate_trx<T: Tracer>(
         let mut backend = SyncedExecutorState::new(storage);
         let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
             Ok(evm) => evm,
-            Err(e) => { 
+            Err(e) => {
                 error!("EVM creation failed {e:?}");
                 return Ok((EmulateResponse::revert(&e, &backend), None));
             }

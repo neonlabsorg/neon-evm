@@ -101,6 +101,7 @@ impl<K: Ord, V> Default for TreeMap<K, V> {
     }
 }
 
+#[allow(clippy::iter_without_into_iter)]
 impl<'a, K: 'a, V: 'a> TreeMap<K, V> {
     pub fn iter(&'a self) -> Zip<std::slice::Iter<'a, K>, std::slice::Iter<'a, V>> {
         std::iter::zip(self.keys.iter(), self.values.iter())

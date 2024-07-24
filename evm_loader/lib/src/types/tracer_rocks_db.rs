@@ -118,7 +118,7 @@ impl TracerDb for RocksDb {
             .client
             .request("get_transaction_index", rpc_params![signature])
             .await?;
-        println!("get_transaction_index response: {:?}", response);
+        info!("get_transaction_index response: {:?}", response);
         Ok(u64::from_str(response.as_str())?)
     }
 
@@ -134,11 +134,13 @@ impl TracerDb for RocksDb {
 
     async fn get_neon_revisions(&self, _pubkey: &Pubkey) -> DbResult<RevisionMap> {
         let revision = env!("NEON_REVISION").to_string();
+        info!("get_neon_revisions for {revision:?}");
         let ranges = vec![(1, 100_000, revision)];
         Ok(RevisionMap::new(ranges))
     }
 
-    async fn get_neon_revision(&self, _slot: Slot, _pubkey: &Pubkey) -> DbResult<String> {
+    async fn get_neon_revision(&self, slot: Slot, pubkey: &Pubkey) -> DbResult<String> {
+        info!("get_neon_revision for {slot:?}, pubkey: {pubkey:?}");
         Ok(env!("NEON_REVISION").to_string())
     }
 

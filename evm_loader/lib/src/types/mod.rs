@@ -137,6 +137,8 @@ impl TxParams {
             value: Some(tx.value()),
             gas_limit: Some(tx.gas_limit()),
             gas_price: Some(tx.gas_price()),
+            max_fee_per_gas: tx.max_fee_per_gas(),
+            max_priority_fee_per_gas: tx.max_priority_fee_per_gas(),
             chain_id: tx.chain_id(),
             access_list: None,
             actual_gas_used: None,

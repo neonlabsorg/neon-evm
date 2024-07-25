@@ -90,8 +90,6 @@ pub trait TracerDb {
 
     async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64>;
 
-    async fn get_accounts(&self, start: u64, end: u64) -> DbResult<Vec<Vec<u8>>>;
-
     async fn get_neon_revisions(&self, _pubkey: &Pubkey) -> DbResult<RevisionMap>;
 
     async fn get_neon_revision(&self, _slot: Slot, _pubkey: &Pubkey) -> DbResult<String>;

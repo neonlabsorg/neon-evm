@@ -4,17 +4,16 @@ use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::Serialize;
 use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
-use serde_json::{from_slice, from_str};
-use std::env;
-use std::str::FromStr;
-use std::sync::Arc;
-// pub type RocksDbResult<T> = std::result::Result<T, anyhow::Error>;
+use serde_json::from_str;
 use solana_sdk::signature::Signature;
 use solana_sdk::{
     account::Account,
     clock::{Slot, UnixTimestamp},
     pubkey::Pubkey,
 };
+use std::env;
+use std::str::FromStr;
+use std::sync::Arc;
 use tracing::info;
 
 #[derive(Clone, Serialize)]
@@ -121,16 +120,6 @@ impl TracerDb for RocksDb {
             .await?;
         info!("get_transaction_index response: {:?}", response);
         Ok(u64::from_str(response.as_str())?)
-    }
-
-    async fn get_accounts(&self, start: u64, end: u64) -> DbResult<Vec<Vec<u8>>> {
-        let response: String = self
-            .client
-            .request("get_accounts", rpc_params![start, end])
-            .await?;
-        info!("get_accounts response: {:?}", response);
-        let accounts: Vec<Vec<u8>> = from_slice((response).as_ref()).unwrap();
-        Ok(accounts)
     }
 
     async fn get_neon_revisions(&self, _pubkey: &Pubkey) -> DbResult<RevisionMap> {

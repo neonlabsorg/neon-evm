@@ -113,12 +113,19 @@ impl TracerDb for ClickHouseDb {
             .map_err(|e| anyhow!("Failed to get NEON_REVISION, error: {e}"))
     }
 
-    async fn get_transaction_index(&self, _signature: Signature) -> DbResult<u64> {
-        todo!()
-    }
-
-    async fn get_accounts(&self, _start: u64, _end: u64) -> DbResult<Vec<Vec<u8>>> {
-        todo!()
+    async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64> {
+        let query = r"
+        SELECT idx
+        FROM events.notify_transaction_distributed
+        WHERE signature = ?
+        LIMIT 1
+        ";
+        self.client
+            .query(query)
+            .bind(format!("{:?}", signature.as_ref()))
+            .fetch_one::<u64>()
+            .await
+            .map_err(Into::into)
     }
 
     async fn get_neon_revisions(&self, pubkey: &Pubkey) -> DbResult<RevisionMap> {

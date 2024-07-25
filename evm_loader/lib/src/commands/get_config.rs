@@ -1,21 +1,20 @@
 #![allow(clippy::future_not_send)]
 
+use std::collections::BTreeMap;
+
 use async_trait::async_trait;
 use base64::Engine;
 use enum_dispatch::enum_dispatch;
-use std::collections::BTreeMap;
-use tokio::sync::OnceCell;
-
 use serde::{Deserialize, Serialize};
-use solana_sdk::{instruction::Instruction, pubkey::Pubkey, transaction::Transaction};
-
-use crate::solana_simulator::SolanaSimulator;
-use crate::NeonResult;
-
-use crate::rpc::{CallDbClient, CloneRpcClient};
 use serde_with::{serde_as, DisplayFromStr};
 use solana_client::rpc_config::RpcSimulateTransactionConfig;
-use solana_sdk::signature::Signer;
+use solana_sdk::signer::Signer;
+use solana_sdk::{instruction::Instruction, pubkey::Pubkey, transaction::Transaction};
+use tokio::sync::OnceCell;
+
+use crate::rpc::{CallDbClient, CloneRpcClient};
+use crate::solana_simulator::SolanaSimulator;
+use crate::NeonResult;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Status {
@@ -286,18 +285,24 @@ pub async fn read_chains(
     rpc: &impl BuildConfigSimulator,
     program_id: Pubkey,
 ) -> NeonResult<Vec<ChainInfo>> {
-    if rpc.use_cache() && CHAINS_CACHE.initialized() {
-        return Ok(CHAINS_CACHE.get().unwrap().clone());
-    }
-
-    let mut simulator = rpc.build_config_simulator(program_id).await?;
-    let chains = simulator.get_chains().await?;
-
     if rpc.use_cache() {
-        CHAINS_CACHE.set(chains.clone()).unwrap();
+        return CHAINS_CACHE
+            .get_or_try_init(|| get_chains(rpc, program_id))
+            .await
+            .cloned();
     }
 
-    Ok(chains)
+    get_chains(rpc, program_id).await
+}
+
+async fn get_chains(
+    rpc: &(impl BuildConfigSimulator + Sized),
+    program_id: Pubkey,
+) -> NeonResult<Vec<ChainInfo>> {
+    rpc.build_config_simulator(program_id)
+        .await?
+        .get_chains()
+        .await
 }
 
 pub async fn read_legacy_chain_id(

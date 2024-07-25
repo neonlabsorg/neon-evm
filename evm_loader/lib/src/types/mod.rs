@@ -51,23 +51,20 @@ pub enum TracerDbType {
 }
 
 impl TracerDbType {
-    pub async fn from_config(db_config: &DbConfig) -> TracerDbType {
+    pub async fn from_config(db_config: &DbConfig) -> Self {
         if let Some(rocksdb_config) = &db_config.rocksdb_config {
             RocksDb::new(rocksdb_config).await.into()
         } else {
-            ClickHouseDb::new(&db_config.clone().chdb_config.unwrap())
-                .await
-                .into()
+            ClickHouseDb::new(&db_config.clone().chdb_config.unwrap()).into()
         }
     }
 }
 
 impl Clone for TracerDbType {
-    fn clone(&self) -> TracerDbType {
-        // self.to_owned().clone()
+    fn clone(&self) -> Self {
         match self {
-            TracerDbType::RocksDb(r) => r.clone().into(),
-            TracerDbType::ClickHouseDb(c) => c.clone().into(),
+            Self::RocksDb(r) => r.clone().into(),
+            Self::ClickHouseDb(c) => c.clone().into(),
         }
     }
 }

@@ -268,7 +268,8 @@ impl TracerDb for ClickHouseDb {
 }
 
 impl ClickHouseDb {
-    pub async fn new(config: &ChDbConfig) -> Self {
+    #[must_use]
+    pub fn new(config: &ChDbConfig) -> Self {
         let url_id = rand::thread_rng().gen_range(0..config.clickhouse_url.len());
         let url = config.clickhouse_url.get(url_id).unwrap();
 

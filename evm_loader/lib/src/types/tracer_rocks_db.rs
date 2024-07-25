@@ -105,11 +105,12 @@ impl TracerDb for RocksDb {
             .await?;
 
         let account = from_str::<Option<Account>>(response.as_str())?;
-        if let Some(account) = &account {
-            info!("Got Account by {pubkey:?} owner: {:?} lamports: {:?} executable: {:?} rent_epoch: {:?}", account.owner, account.lamports, account.executable, account.rent_epoch);
-        } else {
+        account.as_ref().map_or_else(|| {
             info!("Got None for Account by {pubkey:?}");
-        }
+        }, |account| {
+            info!("Got Account by {pubkey:?} owner: {:?} lamports: {:?} executable: {:?} rent_epoch: {:?}", account.owner, account.lamports, account.executable, account.rent_epoch);
+        });
+
         Ok(account)
     }
 
@@ -123,9 +124,8 @@ impl TracerDb for RocksDb {
     }
 
     async fn get_neon_revisions(&self, _pubkey: &Pubkey) -> DbResult<RevisionMap> {
-        let revision = env::var("NEON_REVISION")
-            .expect("NEON_REVISION should be set")
-            .to_string();
+        let revision = env::var("NEON_REVISION").expect("NEON_REVISION should be set");
+
         info!("get_neon_revisions for {revision:?}");
         let ranges = vec![(1, 100_000, revision)];
         Ok(RevisionMap::new(ranges))

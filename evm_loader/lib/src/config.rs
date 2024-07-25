@@ -78,6 +78,7 @@ pub fn load_api_config_from_environment() -> APIOptions {
     }
 }
 
+#[must_use]
 pub fn load_db_config_from_environment() -> DbConfig {
     env::var("TRACER_DB_TYPE")
         .ok()

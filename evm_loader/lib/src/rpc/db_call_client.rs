@@ -1,8 +1,9 @@
 use super::{e, Rpc};
-use crate::types::TracerDb;
+use crate::types::{TracerDb, TracerDbType};
 use crate::NeonError;
 use crate::NeonError::RocksDb;
 use async_trait::async_trait;
+use log::debug;
 use solana_client::{
     client_error::Result as ClientResult,
     client_error::{ClientError, ClientErrorKind},
@@ -12,17 +13,16 @@ use solana_sdk::{
     clock::{Slot, UnixTimestamp},
     pubkey::Pubkey,
 };
-use tracing::debug;
 
 pub struct CallDbClient {
-    tracer_db: TracerDb,
+    tracer_db: TracerDbType,
     slot: u64,
     tx_index_in_block: Option<u64>,
 }
 
 impl CallDbClient {
     pub async fn new(
-        tracer_db: TracerDb,
+        tracer_db: TracerDbType,
         slot: u64,
         tx_index_in_block: Option<u64>,
     ) -> Result<Self, NeonError> {
@@ -30,6 +30,7 @@ impl CallDbClient {
             .get_earliest_rooted_slot()
             .await
             .map_err(RocksDb)?;
+
         if slot < earliest_rooted_slot {
             return Err(NeonError::EarlySlot(slot, earliest_rooted_slot));
         }
@@ -63,9 +64,7 @@ impl Rpc for CallDbClient {
         for key in pubkeys {
             result.push(self.get_account_at(key).await?);
         }
-
-        debug!("db_call_client.get_multiple_accounts result: {result:?}");
-
+        debug!("get_multiple_accounts: pubkeys={pubkeys:?} result={result:?}");
         Ok(result)
     }
 

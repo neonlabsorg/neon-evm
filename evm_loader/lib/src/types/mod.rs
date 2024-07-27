@@ -1,10 +1,17 @@
 pub mod tracer_ch_common;
 
-mod tracer_ch_db;
-
+pub(crate) mod tracer_ch_db;
 pub mod tracer_rocks_db;
+
+use crate::commands::get_config::ChainInfo;
 use crate::tracing::TraceCallConfig;
+use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
+pub use crate::types::tracer_ch_db::ClickHouseDb;
+pub use crate::types::tracer_rocks_db::RocksDb;
+use async_trait::async_trait;
+use enum_dispatch::enum_dispatch;
 use ethnum::U256;
+use evm_loader::solana_program::clock::{Slot, UnixTimestamp};
 pub use evm_loader::types::Address;
 use evm_loader::types::{StorageKey, Transaction};
 use evm_loader::{
@@ -14,12 +21,16 @@ use evm_loader::{
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
+use solana_sdk::signature::Signature;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::HashMap;
-pub use tracer_rocks_db::RocksDb as TracerDb;
+pub type DbResult<T> = Result<T, anyhow::Error>;
 
-use crate::commands::get_config::ChainInfo;
-
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
+pub struct DbConfig {
+    pub rocksdb_config: Option<RocksDbConfig>,
+    pub chdb_config: Option<ChDbConfig>,
+}
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
 pub struct ChDbConfig {
     pub clickhouse_url: Vec<String>,
@@ -31,6 +42,58 @@ pub struct ChDbConfig {
 pub struct RocksDbConfig {
     pub rocksdb_host: String,
     pub rocksdb_port: u16,
+}
+
+#[enum_dispatch]
+pub enum TracerDbType {
+    ClickHouseDb,
+    RocksDb,
+}
+
+impl TracerDbType {
+    pub async fn from_config(db_config: &DbConfig) -> Self {
+        if let Some(rocksdb_config) = &db_config.rocksdb_config {
+            RocksDb::new(rocksdb_config).await.into()
+        } else {
+            ClickHouseDb::new(&db_config.clone().chdb_config.unwrap()).into()
+        }
+    }
+}
+
+impl Clone for TracerDbType {
+    fn clone(&self) -> Self {
+        match self {
+            Self::RocksDb(r) => r.clone().into(),
+            Self::ClickHouseDb(c) => c.clone().into(),
+        }
+    }
+}
+
+#[async_trait]
+#[enum_dispatch(TracerDbType)]
+pub trait TracerDb {
+    async fn get_block_time(&self, slot: Slot) -> DbResult<UnixTimestamp>;
+
+    async fn get_earliest_rooted_slot(&self) -> DbResult<u64>;
+
+    async fn get_latest_block(&self) -> DbResult<u64>;
+
+    async fn get_account_at(
+        &self,
+        pubkey: &Pubkey,
+        slot: u64,
+        tx_index_in_block: Option<u64>,
+    ) -> DbResult<Option<Account>>;
+
+    async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64>;
+
+    async fn get_neon_revisions(&self, _pubkey: &Pubkey) -> DbResult<RevisionMap>;
+
+    async fn get_neon_revision(&self, _slot: Slot, _pubkey: &Pubkey) -> DbResult<String>;
+
+    async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<u64>;
+
+    async fn get_sync_status(&self) -> DbResult<EthSyncStatus>;
 }
 
 #[serde_as]
@@ -181,6 +244,7 @@ pub struct EmulateApiRequest {
     pub body: EmulateRequest,
     pub slot: Option<u64>,
     pub tx_index_in_block: Option<u64>,
+    pub id: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Default, Copy, Clone, Eq, PartialEq)]
@@ -209,6 +273,7 @@ pub struct GetBalanceRequest {
     #[serde_as(as = "OneOrMany<_>")]
     pub account: Vec<BalanceAddress>,
     pub slot: Option<u64>,
+    pub id: Option<String>,
 }
 
 #[serde_as]
@@ -217,6 +282,7 @@ pub struct GetContractRequest {
     #[serde_as(as = "OneOrMany<_>")]
     pub contract: Vec<Address>,
     pub slot: Option<u64>,
+    pub id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -224,6 +290,7 @@ pub struct GetStorageAtRequest {
     pub contract: Address,
     pub index: U256,
     pub slot: Option<u64>,
+    pub id: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Default)]
@@ -256,6 +323,7 @@ pub struct GetHolderRequest {
     #[serde_as(as = "DisplayFromStr")]
     pub pubkey: Pubkey,
     pub slot: Option<u64>,
+    pub id: Option<String>,
 }
 
 #[serde_as]
@@ -269,6 +337,7 @@ pub struct SimulateSolanaRequest {
     pub blockhash: [u8; 32],
     #[serde_as(as = "Vec<Hex>")]
     pub transactions: Vec<Vec<u8>>,
+    pub id: Option<String>,
 }
 
 #[cfg(test)]

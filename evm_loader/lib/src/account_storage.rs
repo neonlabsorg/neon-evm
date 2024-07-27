@@ -332,6 +332,11 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
 
         let mut response = self.rpc.get_multiple_accounts(&missing_keys).await?;
 
+        debug!(
+            "get_multiple_accounts: missing_keys={:?} response={response:?}",
+            missing_keys
+        );
+
         let mut j = 0_usize;
         for i in 0..pubkeys.len() {
             if exists[i] {
@@ -543,6 +548,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                     self._add_legacy_storage(&legacy_storage, &info, pubkey)
                         .await
                 }
+                evm_loader::account::TAG_EMPTY => Ok(self.add_empty_account(pubkey)),
                 _ => {
                     unimplemented!();
                 }
@@ -559,6 +565,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     fn add_empty_account(&self, pubkey: Pubkey) -> &RefCell<AccountData> {
         let account_data = AccountData::new(pubkey);
         self.mark_account(pubkey, false);
+        info!("add_empty_account(pubkey={pubkey}, account_data={account_data:?})");
         self.accounts
             .insert(pubkey, Box::new(RefCell::new(account_data)))
     }
@@ -568,6 +575,8 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         pubkey: Pubkey,
         is_writable: bool,
     ) -> NeonResult<&RefCell<AccountData>> {
+        info!("use_account(pubkey={pubkey}, is_writable={is_writable})");
+
         if pubkey == self.operator() {
             return Err(EvmLoaderError::InvalidAccountForCall(pubkey).into());
         }
@@ -580,8 +589,10 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
 
         let account = self._get_account_from_rpc(pubkey).await?;
         if let Some(account) = account {
+            info!("found account for pubkey={pubkey} in RPC account={account:?}");
             self.add_account(pubkey, account).await
         } else {
+            info!("account not found in RPC, adding empty account for pubkey={pubkey}");
             Ok(self.add_empty_account(pubkey))
         }
     }
@@ -1340,7 +1351,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             .await
             .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
 
-        solana_simulator.set_sysvar(&Clock {
+        solana_simulator.set_clock(Clock {
             slot: self.block_number,
             epoch_start_timestamp: self.block_timestamp,
             epoch: 0,
@@ -1379,10 +1390,9 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             .await
             .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
 
-        let trx = Transaction::new_unsigned(Message::new_with_blockhash(
+        let trx = Transaction::new_unsigned(Message::new(
             &[instruction.clone()],
             Some(&solana_simulator.payer().pubkey()),
-            &solana_simulator.blockhash(),
         ));
 
         let result = solana_simulator

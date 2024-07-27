@@ -1,11 +1,10 @@
 use crate::config::APIOptions;
 use crate::rpc::{CallDbClient, CloneRpcClient, RpcEnum};
-use crate::types::tracer_rocks_db::RocksDb;
-use crate::types::TracerDb;
+use crate::types::TracerDbType;
 use crate::NeonError;
 
 pub struct State {
-    pub tracer_db: TracerDb,
+    pub tracer_db: TracerDbType,
     pub rpc_client: CloneRpcClient,
     pub config: APIOptions,
 }
@@ -13,8 +12,9 @@ pub struct State {
 impl State {
     #[must_use]
     pub async fn new(config: APIOptions) -> Self {
+        let tracer_db = TracerDbType::from_config(&config.db_config).await;
         Self {
-            tracer_db: RocksDb::new(&(config.db_config)).await,
+            tracer_db,
             rpc_client: CloneRpcClient::new_from_api_config(&config),
             config,
         }

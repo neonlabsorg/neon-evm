@@ -1,6 +1,6 @@
+use crate::types::{ChDbConfig, DbConfig, RocksDbConfig};
 use std::{env, str::FromStr};
 
-use crate::types::RocksDbConfig;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair};
 
@@ -13,7 +13,7 @@ pub struct Config {
     pub fee_payer: Option<Keypair>,
     pub commitment: CommitmentConfig,
     pub solana_cli_config: solana_cli_config::Config,
-    pub db_config: Option<RocksDbConfig>,
+    pub db_config: Option<DbConfig>,
     pub json_rpc_url: String,
     pub keypair_path: String,
 }
@@ -27,7 +27,7 @@ pub struct APIOptions {
     pub solana_max_retries: usize,
     pub evm_loader: Pubkey,
     pub key_for_config: Pubkey,
-    pub db_config: RocksDbConfig,
+    pub db_config: DbConfig,
 }
 
 /// # Errors
@@ -78,7 +78,49 @@ pub fn load_api_config_from_environment() -> APIOptions {
     }
 }
 
-pub fn load_db_config_from_environment() -> RocksDbConfig {
+#[must_use]
+pub fn load_db_config_from_environment() -> DbConfig {
+    env::var("TRACER_DB_TYPE")
+        .ok()
+        .and_then(|db_type| match db_type.to_lowercase().as_str() {
+            "rocksdb" => Option::from(DbConfig {
+                rocksdb_config: Option::from(load_rocks_db_config_from_environment()),
+                chdb_config: None,
+            }),
+            "clickhouse" => Option::from(DbConfig {
+                rocksdb_config: None,
+                chdb_config: Option::from(load_ch_db_config_from_environment()),
+            }),
+            _ => None,
+        })
+        .expect("TRACER_DB_TYPE variable must be either 'clickhouse' or 'rocksdb'")
+}
+
+pub fn load_ch_db_config_from_environment() -> ChDbConfig {
+    let clickhouse_url = env::var("NEON_DB_CLICKHOUSE_URLS")
+        .map(|urls| {
+            urls.split(';')
+                .map(std::borrow::ToOwned::to_owned)
+                .collect::<Vec<String>>()
+        })
+        .expect("neon clickhouse db urls valiable must be set");
+
+    let clickhouse_user = env::var("NEON_DB_CLICKHOUSE_USER")
+        .map(Some)
+        .unwrap_or(None);
+
+    let clickhouse_password = env::var("NEON_DB_CLICKHOUSE_PASSWORD")
+        .map(Some)
+        .unwrap_or(None);
+
+    ChDbConfig {
+        clickhouse_url,
+        clickhouse_user,
+        clickhouse_password,
+    }
+}
+
+pub fn load_rocks_db_config_from_environment() -> RocksDbConfig {
     let rocksdb_host = env::var("ROCKSDB_HOST")
         .as_deref()
         .unwrap_or("127.0.0.1")

@@ -32,7 +32,7 @@ use evm_loader::types::Address;
 use neon_lib::errors::NeonError;
 use neon_lib::rpc::{CallDbClient, RpcEnum};
 use neon_lib::tracing::tracers::TracerTypeEnum;
-use neon_lib::types::TracerDb;
+use neon_lib::types::TracerDbType;
 use solana_clap_utils::keypair::signer_from_path;
 use solana_sdk::signature::Signer;
 
@@ -154,15 +154,14 @@ async fn build_rpc(options: &ArgMatches<'_>, config: &Config) -> Result<RpcEnum,
         .value_of("slot")
         .map(|slot_str| slot_str.parse().expect("slot parse error"));
 
+    let db_config = config
+        .db_config
+        .clone()
+        .ok_or(NeonError::LoadingDBConfigError)?;
+
     Ok(if let Some(slot) = slot {
-        RpcEnum::CallDbClient(
-            CallDbClient::new(
-                TracerDb::new(config.db_config.as_ref().expect("db-config not found")).await,
-                slot,
-                None,
-            )
-            .await?,
-        )
+        let tracer_db = TracerDbType::from_config(&db_config).await;
+        RpcEnum::CallDbClient(CallDbClient::new(tracer_db, slot, None).await?)
     } else {
         RpcEnum::CloneRpcClient(CloneRpcClient::new_from_config(config))
     })

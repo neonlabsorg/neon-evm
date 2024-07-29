@@ -14,7 +14,7 @@ solana-clap-utils.workspace = true
 solana-cli-config.workspace = true
 hex = "0.4.3"
 serde = "1.0.204"
-serde_json = { version = "1.0.120", features = ["preserve_order"] }
+serde_json = { version = "1.0.121", features = ["preserve_order"] }
 log = "0.4.22"
 fern = "0.6"
 ethnum = { version = "1.5", default-features = false, features = ["serde"] }

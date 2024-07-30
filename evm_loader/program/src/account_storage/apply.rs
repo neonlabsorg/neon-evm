@@ -3,15 +3,15 @@ use std::collections::HashMap;
 use ethnum::U256;
 use solana_program::instruction::Instruction;
 use solana_program::program::{invoke_signed_unchecked, invoke_unchecked};
+use solana_program::program_error::ProgramError;
 use solana_program::system_program;
 
 use crate::account::{AllocateResult, BalanceAccount, ContractAccount, StorageCell};
 use crate::account_storage::{ProgramAccountStorage, FAKE_OPERATOR};
-use crate::config::{
-    ACCOUNT_SEED_VERSION, PAYMENT_TO_TREASURE, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
-};
+use crate::config::{PAYMENT_TO_TREASURE, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT};
 use crate::error::Result;
 use crate::executor::Action;
+use crate::pda_seeds::{contract_account_seeds, with_slice_of_slice_of_slice};
 use crate::types::Address;
 
 impl<'a> ProgramAccountStorage<'a> {
@@ -136,12 +136,6 @@ impl<'a> ProgramAccountStorage<'a> {
                     seeds,
                     ..
                 } => {
-                    let seeds = seeds
-                        .iter()
-                        .map(|s| s.iter().map(|s| s.as_slice()).collect::<Vec<_>>())
-                        .collect::<Vec<_>>();
-                    let seeds = seeds.iter().map(|s| s.as_slice()).collect::<Vec<_>>();
-
                     let mut accounts_info = Vec::with_capacity(accounts.len() + 1);
 
                     let program = self.accounts.get(&program_id).clone();
@@ -161,11 +155,14 @@ impl<'a> ProgramAccountStorage<'a> {
                         data,
                     };
 
-                    if !seeds.is_empty() {
-                        invoke_signed_unchecked(&instruction, &accounts_info, &seeds)?;
-                    } else {
-                        invoke_unchecked(&instruction, &accounts_info)?;
-                    }
+                    with_slice_of_slice_of_slice(&seeds, |seeds| {
+                        if !seeds.is_empty() {
+                            invoke_signed_unchecked(&instruction, &accounts_info, &seeds)?;
+                        } else {
+                            invoke_unchecked(&instruction, &accounts_info)?;
+                        }
+                        Ok::<(), ProgramError>(())
+                    })?;
                 }
             }
         }
@@ -219,11 +216,15 @@ impl<'a> ProgramAccountStorage<'a> {
 
                 if system_program::check_id(account.owner) {
                     let (_, bump) = self.keys.contract_with_bump_seed(&crate::ID, address);
-                    let sign: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], address.as_bytes(), &[bump]];
 
                     let len = values.len();
-                    let mut storage =
-                        StorageCell::create(cell_address, len, &self.accounts, sign, &self.rent)?;
+                    let mut storage = StorageCell::create(
+                        cell_address,
+                        len,
+                        &self.accounts,
+                        &contract_account_seeds(&address, &[bump]),
+                        &self.rent,
+                    )?;
                     let mut cells = storage.cells_mut();
 
                     assert_eq!(cells.len(), len);

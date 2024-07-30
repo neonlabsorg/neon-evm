@@ -1,5 +1,6 @@
 use std::mem::size_of;
 
+use crate::pda_seeds::with_operator_seeds;
 use crate::{
     error::{Error, Result},
     types::{Address, Transaction},
@@ -8,8 +9,7 @@ use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, system_program};
 
 use super::{
-    program, AccountHeader, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION,
-    TAG_OPERATOR_BALANCE,
+    program, AccountHeader, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN, TAG_OPERATOR_BALANCE,
 };
 
 #[repr(C, packed)]
@@ -77,21 +77,21 @@ impl<'a> OperatorBalanceAccount<'a> {
         }
 
         // Create a new account
-        let program_seeds: &[&[u8]] = &[
-            &[ACCOUNT_SEED_VERSION],
-            operator.key.as_ref(),
-            address.as_bytes(),
-            &U256::from(chain_id).to_be_bytes(),
-            &[bump_seed],
-        ];
-
-        system.create_pda_account(
-            &crate::ID,
+        with_operator_seeds(
             operator,
-            account,
-            program_seeds,
-            Self::required_account_size(),
-            rent,
+            &address,
+            chain_id,
+            &[bump_seed],
+            |program_seeds| {
+                system.create_pda_account(
+                    &crate::ID,
+                    operator,
+                    account,
+                    program_seeds,
+                    Self::required_account_size(),
+                    rent,
+                )
+            },
         )?;
 
         super::set_tag(&crate::ID, account, TAG_OPERATOR_BALANCE, Header::VERSION)?;

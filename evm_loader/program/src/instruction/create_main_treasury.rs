@@ -1,6 +1,6 @@
+use crate::pda_seeds::main_treasury_seeds;
 use crate::{
     account::{program::System, program::Token, MainTreasury, Operator},
-    config::TREASURY_POOL_SEED,
     error::{Error, Result},
 };
 use solana_program::{
@@ -119,7 +119,7 @@ pub fn process<'a>(
         &spl_token::id(),
         &accounts.payer,
         accounts.main_treasury,
-        &[TREASURY_POOL_SEED.as_bytes(), &[bump_seed]],
+        &main_treasury_seeds(&[bump_seed]),
         spl_token::state::Account::LEN,
         &Rent::get()?,
     )?;

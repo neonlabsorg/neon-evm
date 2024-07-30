@@ -4,9 +4,11 @@ use solana_program::program::invoke_signed;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
 use spl_associated_token_account::get_associated_token_address;
 
-use crate::account::{program, token, AccountsDB, BalanceAccount, Operator, ACCOUNT_SEED_VERSION};
+use crate::account::{program, token, AccountsDB, BalanceAccount, Operator};
 use crate::config::{CHAIN_ID_LIST, DEFAULT_CHAIN_ID};
 use crate::error::{Error, Result};
+use crate::pda_seeds::with_balance_account_seeds;
+use crate::pda_seeds::AUTHORITY_SEEDS;
 use crate::types::Address;
 
 struct Accounts<'a> {
@@ -19,8 +21,6 @@ struct Accounts<'a> {
     operator: Operator<'a>,
     system_program: program::System<'a>,
 }
-
-const AUTHORITY_SEED: &[u8] = b"Deposit";
 
 impl<'a> Accounts<'a> {
     pub fn from_slice(accounts: &'a [AccountInfo<'a>]) -> Result<Accounts<'a>> {
@@ -86,7 +86,7 @@ fn validate(
         return Err(Error::AccountInvalidKey(mint, expected_mint));
     }
 
-    let (authority_address, _) = Pubkey::find_program_address(&[AUTHORITY_SEED], program_id);
+    let (authority_address, _) = Pubkey::find_program_address(AUTHORITY_SEEDS, program_id);
     let expected_pool = get_associated_token_address(&authority_address, &mint);
     if pool != expected_pool {
         return Err(Error::AccountInvalidKey(pool, expected_pool));
@@ -114,12 +114,6 @@ fn validate(
 
 fn execute(program_id: &Pubkey, accounts: Accounts, address: Address, chain_id: u64) -> Result<()> {
     let (_, bump_seed) = address.find_balance_address(program_id, chain_id);
-    let signer_seeds: &[&[u8]] = &[
-        &[ACCOUNT_SEED_VERSION],
-        address.as_bytes(),
-        &U256::from(chain_id).to_be_bytes(),
-        &[bump_seed],
-    ];
 
     let instruction = spl_token::instruction::transfer(
         accounts.token_program.key,
@@ -137,7 +131,9 @@ fn execute(program_id: &Pubkey, accounts: Accounts, address: Address, chain_id: 
         accounts.token_program.clone(),
     ];
 
-    invoke_signed(&instruction, account_infos, &[signer_seeds])?;
+    with_balance_account_seeds(&address, chain_id, &[bump_seed], |seeds| {
+        invoke_signed(&instruction, account_infos, &[seeds])
+    })?;
 
     let token_decimals = accounts.mint.decimals;
     assert!(token_decimals <= 18);

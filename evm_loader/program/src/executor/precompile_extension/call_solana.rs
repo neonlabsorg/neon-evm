@@ -1,6 +1,9 @@
+use crate::pda_seeds::{
+    contract_account_seeds_vec, external_authority_seeds, payer_seeds, payer_seeds_vec,
+    spl_token_seeds, PubkeyExt,
+};
 use crate::{
     account_storage::FAKE_OPERATOR,
-    config::ACCOUNT_SEED_VERSION,
     error::{Error, Result},
     evm::database::Database,
     types::Address,
@@ -66,17 +69,11 @@ pub async fn call_solana<State: Database>(
             let signer = context.caller;
             let (_signer_pubkey, bump_seed) = state.contract_pubkey(signer);
 
-            let signer_seeds = vec![
-                vec![ACCOUNT_SEED_VERSION],
-                signer.as_bytes().to_vec(),
-                vec![bump_seed],
-            ];
-
             execute_external_instruction(
                 state,
                 context,
                 instruction,
-                signer_seeds,
+                contract_account_seeds_vec(&signer, bump_seed),
                 required_lamports,
             )
             .await
@@ -94,20 +91,10 @@ pub async fn call_solana<State: Database>(
             let instruction: Instruction =
                 bincode::deserialize(&input[offset + 32..]).map_err(|_| Error::OutOfBounds)?;
 
-            let seeds: &[&[u8]] = &[
-                &[ACCOUNT_SEED_VERSION],
-                b"AUTH",
-                context.caller.as_bytes(),
-                salt,
-            ];
-            let (_, signer_seed) = Pubkey::find_program_address(seeds, state.program_id());
-            let seeds = vec![
-                vec![ACCOUNT_SEED_VERSION],
-                b"AUTH".to_vec(),
-                context.caller.as_bytes().to_vec(),
-                salt.to_vec(),
-                vec![signer_seed],
-            ];
+            let (_, seeds) = Pubkey::find_program_address_with_seeds(
+                &external_authority_seeds(&context.caller, salt),
+                state.program_id(),
+            );
 
             execute_external_instruction(state, context, instruction, seeds, required_lamports)
                 .await
@@ -126,17 +113,11 @@ pub async fn call_solana<State: Database>(
             let signer = context.caller;
             let (_signer_pubkey, bump_seed) = state.contract_pubkey(signer);
 
-            let signer_seeds = vec![
-                vec![ACCOUNT_SEED_VERSION],
-                signer.as_bytes().to_vec(),
-                vec![bump_seed],
-            ];
-
             execute_external_instruction(
                 state,
                 context,
                 instruction,
-                signer_seeds,
+                contract_account_seeds_vec(&signer, bump_seed),
                 required_lamports,
             )
             .await
@@ -153,20 +134,10 @@ pub async fn call_solana<State: Database>(
             let instruction_offset = read_usize(&input[64..])?;
             let instruction = read_instruction(&input[instruction_offset..])?;
 
-            let seeds: &[&[u8]] = &[
-                &[ACCOUNT_SEED_VERSION],
-                b"AUTH",
-                context.caller.as_bytes(),
-                salt,
-            ];
-            let (_, signer_seed) = Pubkey::find_program_address(seeds, state.program_id());
-            let seeds = vec![
-                vec![ACCOUNT_SEED_VERSION],
-                b"AUTH".to_vec(),
-                context.caller.as_bytes().to_vec(),
-                salt.to_vec(),
-                vec![signer_seed],
-            ];
+            let (_, seeds) = Pubkey::find_program_address_with_seeds(
+                &external_authority_seeds(&context.caller, salt),
+                state.program_id(),
+            );
 
             execute_external_instruction(state, context, instruction, seeds, required_lamports)
                 .await
@@ -182,26 +153,20 @@ pub async fn call_solana<State: Database>(
         // "59e4ad63": "getResourceAddress(bytes32)"
         [0x59, 0xe4, 0xad, 0x63] => {
             let salt = read_salt(input)?;
-            let seeds: &[&[u8]] = &[
-                &[ACCOUNT_SEED_VERSION],
-                b"ContractData",
-                context.caller.as_bytes(),
-                salt,
-            ];
-            let (sol_address, _) = Pubkey::find_program_address(seeds, state.program_id());
+            let (sol_address, _) = Pubkey::find_program_address(
+                &spl_token_seeds(&context.caller, salt),
+                state.program_id(),
+            );
             Ok(sol_address.to_bytes().to_vec())
         }
 
         // "cd2d1a3a": "getExtAuthority(bytes32)"
         [0xcd, 0x2d, 0x1a, 0x3a] => {
             let salt = read_salt(input)?;
-            let seeds: &[&[u8]] = &[
-                &[ACCOUNT_SEED_VERSION],
-                b"AUTH",
-                context.caller.as_bytes(),
-                salt,
-            ];
-            let (sol_address, _) = Pubkey::find_program_address(seeds, state.program_id());
+            let (sol_address, _) = Pubkey::find_program_address(
+                &external_authority_seeds(&context.caller, salt),
+                state.program_id(),
+            );
             Ok(sol_address.to_bytes().to_vec())
         }
 
@@ -223,8 +188,10 @@ pub async fn call_solana<State: Database>(
 
         // "30aa81c6": "getPayer()"
         [0x30, 0xaa, 0x81, 0xc6] => {
-            let seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], b"PAYER", context.caller.as_bytes()];
-            let (sol_address, _bump_seed) = Pubkey::find_program_address(seeds, state.program_id());
+            let (sol_address, _bump_seed) = Pubkey::find_program_address(
+                &payer_seeds(&context.caller, &[]),
+                state.program_id(),
+            );
 
             Ok(sol_address.to_bytes().to_vec())
         }
@@ -240,23 +207,11 @@ pub async fn call_solana<State: Database>(
             let _lamports = read_u64(&input[64..])?;
             let owner = read_pubkey(&input[96..])?;
 
-            let (sol_address, bump_seed) = Pubkey::find_program_address(
-                &[
-                    &[ACCOUNT_SEED_VERSION],
-                    b"ContractData",
-                    context.caller.as_bytes(),
-                    salt,
-                ],
+            let (sol_address, seeds) = Pubkey::find_program_address_with_seeds(
+                &spl_token_seeds(&context.caller, salt),
                 state.program_id(),
             );
             let account = state.external_account(sol_address).await?;
-            let seeds: Vec<Vec<u8>> = vec![
-                vec![ACCOUNT_SEED_VERSION],
-                b"ContractData".to_vec(),
-                context.caller.as_bytes().to_vec(),
-                salt.to_vec(),
-                vec![bump_seed],
-            ];
 
             super::create_account(state, &account, space, &owner, seeds).await?;
             Ok(sol_address.to_bytes().to_vec())
@@ -330,21 +285,15 @@ async fn execute_external_instruction<State: Database>(
         }
     }
 
-    let payer_seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], b"PAYER", context.caller.as_bytes()];
     let (payer_pubkey, payer_bump_seed) =
-        Pubkey::find_program_address(payer_seeds, state.program_id());
+        Pubkey::find_program_address(&payer_seeds(&context.caller, &[]), state.program_id());
     let required_payer = instruction
         .accounts
         .iter()
         .any(|meta| meta.pubkey == payer_pubkey);
 
     if required_payer {
-        let payer_seeds = vec![
-            vec![ACCOUNT_SEED_VERSION],
-            b"PAYER".to_vec(),
-            context.caller.as_bytes().to_vec(),
-            vec![payer_bump_seed],
-        ];
+        let payer_seeds = payer_seeds_vec(&context.caller, payer_bump_seed);
 
         let payer = state.external_account(payer_pubkey).await?;
         if payer.lamports < required_lamports {

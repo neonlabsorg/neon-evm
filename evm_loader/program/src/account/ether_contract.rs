@@ -27,9 +27,9 @@ pub enum AllocateResult {
 
 #[repr(C, packed)]
 pub struct HeaderV0 {
-    pub address: Address,
-    pub chain_id: u64,
-    pub generation: u32,
+    address: Address,
+    chain_id: u64,
+    generation: u32,
 }
 
 impl AccountHeader for HeaderV0 {

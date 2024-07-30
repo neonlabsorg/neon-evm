@@ -29,7 +29,7 @@ pub enum Error {
     RlpError(#[from] rlp::DecoderError),
 
     #[error("Secp256k1 error: {0}")]
-    Secp256k1Error(#[from] Secp256k1RecoverError),
+    Secp256k1Error(#[from] Secp256k1RecoverError), // revert these too
 
     #[error("Bincode error: {0}")]
     BincodeError(#[from] bincode::Error),
@@ -48,9 +48,6 @@ pub enum Error {
 
     #[error("Utf8Error error: {0}")]
     Utf8Error(#[from] Utf8Error),
-
-    #[error("Account {0} - not found")]
-    AccountMissing(Pubkey),
 
     #[error("Account {0} - blocked, trying to execute transaction on rw locked account")]
     AccountBlocked(Pubkey),
@@ -76,9 +73,6 @@ pub enum Error {
     #[error("Account {0} - not signer")]
     AccountNotSigner(Pubkey),
 
-    #[error("Account {0} - not rent exempt")]
-    AccountNotRentExempt(Pubkey),
-
     #[error("Account {0} - already initialized")]
     AccountAlreadyInitialized(Pubkey),
 
@@ -87,9 +81,6 @@ pub enum Error {
 
     #[error("Operator is not authorized")]
     UnauthorizedOperator,
-
-    #[error("Storage Account is uninitialized")]
-    StorageAccountUninitialized,
 
     #[error("Transaction already finalized")]
     StorageAccountFinalized,
@@ -153,9 +144,6 @@ pub enum Error {
 
     #[error("New contract code size exceeds 24kb (EIP-170), contract = {0}, size = {1}")]
     ContractCodeSizeLimit(Address, usize),
-
-    #[error("Transaction is rejected from a sender with deployed code (EIP-3607), contract = {0}")]
-    SenderHasDeployedCode(Address),
 
     #[error("Checked Integer Math Overflow")]
     IntegerOverflow,

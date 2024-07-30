@@ -6,6 +6,8 @@ use web3::types::{Bytes, H256};
 
 use evm_loader::types::Address;
 
+#[cfg(test)]
+pub mod tests;
 pub mod tracers;
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L993>

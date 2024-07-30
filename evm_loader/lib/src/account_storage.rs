@@ -749,6 +749,8 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             &self.program_id,
             address,
             chain_id,
+            0,
+            U256::ZERO,
         )
     }
 

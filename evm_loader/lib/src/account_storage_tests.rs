@@ -361,6 +361,8 @@ impl ActualBalance {
             program_id,
             self.address,
             self.chain_id,
+            0,
+            U256::ZERO,
         )
         .unwrap();
         balance.mint(self.balance).unwrap();

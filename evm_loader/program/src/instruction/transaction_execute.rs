@@ -6,6 +6,7 @@ use crate::evm::tracing::NoopEventListener;
 use crate::evm::Machine;
 use crate::executor::{ExecutorState, SyncedExecutorState};
 use crate::gasometer::Gasometer;
+use crate::instruction::dynamic_fee_transaction_validator;
 use crate::instruction::transaction_step::log_return_value;
 use crate::types::{Address, Transaction, TransactionPayload};
 use ethnum::U256;
@@ -131,7 +132,7 @@ fn handle_priority_fee(
 ) -> Result<()> {
     if let TransactionPayload::DynamicFee(dynamic_fee_payload) = &trx.transaction {
         // Validate.
-        account_storage.db().sysvar().validate_priority_fee(
+        dynamic_fee_transaction_validator::validate_priority_fee(
             dynamic_fee_payload.max_priority_fee_per_gas,
             dynamic_fee_payload.max_fee_per_gas,
         )?;

@@ -11,6 +11,7 @@ use crate::evm::tracing::NoopEventListener;
 use crate::evm::{ExitStatus, Machine};
 use crate::executor::{Action, ExecutorState};
 use crate::gasometer::{Gasometer, LAMPORTS_PER_SIGNATURE};
+use crate::instruction::dynamic_fee_transaction_validator;
 use crate::types::TransactionPayload;
 
 type EvmBackend<'a, 'r> = ExecutorState<'r, ProgramAccountStorage<'a>>;
@@ -166,7 +167,7 @@ fn finalize<'a>(
     // (2) charge the User in favor of Operator with amount of `priority_fee_per_gas` * `LAMPORTS_PER_SIGNATURE`.
     if let TransactionPayload::DynamicFee(dynamic_fee_payload) = &storage.trx().transaction {
         // Validate.
-        accounts.db().sysvar().validate_priority_fee(
+        dynamic_fee_transaction_validator::validate_priority_fee(
             dynamic_fee_payload.max_priority_fee_per_gas,
             dynamic_fee_payload.max_fee_per_gas,
         )?;

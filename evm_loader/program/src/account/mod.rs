@@ -18,7 +18,6 @@ pub use state_finalized::{Header as StateFinalizedHeader, StateFinalizedAccount}
 pub use treasury::{MainTreasury, Treasury};
 
 use self::program::System;
-pub use self::sysvar::Sysvar;
 
 mod ether_balance;
 mod ether_contract;
@@ -31,7 +30,6 @@ mod operator_balance;
 pub mod program;
 mod state;
 mod state_finalized;
-pub mod sysvar;
 pub mod token;
 mod treasury;
 
@@ -196,7 +194,6 @@ pub struct AccountsDB<'a> {
     operator_balance: Option<OperatorBalanceAccount<'a>>,
     system: Option<System<'a>>,
     treasury: Option<Treasury<'a>>,
-    sysvar: Option<Sysvar<'a>>,
 }
 
 impl<'a> AccountsDB<'a> {
@@ -207,7 +204,6 @@ impl<'a> AccountsDB<'a> {
         operator_balance: Option<OperatorBalanceAccount<'a>>,
         system: Option<System<'a>>,
         treasury: Option<Treasury<'a>>,
-        sysvar: Option<Sysvar<'a>>,
     ) -> Self {
         let mut sorted_accounts = accounts.to_vec();
         sorted_accounts.sort_unstable_by_key(|a| a.key);
@@ -219,7 +215,6 @@ impl<'a> AccountsDB<'a> {
             operator_balance,
             system,
             treasury,
-            sysvar,
         }
     }
 
@@ -244,15 +239,6 @@ impl<'a> AccountsDB<'a> {
         }
 
         panic!("Treasury Account must be present in the transaction");
-    }
-
-    #[must_use]
-    pub fn sysvar(&self) -> &Sysvar<'a> {
-        if let Some(sysvar) = &self.sysvar {
-            return sysvar;
-        }
-
-        panic!("Sysvar Account must be present in the transaction");
     }
 
     #[must_use]

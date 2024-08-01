@@ -16,7 +16,7 @@ pub fn process<'a>(
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[0]) }?;
     let system = program::System::from_account(&accounts[1])?;
 
-    let accounts_db = AccountsDB::new(&accounts[2..], operator, None, Some(system), None, None);
+    let accounts_db = AccountsDB::new(&accounts[2..], operator, None, Some(system), None);
 
     let address = array_ref![instruction, 0, 20];
     let address = Address::from(*address);

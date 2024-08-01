@@ -154,7 +154,6 @@ fn execute(program_id: &Pubkey, accounts: Accounts, address: Address, chain_id: 
         None,
         Some(accounts.system_program),
         None,
-        None,
     );
 
     let mut excessive_lamports = 0;

@@ -1,14 +1,10 @@
 use ethnum::U256;
-use evm_loader::{
-    account::{
-        legacy::{
-            LegacyFinalizedData, LegacyHolderData, TAG_HOLDER_DEPRECATED,
-            TAG_STATE_FINALIZED_DEPRECATED,
-        },
-        Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
+use evm_loader::account::{
+    legacy::{
+        LegacyFinalizedData, LegacyHolderData, TAG_HOLDER_DEPRECATED,
+        TAG_STATE_FINALIZED_DEPRECATED,
     },
-    types::Address,
-    types::Transaction,
+    Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};

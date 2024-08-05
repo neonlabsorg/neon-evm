@@ -100,7 +100,8 @@ jobs:
           --token=${{secrets.GHTOKEN }} \
           --labels='${{ toJson(github.event.pull_request.labels.*.name) }}' \
           --pr_url="${{ github.api_url }}/repos/${{ github.repository }}/issues" \
-          --pr_number="${{ github.event.pull_request.number }}"
+          --pr_number="${{ github.event.pull_request.number }}" \
+          --last_commit_message="${{ github.event.head_commit.message }}"
       - name: Cancel the build if job failed
         if: "failure()"
         uses: "andymckay/cancel-action@0.4"
@@ -139,3 +140,4 @@ jobs:
           python3 ./.github/workflows/deploy.py send_notification \
           --url=${{secrets.SLACK_EVM_CHANNEL_URL}} \
           --build_url=${BUILD_URL}
+

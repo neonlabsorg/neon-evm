@@ -2971,7 +2971,7 @@ dependencies = [
  "beef",
  "futures-util",
  "hyper 0.14.30",
- "jsonrpsee-types",
+ "jsonrpsee-types 0.22.5",
  "serde",
  "serde_json",
  "thiserror",
@@ -2989,7 +2989,7 @@ dependencies = [
  "hyper 0.14.30",
  "hyper-rustls",
  "jsonrpsee-core",
- "jsonrpsee-types",
+ "jsonrpsee-types 0.22.5",
  "serde",
  "serde_json",
  "thiserror",
@@ -3007,6 +3007,18 @@ checksum = "150d6168405890a7a3231a3c74843f58b8959471f6df76078db2619ddee1d07d"
 dependencies = [
  "anyhow",
  "beef",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "jsonrpsee-types"
+version = "0.24.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98deeee954567f75632fa40666ac93a66d4f9f4ed4ca15bd6b7ed0720b53e761"
+dependencies = [
+ "http 1.1.0",
  "serde",
  "serde_json",
  "thiserror",
@@ -3544,7 +3556,7 @@ dependencies = [
  "build-info-build",
  "jsonrpsee-core",
  "jsonrpsee-http-client",
- "jsonrpsee-types",
+ "jsonrpsee-types 0.24.2",
  "neon-lib",
  "serde",
  "serde_json",

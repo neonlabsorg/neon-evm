@@ -37,12 +37,7 @@ pub fn process<'a>(
     // The first option (chosen) saves the holder space in exchange for compute units.
     // The second option wastes the holder space (because transaction bytes will be
     // stored two times), but doesnt copy.
-    let transaction_rlp_copy = {
-        let holder_transaction_ref = holder.transaction();
-        let mut transaction_copy = vec![0u8; holder_transaction_ref.len()];
-        transaction_copy.copy_from_slice(&holder_transaction_ref);
-        transaction_copy
-    };
+    let transaction_rlp_copy = holder.transaction().to_vec();
     holder.init_heap(0)?;
 
     let trx = boxx(Transaction::from_rlp(&transaction_rlp_copy)?);

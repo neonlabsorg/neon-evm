@@ -401,7 +401,7 @@ async fn execute_external_instruction<State: Database>(
                 None
             }
         })
-        .unwrap_or_else(|| vector![]);
+        .unwrap_or_default();
     Ok(to_solidity_bytes(&return_data))
 }
 

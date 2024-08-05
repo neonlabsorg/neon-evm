@@ -23,14 +23,14 @@ trait Alloc {
 }
 
 macro_rules! impl_global_alloc {
-    ($t:ty) => {
+    ($t:ty, $err:expr) => {
         unsafe impl std::alloc::GlobalAlloc for $t {
             unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
                 #[allow(clippy::option_if_let_else)]
                 if let Ok(non_null) = Self::alloc_impl(layout) {
                     non_null.as_ptr()
                 } else {
-                    solana_program::log::sol_log("EVM Allocator out of memory");
+                    solana_program::log::sol_log($err);
                     std::ptr::null_mut()
                 }
             }
@@ -67,6 +67,6 @@ macro_rules! impl_global_alloc {
     };
 }
 
-impl_global_alloc!(SolanaAllocator);
+impl_global_alloc!(SolanaAllocator, "Solana Allocator out of memory");
 
-impl_global_alloc!(AccountAllocator);
+impl_global_alloc!(AccountAllocator, "EVM Account Allocator out of memory");

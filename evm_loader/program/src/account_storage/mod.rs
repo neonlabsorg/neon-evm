@@ -55,7 +55,7 @@ pub trait AccountStorage: LogCollector {
     fn rent(&self) -> &Rent;
 
     /// Get return data from Solana
-    fn return_data(&self) -> Option<(Pubkey, Vector<u8>)>;
+    fn return_data(&self) -> Option<(Pubkey, Vec<u8>)>;
 
     /// Set return data to Solana
     fn set_return_data(&mut self, data: &[u8]);

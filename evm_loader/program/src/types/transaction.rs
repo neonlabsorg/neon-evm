@@ -1,5 +1,6 @@
 use ethnum::U256;
 use maybe_async::maybe_async;
+use rlp::{DecoderError, Rlp};
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 
@@ -8,6 +9,7 @@ use crate::{
     account_storage::AccountStorage, config::GAS_LIMIT_MULTIPLIER_NO_CHAINID, error::Error, vector,
 };
 
+use super::vector::VectorSliceExt;
 use super::{Address, Vector};
 
 use super::read_raw_utils::ReconstructRaw;
@@ -52,6 +54,10 @@ impl AsRef<[u8]> for StorageKey {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
+}
+
+fn decode_byte_vector(rlp: &Rlp) -> Result<Vector<u8>, DecoderError> {
+    rlp.decoder().decode_value(|bytes| Ok(bytes.to_vector()))
 }
 
 #[derive(Debug, Clone)]
@@ -121,7 +127,7 @@ impl rlp::Decodable for LegacyTx {
             }
         };
         let value: U256 = u256(&rlp.at(4)?)?;
-        let call_data = rlp.val_at::<Vec<_>>(5)?.into_vector();
+        let call_data = decode_byte_vector(&rlp.at(5)?)?;
         let v: U256 = u256(&rlp.at(6)?)?;
         let r: U256 = u256(&rlp.at(7)?)?;
         let s: U256 = u256(&rlp.at(8)?)?;
@@ -205,7 +211,7 @@ impl rlp::Decodable for AccessListTx {
         };
 
         let value: U256 = u256(&rlp.at(5)?)?;
-        let call_data = rlp.val_at::<Vec<_>>(6)?.into_vector();
+        let call_data = decode_byte_vector(&rlp.at(6)?)?;
 
         let rlp_access_list = rlp.at(7)?;
         let mut access_list = vector![];
@@ -259,7 +265,7 @@ impl rlp::Decodable for AccessListTx {
 // struct DynamicFeeTx {}
 
 #[derive(Debug)]
-#[repr(C, usize)]
+#[repr(C, u8)]
 pub enum TransactionPayload {
     Legacy(LegacyTx),
     AccessList(AccessListTx),

@@ -7,7 +7,6 @@ use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
 use crate::instruction::transaction_step::{do_begin, do_continue};
-use crate::types::boxx::boxx;
 use crate::types::Transaction;
 use arrayref::array_ref;
 use ethnum::U256;
@@ -69,17 +68,11 @@ pub fn process_inner<'a>(
                 // The first option (chosen) saves the holder space in exchange for compute units.
                 // The second option wastes the holder space (because transaction bytes will be
                 // stored two times), but doesnt copy.
-                let transaction_rlp_copy = {
-                    let holder_transaction_ref = holder.transaction();
-                    let mut transaction_copy = vec![0u8; holder_transaction_ref.len()];
-                    transaction_copy.copy_from_slice(&holder_transaction_ref);
-                    transaction_copy
-                };
-
+                let transaction_rlp_copy = holder.transaction().to_vec();
                 holder.init_heap(0)?;
                 holder.validate_owner(&operator)?;
 
-                let trx = boxx(Transaction::from_rlp(&transaction_rlp_copy)?);
+                let trx = Transaction::from_rlp(&transaction_rlp_copy)?;
 
                 holder.validate_transaction(&trx)?;
 

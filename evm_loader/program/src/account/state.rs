@@ -34,11 +34,17 @@ pub enum AccountsStatus {
     NeedRestart,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Copy)]
 #[repr(C)]
 enum AccountRevision {
     Revision(u32),
     Hash([u8; 32]),
+}
+
+impl Default for AccountRevision {
+    fn default() -> Self {
+        AccountRevision::Revision(0)
+    }
 }
 
 impl AccountRevision {
@@ -104,7 +110,7 @@ struct Header {
     pub data_offset: usize,
 }
 impl AccountHeader for Header {
-    const VERSION: u8 = 0;
+    const VERSION: u8 = 1;
 }
 
 pub struct StateAccount<'a> {
@@ -151,7 +157,7 @@ impl<'a> StateAccount<'a> {
         info: AccountInfo<'a>,
         accounts: &AccountsDB<'a>,
         origin: Address,
-        transaction: Boxx<Transaction>,
+        transaction: Transaction,
     ) -> Result<Self> {
         let owner = match super::tag(program_id, &info)? {
             TAG_HOLDER => {
@@ -168,20 +174,18 @@ impl<'a> StateAccount<'a> {
             tag => return Err(Error::AccountInvalidTag(*info.key, tag)),
         };
 
-        let revisions_it = accounts.into_iter().map(|account| {
-            let revision = AccountRevision::new(program_id, account);
-            (*account.key, revision)
-        });
-
-        // Construct TreeMap (based on the AccountAllocator) from constructed revisions_it.
-        let mut revisions = TreeMap::<Pubkey, AccountRevision>::new();
-        for (key, rev) in revisions_it {
-            revisions.insert(key, &rev);
-        }
+        // accounts.into_iter returns sorted accounts, so it's safe.
+        let revisions = accounts
+            .into_iter()
+            .map(|account| {
+                let revision = AccountRevision::new(program_id, account);
+                (*account.key, revision)
+            })
+            .collect::<TreeMap<Pubkey, AccountRevision>>();
 
         let data = boxx(Data {
             owner,
-            transaction: unsafe { std::ptr::read(Boxx::into_raw(transaction)) },
+            transaction,
             origin,
             revisions,
             touched_accounts: TreeMap::new(),
@@ -233,7 +237,7 @@ impl<'a> StateAccount<'a> {
         let touched_accounts = accounts.into_iter().filter(|a| is_touched_account(a.key));
         for account in touched_accounts {
             let account_revision = AccountRevision::new(program_id, account);
-            let revision_entry = state.data.revisions.get(account.key).unwrap();
+            let revision_entry = &state.data.revisions[*account.key];
 
             if revision_entry != &account_revision {
                 log_data(&[b"INVALID_REVISION", account.key.as_ref()]);
@@ -246,7 +250,7 @@ impl<'a> StateAccount<'a> {
             // update all accounts revisions
             for account in accounts {
                 let account_revision = AccountRevision::new(program_id, account);
-                state.data.revisions.insert(*account.key, &account_revision);
+                state.data.revisions.insert(*account.key, account_revision);
             }
         }
 
@@ -263,15 +267,12 @@ impl<'a> StateAccount<'a> {
     }
 
     pub fn update_touched_accounts(&mut self, touched: &TreeMap<Pubkey, u64>) -> Result<()> {
-        for key in touched.keys() {
-            let counter = *touched.get(key).unwrap();
-            let prev_cnt = self.data.touched_accounts.get(key).map_or(0, |v| *v);
-            self.data.touched_accounts.insert(
-                *key,
-                &prev_cnt
-                    .checked_add(counter)
-                    .ok_or(Error::IntegerOverflow)?,
-            );
+        for (key, counter) in touched.iter() {
+            self.data
+                .touched_accounts
+                .update_or_insert(*key, counter, |v| {
+                    v.checked_add(*counter).ok_or(Error::IntegerOverflow)
+                })?;
         }
 
         Ok(())
@@ -488,22 +489,26 @@ impl<'a> StateAccount<'a> {
             // Reading full `Transaction`.
             let transaction_ptr = addr_of!((*data_ptr).transaction);
             // Memory layout for transaction payload is: tag of enum's variant (usize) followed by the variant value.
-            let tx_payload_ptr = addr_of!((*transaction_ptr).transaction).cast::<usize>();
-            let payload_ptr = tx_payload_ptr.add(1);
+            // Payload that follows enum tag can have offset due to alignment.
+            let tx_payload_enum_tag = addr_of!((*transaction_ptr).transaction).cast::<u8>();
+            let payload_ptr = tx_payload_enum_tag.add(1);
 
-            // TODO: ugly manual piece of code that likely can be substituted with the macro.
-            let tx_payload: TransactionPayload = match read_unaligned(tx_payload_ptr) {
+            let tx_payload = match read_unaligned(tx_payload_enum_tag) {
                 0 => {
-                    let legacy_payload_ptr = payload_ptr.cast::<LegacyTx>();
+                    let legacy_payload_ptr =
+                        payload_ptr.wrapping_add(payload_ptr.align_offset(align_of::<LegacyTx>()));
+
                     TransactionPayload::Legacy(LegacyTx::build(
-                        legacy_payload_ptr,
+                        legacy_payload_ptr.cast::<LegacyTx>(),
                         memory_space_delta,
                     ))
                 }
                 1 => {
-                    let access_list_tx_ptr = payload_ptr.cast::<AccessListTx>();
+                    let access_list_payload_ptr = payload_ptr
+                        .wrapping_add(payload_ptr.align_offset(align_of::<AccessListTx>()));
+
                     TransactionPayload::AccessList(AccessListTx::build(
-                        access_list_tx_ptr,
+                        access_list_payload_ptr.cast::<AccessListTx>(),
                         memory_space_delta,
                     ))
                 }
@@ -528,7 +533,13 @@ impl<'a> StateAccount<'a> {
             let owner = read_unaligned(addr_of!((*data_ptr).owner));
             let origin = read_unaligned(addr_of!((*data_ptr).origin));
             let keys_ptr = addr_of!((*data_ptr).revisions).cast::<usize>();
-            let accounts = read_vec(keys_ptr, memory_space_delta);
+
+            // Hereby we read the TreeMap and rely on the fact that under the hood it's a Vector<(Pubkey, AccountRevision)>.
+            // In case the structure changes, it also requires adjustments.
+            let accounts = read_vec::<(Pubkey, AccountRevision)>(keys_ptr, memory_space_delta)
+                .iter()
+                .map(|(key, _)| *key)
+                .collect();
 
             let steps = read_unaligned(addr_of!((*data_ptr).steps_executed));
 

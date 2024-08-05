@@ -979,11 +979,11 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         &self.rent
     }
 
-    fn return_data(&self) -> Option<(Pubkey, Vector<u8>)> {
+    fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
         info!("return_data");
         self.return_data
             .as_ref()
-            .map(|data| (data.program_id, data.data.clone().into_vector()))
+            .map(|data| (data.program_id, data.data.clone()))
     }
 
     fn set_return_data(&mut self, data: &[u8]) {

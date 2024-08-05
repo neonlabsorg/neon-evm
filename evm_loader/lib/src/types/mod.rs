@@ -5,7 +5,9 @@ pub use evm_loader::types::Address;
 use evm_loader::types::{StorageKey, Transaction};
 use evm_loader::{
     account_storage::AccountStorage,
-    types::{vector::VectorVecExt, AccessListTx, LegacyTx, TransactionPayload},
+    types::{
+        vector::VectorVecExt, vector::VectorVecSlowExt, AccessListTx, LegacyTx, TransactionPayload,
+    },
 };
 use serde_with::skip_serializing_none;
 use solana_sdk::{account::Account, pubkey::Pubkey};
@@ -74,7 +76,7 @@ impl TxParams {
                 value: self.value.unwrap_or_default(),
                 call_data: self.data.unwrap_or_default().into_vector(),
                 chain_id: U256::from(chain_id),
-                access_list: access_list.into_vector(),
+                access_list: access_list.elementwise_copy_into_vector(),
                 r: U256::ZERO,
                 s: U256::ZERO,
                 recovery_id: 0,

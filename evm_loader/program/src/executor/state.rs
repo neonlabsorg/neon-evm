@@ -15,7 +15,7 @@ use solana_program::rent::Rent;
 
 use crate::allocator::acc_allocator;
 use crate::types::tree_map::TreeMap;
-use crate::types::vector::{Vector, VectorSliceExt};
+use crate::types::vector::{Vector, VectorSliceExt, VectorSliceSlowExt};
 
 use super::action::Action;
 use super::cache::Cache;
@@ -159,17 +159,13 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     }
 
     fn touch_account(&self, pubkey: Pubkey, count: u64) {
-        let cur_counter = self
-            .data
-            .touched_accounts
-            .borrow()
+        let mut touched_accounts = self.data.touched_accounts.borrow_mut();
+
+        let cur_counter = touched_accounts
             .get(&pubkey)
-            .map_or(0, |counter| *counter);
+            .map_or(0_u64, |counter| *counter);
         // Technically, this could overflow with infinite compute budget
-        self.data
-            .touched_accounts
-            .borrow_mut()
-            .insert(pubkey, &cur_counter.checked_add(count).unwrap());
+        touched_accounts.insert(pubkey, cur_counter.checked_add(count).unwrap());
     }
 }
 
@@ -518,7 +514,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         self.backend.rent()
     }
 
-    fn return_data(&self) -> Option<(Pubkey, Vector<u8>)> {
+    fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
         self.backend.return_data()
     }
 
@@ -612,7 +608,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         let action = Action::ExternalInstruction {
             program_id: instruction.program_id,
             data: instruction.data.to_vector(),
-            accounts: instruction.accounts.to_vector(),
+            accounts: instruction.accounts.elementwise_copy_to_vector(),
             seeds,
             fee,
             emulated_internally,

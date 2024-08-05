@@ -231,7 +231,7 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
         self.backend.rent()
     }
 
-    fn return_data(&self) -> Option<(Pubkey, Vector<u8>)> {
+    fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
         self.backend.return_data()
     }
 

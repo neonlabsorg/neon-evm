@@ -181,8 +181,16 @@ def stop_containers(project_name):
 @click.option('--labels')
 @click.option('--pr_url')
 @click.option('--pr_number')
-def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sha, token, labels,
-                         pr_url, pr_number):
+def trigger_proxy_action(
+        head_ref_branch: str,
+        base_ref_branch: str,
+        github_ref: str,
+        github_sha: str,
+        token: str,
+        labels: str,
+        pr_url: str,
+        pr_number: str,
+):
     is_develop_branch = github_ref in ['refs/heads/develop', 'refs/heads/master']
     is_tag_creating = 'refs/tags/' in github_ref
     is_version_branch = re.match(VERSION_BRANCH_TEMPLATE, github_ref.replace("refs/heads/", "")) is not None
@@ -213,7 +221,13 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
     runs_before = github.get_proxy_runs_list(proxy_branch)
     runs_count_before = github.get_proxy_runs_count(proxy_branch)
     neon_evm_branch = head_ref_branch if head_ref_branch else github_ref
-    github.run_proxy_dispatches(proxy_branch, neon_evm_branch, github_sha, full_test_suite, initial_pr)
+    github.run_proxy_dispatches(
+        proxy_branch=proxy_branch,
+        neon_evm_branch=neon_evm_branch,
+        github_sha=github_sha,
+        full_test_suite=full_test_suite,
+        initial_pr=initial_pr,
+    )
     wait_condition(lambda: github.get_proxy_runs_count(proxy_branch) > runs_count_before)
 
     runs_after = github.get_proxy_runs_list(proxy_branch)

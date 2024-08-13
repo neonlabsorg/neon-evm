@@ -44,18 +44,32 @@ pub trait VectorSliceSlowExt<T> {
         T: Clone;
 }
 
-impl<T: Copy + Default> VectorVecExt<T> for Vec<T> {
+impl<T: Copy> VectorVecExt<T> for Vec<T> {
     fn into_vector(self) -> Vector<T> {
-        let mut ret = vector![T::default(); self.len()];
-        ret.copy_from_slice(self.as_slice());
+        let mut ret = Vector::with_capacity_in(self.len(), crate::allocator::acc_allocator());
+        // SAFETY:
+        // allocated above with the capacity of `self.len()`, and initialize to `self.len()` in
+        // ptr::copy_to_non_overlapping below.
+        unsafe {
+            self.as_ptr()
+                .copy_to_nonoverlapping(ret.as_mut_ptr(), self.len());
+            ret.set_len(self.len());
+        }
         ret
     }
 }
 
-impl<T: Copy + Default> VectorSliceExt<T> for [T] {
+impl<T: Copy> VectorSliceExt<T> for [T] {
     fn to_vector(&self) -> Vector<T> {
-        let mut ret = vector![T::default(); self.len()];
-        ret.copy_from_slice(self);
+        let mut ret = Vector::with_capacity_in(self.len(), crate::allocator::acc_allocator());
+        // SAFETY:
+        // allocated above with the capacity of `self.len()`, and initialize to `self.len()` in
+        // ptr::copy_to_non_overlapping below.
+        unsafe {
+            self.as_ptr()
+                .copy_to_nonoverlapping(ret.as_mut_ptr(), self.len());
+            ret.set_len(self.len());
+        }
         ret
     }
 }

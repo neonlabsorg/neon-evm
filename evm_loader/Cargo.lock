@@ -2017,6 +2017,7 @@ dependencies = [
  "linked_list_allocator",
  "log",
  "maybe-async",
+ "memoffset 0.9.1",
  "mpl-token-metadata",
  "ripemd",
  "rlp",

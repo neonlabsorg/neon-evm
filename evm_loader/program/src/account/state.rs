@@ -104,7 +104,7 @@ struct Data {
 // Stores relative offsets for the corresponding objects as allocated by the AccountAllocator.
 #[allow(clippy::struct_field_names)]
 #[repr(C, packed)]
-struct Header {
+pub struct Header {
     pub executor_state_offset: usize,
     pub evm_machine_offset: usize,
     pub data_offset: usize,
@@ -488,7 +488,7 @@ impl<'a> StateAccount<'a> {
         unsafe {
             // Reading full `Transaction`.
             let transaction_ptr = addr_of!((*data_ptr).transaction);
-            // Memory layout for transaction payload is: tag of enum's variant (usize) followed by the variant value.
+            // Memory layout for transaction payload is: tag of enum's variant (u8) followed by the variant value.
             // Payload that follows enum tag can have offset due to alignment.
             let tx_payload_enum_tag = addr_of!((*transaction_ptr).transaction).cast::<u8>();
             let payload_ptr = tx_payload_enum_tag.add(1);

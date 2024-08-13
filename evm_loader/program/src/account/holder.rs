@@ -1,6 +1,7 @@
 use linked_list_allocator::Heap;
 use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
+use static_assertions::const_assert;
 use std::cell::{Ref, RefMut};
 use std::mem::{align_of, size_of};
 
@@ -30,11 +31,17 @@ pub struct Holder<'a> {
 
 const HEADER_OFFSET: usize = ACCOUNT_PREFIX_LEN;
 pub const BUFFER_OFFSET: usize = HEADER_OFFSET + size_of::<Header>();
+
 // Offset of the Header.heap_offset from the start of account data.
-// 0x48 here is the offset of that field in the Header.
-// Should be public to be accessible from allocator.
-// SHOULD BE ADJUSTED IN CASE HEADER IS CHANGED.
-pub const HEAP_OFFSET_OFFSET: usize = HEADER_OFFSET + 0x48;
+// TODO: get rid of memoffset in favor of core::mem::offset_of! when rust version >= 1.77.
+pub const HEAP_OFFSET_OFFSET: usize = HEADER_OFFSET + memoffset::offset_of!(Header, heap_offset);
+// State Account Header and Holder Account Header should have a shared and fixed memory cell that denotes
+// the offset of the persistent heap (heap_offset field).
+// The following asert checks that State Account Header does not overlap with `heap_offset` memory cell,
+// so writes to State Account Header do not override it.
+const_assert!(
+    memoffset::offset_of!(Header, heap_offset) >= size_of::<crate::account::state::Header>()
+);
 
 impl<'a> Holder<'a> {
     pub fn from_account(program_id: &Pubkey, account: AccountInfo<'a>) -> Result<Self> {
@@ -203,10 +210,12 @@ impl<'a> Holder<'a> {
         account: &mut AccountInfo,
         transaction_offset: usize,
     ) -> Result<()> {
-        // Validation: check the owner.
-        if account.owner != program_id {
-            return Err(Error::AccountInvalidOwner(*account.key, *program_id));
-        }
+        // Validation: check that the passed account is a variant of Holder: Holder, State or StateFinalized.
+        // An additional owner check is happening inside the tag.
+        let tag = crate::account::tag(program_id, account)?;
+        assert!(
+            tag == TAG_HOLDER || tag == crate::account::TAG_STATE || tag == TAG_STATE_FINALIZED
+        );
 
         let data_ptr = account.data.borrow().as_ptr();
         // Validation: the Holder Account used as a persistent heap, must be first in the account list.

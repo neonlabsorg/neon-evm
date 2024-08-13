@@ -169,6 +169,7 @@ pub struct EmulateRequest {
     pub accounts: Vec<Pubkey>,
     #[serde_as(as = "Option<HashMap<DisplayFromStr,_>>")]
     pub solana_overrides: Option<HashMap<Pubkey, Option<SerializedAccount>>>,
+    pub provide_account_info: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,3 +1,4 @@
+use crate::account_data::AccountData;
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::rpc::Rpc;
 use crate::tracing::tracers::Tracer;
@@ -30,6 +31,7 @@ pub struct SolanaAccount {
     pub is_writable: bool,
     pub is_legacy: bool,
 }
+
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulateResponse {
@@ -44,6 +46,7 @@ pub struct EmulateResponse {
     pub iterations: u64,
     pub solana_accounts: Vec<SolanaAccount>,
     pub logs: Vec<Log>,
+    pub accounts_data: Option<Vec<AccountData>>,
 }
 
 impl EmulateResponse {
@@ -64,6 +67,7 @@ impl EmulateResponse {
             iterations: 0,
             solana_accounts: vec![],
             logs: backend.backend().logs(),
+            accounts_data: None,
         }
     }
 }
@@ -104,7 +108,8 @@ pub async fn execute<T: Tracer>(
 
     let step_limit = emulate_request.step_limit.unwrap_or(100_000);
 
-    let result = emulate_trx(emulate_request.tx.clone(), &mut storage, step_limit, tracer).await?;
+    let mut result =
+        emulate_trx(emulate_request.tx.clone(), &mut storage, step_limit, tracer).await?;
 
     if storage.is_timestamp_used() {
         let mut storage2 =
@@ -134,13 +139,14 @@ pub async fn execute<T: Tracer>(
                 }
             });
 
-            let emul_response = EmulateResponse {
+            result.0 = EmulateResponse {
                 // We get the result from the first response (as it is executed on the current time)
                 result: response.result.clone(),
                 exit_status: response.exit_status.to_string(),
                 external_solana_call: response.external_solana_call,
                 reverts_before_solana_calls: response.reverts_before_solana_calls,
                 reverts_after_solana_calls: response.reverts_after_solana_calls,
+                accounts_data: None,
 
                 // ...and consumed resources from the both responses (because the real execution can occur in the future)
                 steps_executed: response.steps_executed.max(response2.steps_executed),
@@ -149,9 +155,11 @@ pub async fn execute<T: Tracer>(
                 solana_accounts: combined_solana_accounts,
                 logs: response.logs.clone(),
             };
-
-            return Ok((emul_response, result.1));
         }
+    }
+
+    if emulate_request.provide_account_info.unwrap_or(false) {
+        result.0.accounts_data = Some(provide_account_data(&storage, &result.0.solana_accounts));
     }
 
     Ok(result)
@@ -234,7 +242,22 @@ async fn emulate_trx<T: Tracer>(
             result: exit_status.into_result().unwrap_or_default(),
             iterations,
             logs,
+            accounts_data: None,
         },
         tracer.map(|tracer| tracer.into_traces(used_gas)),
     ))
+}
+
+fn provide_account_data(
+    storage: &EmulatorAccountStorage<impl Rpc>,
+    solana_accounts: &Vec<SolanaAccount>,
+) -> Vec<AccountData> {
+    let mut accounts_data = Vec::<AccountData>::new();
+    for account in solana_accounts {
+        if let Some(account_data) = storage.accounts_get(&account.pubkey) {
+            accounts_data.push(account_data.clone());
+        }
+    }
+
+    accounts_data
 }

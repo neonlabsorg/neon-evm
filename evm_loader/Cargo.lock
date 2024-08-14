@@ -1997,7 +1997,7 @@ checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
 name = "evm-loader"
-version = "1.14.0-dev"
+version = "1.15.0-dev"
 dependencies = [
  "arrayref",
  "async-trait",
@@ -3407,7 +3407,7 @@ dependencies = [
 
 [[package]]
 name = "neon-api"
-version = "1.14.0-dev"
+version = "1.15.0-dev"
 dependencies = [
  "actix-request-identifier",
  "actix-web",
@@ -3430,7 +3430,7 @@ dependencies = [
 
 [[package]]
 name = "neon-cli"
-version = "1.14.0-dev"
+version = "1.15.0-dev"
 dependencies = [
  "build-info",
  "build-info-build",
@@ -3452,7 +3452,7 @@ dependencies = [
 
 [[package]]
 name = "neon-lib"
-version = "1.14.0-dev"
+version = "1.15.0-dev"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -3516,7 +3516,7 @@ dependencies = [
 
 [[package]]
 name = "neon-rpc"
-version = "1.14.0-dev"
+version = "1.15.0-dev"
 dependencies = [
  "actix-web",
  "build-info",

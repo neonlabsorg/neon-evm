@@ -1,14 +1,13 @@
+import json
 import os
 import re
-import time
-
-import docker
-import sys
 import subprocess
-import requests
-import json
+import sys
+import time
 from urllib.parse import urlparse
 
+import docker
+import requests
 from github_api_client import GithubClient
 
 try:
@@ -181,12 +180,14 @@ def stop_containers(project_name):
 @click.option('--labels')
 @click.option('--pr_url')
 @click.option('--pr_number')
+@click.option('--timeout_sec', default=10800)
 def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sha, token, labels,
-                         pr_url, pr_number):
+                         pr_url, pr_number, timeout_sec):
     is_develop_branch = github_ref in ['refs/heads/develop', 'refs/heads/master']
     is_tag_creating = 'refs/tags/' in github_ref
     is_version_branch = re.match(VERSION_BRANCH_TEMPLATE, github_ref.replace("refs/heads/", "")) is not None
     is_FTS_labeled = 'fullTestSuit' in labels
+    is_trigger_tracer_tests = 'true' if 'runTracerTests' in labels else 'false'
 
     if is_develop_branch or is_tag_creating or is_version_branch or is_FTS_labeled:
         full_test_suite = True
@@ -213,7 +214,7 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
     runs_before = github.get_proxy_runs_list(proxy_branch)
     runs_count_before = github.get_proxy_runs_count(proxy_branch)
     neon_evm_branch = head_ref_branch if head_ref_branch else github_ref
-    github.run_proxy_dispatches(proxy_branch, neon_evm_branch, github_sha, full_test_suite, initial_pr)
+    github.run_proxy_dispatches(proxy_branch, neon_evm_branch, github_sha, full_test_suite, initial_pr, is_trigger_tracer_tests)
     wait_condition(lambda: github.get_proxy_runs_count(proxy_branch) > runs_count_before)
 
     runs_after = github.get_proxy_runs_list(proxy_branch)
@@ -221,7 +222,7 @@ def trigger_proxy_action(head_ref_branch, base_ref_branch, github_ref, github_sh
     link = f"https://github.com/{RUN_LINK_REPO}/actions/runs/{proxy_run_id}"
     click.echo(f"Proxy run link: {link}")
     click.echo("Waiting for completed status...")
-    wait_condition(lambda: github.get_proxy_run_info(proxy_run_id)["status"] == "completed", timeout_sec=10800, delay=5)
+    wait_condition(lambda: github.get_proxy_run_info(proxy_run_id)["status"] == "completed", timeout_sec=timeout_sec, delay=5)
 
     if github.get_proxy_run_info(proxy_run_id)["conclusion"] == "success":
         click.echo("Proxy tests passed successfully")

@@ -2,7 +2,7 @@ use crate::account_data::AccountData;
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::rpc::Rpc;
 use crate::tracing::tracers::Tracer;
-use crate::types::{EmulateRequest, TxParams};
+use crate::types::{AccountInfoLevel, EmulateRequest, TxParams};
 use crate::{
     account_storage::{EmulatorAccountStorage, SyncedAccountStorage},
     errors::NeonError,
@@ -158,8 +158,12 @@ pub async fn execute<T: Tracer>(
         }
     }
 
-    if emulate_request.provide_account_info.unwrap_or(false) {
-        result.0.accounts_data = Some(provide_account_data(&storage, &result.0.solana_accounts));
+    if let Some(level) = emulate_request.provide_account_info {
+        result.0.accounts_data = Some(provide_account_data(
+            &storage,
+            &result.0.solana_accounts,
+            &level,
+        ));
     }
 
     Ok(result)
@@ -251,9 +255,15 @@ async fn emulate_trx<T: Tracer>(
 fn provide_account_data(
     storage: &EmulatorAccountStorage<impl Rpc>,
     solana_accounts: &Vec<SolanaAccount>,
+    level: &AccountInfoLevel,
 ) -> Vec<AccountData> {
     let mut accounts_data = Vec::<AccountData>::new();
+
     for account in solana_accounts {
+        if !account.is_writable && AccountInfoLevel::Changed == *level {
+            continue;
+        }
+
         if let Some(account_data) = storage.accounts_get(&account.pubkey) {
             accounts_data.push(account_data.clone());
         }

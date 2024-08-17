@@ -8,7 +8,7 @@ pub use crate::{account_storage::FAKE_OPERATOR, config::ACCOUNT_SEED_VERSION};
 
 pub use ether_balance::{BalanceAccount, Header as BalanceHeader};
 pub use ether_contract::{AllocateResult, ContractAccount, Header as ContractHeader};
-pub use ether_storage::{Header as StorageCellHeader, StorageCell, StorageCellAddress};
+pub use ether_storage::{Cell, Header as StorageCellHeader, StorageCell, StorageCellAddress};
 pub use holder::{Header as HolderHeader, Holder};
 pub use incinerator::Incinerator;
 pub use operator::Operator;
@@ -20,8 +20,8 @@ pub use treasury::{MainTreasury, Treasury};
 use self::program::System;
 
 mod ether_balance;
-pub mod ether_contract;
-pub mod ether_storage;
+mod ether_contract;
+mod ether_storage;
 mod holder;
 mod incinerator;
 pub mod legacy;

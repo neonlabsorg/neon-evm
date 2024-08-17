@@ -159,6 +159,13 @@ impl From<&SerializedAccount> for Account {
 }
 
 #[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum AccountInfoLevel {
+    Changed,
+    All,
+}
+
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulateRequest {
     pub tx: TxParams,
@@ -169,7 +176,7 @@ pub struct EmulateRequest {
     pub accounts: Vec<Pubkey>,
     #[serde_as(as = "Option<HashMap<DisplayFromStr,_>>")]
     pub solana_overrides: Option<HashMap<Pubkey, Option<SerializedAccount>>>,
-    pub provide_account_info: Option<bool>,
+    pub provide_account_info: Option<AccountInfoLevel>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -382,8 +389,9 @@ mod tests {
                     "rent_epoch": 0,
                     "data": "0102030405"
                 }
-            }
-        }        
+            },
+            "provide_account_info": null
+        }
         "#;
 
         let request: super::EmulateRequest = serde_json::from_str(txt).unwrap();

@@ -1,5 +1,5 @@
-use crate::error::Error;
 use crate::gasometer::LAMPORTS_PER_SIGNATURE;
+use crate::{error::Error, types::DynamicFeeTx};
 use ethnum::U256;
 use solana_program::{instruction::get_processed_sibling_instruction, pubkey, pubkey::Pubkey};
 use std::convert::From;
@@ -15,11 +15,45 @@ const COMPUTE_UNIT_PRICE_TAG: u8 = 0x3;
 // The default compute units limit for Solana transactions.
 const DEFAULT_COMPUTE_UNIT_LIMIT: u32 = 200_000;
 
-// The divisor in the conversion from priority fee in microlamports to priority fee per gas.
-// This divisor includes the tolerance_level := 0.9 which is an allowed discrepancy between
-// the actual priority fee per gas as paid by the Operator and the priority fee per gas
-// as set by the User in the transaction.
-const CONVERSION_DIVISOR: u64 = LAMPORTS_PER_SIGNATURE * 900_000;
+// Conversion from "total micro lamports" to lamports per gas unit.
+const CONVERSION_MULTIPLIER: u64 = 1_000_000 / LAMPORTS_PER_SIGNATURE;
+
+/// Returns the amount of "priority fee per gas unit" in gas tokens that User have to pay to the Operator.
+pub fn get_priority_fee_per_gas_in_tokens(txn: &DynamicFeeTx) -> Result<U256, Error> {
+    let max_fee = txn.max_fee_per_gas;
+    let max_priority_fee = txn.max_priority_fee_per_gas;
+
+    if max_priority_fee > max_fee {
+        return Err(Error::PriorityFeeError(
+            "max_priority_fee_per_gas > max_fee_per_gas".to_string(),
+        ));
+    }
+
+    if max_fee == max_priority_fee {
+        // If max_fee_per_gas == max_priority_fee_per_gas, we handle transaction as legacy:
+        // - charge max_fee_per_gas * gas_used,
+        // - do not charge any priority fee.
+        return Ok(U256::ZERO);
+    }
+
+    if max_priority_fee == U256::ZERO {
+        // If the User set priority fee to zero, the resulting priority fee is 0.
+        return Ok(U256::ZERO);
+    }
+
+    let (cu_limit, cu_price) = get_compute_budget_priority_fee()?;
+
+    let priority_fee_per_gas_in_lamports: u64 = cu_price
+        .checked_mul(CONVERSION_MULTIPLIER * cu_limit as u64)
+        .ok_or(Error::PriorityFeeError(
+            "cu_limit * cu_price overflow".to_string(),
+        ))?;
+    let base_fee_per_gas = max_fee - max_priority_fee;
+
+    // Return minimum value from what the User sets as max_priority_fee_per_gas
+    // and what the operator paid as Compute Budget (converted to gas tokens).
+    Ok(max_priority_fee.min(base_fee_per_gas * U256::from(priority_fee_per_gas_in_lamports)))
+}
 
 /// Extracts the data about compute units from instructions within the current transaction.
 /// Returns the pair of (`compute_budget_unit_limit`, `compute_budget_unit_price`)
@@ -83,39 +117,4 @@ fn get_compute_budget_priority_fee() -> Result<(u32, u64), Error> {
 
     // Both are not none, it's safe to unwrap.
     Ok((compute_unit_limit.unwrap(), compute_unit_price.unwrap()))
-}
-
-/// Checks that priority fee as set by the Operator is accurate to what User set as `max_priority_fee_per_gas`.
-pub fn validate_priority_fee(
-    trx_max_priority_fee_per_gas: U256,
-    trx_max_fee_per_gas: U256,
-) -> Result<(), Error> {
-    if trx_max_priority_fee_per_gas == U256::ZERO {
-        // If the User set priority fee to zero, there's nothing to validate.
-        return Ok(());
-    }
-
-    let (cu_limit, cu_price) = get_compute_budget_priority_fee()?;
-    let priority_fee: U256 = cu_price
-        .checked_mul(u64::from(cu_limit))
-        .ok_or(Error::PriorityFeeError(
-            "cu_limit * cu_price overflow".to_string(),
-        ))?
-        .into();
-    let base_fee_per_gas = trx_max_fee_per_gas - trx_max_priority_fee_per_gas;
-
-    let actual_priority_fee_per_gas = base_fee_per_gas
-        .checked_mul(priority_fee)
-        .and_then(|res| res.checked_div(CONVERSION_DIVISOR.into()))
-        .ok_or(Error::PriorityFeeError(
-            "actual priority_fee_per_gas overflow".into(),
-        ))?;
-
-    if actual_priority_fee_per_gas >= trx_max_priority_fee_per_gas {
-        Ok(())
-    } else {
-        Err(Error::PriorityFeeError(
-            "actual_priority_fee_per_gas < max_priority_fee_per_gas".to_string(),
-        ))
-    }
 }

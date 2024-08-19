@@ -623,12 +623,25 @@ impl Transaction {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { gas_price, .. })
             | TransactionPayload::AccessList(AccessListTx { gas_price, .. }) => gas_price,
-            // return base_fee_per_gas as a gas_price - priority fee is charged per iteration separately.
             TransactionPayload::DynamicFee(DynamicFeeTx {
                 max_priority_fee_per_gas,
                 max_fee_per_gas,
                 ..
-            }) => max_fee_per_gas - max_priority_fee_per_gas,
+            }) => {
+                // Metamask case.
+                // Currently, the Metamask does not use native RPC methods for gas estimation and
+                // sets max_priority_fee_per_gas = max_fee_per_gas for DynamicGas transactions
+                // when it can't estimate the gas price.
+                // For such a case, we will treat DynamicGas transactions as legacy ones:
+                // - gas_price is equal to max_fee_per_gas,
+                // - we do not charge the Priority Fee from the User (gas is charged as for Legacy txn).
+                if max_fee_per_gas == max_priority_fee_per_gas {
+                    max_fee_per_gas
+                } else {
+                    // return base_fee_per_gas as a gas_price - priority fee is charged per iteration separately.
+                    max_fee_per_gas - max_priority_fee_per_gas
+                }
+            }
         }
     }
 

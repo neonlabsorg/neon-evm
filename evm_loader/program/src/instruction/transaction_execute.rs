@@ -6,7 +6,7 @@ use crate::evm::tracing::NoopEventListener;
 use crate::evm::Machine;
 use crate::executor::{ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
-use crate::instruction::dynamic_fee_transaction_validator;
+use crate::instruction::priority_fee_txn_calculator;
 use crate::instruction::transaction_step::log_return_value;
 use crate::types::{boxx::Boxx, Address, Transaction, TransactionPayload};
 use ethnum::U256;
@@ -121,9 +121,8 @@ pub fn execute_with_solana_call(
     Ok(())
 }
 
-// In case the transaction is DynamicFee:
-// (1) validate that the Operator specified the priority fee according to transaction.
-// (2) charge the User in favor of Operator with amount of `priority_fee_per_gas` * `gas_used`.
+// In case the transaction is DynamicFee - charge the User in favor of Operator with amount of
+// `priority_fee_per_gas` * `gas_used`.
 fn handle_priority_fee(
     trx: &Transaction,
     account_storage: &mut ProgramAccountStorage,
@@ -132,20 +131,11 @@ fn handle_priority_fee(
     chain_id: u64,
 ) -> Result<()> {
     if let TransactionPayload::DynamicFee(dynamic_fee_payload) = &trx.transaction {
-        // Validate.
-        dynamic_fee_transaction_validator::validate_priority_fee(
-            dynamic_fee_payload.max_priority_fee_per_gas,
-            dynamic_fee_payload.max_fee_per_gas,
-        )?;
-
-        let priority_fee_in_tokens = dynamic_fee_payload
-            .max_priority_fee_per_gas
-            .checked_mul(used_gas)
-            .ok_or(Error::PriorityFeeError(
-                "max_priority_fee_per_gas * used_gas overflow".to_string(),
-            ))?;
-
+        let priority_fee_gas_price =
+            priority_fee_txn_calculator::get_priority_fee_per_gas_in_tokens(dynamic_fee_payload)?;
+        let priority_fee_in_tokens = priority_fee_gas_price * used_gas;
         // Transfer priority fee.
+        // inc_revision=false because the origin balance has already been incremented within this transaction.
         account_storage.transfer_gas_payment(origin, chain_id, priority_fee_in_tokens, false)?;
         log_data(&[b"PRIORITYFEE", &priority_fee_in_tokens.to_le_bytes()]);
     }

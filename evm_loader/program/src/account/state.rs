@@ -98,6 +98,8 @@ struct Data {
     pub touched_accounts: TreeMap<Pubkey, u64>,
     /// Ethereum transaction gas used and paid
     pub gas_used: U256,
+    /// Ethereum transaction priority fee used and paid in tokens
+    pub priority_fee_used: U256,
     /// Steps executed in the transaction
     pub steps_executed: u64,
 }
@@ -191,6 +193,7 @@ impl<'a> StateAccount<'a> {
             revisions,
             touched_accounts: TreeMap::new(),
             gas_used: U256::ZERO,
+            priority_fee_used: U256::ZERO,
             steps_executed: 0_u64,
         });
 
@@ -324,8 +327,15 @@ impl<'a> StateAccount<'a> {
     }
 
     #[must_use]
-    pub fn gas_available(&self) -> U256 {
+    fn gas_available(&self) -> U256 {
         self.trx().gas_limit().saturating_sub(self.gas_used())
+    }
+
+    fn priority_fee_in_tokens_available(&self) -> Result<U256> {
+        Ok(self
+            .trx()
+            .priority_fee_limit_in_tokens()?
+            .saturating_sub(self.data.priority_fee_used))
     }
 
     fn use_gas(&mut self, amount: U256) -> Result<U256> {
@@ -347,12 +357,31 @@ impl<'a> StateAccount<'a> {
             .ok_or(Error::IntegerOverflow)
     }
 
+    fn use_priority_fee_tokens(&mut self, tokens: U256) -> Result<()> {
+        let total_priority_fee_used = self.data.priority_fee_used.saturating_add(tokens);
+        let priority_fee_limit = self.trx().priority_fee_limit_in_tokens()?;
+
+        if total_priority_fee_used > priority_fee_limit {
+            return Err(Error::OutOfPriorityFee(
+                priority_fee_limit,
+                total_priority_fee_used,
+            ));
+        }
+
+        self.data.priority_fee_used = total_priority_fee_used;
+        Ok(())
+    }
+
     pub fn consume_gas(
         &mut self,
         amount: U256,
+        priority_fee_tokens: U256,
         receiver: Option<OperatorBalanceAccount>,
     ) -> Result<()> {
-        let tokens = self.use_gas(amount)?;
+        self.use_priority_fee_tokens(priority_fee_tokens)?;
+        let gas_fee_tokens = self.use_gas(amount)?;
+
+        let tokens = gas_fee_tokens + priority_fee_tokens;
         if tokens == U256::ZERO {
             return Ok(());
         }
@@ -374,8 +403,12 @@ impl<'a> StateAccount<'a> {
         assert!(origin.address() == self.trx_origin());
 
         let unused_gas = self.gas_available();
-        let tokens = self.use_gas(unused_gas)?;
-        origin.mint(tokens)
+        let gas_fee_tokens = self.use_gas(unused_gas)?;
+
+        let unused_priority_fee = self.priority_fee_in_tokens_available()?;
+        self.use_priority_fee_tokens(unused_priority_fee)?;
+
+        origin.mint(gas_fee_tokens + unused_priority_fee)
     }
 
     #[must_use]

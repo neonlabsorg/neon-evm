@@ -1,4 +1,7 @@
+use crate::debug::log_data;
 use crate::gasometer::LAMPORTS_PER_SIGNATURE;
+use crate::types::Transaction;
+use crate::types::TransactionPayload;
 use crate::{error::Error, types::DynamicFeeTx};
 use ethnum::U256;
 use solana_program::{instruction::get_processed_sibling_instruction, pubkey, pubkey::Pubkey};
@@ -18,8 +21,20 @@ const DEFAULT_COMPUTE_UNIT_LIMIT: u32 = 200_000;
 // Conversion from "total micro lamports" to lamports per gas unit.
 const CONVERSION_MULTIPLIER: u64 = 1_000_000 / LAMPORTS_PER_SIGNATURE;
 
-/// Returns the amount of "priority fee per gas unit" in gas tokens that User have to pay to the Operator.
-pub fn get_priority_fee_per_gas_in_tokens(txn: &DynamicFeeTx) -> Result<U256, Error> {
+/// Handles priority fee:
+/// - No-op for anything but DynamicFee transactions,
+/// - Calculates and logs the priority fee in tokens for DynamicFee transactions.
+pub fn handle_priority_fee(txn: &Transaction, gas_amount: U256) -> Result<U256, Error> {
+    if let TransactionPayload::DynamicFee(ref dynamic_fee_payload) = txn.transaction {
+        let priority_fee_in_tokens = get_priority_fee_in_tokens(dynamic_fee_payload, gas_amount)?;
+        log_data(&[b"PRIORITYFEE", &priority_fee_in_tokens.to_le_bytes()]);
+        return Ok(priority_fee_in_tokens);
+    }
+    Ok(U256::ZERO)
+}
+
+/// Returns the amount of "priority fee in tokens" that User have to pay to the Operator.
+pub fn get_priority_fee_in_tokens(txn: &DynamicFeeTx, gas_amount: U256) -> Result<U256, Error> {
     let max_fee = txn.max_fee_per_gas;
     let max_priority_fee = txn.max_priority_fee_per_gas;
 
@@ -50,9 +65,12 @@ pub fn get_priority_fee_per_gas_in_tokens(txn: &DynamicFeeTx) -> Result<U256, Er
         ))?;
     let base_fee_per_gas = max_fee - max_priority_fee;
 
-    // Return minimum value from what the User sets as max_priority_fee_per_gas
-    // and what the operator paid as Compute Budget (converted to gas tokens).
-    Ok(max_priority_fee.min(base_fee_per_gas * U256::from(priority_fee_per_gas_in_lamports)))
+    // Get minimum value of priority_fee_per_gas from what the User sets as max_priority_fee_per_gas
+    // and what the operator paid as Compute Budget (as converted to gas tokens).
+    Ok(
+        max_priority_fee.min(base_fee_per_gas * U256::from(priority_fee_per_gas_in_lamports))
+            * gas_amount,
+    )
 }
 
 /// Extracts the data about compute units from instructions within the current transaction.

@@ -30,7 +30,6 @@ impl<'a> ProgramAccountStorage<'a> {
         origin: Address,
         chain_id: u64,
         value: U256,
-        inc_revision: bool,
     ) -> Result<()> {
         if value == U256::ZERO {
             return Ok(());
@@ -42,9 +41,7 @@ impl<'a> ProgramAccountStorage<'a> {
         let mut source = BalanceAccount::from_account(&crate::ID, source)?;
 
         let mut target = self.accounts.operator_balance();
-        if inc_revision {
-            source.increment_revision(&self.rent, &self.accounts)?;
-        }
+        source.increment_revision(&self.rent, &self.accounts)?;
         target.consume_gas(&mut source, value)
     }
 

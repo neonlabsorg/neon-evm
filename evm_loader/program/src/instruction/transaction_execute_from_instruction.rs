@@ -41,7 +41,7 @@ pub fn process<'a>(
     log_data(&[b"MINER", miner_address.as_bytes()]);
 
     let accounts_db = AccountsDB::new(
-        &accounts[4..],
+        &accounts[5..],
         operator,
         operator_balance,
         Some(system),

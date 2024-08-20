@@ -660,6 +660,13 @@ impl Transaction {
             .ok_or(Error::IntegerOverflow)
     }
 
+    pub fn priority_fee_limit_in_tokens(&self) -> Result<U256, Error> {
+        self.max_priority_fee_per_gas()
+            .unwrap_or_default()
+            .checked_mul(self.gas_limit())
+            .ok_or(Error::IntegerOverflow)
+    }
+
     #[must_use]
     pub fn target(&self) -> Option<Address> {
         match self.transaction {

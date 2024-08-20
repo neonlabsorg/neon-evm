@@ -107,6 +107,9 @@ pub enum Error {
     #[error("Out of Gas, limit = {0}, required = {1}")]
     OutOfGas(U256, U256),
 
+    #[error("Out of Priority Fee, limit = {0}, required = {1}")]
+    OutOfPriorityFee(U256, U256),
+
     #[error("Invalid gas balance account")]
     GasReceiverInvalidChainId,
 

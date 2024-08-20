@@ -8,8 +8,7 @@ use crate::executor::{ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
 use crate::instruction::priority_fee_txn_calculator;
 use crate::instruction::transaction_step::log_return_value;
-use crate::types::{boxx::Boxx, Address, Transaction, TransactionPayload};
-use ethnum::U256;
+use crate::types::{boxx::Boxx, Address, Transaction};
 
 pub fn execute(
     accounts: AccountsDB<'_>,
@@ -62,8 +61,8 @@ pub fn execute(
     log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
     let gas_cost = used_gas.saturating_mul(gas_price);
-    account_storage.transfer_gas_payment(origin, chain_id, gas_cost, true)?;
-    handle_priority_fee(&trx, &mut account_storage, origin, used_gas, chain_id)?;
+    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(&trx, used_gas)?;
+    account_storage.transfer_gas_payment(origin, chain_id, gas_cost + priority_fee)?;
 
     log_return_value(&exit_reason);
 
@@ -113,32 +112,10 @@ pub fn execute_with_solana_call(
     log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
     let gas_cost = used_gas.saturating_mul(gas_price);
-    account_storage.transfer_gas_payment(origin, chain_id, gas_cost, true)?;
-    handle_priority_fee(&trx, &mut account_storage, origin, used_gas, chain_id)?;
+    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(&trx, used_gas)?;
+    account_storage.transfer_gas_payment(origin, chain_id, gas_cost + priority_fee)?;
 
     log_return_value(&exit_reason);
-
-    Ok(())
-}
-
-// In case the transaction is DynamicFee - charge the User in favor of Operator with amount of
-// `priority_fee_per_gas` * `gas_used`.
-fn handle_priority_fee(
-    trx: &Transaction,
-    account_storage: &mut ProgramAccountStorage,
-    origin: Address,
-    used_gas: U256,
-    chain_id: u64,
-) -> Result<()> {
-    if let TransactionPayload::DynamicFee(dynamic_fee_payload) = &trx.transaction {
-        let priority_fee_gas_price =
-            priority_fee_txn_calculator::get_priority_fee_per_gas_in_tokens(dynamic_fee_payload)?;
-        let priority_fee_in_tokens = priority_fee_gas_price * used_gas;
-        // Transfer priority fee.
-        // inc_revision=false because the origin balance has already been incremented within this transaction.
-        account_storage.transfer_gas_payment(origin, chain_id, priority_fee_in_tokens, false)?;
-        log_data(&[b"PRIORITYFEE", &priority_fee_in_tokens.to_le_bytes()]);
-    }
 
     Ok(())
 }

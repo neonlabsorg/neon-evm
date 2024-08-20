@@ -8,7 +8,10 @@ use std::collections::BTreeMap;
 use config_parser::{CommonConfig, NetSpecificConfig};
 use proc_macro::TokenStream;
 use syn::parse::{Parse, ParseStream};
-use syn::{parse_macro_input, Expr, Ident, LitStr, Result, Token};
+use syn::{
+    parse_macro_input, Data::Struct, DataStruct, DeriveInput, Expr, Fields::Named, FieldsNamed,
+    GenericArgument, Ident, LitStr, PathArguments, Result, Token, Type, TypePath, TypeTuple,
+};
 
 use quote::quote;
 
@@ -162,4 +165,94 @@ pub fn common_config_parser(tokens: TokenStream) -> TokenStream {
         ];
     }
     .into()
+}
+
+#[proc_macro_derive(ReconstructRaw)]
+pub fn reconstruct_raw(input: TokenStream) -> TokenStream {
+    // Parse the string representation
+    let ast = parse_macro_input!(input as DeriveInput);
+
+    let Struct(DataStruct {
+        fields: Named(FieldsNamed { ref named, .. }),
+        ..
+    }) = ast.data
+    else {
+        unimplemented!("ReconstructRaw only works for structs");
+    };
+    let builder_fields = named.iter().map(|f| {
+        let name = &f.ident;
+        let ty = &f.ty;
+
+        // If the type of the field is Vector, use a special function to reconstruct it.
+        // Only Vectors of primitive types are supported.
+        // Other Vectors (including Vector<Vector<T>>) are constructed empty.
+        // N.B. Currently, it's only used in the Transaction in the context of the Core API.
+        // The only composite vector is access_list which is not relevant for the Core API.
+        if !is_vector_type(ty) {
+            quote! { #name: std::ptr::read_unaligned(std::ptr::addr_of!((*struct_ptr).#name)) }
+        } else if is_composite_vector_type(ty) {
+            quote! { #name: vector![] }
+        } else {
+            quote! { #name: read_vec(std::ptr::addr_of!((*struct_ptr).#name).cast::<usize>(), offset).into_vector() }
+        }
+    });
+
+    let name = &ast.ident;
+    quote! {
+        impl ReconstructRaw for #name {
+            /// # Safety
+            /// Generated code, if something goes wrong here, it likely won't compile at all.
+            unsafe fn build(struct_ptr: *const Self, offset: isize) -> Self {
+                unsafe {
+                    Self {
+                        #(#builder_fields,)*
+                    }
+                }
+            }
+        }
+    }
+    .into()
+}
+
+fn is_vector_type(ty: &Type) -> bool {
+    match ty {
+        Type::Path(TypePath {
+            path: path_type, ..
+        }) => path_type
+            .segments
+            .iter()
+            .any(|f| f.ident.to_string().eq("Vector")),
+        Type::Tuple(TypeTuple {
+            elems: elems_type, ..
+        }) => elems_type.iter().any(is_vector_type),
+        _ => false,
+    }
+}
+
+fn is_argument_vector_type(arg: &PathArguments) -> bool {
+    match arg {
+        PathArguments::AngleBracketed(inner_arg) => inner_arg.args.iter().any(|f| match f {
+            GenericArgument::Type(inner_type) => is_vector_type(inner_type),
+            _ => false,
+        }),
+        _ => false,
+    }
+}
+
+fn is_composite_vector_type(ty: &Type) -> bool {
+    if let Type::Path(TypePath {
+        qself: _,
+        path: path_type,
+    }) = ty
+    {
+        let vec_path_segment = path_type
+            .segments
+            .iter()
+            .find(|&f| f.ident.to_string().eq("Vector"));
+        if let Some(path_segment) = vec_path_segment {
+            return is_argument_vector_type(&path_segment.arguments);
+        }
+        return false;
+    }
+    false
 }

@@ -1,3 +1,5 @@
+use crate::types::Vector;
+use crate::vector;
 use crate::{
     account_storage::FAKE_OPERATOR,
     error::Result,
@@ -54,7 +56,7 @@ impl PrecompiledContracts {
         address: &Address,
         input: &[u8],
         is_static: bool,
-    ) -> Option<Result<Vec<u8>>> {
+    ) -> Option<Result<Vector<u8>>> {
         match *address {
             Self::SYSTEM_ACCOUNT_QUERY => {
                 Some(query_account::query_account(state, address, input, context, is_static).await)
@@ -82,7 +84,7 @@ pub async fn create_account<State: Database>(
     account: &OwnedAccountInfo,
     space: usize,
     owner: &Pubkey,
-    seeds: Vec<Vec<u8>>,
+    seeds: Vector<Vector<u8>>,
 ) -> Result<()> {
     let minimum_balance = state.rent().minimum_balance(space);
 
@@ -92,18 +94,18 @@ pub async fn create_account<State: Database>(
         let transfer =
             system_instruction::transfer(&FAKE_OPERATOR, &account.key, required_lamports);
         state
-            .queue_external_instruction(transfer, vec![], required_lamports, true)
+            .queue_external_instruction(transfer, vector![], required_lamports, true)
             .await?;
     }
 
     let allocate = system_instruction::allocate(&account.key, space.try_into().unwrap());
     state
-        .queue_external_instruction(allocate, vec![seeds.clone()], 0, true)
+        .queue_external_instruction(allocate, vector![seeds.clone()], 0, true)
         .await?;
 
     let assign = system_instruction::assign(&account.key, owner);
     state
-        .queue_external_instruction(assign, vec![seeds], 0, true)
+        .queue_external_instruction(assign, vector![seeds], 0, true)
         .await?;
 
     Ok(())

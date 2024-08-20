@@ -33,8 +33,10 @@ mod state_finalized;
 pub mod token;
 mod treasury;
 
+pub const HEAP_OFFSET_PTR: usize = holder::HEAP_OFFSET_OFFSET;
+
 pub const TAG_EMPTY: u8 = 0;
-pub const TAG_STATE: u8 = 24;
+pub const TAG_STATE: u8 = 25;
 pub const TAG_STATE_FINALIZED: u8 = 32;
 pub const TAG_HOLDER: u8 = 52;
 

@@ -1,6 +1,6 @@
 [package]
 name = "neon-lib"
-version = "1.14.0-dev"
+version = "1.15.0-dev"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -53,8 +53,6 @@ clap = "2.34.0"
 lazy_static = "1.5.0"
 elsa = "1.10.0"
 arrayref = "0.3.8"
-# TODO revisit as this causes zeroize version conflict
-#reconnecting-jsonrpsee-ws-client = "0.4.2"
 
 [dev-dependencies]
 hex-literal = "0.4.1"

@@ -7,12 +7,12 @@ use crate::account::{AllocateResult, ContractAccount, StorageCell};
 use crate::account_storage::{SyncedAccountStorage, FAKE_OPERATOR};
 use crate::config::{ACCOUNT_SEED_VERSION, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT};
 use crate::error::Result;
-use crate::types::Address;
+use crate::types::{vector::Vector, Address};
 
 use super::{AccountStorage, ProgramAccountStorage};
 
 impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<'a> {
-    fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
+    fn set_code(&mut self, address: Address, chain_id: u64, code: Vector<u8>) -> Result<()> {
         let result = ContractAccount::allocate(
             address,
             &code,
@@ -102,7 +102,7 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
     fn execute_external_instruction(
         &mut self,
         mut instruction: Instruction,
-        seeds: Vec<Vec<Vec<u8>>>,
+        seeds: Vector<Vector<Vector<u8>>>,
         _fee: u64,
         _emulated_internally: bool,
     ) -> Result<()> {

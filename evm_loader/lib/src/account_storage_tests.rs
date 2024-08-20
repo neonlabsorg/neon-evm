@@ -1,6 +1,7 @@
 use super::*;
 use crate::rpc;
 use crate::tracing::AccountOverride;
+use evm_loader::types::vector::VectorVecExt;
 use hex_literal::hex;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -1115,7 +1116,7 @@ async fn test_deploy_at_missing_contract() {
 
     let code = hex!("14643165").to_vec();
     assert!(storage
-        .set_code(MISSING_ADDRESS, LEGACY_CHAIN_ID, code.clone())
+        .set_code(MISSING_ADDRESS, LEGACY_CHAIN_ID, code.clone().into_vector())
         .await
         .is_ok());
     storage.verify_used_accounts(&[(fixture.contract_pubkey(MISSING_ADDRESS), true, false)]);
@@ -1131,7 +1132,7 @@ async fn test_deploy_at_actual_balance() {
     let code = hex!("14643165").to_vec();
     let acc = &ACTUAL_BALANCE;
     assert!(storage
-        .set_code(acc.address, LEGACY_CHAIN_ID, code.clone())
+        .set_code(acc.address, LEGACY_CHAIN_ID, code.clone().into_vector())
         .await
         .is_ok());
     storage.verify_used_accounts(&[(fixture.contract_pubkey(acc.address), true, false)]);
@@ -1148,7 +1149,7 @@ async fn test_deploy_at_actual_contract() {
     let contract = &ACTUAL_CONTRACT;
     assert_eq!(
         storage
-            .set_code(contract.address, LEGACY_CHAIN_ID, code)
+            .set_code(contract.address, LEGACY_CHAIN_ID, code.into_vector())
             .await
             .unwrap_err()
             .to_string(),
@@ -1168,7 +1169,11 @@ async fn test_deploy_at_legacy_account() {
     let code = hex!("37455846").to_vec();
     let contract = &LEGACY_ACCOUNT;
     assert!(storage
-        .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
+        .set_code(
+            contract.address,
+            LEGACY_CHAIN_ID,
+            code.clone().into_vector()
+        )
         .await
         .is_ok());
     storage.verify_used_accounts(&[
@@ -1192,7 +1197,7 @@ async fn test_deploy_at_legacy_contract() {
     let contract = &LEGACY_CONTRACT;
     assert_eq!(
         storage
-            .set_code(contract.address, LEGACY_CHAIN_ID, code)
+            .set_code(contract.address, LEGACY_CHAIN_ID, code.into_vector())
             .await
             .unwrap_err()
             .to_string(),
@@ -1223,7 +1228,11 @@ async fn test_deploy_at_actual_suicide() {
     let contract = &ACTUAL_SUICIDE;
     // TODO: Should we deploy new contract by the previous address?
     assert!(storage
-        .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
+        .set_code(
+            contract.address,
+            LEGACY_CHAIN_ID,
+            code.clone().into_vector()
+        )
         .await
         .is_ok(),);
     storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), true, false)]);
@@ -1243,7 +1252,11 @@ async fn test_deploy_at_legacy_suicide() {
     let contract = &LEGACY_SUICIDE;
     // TODO: Should we deploy new contract by the previous address?
     assert!(storage
-        .set_code(contract.address, LEGACY_CHAIN_ID, code.clone())
+        .set_code(
+            contract.address,
+            LEGACY_CHAIN_ID,
+            code.clone().into_vector()
+        )
         .await
         .is_ok(),);
     storage.verify_used_accounts(&[

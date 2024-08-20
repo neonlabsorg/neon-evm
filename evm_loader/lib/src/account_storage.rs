@@ -16,7 +16,7 @@ use evm_loader::{
     config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
     error::Error as EvmLoaderError,
     executor::OwnedAccountInfo,
-    types::Address,
+    types::{vector::VectorVecExt, Address, Vector},
 };
 use log::{debug, info, trace};
 use solana_sdk::{
@@ -1113,7 +1113,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
             .await
             .unwrap();
 
-        Buffer::from_vec(code)
+        Buffer::from_vector(code.into_vector())
     }
 
     async fn storage(&self, address: Address, index: U256) -> [u8; 32] {
@@ -1189,7 +1189,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         &mut self,
         address: Address,
         chain_id: u64,
-        code: Vec<u8>,
+        code: Vector<u8>,
     ) -> evm_loader::error::Result<()> {
         info!("set_code {address} -> {} bytes", code.len());
         {
@@ -1337,7 +1337,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
     async fn execute_external_instruction(
         &mut self,
         instruction: Instruction,
-        seeds: Vec<Vec<Vec<u8>>>,
+        seeds: Vector<Vector<Vector<u8>>>,
         _fee: u64,
         emulated_internally: bool,
     ) -> evm_loader::error::Result<()> {
@@ -1362,7 +1362,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         let signers = seeds
             .iter()
             .map(|s| {
-                let seed = s.iter().map(Vec::as_slice).collect::<Vec<_>>();
+                let seed = s.iter().map(Vector::as_slice).collect::<Vec<_>>();
                 let signer = Pubkey::create_program_address(&seed, &self.program_id)?;
                 Ok(signer)
             })

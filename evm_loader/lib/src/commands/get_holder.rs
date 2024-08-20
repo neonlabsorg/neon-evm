@@ -117,23 +117,24 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
             })
         }
         TAG_STATE => {
-            let state = StateAccount::from_account(program_id, info)?;
-            let accounts = state.accounts().copied().collect();
+            // StateAccount::from_account doesn't work here because state contains heap
+            // and transaction inside state account has been allocated via this heap.
+            // Data should be read by pointers with offsets.
+            let (transaction, owner, origin, accounts, steps) =
+                StateAccount::get_state_account_view(program_id, &info)?;
 
-            let origin = state.trx_origin();
-            let transaction = state.trx();
-            let tx_params = TxParams::from_transaction(origin, transaction);
+            let tx_params = TxParams::from_transaction(origin, &transaction);
 
             Ok(GetHolderResponse {
                 status: Status::Active,
                 len: Some(data_len),
-                owner: Some(state.owner()),
+                owner: Some(owner),
                 tx: Some(transaction.hash()),
                 tx_data: Some(tx_params),
                 chain_id: transaction.chain_id(),
                 origin: Some(origin),
                 accounts: Some(accounts),
-                steps_executed: state.steps_executed(),
+                steps_executed: steps,
             })
         }
         _ => Err(ProgramError::InvalidAccountData.into()),

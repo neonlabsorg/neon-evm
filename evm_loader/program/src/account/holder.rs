@@ -1,9 +1,12 @@
+use linked_list_allocator::Heap;
 use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
+use static_assertions::const_assert;
 use std::cell::{Ref, RefMut};
-use std::mem::size_of;
+use std::mem::{align_of, size_of};
 
 use crate::account::TAG_STATE_FINALIZED;
+use crate::allocator::STATE_ACCOUNT_DATA_ADDRESS;
 use crate::error::{Error, Result};
 use crate::types::Transaction;
 
@@ -15,6 +18,7 @@ pub struct Header {
     pub owner: Pubkey,
     pub transaction_hash: [u8; 32],
     pub transaction_len: usize,
+    pub heap_offset: usize,
 }
 
 impl AccountHeader for Header {
@@ -26,7 +30,18 @@ pub struct Holder<'a> {
 }
 
 const HEADER_OFFSET: usize = ACCOUNT_PREFIX_LEN;
-const BUFFER_OFFSET: usize = HEADER_OFFSET + size_of::<Header>();
+pub const BUFFER_OFFSET: usize = HEADER_OFFSET + size_of::<Header>();
+
+// Offset of the Header.heap_offset from the start of account data.
+// TODO: get rid of memoffset in favor of core::mem::offset_of! when rust version >= 1.77.
+pub const HEAP_OFFSET_OFFSET: usize = HEADER_OFFSET + memoffset::offset_of!(Header, heap_offset);
+// State Account Header and Holder Account Header should have a shared and fixed memory cell that denotes
+// the offset of the persistent heap (heap_offset field).
+// The following asert checks that State Account Header does not overlap with `heap_offset` memory cell,
+// so writes to State Account Header do not override it.
+const_assert!(
+    memoffset::offset_of!(Header, heap_offset) >= size_of::<crate::account::state::Header>()
+);
 
 impl<'a> Holder<'a> {
     pub fn from_account(program_id: &Pubkey, account: AccountInfo<'a>) -> Result<Self> {
@@ -100,6 +115,7 @@ impl<'a> Holder<'a> {
             let mut header = self.header_mut();
             header.transaction_hash.fill(0);
             header.transaction_len = 0;
+            header.heap_offset = 0;
         }
         {
             let mut buffer = self.buffer_mut();
@@ -176,6 +192,76 @@ impl<'a> Holder<'a> {
                 trx.hash(),
             ));
         }
+
+        Ok(())
+    }
+
+    /// Initializes the heap using the whole account data space.
+    /// Also, writes the offset of the heap object into the separate field in the header.
+    /// After this, the persistent objects can be allocated into the account data.
+    pub fn init_heap(&mut self, transaction_offset: usize) -> Result<()> {
+        // For this case, the account.owner is already validated to be equal to program id.
+        Self::init_holder_heap(self.account.owner, &mut self.account, transaction_offset)
+    }
+
+    /// Associated function, see `fn init_heap`.
+    pub fn init_holder_heap(
+        program_id: &Pubkey,
+        account: &mut AccountInfo,
+        transaction_offset: usize,
+    ) -> Result<()> {
+        // Validation: check that the passed account is a variant of Holder: Holder, State or StateFinalized.
+        // An additional owner check is happening inside the tag.
+        let tag = crate::account::tag(program_id, account)?;
+        assert!(
+            tag == TAG_HOLDER || tag == crate::account::TAG_STATE || tag == TAG_STATE_FINALIZED
+        );
+
+        let data_ptr = account.data.borrow().as_ptr();
+        // Validation: the Holder Account used as a persistent heap, must be first in the account list.
+        assert_eq!(data_ptr as usize, STATE_ACCOUNT_DATA_ADDRESS);
+
+        // Calculate the actual aligned heap object ptr and its offset.
+        let (heap_ptr, heap_object_offset) = {
+            // Locate heap object into the buffer with offset no less than min_heap_object_offset.
+            let mut heap_object_offset = BUFFER_OFFSET + transaction_offset;
+            let mut heap_ptr = data_ptr.wrapping_add(heap_object_offset);
+
+            // Calculate alignment and offset the heap pointer.
+            let alignment = heap_ptr.align_offset(align_of::<Heap>());
+            heap_ptr = heap_ptr.wrapping_add(alignment);
+            heap_object_offset += alignment;
+            // Validation: double check the alignment.
+            assert_eq!(heap_ptr.align_offset(align_of::<Heap>()), 0);
+
+            (heap_ptr, heap_object_offset)
+        };
+
+        // Initialize the heap.
+        let heap_ptr = heap_ptr.cast_mut();
+        unsafe {
+            // First, zero out underlying bytes of the future heap representation.
+            heap_ptr.write_bytes(0, size_of::<Heap>());
+            // Calculate the bottom of the heap, right after the Heap object.
+            let heap_bottom = heap_ptr.add(size_of::<Heap>());
+
+            // Size of heap is equal to account data length minus the length of prefix.
+            let heap_size = account
+                .data_len()
+                .saturating_sub(heap_object_offset + size_of::<Heap>());
+            // Validation: check that heap object is within the account data.
+            assert!(heap_size > 0);
+
+            // Cast to reference and init.
+            // Zeroed memory is a valid representation of the Heap and hence we can safely do it.
+            // That's a safety reason we zeroed the memory above.
+            #[allow(clippy::cast_ptr_alignment)]
+            let heap = &mut *(heap_ptr.cast::<Heap>());
+            heap.init(heap_bottom, heap_size);
+        };
+
+        // Write the actual heap offset into the header. This memory cell is used by the allocator.
+        super::section_mut::<Header>(account, HEADER_OFFSET).heap_offset = heap_object_offset;
 
         Ok(())
     }

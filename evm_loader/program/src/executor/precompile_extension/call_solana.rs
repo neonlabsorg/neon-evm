@@ -1,10 +1,13 @@
 use crate::{
     account_storage::FAKE_OPERATOR,
+    allocator::acc_allocator,
     config::ACCOUNT_SEED_VERSION,
     error::{Error, Result},
     evm::database::Database,
-    types::Address,
+    types::{vector::VectorSliceExt, Address, Vector},
+    vector,
 };
+
 use arrayref::array_ref;
 use ethnum::U256;
 use maybe_async::maybe_async;
@@ -34,7 +37,7 @@ pub async fn call_solana<State: Database>(
     input: &[u8],
     context: &crate::evm::Context,
     is_static: bool,
-) -> Result<Vec<u8>> {
+) -> Result<Vector<u8>> {
     if context.value != 0 {
         return Err(Error::Custom("CallSolana: value != 0".to_string()));
     }
@@ -66,10 +69,10 @@ pub async fn call_solana<State: Database>(
             let signer = context.caller;
             let (_signer_pubkey, bump_seed) = state.contract_pubkey(signer);
 
-            let signer_seeds = vec![
-                vec![ACCOUNT_SEED_VERSION],
-                signer.as_bytes().to_vec(),
-                vec![bump_seed],
+            let signer_seeds = vector![
+                vector![ACCOUNT_SEED_VERSION],
+                signer.as_bytes().to_vector(),
+                vector![bump_seed],
             ];
 
             execute_external_instruction(
@@ -101,12 +104,12 @@ pub async fn call_solana<State: Database>(
                 salt,
             ];
             let (_, signer_seed) = Pubkey::find_program_address(seeds, state.program_id());
-            let seeds = vec![
-                vec![ACCOUNT_SEED_VERSION],
-                b"AUTH".to_vec(),
-                context.caller.as_bytes().to_vec(),
-                salt.to_vec(),
-                vec![signer_seed],
+            let seeds = vector![
+                vector![ACCOUNT_SEED_VERSION],
+                b"AUTH".to_vector(),
+                context.caller.as_bytes().to_vector(),
+                salt.to_vector(),
+                vector![signer_seed],
             ];
 
             execute_external_instruction(state, context, instruction, seeds, required_lamports)
@@ -126,10 +129,10 @@ pub async fn call_solana<State: Database>(
             let signer = context.caller;
             let (_signer_pubkey, bump_seed) = state.contract_pubkey(signer);
 
-            let signer_seeds = vec![
-                vec![ACCOUNT_SEED_VERSION],
-                signer.as_bytes().to_vec(),
-                vec![bump_seed],
+            let signer_seeds = vector![
+                vector![ACCOUNT_SEED_VERSION],
+                signer.as_bytes().to_vector(),
+                vector![bump_seed],
             ];
 
             execute_external_instruction(
@@ -160,12 +163,12 @@ pub async fn call_solana<State: Database>(
                 salt,
             ];
             let (_, signer_seed) = Pubkey::find_program_address(seeds, state.program_id());
-            let seeds = vec![
-                vec![ACCOUNT_SEED_VERSION],
-                b"AUTH".to_vec(),
-                context.caller.as_bytes().to_vec(),
-                salt.to_vec(),
-                vec![signer_seed],
+            let seeds = vector![
+                vector![ACCOUNT_SEED_VERSION],
+                b"AUTH".to_vector(),
+                context.caller.as_bytes().to_vector(),
+                salt.to_vector(),
+                vector![signer_seed],
             ];
 
             execute_external_instruction(state, context, instruction, seeds, required_lamports)
@@ -176,7 +179,7 @@ pub async fn call_solana<State: Database>(
         [0x15, 0x4d, 0x4a, 0xa5] => {
             let neon_addess = Address::from(*array_ref![input, 12, 20]);
             let sol_address = state.contract_pubkey(neon_addess).0;
-            Ok(sol_address.to_bytes().to_vec())
+            Ok(sol_address.to_bytes().to_vector())
         }
 
         // "59e4ad63": "getResourceAddress(bytes32)"
@@ -189,7 +192,7 @@ pub async fn call_solana<State: Database>(
                 salt,
             ];
             let (sol_address, _) = Pubkey::find_program_address(seeds, state.program_id());
-            Ok(sol_address.to_bytes().to_vec())
+            Ok(sol_address.to_bytes().to_vector())
         }
 
         // "cd2d1a3a": "getExtAuthority(bytes32)"
@@ -202,7 +205,7 @@ pub async fn call_solana<State: Database>(
                 salt,
             ];
             let (sol_address, _) = Pubkey::find_program_address(seeds, state.program_id());
-            Ok(sol_address.to_bytes().to_vec())
+            Ok(sol_address.to_bytes().to_vector())
         }
 
         // "4a890f31": "getSolanaPDA(bytes32,bytes)"
@@ -210,7 +213,7 @@ pub async fn call_solana<State: Database>(
             let program_id = read_pubkey(&input[0..])?;
             let offset = read_usize(&input[32..])?;
             let length = read_usize(&input[offset..])?;
-            let mut seeds = Vec::with_capacity((length + 31) / 32);
+            let mut seeds = Vector::with_capacity_in((length + 31) / 32, acc_allocator());
             for i in 0..length / 32 {
                 seeds.push(&input[offset + 32 + i * 32..offset + 32 + (i + 1) * 32]);
             }
@@ -218,7 +221,7 @@ pub async fn call_solana<State: Database>(
                 seeds.push(&input[offset + 32 + length - length % 32..offset + 32 + length]);
             }
             let (sol_address, _) = Pubkey::find_program_address(&seeds, &program_id);
-            Ok(sol_address.to_bytes().to_vec())
+            Ok(sol_address.to_bytes().to_vector())
         }
 
         // "30aa81c6": "getPayer()"
@@ -226,7 +229,7 @@ pub async fn call_solana<State: Database>(
             let seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], b"PAYER", context.caller.as_bytes()];
             let (sol_address, _bump_seed) = Pubkey::find_program_address(seeds, state.program_id());
 
-            Ok(sol_address.to_bytes().to_vec())
+            Ok(sol_address.to_bytes().to_vector())
         }
 
         // "cfd51d32": "createResource(bytes32,uint64,uint64,bytes32)"
@@ -250,16 +253,16 @@ pub async fn call_solana<State: Database>(
                 state.program_id(),
             );
             let account = state.external_account(sol_address).await?;
-            let seeds: Vec<Vec<u8>> = vec![
-                vec![ACCOUNT_SEED_VERSION],
-                b"ContractData".to_vec(),
-                context.caller.as_bytes().to_vec(),
-                salt.to_vec(),
-                vec![bump_seed],
+            let seeds: Vector<Vector<u8>> = vector![
+                vector![ACCOUNT_SEED_VERSION],
+                b"ContractData".to_vector(),
+                context.caller.as_bytes().to_vector(),
+                salt.to_vector(),
+                vector![bump_seed],
             ];
 
             super::create_account(state, &account, space, &owner, seeds).await?;
-            Ok(sol_address.to_bytes().to_vec())
+            Ok(sol_address.to_bytes().to_vector())
         }
 
         // "cff5c1a5": "getReturnData()",
@@ -267,7 +270,7 @@ pub async fn call_solana<State: Database>(
             let return_value = match state.return_data() {
                 Some((program, data)) => {
                     let data_len = (data.len() + 31) & (!31);
-                    let mut result = vec![0_u8; 32 + 32 + 32 + data_len];
+                    let mut result = vector![0_u8; 32 + 32 + 32 + data_len];
 
                     result[0..32].copy_from_slice(&program.to_bytes());
                     result[63] = 0x40; // offset - 64 bytes
@@ -279,7 +282,7 @@ pub async fn call_solana<State: Database>(
                     result
                 }
                 None => {
-                    vec![
+                    vector![
                         // program_id
                         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -308,9 +311,9 @@ async fn execute_external_instruction<State: Database>(
     state: &mut State,
     context: &crate::evm::Context,
     instruction: Instruction,
-    signer_seeds: Vec<Vec<u8>>,
+    signer_seeds: Vector<Vector<u8>>,
     required_lamports: u64,
-) -> Result<Vec<u8>> {
+) -> Result<Vector<u8>> {
     #[cfg(not(target_os = "solana"))]
     log::info!("instruction: {:?}", instruction);
 
@@ -339,11 +342,11 @@ async fn execute_external_instruction<State: Database>(
         .any(|meta| meta.pubkey == payer_pubkey);
 
     if required_payer {
-        let payer_seeds = vec![
-            vec![ACCOUNT_SEED_VERSION],
-            b"PAYER".to_vec(),
-            context.caller.as_bytes().to_vec(),
-            vec![payer_bump_seed],
+        let payer_seeds = vector![
+            vector![ACCOUNT_SEED_VERSION],
+            b"PAYER".to_vector(),
+            context.caller.as_bytes().to_vector(),
+            vector![payer_bump_seed],
         ];
 
         let payer = state.external_account(payer_pubkey).await?;
@@ -354,14 +357,14 @@ async fn execute_external_instruction<State: Database>(
                 required_lamports - payer.lamports,
             );
             state
-                .queue_external_instruction(transfer_instruction, vec![], 0, false)
+                .queue_external_instruction(transfer_instruction, vector![], 0, false)
                 .await?;
         }
 
         state
             .queue_external_instruction(
                 instruction,
-                vec![signer_seeds, payer_seeds.clone()],
+                vector![signer_seeds, payer_seeds.clone()],
                 required_lamports,
                 false,
             )
@@ -375,12 +378,17 @@ async fn execute_external_instruction<State: Database>(
                 payer.lamports,
             );
             state
-                .queue_external_instruction(transfer_instruction, vec![payer_seeds], 0, false)
+                .queue_external_instruction(transfer_instruction, vector![payer_seeds], 0, false)
                 .await?;
         }
     } else {
         state
-            .queue_external_instruction(instruction, vec![signer_seeds], required_lamports, false)
+            .queue_external_instruction(
+                instruction,
+                vector![signer_seeds],
+                required_lamports,
+                false,
+            )
             .await?;
     }
 
@@ -463,14 +471,14 @@ fn read_salt(input: &[u8]) -> Result<&[u8; 32]> {
     Ok(arrayref::array_ref![input, 0, 32])
 }
 
-fn to_solidity_bytes(b: &[u8]) -> Vec<u8> {
+fn to_solidity_bytes(b: &[u8]) -> Vector<u8> {
     // Bytes encoding
     // 32 bytes - offset
     // 32 bytes - length
     // length + padding bytes - data
 
     let data_len = (b.len() + 31) & (!31);
-    let mut result = vec![0_u8; 32 + 32 + data_len];
+    let mut result = vector![0_u8; 32 + 32 + data_len];
 
     result[31] = 0x20; // offset - 32 bytes
 

@@ -6,6 +6,10 @@ use maybe_async::maybe_async;
 use solana_program::{account_info::IntoAccountInfo, program_pack::Pack, pubkey::Pubkey};
 use spl_associated_token_account::get_associated_token_address;
 
+use crate::types::vector::VectorSliceExt;
+use crate::vector;
+
+use crate::types::Vector;
 use crate::{
     account::token,
     account_storage::FAKE_OPERATOR,
@@ -27,7 +31,7 @@ pub async fn neon_token<State: Database>(
     input: &[u8],
     context: &crate::evm::Context,
     is_static: bool,
-) -> Result<Vec<u8>> {
+) -> Result<Vector<u8>> {
     debug_print!("neon_token({})", hex::encode(input));
 
     if &context.contract != address {
@@ -53,7 +57,7 @@ pub async fn neon_token<State: Database>(
 
         withdraw(state, source, chain_id, destination, value).await?;
 
-        let mut output = vec![0_u8; 32];
+        let mut output = vector![0_u8; 32];
         output[31] = 1; // return true
 
         return Ok(output);
@@ -113,7 +117,7 @@ async fn withdraw<State: Database>(
 
         let fee = state.rent().minimum_balance(spl_token::state::Account::LEN);
         state
-            .queue_external_instruction(create_associated, vec![], fee, true)
+            .queue_external_instruction(create_associated, vector![], fee, true)
             .await?;
     }
 
@@ -130,11 +134,11 @@ async fn withdraw<State: Database>(
         spl_amount.as_u64(),
         mint_data.decimals,
     )?;
-    let transfer_seeds = vec![b"Deposit".to_vec(), vec![bump_seed]];
+    let transfer_seeds = vector![b"Deposit".to_vector(), vector![bump_seed]];
 
     state.burn(source, chain_id, value).await?;
     state
-        .queue_external_instruction(transfer, vec![transfer_seeds], 0, true)
+        .queue_external_instruction(transfer, vector![transfer_seeds], 0, true)
         .await?;
 
     Ok(())

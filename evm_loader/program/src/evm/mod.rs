@@ -3,23 +3,22 @@
 #![allow(clippy::unsafe_derive_deserialize)]
 #![allow(clippy::future_not_send)]
 
-use std::{fmt::Display, marker::PhantomData, ops::Range};
+use std::{fmt::Display, marker::PhantomData, mem::ManuallyDrop, ops::Range};
 
 use ethnum::U256;
 use maybe_async::maybe_async;
-use serde::{Deserialize, Serialize};
 
 pub use buffer::Buffer;
 
-use crate::evm::tracing::EventListener;
 #[cfg(target_os = "solana")]
 use crate::evm::tracing::NoopEventListener;
 use crate::{
     debug::log_data,
     error::{build_revert_message, Error, Result},
     evm::{opcode::Action, precompile::is_precompile_address},
-    types::{Address, Transaction},
+    types::{Address, Transaction, Vector},
 };
+use crate::{evm::tracing::EventListener, types::boxx::Boxx};
 
 use self::{database::Database, memory::Memory, stack::Stack};
 
@@ -104,11 +103,12 @@ pub(crate) use begin_vm;
 pub(crate) use end_vm;
 pub(crate) use tracing_event;
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq)]
+#[repr(C)]
 pub enum ExitStatus {
     Stop,
-    Return(#[serde(with = "serde_bytes")] Vec<u8>),
-    Revert(#[serde(with = "serde_bytes")] Vec<u8>),
+    Return(Vector<u8>),
+    Revert(Vector<u8>),
     Suicide,
     StepLimit,
 }
@@ -141,39 +141,37 @@ impl ExitStatus {
     #[must_use]
     pub fn into_result(self) -> Option<Vec<u8>> {
         match self {
-            ExitStatus::Return(v) | ExitStatus::Revert(v) => Some(v),
+            ExitStatus::Return(v) | ExitStatus::Revert(v) => Some(v.to_vec()),
             ExitStatus::Stop | ExitStatus::Suicide | ExitStatus::StepLimit => None,
         }
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq)]
+#[repr(C)]
 pub enum Reason {
     Call,
     Create,
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone)]
+#[repr(C)]
 pub struct Context {
     pub caller: Address,
     pub contract: Address,
     pub contract_chain_id: u64,
-    #[serde(with = "ethnum::serde::bytes::le")]
     pub value: U256,
 
     pub code_address: Option<Address>,
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(bound = "B: Database")]
+#[repr(C)]
 pub struct Machine<B: Database, T: EventListener> {
     origin: Address,
     chain_id: u64,
     context: Context,
 
-    #[serde(with = "ethnum::serde::bytes::le")]
     gas_price: U256,
-    #[serde(with = "ethnum::serde::bytes::le")]
     gas_limit: U256,
 
     execution_code: Buffer,
@@ -188,53 +186,33 @@ pub struct Machine<B: Database, T: EventListener> {
     is_static: bool,
     reason: Reason,
 
-    parent: Option<Box<Self>>,
+    parent: Option<Boxx<Self>>,
 
-    #[serde(skip)]
     phantom: PhantomData<*const B>,
 
-    #[serde(skip)]
     tracer: Option<T>,
 }
 
 #[cfg(target_os = "solana")]
 impl<B: Database> Machine<B, NoopEventListener> {
-    pub fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize> {
-        let mut cursor = std::io::Cursor::new(buffer);
-
-        bincode::serialize_into(&mut cursor, &self)?;
-
-        cursor.position().try_into().map_err(Error::from)
+    fn reinit_buffer(buffer: &mut Buffer, backend: &B) {
+        if let Some((key, range)) = buffer.uninit_data() {
+            *buffer =
+                backend.map_solana_account(&key, |i| unsafe { Buffer::from_account(i, range) });
+        }
     }
 
-    pub fn deserialize_from(buffer: &[u8], backend: &B) -> Result<Self> {
-        fn reinit_buffer<B: Database>(buffer: &mut Buffer, backend: &B) {
-            if let Some((key, range)) = buffer.uninit_data() {
-                *buffer =
-                    backend.map_solana_account(&key, |i| unsafe { Buffer::from_account(i, range) });
+    pub fn reinit(&mut self, backend: &B) {
+        let mut machine = self;
+        loop {
+            Self::reinit_buffer(&mut machine.call_data, backend);
+            Self::reinit_buffer(&mut machine.execution_code, backend);
+            Self::reinit_buffer(&mut machine.return_data, backend);
+            match &mut machine.parent {
+                None => break,
+                Some(parent) => machine = parent,
             }
         }
-
-        fn reinit_machine<B: Database>(
-            mut machine: &mut Machine<B, NoopEventListener>,
-            backend: &B,
-        ) {
-            loop {
-                reinit_buffer(&mut machine.call_data, backend);
-                reinit_buffer(&mut machine.execution_code, backend);
-                reinit_buffer(&mut machine.return_data, backend);
-
-                match &mut machine.parent {
-                    None => break,
-                    Some(parent) => machine = parent,
-                }
-            }
-        }
-
-        let mut evm: Self = bincode::deserialize(buffer)?;
-        reinit_machine(&mut evm, backend);
-
-        Ok(evm)
     }
 }
 
@@ -369,10 +347,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         step_limit: u64,
         backend: &mut B,
     ) -> Result<(ExitStatus, u64, Option<T>)> {
-        assert!(self.execution_code.is_initialized());
-        assert!(self.call_data.is_initialized());
-        assert!(self.return_data.is_initialized());
-
         let mut step = 0_u64;
 
         begin_vm!(
@@ -461,17 +435,17 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         };
 
         core::mem::swap(self, &mut other);
-        self.parent = Some(Box::new(other));
+        self.parent = Some(crate::types::boxx::boxx(other));
     }
 
-    fn join(&mut self) -> Self {
+    fn join(&mut self) -> ManuallyDrop<Boxx<Self>> {
         assert!(self.parent.is_some());
 
-        let mut other = *self.parent.take().unwrap();
-        core::mem::swap(self, &mut other);
+        let mut other = self.parent.take().unwrap();
+        core::mem::swap(self, other.as_mut());
 
         self.tracer = other.tracer.take();
 
-        other
+        ManuallyDrop::new(other)
     }
 }

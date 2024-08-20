@@ -13,99 +13,98 @@ use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
 
+use crate::allocator::acc_allocator;
+use crate::types::tree_map::TreeMap;
+use crate::types::vector::{Vector, VectorSliceExt, VectorSliceSlowExt};
+
 use super::action::Action;
 use super::cache::Cache;
 use super::precompile_extension::PrecompiledContracts;
 use super::OwnedAccountInfo;
 
-pub type ExecutionResult = Option<(ExitStatus, Vec<Action>)>;
-pub type TouchedAccounts = BTreeMap<Pubkey, u64>;
+pub type ExecutionResult<'a> = Option<(&'a ExitStatus, &'a Vector<Action>)>;
+pub type TouchedAccounts = TreeMap<Pubkey, u64>;
 
 /// Represents the state of executor abstracted away from a self.backend.
-/// UPDATE `serialize/deserialize` WHEN THIS STRUCTURE CHANGES
-pub struct ExecutorState<'a, B: AccountStorage> {
-    backend: &'a mut B,
+/// Persistent part of `ExecutorState`.
+#[repr(C)]
+pub struct ExecutorStateData {
     cache: RefCell<Cache>,
-    actions: Vec<Action>,
-    stack: Vec<usize>,
+    actions: Vector<Action>,
+    stack: Vector<usize>,
     exit_status: Option<ExitStatus>,
-    // #[serde(skip)]
     touched_accounts: RefCell<TouchedAccounts>,
 }
 
-impl<'a, B: AccountStorage> ExecutorState<'a, B> {
-    pub fn serialize_into(&self, buffer: &mut [u8]) -> Result<usize> {
-        let mut cursor = std::io::Cursor::new(buffer);
+pub struct ExecutorState<'a, B: AccountStorage> {
+    pub backend: &'a mut B,
+    pub data: &'a mut ExecutorStateData,
+}
 
-        let value = (&self.cache, &self.actions, &self.stack, &self.exit_status);
-        bincode::serialize_into(&mut cursor, &value)?;
-
-        cursor.position().try_into().map_err(Error::from)
-    }
-
-    pub fn deserialize_from(buffer: &[u8], backend: &'a mut B) -> Result<Self> {
-        let (cache, actions, stack, exit_status) = bincode::deserialize(buffer)?;
-        Ok(Self {
-            backend,
-            cache,
-            actions,
-            stack,
-            exit_status,
-            touched_accounts: RefCell::new(TouchedAccounts::new()),
-        })
-    }
-
-    #[must_use]
-    pub fn new(backend: &'a mut B) -> Self {
+impl<'a> ExecutorStateData {
+    pub fn new<B: AccountStorage>(backend: &B) -> Self {
         let cache = Cache {
             block_number: backend.block_number(),
             block_timestamp: backend.block_timestamp(),
         };
 
         Self {
-            backend,
             cache: RefCell::new(cache),
-            actions: Vec::with_capacity(64),
-            stack: Vec::with_capacity(16),
+            actions: Vector::with_capacity_in(64, acc_allocator()),
+            stack: Vector::with_capacity_in(16, acc_allocator()),
             exit_status: None,
             touched_accounts: RefCell::new(TouchedAccounts::new()),
         }
     }
 
-    pub fn deconstruct(self) -> (ExecutionResult, TouchedAccounts) {
-        let result = if let Some(exit_status) = self.exit_status {
-            Some((exit_status, self.actions))
+    #[must_use]
+    pub fn deconstruct(&'a mut self) -> (ExecutionResult<'a>, TouchedAccounts) {
+        let result = if let Some(exit_status) = self.exit_status.as_ref() {
+            Some((exit_status, &self.actions))
         } else {
             None
         };
-
-        (result, self.touched_accounts.into_inner())
+        // Move out the current touched_accounts and replace with a new empty one. The previous touched_accounts object
+        // is consumed by the caller to update touched_accounts inside StateAccount's Data.
+        (
+            result,
+            self.touched_accounts.replace(TouchedAccounts::new()),
+        )
     }
 
-    pub fn into_actions(self) -> Vec<Action> {
-        assert!(self.stack.is_empty());
-        self.actions
+    #[must_use]
+    pub fn into_actions(&'a self) -> &'a Vector<Action> {
+        &self.actions
+    }
+}
+
+impl<'a, B: AccountStorage> ExecutorState<'a, B> {
+    #[must_use]
+    pub fn new(backend: &'a mut B, data: &'a mut ExecutorStateData) -> Self {
+        Self { backend, data }
     }
 
+    #[must_use]
     pub fn exit_status(&self) -> Option<&ExitStatus> {
-        self.exit_status.as_ref()
+        self.data.exit_status.as_ref()
     }
 
     pub fn set_exit_status(&mut self, status: ExitStatus) {
-        assert!(self.stack.is_empty());
+        assert!(self.data.stack.is_empty());
 
-        self.exit_status = Some(status);
+        self.data.exit_status = Some(status);
     }
 
+    #[must_use]
     pub fn call_depth(&self) -> usize {
-        self.stack.len()
+        self.data.stack.len()
     }
 
     #[maybe_async]
     async fn balance_internal(&self, from_address: Address, from_chain_id: u64) -> Result<U256> {
         let mut balance = self.backend.balance(from_address, from_chain_id).await;
 
-        for action in &self.actions {
+        for action in &self.data.actions {
             match action {
                 Action::Transfer {
                     source,
@@ -160,10 +159,13 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     }
 
     fn touch_account(&self, pubkey: Pubkey, count: u64) {
-        let mut touched_accounts = self.touched_accounts.borrow_mut();
+        let mut touched_accounts = self.data.touched_accounts.borrow_mut();
 
-        let counter = touched_accounts.entry(pubkey).or_insert(0);
-        *counter = counter.checked_add(count).unwrap(); // Technically, this could overflow with infinite compute budget
+        let cur_counter = touched_accounts
+            .get(&pubkey)
+            .map_or(0_u64, |counter| *counter);
+        // Technically, this could overflow with infinite compute budget
+        touched_accounts.insert(pubkey, cur_counter.checked_add(count).unwrap());
     }
 }
 
@@ -197,7 +199,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         let mut nonce = self.backend.nonce(from_address, from_chain_id).await;
         let mut increment = 0_u64;
 
-        for action in &self.actions {
+        for action in &self.data.actions {
             if let Action::EvmIncrementNonce { address, chain_id } = action {
                 if (&from_address == address) && (&from_chain_id == chain_id) {
                     increment += 1;
@@ -212,7 +214,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
     async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
         let increment = Action::EvmIncrementNonce { address, chain_id };
-        self.actions.push(increment);
+        self.data.actions.push(increment);
 
         Ok(())
     }
@@ -257,7 +259,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             chain_id,
             value,
         };
-        self.actions.push(transfer);
+        self.data.actions.push(transfer);
 
         Ok(())
     }
@@ -273,7 +275,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             chain_id,
             value,
         };
-        self.actions.push(burn);
+        self.data.actions.push(burn);
 
         Ok(())
     }
@@ -285,7 +287,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
         self.touch_contract(from_address);
 
-        for action in &self.actions {
+        for action in &self.data.actions {
             if let Action::EvmSetCode { address, code, .. } = action {
                 if &from_address == address {
                     return Ok(code.len());
@@ -299,7 +301,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
         self.touch_contract(from_address);
 
-        for action in &self.actions {
+        for action in &self.data.actions {
             if let Action::EvmSetCode { address, code, .. } = action {
                 if &from_address == address {
                     return Ok(crate::evm::Buffer::from_slice(code));
@@ -310,7 +312,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(self.backend.code(from_address).await)
     }
 
-    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
+    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vector<u8>) -> Result<()> {
         if code.starts_with(&[0xEF]) {
             // https://eips.ethereum.org/EIPS/eip-3541
             return Err(Error::EVMObjectFormatNotSupported(address));
@@ -326,7 +328,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             chain_id,
             code,
         };
-        self.actions.push(set_code);
+        self.data.actions.push(set_code);
 
         Ok(())
     }
@@ -334,7 +336,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     async fn storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
         self.touch_storage(from_address, from_index);
 
-        for action in self.actions.iter().rev() {
+        for action in self.data.actions.iter().rev() {
             if let Action::EvmSetStorage {
                 address,
                 index,
@@ -356,13 +358,13 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             index,
             value,
         };
-        self.actions.push(set_storage);
+        self.data.actions.push(set_storage);
 
         Ok(())
     }
 
     async fn transient_storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
-        for action in self.actions.iter().rev() {
+        for action in self.data.actions.iter().rev() {
             if let Action::EvmSetTransientStorage {
                 address,
                 index,
@@ -389,7 +391,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             index,
             value,
         };
-        self.actions.push(set_storage);
+        self.data.actions.push(set_storage);
 
         Ok(())
     }
@@ -405,7 +407,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         }
 
         let number = number.as_u64();
-        let block_slot = self.cache.borrow().block_number.as_u64();
+        let block_slot = self.data.cache.borrow().block_number.as_u64();
         let lower_block_slot = if block_slot < 257 {
             0
         } else {
@@ -420,12 +422,12 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     fn block_number(&self) -> Result<U256> {
-        let cache = self.cache.borrow();
+        let cache = self.data.cache.borrow();
         Ok(cache.block_number)
     }
 
     fn block_timestamp(&self) -> Result<U256> {
-        let cache = self.cache.borrow();
+        let cache = self.data.cache.borrow();
         Ok(cache.block_timestamp)
     }
 
@@ -433,6 +435,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         self.touch_solana(address);
 
         let metas = self
+            .data
             .actions
             .iter()
             .filter_map(|a| {
@@ -459,7 +462,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             accounts.insert(m.pubkey, account);
         }
 
-        for action in &self.actions {
+        for action in &self.data.actions {
             if let Action::ExternalInstruction {
                 program_id,
                 data,
@@ -529,25 +532,27 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     fn snapshot(&mut self) {
-        self.stack.push(self.actions.len());
+        self.data.stack.push(self.data.actions.len());
     }
 
     fn revert_snapshot(&mut self) {
         let actions_len = self
+            .data
             .stack
             .pop()
             .expect("Fatal Error: Inconsistent EVM Call Stack");
 
-        self.actions.truncate(actions_len);
+        self.data.actions.truncate(actions_len);
 
-        if self.stack.is_empty() {
+        if self.data.stack.is_empty() {
             // sanity check
-            assert!(self.actions.is_empty());
+            assert!(self.data.actions.is_empty());
         }
     }
 
     fn commit_snapshot(&mut self) {
-        self.stack
+        self.data
+            .stack
             .pop()
             .expect("Fatal Error: Inconsistent EVM Call Stack");
     }
@@ -558,7 +563,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         address: &Address,
         data: &[u8],
         is_static: bool,
-    ) -> Option<Result<Vec<u8>>> {
+    ) -> Option<Result<Vector<u8>>> {
         PrecompiledContracts::call_precompile_extension(self, context, address, data, is_static)
             .await
     }
@@ -574,7 +579,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     async fn contract_chain_id(&self, contract: Address) -> Result<u64> {
         self.touch_contract(contract);
 
-        for action in self.actions.iter().rev() {
+        for action in self.data.actions.iter().rev() {
             if let Action::EvmSetCode {
                 address, chain_id, ..
             } = action
@@ -591,7 +596,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     async fn queue_external_instruction(
         &mut self,
         instruction: Instruction,
-        seeds: Vec<Vec<Vec<u8>>>,
+        seeds: Vector<Vector<Vector<u8>>>,
         fee: u64,
         emulated_internally: bool,
     ) -> Result<()> {
@@ -602,14 +607,14 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
         let action = Action::ExternalInstruction {
             program_id: instruction.program_id,
-            data: instruction.data,
-            accounts: instruction.accounts,
+            data: instruction.data.to_vector(),
+            accounts: instruction.accounts.elementwise_copy_to_vector(),
             seeds,
             fee,
             emulated_internally,
         };
 
-        self.actions.push(action);
+        self.data.actions.push(action);
         Ok(())
     }
 }

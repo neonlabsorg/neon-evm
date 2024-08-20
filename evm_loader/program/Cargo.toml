@@ -2,7 +2,7 @@
 
 [package]
 name = "evm-loader"
-version = "1.14.0-dev"
+version = "1.15.0-dev"
 description = "Neon EVM loader"
 authors = ["NeonLabs Maintainers <maintainers@neonlabs.org>"]
 edition = "2021"
@@ -58,14 +58,15 @@ cfg-if = { version = "1.0" }
 log = { version = "0.4", default-features = false, optional = true }
 maybe-async = "0.2.10"
 async-trait = { version = "0.1.81", optional = true }
+allocator-api2 = "0.2.16"
+memoffset = "0.9.1"
 
 [target.'cfg(target_os = "solana")'.dependencies.maybe-async]
 version = "0.2.10"
 features = ["is_sync"]
 
 [dev-dependencies]
-tokio = { version = "1.38", features = ["full"] }
-serde_json = { version = "1.0.120", features = ["preserve_order"] }
+tokio = { version = "1.39", features = ["full"] }
 solana-sdk.workspace = true
 
 

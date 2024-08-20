@@ -7,11 +7,13 @@ use std::{
 
 use ethnum::{I256, U256};
 
+use crate::allocator::acc_allocator;
 use crate::{error::Error, types::Address};
 
 const ELEMENT_SIZE: usize = 32;
 const STACK_SIZE: usize = ELEMENT_SIZE * 128;
 
+#[repr(C)]
 pub struct Stack {
     begin: *mut u8,
     end: *mut u8,
@@ -22,7 +24,7 @@ impl Stack {
     pub fn new() -> Self {
         let (begin, end) = unsafe {
             let layout = Layout::from_size_align_unchecked(STACK_SIZE, ELEMENT_SIZE);
-            let begin = crate::allocator::EVM.alloc(layout);
+            let begin = acc_allocator().alloc(layout);
             if begin.is_null() {
                 std::alloc::handle_alloc_error(layout);
             }
@@ -259,59 +261,7 @@ impl Drop for Stack {
     fn drop(&mut self) {
         unsafe {
             let layout = Layout::from_size_align_unchecked(STACK_SIZE, ELEMENT_SIZE);
-            crate::allocator::EVM.dealloc(self.begin, layout);
+            acc_allocator().dealloc(self.begin, layout);
         }
-    }
-}
-
-impl serde::Serialize for Stack {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        unsafe {
-            let data = std::slice::from_raw_parts(self.begin, STACK_SIZE);
-            let offset: usize = self.top.offset_from(self.begin).try_into().unwrap();
-
-            serializer.serialize_bytes(&data[..offset])
-        }
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Stack {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct BytesVisitor;
-
-        impl<'de> serde::de::Visitor<'de> for BytesVisitor {
-            type Value = Stack;
-
-            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                f.write_str("EVM Stack")
-            }
-
-            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                if v.len() % 32 != 0 {
-                    return Err(E::invalid_length(v.len(), &self));
-                }
-
-                let mut stack = Stack::new();
-                unsafe {
-                    stack.top = stack.begin.add(v.len());
-
-                    let slice = std::slice::from_raw_parts_mut(stack.begin, v.len());
-                    slice.copy_from_slice(v);
-                }
-
-                Ok(stack)
-            }
-        }
-
-        deserializer.deserialize_bytes(BytesVisitor)
     }
 }

@@ -1,6 +1,6 @@
 use crate::account::legacy::{TAG_HOLDER_DEPRECATED, TAG_STATE_FINALIZED_DEPRECATED};
 use crate::account::{
-    program, AccountsDB, AccountsStatus, Operator, OperatorBalanceAccount,
+    program, AccountsDB, AccountsStatus, Holder, Operator, OperatorBalanceAccount,
     OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::debug::log_data;
@@ -50,6 +50,11 @@ pub fn process<'a>(
 
     match tag {
         TAG_HOLDER | TAG_STATE_FINALIZED => {
+            // Holder's method (fn init_heap) transforms TAG_STATE_FINALIZED into HOLDER
+            // and it breaks the logic (of throwing StorageAccountFinalized error).
+            // In this case, an associated function is used instead.
+            Holder::init_holder_heap(program_id, &mut storage_info.clone(), 0)?;
+
             let trx = Transaction::from_rlp(message)?;
             let origin = trx.recover_caller_address()?;
 
@@ -72,7 +77,7 @@ pub fn process<'a>(
         }
         TAG_STATE => {
             let (storage, accounts_status) =
-                StateAccount::restore(program_id, storage_info, &accounts_db)?;
+                StateAccount::restore(program_id, &storage_info, &accounts_db)?;
 
             operator_balance.validate_transaction(storage.trx())?;
             let miner_address = operator_balance.miner(storage.trx_origin());

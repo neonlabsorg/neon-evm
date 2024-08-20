@@ -4,15 +4,15 @@ use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::evm::tracing::NoopEventListener;
 use crate::evm::Machine;
-use crate::executor::{ExecutorState, SyncedExecutorState};
+use crate::executor::{ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
 use crate::instruction::transaction_step::log_return_value;
-use crate::types::{Address, Transaction};
+use crate::types::{boxx::Boxx, Address, Transaction};
 
 pub fn execute(
     accounts: AccountsDB<'_>,
     mut gasometer: Gasometer,
-    trx: Transaction,
+    trx: Boxx<Transaction>,
     origin: Address,
 ) -> Result<()> {
     let chain_id = trx.chain_id().unwrap_or(crate::config::DEFAULT_CHAIN_ID);
@@ -20,21 +20,22 @@ pub fn execute(
     let gas_price = trx.gas_price();
 
     let mut account_storage = ProgramAccountStorage::new(accounts)?;
+    let mut backend_data = ExecutorStateData::new(&account_storage);
 
     trx.validate(origin, &account_storage)?;
 
     account_storage.origin(origin, &trx)?.increment_nonce()?;
 
-    let (exit_reason, apply_state, steps_executed) = {
-        let mut backend = ExecutorState::new(&mut account_storage);
+    let (exit_reason, steps_executed) = {
+        let mut backend = ExecutorState::new(&mut account_storage, &mut backend_data);
 
         let mut evm = Machine::new(&trx, origin, &mut backend, None::<NoopEventListener>)?;
         let (result, steps_executed, _) = evm.execute(u64::MAX, &mut backend)?;
 
-        let actions = backend.into_actions();
-
-        (result, actions, steps_executed)
+        (result, steps_executed)
     };
+
+    let apply_state = backend_data.into_actions();
 
     log_data(&[
         b"STEPS",
@@ -42,7 +43,7 @@ pub fn execute(
         &steps_executed.to_le_bytes(), // Total steps is the same as iteration steps
     ]);
 
-    let allocate_result = account_storage.allocate(&apply_state)?;
+    let allocate_result = account_storage.allocate(apply_state)?;
     if allocate_result != AllocateResult::Ready {
         return Err(Error::AccountSpaceAllocationFailure);
     }
@@ -69,7 +70,7 @@ pub fn execute(
 pub fn execute_with_solana_call(
     accounts: AccountsDB<'_>,
     mut gasometer: Gasometer,
-    trx: Transaction,
+    trx: Boxx<Transaction>,
     origin: Address,
 ) -> Result<()> {
     let chain_id = trx.chain_id().unwrap_or(crate::config::DEFAULT_CHAIN_ID);

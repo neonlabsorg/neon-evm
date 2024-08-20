@@ -70,7 +70,7 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     }
 
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
-        solana_program::program::get_return_data()
+        solana_program::program::get_return_data().map(|res| (res.0, res.1))
     }
 
     fn set_return_data(&mut self, data: &[u8]) {

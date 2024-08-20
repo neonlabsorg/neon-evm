@@ -1,6 +1,6 @@
-use crate::error::Result;
 use crate::executor::OwnedAccountInfo;
 use crate::types::Address;
+use crate::{error::Result, types::Vector};
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::{
@@ -98,7 +98,7 @@ pub trait AccountStorage: LogCollector {
 
 #[maybe_async(?Send)]
 pub trait SyncedAccountStorage: AccountStorage {
-    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()>;
+    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vector<u8>) -> Result<()>;
     async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
     async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()>;
     async fn transfer(
@@ -112,7 +112,7 @@ pub trait SyncedAccountStorage: AccountStorage {
     async fn execute_external_instruction(
         &mut self,
         instruction: Instruction,
-        seeds: Vec<Vec<Vec<u8>>>,
+        seeds: Vector<Vector<Vector<u8>>>,
         fee: u64,
         emulated_internally: bool,
     ) -> Result<()>;

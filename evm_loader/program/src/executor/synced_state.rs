@@ -5,10 +5,11 @@ use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
 
 use crate::account_storage::{AccountStorage, LogCollector, SyncedAccountStorage};
+use crate::allocator::acc_allocator;
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
 use crate::evm::Context;
-use crate::types::Address;
+use crate::types::{Address, Vector};
 
 use super::precompile_extension::PrecompiledContracts;
 use super::OwnedAccountInfo;
@@ -22,9 +23,9 @@ enum Action {
 }
 
 pub struct SyncedExecutorState<'a, B: AccountStorage> {
-    backend: &'a mut B,
-    actions: Vec<Action>,
-    stack: Vec<usize>,
+    pub backend: &'a mut B,
+    actions: Vector<Action>,
+    stack: Vector<usize>,
 }
 
 impl<'a, B: SyncedAccountStorage> SyncedExecutorState<'a, B> {
@@ -32,8 +33,8 @@ impl<'a, B: SyncedAccountStorage> SyncedExecutorState<'a, B> {
     pub fn new(backend: &'a mut B) -> Self {
         Self {
             backend,
-            actions: Vec::with_capacity(64),
-            stack: Vec::with_capacity(16),
+            actions: Vector::with_capacity_in(64, acc_allocator()),
+            stack: Vector::with_capacity_in(16, acc_allocator()),
         }
     }
 
@@ -132,7 +133,7 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
         Ok(self.backend.code(from_address).await)
     }
 
-    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vec<u8>) -> Result<()> {
+    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vector<u8>) -> Result<()> {
         if code.starts_with(&[0xEF]) {
             // https://eips.ethereum.org/EIPS/eip-3541
             return Err(Error::EVMObjectFormatNotSupported(address));
@@ -279,7 +280,7 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
         address: &Address,
         data: &[u8],
         is_static: bool,
-    ) -> Option<Result<Vec<u8>>> {
+    ) -> Option<Result<Vector<u8>>> {
         PrecompiledContracts::call_precompile_extension(self, context, address, data, is_static)
             .await
     }
@@ -299,7 +300,7 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
     async fn queue_external_instruction(
         &mut self,
         instruction: Instruction,
-        seeds: Vec<Vec<Vec<u8>>>,
+        seeds: Vector<Vector<Vector<u8>>>,
         fee: u64,
         emulated_internally: bool,
     ) -> Result<()> {

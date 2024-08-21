@@ -1,4 +1,4 @@
-use abi_stable::traits::IntoOwned;
+use crate::config::RocksDbConfig;
 use async_trait::async_trait;
 use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::Serialize;
@@ -24,7 +24,7 @@ pub struct AccountParams {
 }
 
 use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
-use crate::types::{DbResult, RocksDbConfig, TracerDb};
+use crate::types::{DbResult, TracerDb};
 // use reconnecting_jsonrpsee_ws_client::{Client, CallRetryPolicy, rpc_params, ExponentialBackoff};
 #[derive(Clone, Debug)]
 pub struct RocksDb {
@@ -98,10 +98,7 @@ impl TracerDb for RocksDb {
 
         let response: String = self
             .client
-            .request(
-                "get_account",
-                rpc_params![pubkey.into_owned(), slot, tx_index_in_block],
-            )
+            .request("get_account", rpc_params![pubkey, slot, tx_index_in_block])
             .await?;
 
         let account = from_str::<Option<Account>>(response.as_str())?;

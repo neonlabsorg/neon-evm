@@ -4,6 +4,7 @@ pub(crate) mod tracer_ch_db;
 pub mod tracer_rocks_db;
 
 use crate::commands::get_config::ChainInfo;
+use crate::config::DbConfig;
 use crate::tracing::TraceCallConfig;
 use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
 pub use crate::types::tracer_ch_db::ClickHouseDb;
@@ -26,25 +27,9 @@ use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
 use solana_sdk::signature::Signature;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::HashMap;
+use DbConfig::{ChDbConfig, RocksDbConfig};
+
 pub type DbResult<T> = Result<T, anyhow::Error>;
-
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
-pub struct DbConfig {
-    pub rocksdb_config: Option<RocksDbConfig>,
-    pub chdb_config: Option<ChDbConfig>,
-}
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
-pub struct ChDbConfig {
-    pub clickhouse_url: Vec<String>,
-    pub clickhouse_user: Option<String>,
-    pub clickhouse_password: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
-pub struct RocksDbConfig {
-    pub rocksdb_host: String,
-    pub rocksdb_port: u16,
-}
 
 #[enum_dispatch]
 pub enum TracerDbType {
@@ -54,10 +39,9 @@ pub enum TracerDbType {
 
 impl TracerDbType {
     pub async fn from_config(db_config: &DbConfig) -> Self {
-        if let Some(rocksdb_config) = &db_config.rocksdb_config {
-            RocksDb::new(rocksdb_config).await.into()
-        } else {
-            ClickHouseDb::new(&db_config.clone().chdb_config.unwrap()).into()
+        match db_config {
+            RocksDbConfig(rocks_db_config) => RocksDb::new(rocks_db_config).await.into(),
+            ChDbConfig(ch_db_config) => ClickHouseDb::new(ch_db_config).into(),
         }
     }
 }

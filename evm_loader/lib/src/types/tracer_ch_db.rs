@@ -7,7 +7,7 @@ use crate::{
 
 use super::tracer_ch_common::{ChResult, EthSyncStatus, EthSyncing, RevisionMap, SlotParentRooted};
 
-use crate::types::ChDbConfig;
+use crate::config::ChDbConfig;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use clickhouse::Client;

@@ -1,8 +1,6 @@
-use crate::types::{ChDbConfig, DbConfig, RocksDbConfig};
-use std::{env, str::FromStr};
-
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair};
+use std::{env, str::FromStr};
 
 const DEFAULT_ROCKSDB_PORT: u16 = 9888;
 
@@ -28,6 +26,24 @@ pub struct APIOptions {
     pub evm_loader: Pubkey,
     pub key_for_config: Pubkey,
     pub db_config: DbConfig,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum DbConfig {
+    RocksDbConfig(RocksDbConfig),
+    ChDbConfig(ChDbConfig),
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ChDbConfig {
+    pub clickhouse_url: Vec<String>,
+    pub clickhouse_user: Option<String>,
+    pub clickhouse_password: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RocksDbConfig {
+    pub rocksdb_host: String,
+    pub rocksdb_port: u16,
 }
 
 /// # Errors
@@ -83,14 +99,10 @@ pub fn load_db_config_from_environment() -> DbConfig {
     env::var("TRACER_DB_TYPE")
         .ok()
         .and_then(|db_type| match db_type.to_lowercase().as_str() {
-            "rocksdb" => Option::from(DbConfig {
-                rocksdb_config: Option::from(load_rocks_db_config_from_environment()),
-                chdb_config: None,
-            }),
-            "clickhouse" => Option::from(DbConfig {
-                rocksdb_config: None,
-                chdb_config: Option::from(load_ch_db_config_from_environment()),
-            }),
+            "rocksdb" => Some(DbConfig::RocksDbConfig(
+                load_rocks_db_config_from_environment(),
+            )),
+            "clickhouse" => Some(DbConfig::ChDbConfig(load_ch_db_config_from_environment())),
             _ => None,
         })
         .expect("TRACER_DB_TYPE variable must be either 'clickhouse' or 'rocksdb'")

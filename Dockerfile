@@ -17,7 +17,7 @@ WORKDIR /opt/neon-evm/evm_loader
 ARG REVISION
 ENV NEON_REVISION=${REVISION}
 RUN cargo fmt --check && \
-#    check cargo clippy --release && \
+    check cargo clippy --release && \
     cargo build --release && \
     cargo test --release && \
     cargo build-sbf --manifest-path program/Cargo.toml --features devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
@@ -61,9 +61,6 @@ COPY ci/operator-keypairs/ /opt/operator-keypairs
 COPY ci/operator-keypairs/id.json /root/.config/solana/id.json
 COPY ci/operator-keypairs/id2.json /root/.config/solana/id2.json
 COPY ci/keys/ /opt/keys
-
-ARG ROCKSDB_HOST
-ARG ROCKSDB_PORT
 
 ENV PATH=${PATH}:/opt
 ENV ROCKSDB_HOST=${ROCKSDB_HOST}

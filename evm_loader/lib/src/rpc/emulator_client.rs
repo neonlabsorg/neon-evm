@@ -73,8 +73,6 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
             j += 1;
         }
 
-        debug!("emulator_client.get_multiple_accounts accounts: {accounts:?}");
-
         Ok(accounts)
     }
 

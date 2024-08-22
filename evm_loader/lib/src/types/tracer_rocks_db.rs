@@ -130,7 +130,8 @@ impl TracerDb for RocksDb {
 
     async fn get_neon_revision(&self, slot: Slot, pubkey: &Pubkey) -> DbResult<String> {
         info!("get_neon_revision for {slot:?}, pubkey: {pubkey:?}");
-        Ok(env!("NEON_REVISION").to_string())
+        let neon_revision = env!("NEON_REVISION");
+        Ok(neon_revision.to_string())
     }
 
     async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<u64> {

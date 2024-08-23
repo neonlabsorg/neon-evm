@@ -408,3 +408,11 @@ token = "So11111111111111111111111111111111111111112"
 [chain.usdc]
 id = 245022928
 token = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+
+[chain.usdt]
+id = 245022929
+token = "2duuuuhNJHUYqcnZ7LKfeufeeTBgSJdftf2zM3cZV6ym"
+
+[chain.eth]
+id = 245022930
+token = "EwJYd3UAFAgzodVeHprB2gMQ68r4ZEbbvpoVzCZ1dGq5"

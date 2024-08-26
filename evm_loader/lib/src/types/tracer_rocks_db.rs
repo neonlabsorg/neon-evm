@@ -98,7 +98,10 @@ impl TracerDb for RocksDb {
 
         let response: String = self
             .client
-            .request("get_account", rpc_params![pubkey, slot, tx_index_in_block])
+            .request(
+                "get_account",
+                rpc_params![pubkey.to_string(), slot, tx_index_in_block],
+            )
             .await?;
 
         let account = from_str::<Option<Account>>(response.as_str())?;
@@ -114,7 +117,7 @@ impl TracerDb for RocksDb {
     async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64> {
         let response: String = self
             .client
-            .request("get_transaction_index", rpc_params![signature])
+            .request("get_transaction_index", rpc_params![signature.to_string()])
             .await?;
         info!("get_transaction_index response: {:?}", response);
         Ok(u64::from_str(response.as_str())?)

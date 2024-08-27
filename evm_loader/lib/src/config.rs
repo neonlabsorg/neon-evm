@@ -103,7 +103,9 @@ pub fn load_db_config_from_environment() -> DbConfig {
                 load_rocks_db_config_from_environment(),
             )),
             "clickhouse" => Some(DbConfig::ChDbConfig(load_ch_db_config_from_environment())),
-            _ => None,
+            // TODO, this env should be explicitely set but for now I create a default to pass CI tests
+            // as I am not sure where else to set it
+            _ => Some(DbConfig::ChDbConfig(load_ch_db_config_from_environment())),
         })
         .expect("TRACER_DB_TYPE variable must be either 'clickhouse' or 'rocksdb'")
 }

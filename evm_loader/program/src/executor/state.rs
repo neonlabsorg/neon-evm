@@ -50,13 +50,16 @@ impl<'a> ExecutorStateData {
             accounts: TreeMap::<Pubkey, OwnedAccountInfo>::new(),
         };
 
-        Self {
-            cache: RefCell::new(cache),
-            actions: Vector::with_capacity_in(64, acc_allocator()),
-            stack: Vector::with_capacity_in(16, acc_allocator()),
-            exit_status: None,
-            touched_accounts: RefCell::new(TouchedAccounts::new()),
-        }
+        ExecutorStateData::new_instance(cache)
+    }
+
+    #[must_use]
+    pub fn new_with_cache(cache: Cache) -> Self {
+        ExecutorStateData::new_instance(cache)
+    }
+
+    pub fn get_cache(&self) -> Cache {
+        self.cache.borrow().clone()
     }
 
     #[must_use]
@@ -77,6 +80,16 @@ impl<'a> ExecutorStateData {
     #[must_use]
     pub fn into_actions(&'a self) -> &'a Vector<Action> {
         &self.actions
+    }
+
+    fn new_instance(cache: Cache) -> Self {
+        Self {
+            cache: RefCell::new(cache),
+            actions: Vector::with_capacity_in(64, acc_allocator()),
+            stack: Vector::with_capacity_in(16, acc_allocator()),
+            exit_status: None,
+            touched_accounts: RefCell::new(TouchedAccounts::new()),
+        }
     }
 }
 

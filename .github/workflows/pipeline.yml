@@ -19,7 +19,6 @@ env:
   DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
   RUN_LINK_REPO: "neonlabsorg/neon-proxy.py"
   BUILD_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-  TRACER_DB_TYPE: clickhouse
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

@@ -117,15 +117,27 @@ fn allocate_or_reinit_state(
     if is_allocate {
         storage.reset_steps_executed();
 
-        // Dealloc objects that were potentially alloced in previous iterations before the reset.
+        // Dealloc evm that was potentially alloced in previous iterations before the reset.
         if storage.is_evm_alloced() {
             storage.dealloc_evm::<EvmBackend, NoopEventListener>();
         }
+
+        // Dealloc executor state that was potentially alloced in previous iterations before the reset.
+        // Also, copy the cache for use into the new ExecutorStateData.
+        let mut cache = None;
         if storage.is_executor_state_alloced() {
+            cache = Some(storage.read_executor_state().get_cache());
             storage.dealloc_executor_state();
         }
 
-        let mut state_data = boxx(ExecutorStateData::new(account_storage));
+        let mut state_data = {
+            // Preserve the previous cache.
+            if cache.is_some() {
+                boxx(ExecutorStateData::new_with_cache(cache.unwrap()))
+            } else {
+                boxx(ExecutorStateData::new(account_storage))
+            }
+        };
         let mut evm_backend = ExecutorState::new(account_storage, &mut state_data);
         let evm = boxx(Evm::new(
             storage.trx(),

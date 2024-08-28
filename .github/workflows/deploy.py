@@ -72,12 +72,10 @@ def is_image_exist(image, tag):
 
 
 @cli.command(name="specify_image_tags")
-@click.option('--git_sha')
 @click.option('--git_ref')
 @click.option('--git_head_ref')
 @click.option('--git_base_ref')
-def specify_image_tags(git_sha,
-                       git_ref,
+def specify_image_tags(git_ref,
                        git_head_ref,
                        git_base_ref):
     # evm_tag
@@ -87,9 +85,6 @@ def specify_image_tags(git_sha,
         evm_tag = "latest"
     else:
         evm_tag = ref_to_image_tag(git_ref)
-
-    # evm_sha_tag
-    evm_sha_tag = git_sha
 
     # evm_pr_version_branch
     evm_pr_version_branch = ""
@@ -116,7 +111,6 @@ def specify_image_tags(git_sha,
         neon_test_tag = "latest"
 
     env = dict(evm_tag=evm_tag,
-               evm_sha_tag=evm_sha_tag,
                evm_pr_version_branch=evm_pr_version_branch,
                is_evm_release=is_evm_release,
                neon_test_tag=neon_test_tag)
@@ -239,7 +233,7 @@ def trigger_proxy_action(evm_pr_version_branch, is_evm_release, evm_sha_tag, evm
     is_version_branch = re.match(VERSION_BRANCH_TEMPLATE, evm_tag) is not None
     is_FTS_labeled = 'fullTestSuit' in labels
 
-    if evm_tag == "latest" or is_evm_release or is_version_branch or is_FTS_labeled:
+    if evm_tag == "latest" or is_evm_release == 'True' or is_version_branch or is_FTS_labeled:
         full_test_suite = True
     else:
         full_test_suite = False
@@ -251,7 +245,7 @@ def trigger_proxy_action(evm_pr_version_branch, is_evm_release, evm_sha_tag, evm
         proxy_branch = evm_tag
     elif evm_pr_version_branch:
         proxy_branch = evm_pr_version_branch
-    elif is_evm_release:
+    elif is_evm_release == 'True':
         proxy_branch = re.sub(r'\.\d+$', '.x', evm_tag)
     elif is_version_branch:
         proxy_branch = evm_tag

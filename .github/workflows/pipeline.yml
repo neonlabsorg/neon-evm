@@ -39,7 +39,6 @@ jobs:
       - name: Specify image tags
         run: |
           python3 ./.github/workflows/deploy.py specify_image_tags \
-          --git_sha=${{ github.sha }} \
           --git_ref=${{ github.ref }} \
           --git_head_ref=${{ github.head_ref }} \
           --git_base_ref=${{ github.base_ref }}
@@ -47,7 +46,7 @@ jobs:
         id: tags
         run: |
           echo "evm_tag=${{ env.EVM_TAG }}" >> "$GITHUB_OUTPUT"
-          echo "evm_sha_tag=${{ env.EVM_SHA_TAG }}" >> "$GITHUB_OUTPUT"
+          echo "evm_sha_tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
           echo "evm_pr_version_branch=${{ env.PROXY_PR_VERSION_BRANCH }}" >> "$GITHUB_OUTPUT"
           echo "is_evm_release=${{ env.IS_EVM_RELEASE }}" >> "$GITHUB_OUTPUT"
           echo "neon_test_tag=${{ env.NEON_TEST_TAG }}" >> "$GITHUB_OUTPUT"
@@ -60,7 +59,7 @@ jobs:
           python3 ./.github/workflows/deploy.py publish_image \
           --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }} \
           --evm_tag=${{ steps.tags.outputs.evm_tag }}
-  run-tests:
+  run-evm-tests:
     runs-on: test-runner
     needs:
       - build-image
@@ -105,7 +104,7 @@ jobs:
     needs:
       - build-image
       - trigger-proxy-tests
-      - run-tests
+      - run-evm-tests
     steps:
       - uses: actions/checkout@v4
         with:

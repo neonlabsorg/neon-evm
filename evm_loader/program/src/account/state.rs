@@ -106,7 +106,7 @@ struct Data {
 #[repr(C, packed)]
 pub struct Header {
     pub executor_state_offset: usize,
-    pub evm_machine_offset: usize,
+    pub evm_offset: usize,
     pub data_offset: usize,
 }
 impl AccountHeader for Header {
@@ -207,7 +207,7 @@ impl<'a> StateAccount<'a> {
             // Set header
             let mut header = super::header_mut::<Header>(&info);
             header.executor_state_offset = 0;
-            header.evm_machine_offset = 0;
+            header.evm_offset = 0;
             header.data_offset = data_offset;
         }
 
@@ -399,18 +399,50 @@ impl<'a> StateAccount<'a> {
 
 // Implementation of functional to save/restore persistent state of iterative transactions.
 impl<'a> StateAccount<'a> {
-    pub fn alloc_executor_state(&self, data: Boxx<ExecutorStateData>) -> Result<()> {
+    pub fn alloc_executor_state(&self, data: Boxx<ExecutorStateData>) {
         let offset = self.leak_and_offset(data);
         let mut header = super::header_mut::<Header>(&self.account);
         header.executor_state_offset = offset;
-        Ok(())
     }
 
-    pub fn alloc_evm<B: Database, T: EventListener>(&self, evm: Boxx<Machine<B, T>>) -> Result<()> {
+    pub fn dealloc_executor_state(&self) {
+        unsafe { ManuallyDrop::drop(&mut self.read_executor_state()) };
+        let mut header = super::header_mut::<Header>(&self.account);
+        header.executor_state_offset = 0;
+    }
+
+    #[must_use]
+    pub fn read_executor_state(&self) -> ManuallyDrop<Boxx<ExecutorStateData>> {
+        let header = super::header::<Header>(&self.account);
+        self.map_obj(header.executor_state_offset)
+    }
+
+    #[must_use]
+    pub fn is_executor_state_alloced(&self) -> bool {
+        super::header_mut::<Header>(&self.account).executor_state_offset != 0
+    }
+
+    pub fn alloc_evm<B: Database, T: EventListener>(&self, evm: Boxx<Machine<B, T>>) {
         let offset = self.leak_and_offset(evm);
         let mut header = super::header_mut::<Header>(&self.account);
-        header.evm_machine_offset = offset;
-        Ok(())
+        header.evm_offset = offset;
+    }
+
+    pub fn dealloc_evm<B: Database, T: EventListener>(&self) {
+        unsafe { ManuallyDrop::drop(&mut self.read_evm::<B, T>()) };
+        let mut header = super::header_mut::<Header>(&self.account);
+        header.evm_offset = 0;
+    }
+
+    #[must_use]
+    pub fn read_evm<B: Database, T: EventListener>(&self) -> ManuallyDrop<Boxx<Machine<B, T>>> {
+        let header = super::header::<Header>(&self.account);
+        self.map_obj(header.evm_offset)
+    }
+
+    #[must_use]
+    pub fn is_evm_alloced(&self) -> bool {
+        super::header_mut::<Header>(&self.account).evm_offset != 0
     }
 
     /// Leak the Box's underlying data and returns offset from the account data start.
@@ -429,19 +461,8 @@ impl<'a> StateAccount<'a> {
         }
     }
 
-    #[must_use]
-    pub fn read_evm<B: Database, T: EventListener>(&self) -> ManuallyDrop<Boxx<Machine<B, T>>> {
-        let header = super::header::<Header>(&self.account);
-        self.map_obj(header.evm_machine_offset)
-    }
-
-    #[must_use]
-    pub fn read_executor_state(&self) -> ManuallyDrop<Boxx<ExecutorStateData>> {
-        let header = super::header::<Header>(&self.account);
-        self.map_obj(header.executor_state_offset)
-    }
-
     fn map_obj<T>(&self, offset: usize) -> ManuallyDrop<Boxx<T>> {
+        assert!(offset > 0);
         let data = self.account.data.borrow().as_ptr();
         unsafe {
             let ptr = data.add(offset).cast_mut();

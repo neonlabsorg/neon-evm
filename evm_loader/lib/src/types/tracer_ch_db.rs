@@ -7,6 +7,7 @@ use crate::{
 
 use super::tracer_ch_common::{ChResult, EthSyncStatus, EthSyncing, RevisionMap, SlotParentRooted};
 
+use crate::account_data::AccountData;
 use crate::config::ChDbConfig;
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -431,7 +432,7 @@ impl ClickHouseDb {
             None
         } else {
             let query = r"
-                SELECT owner, lamports, executable, rent_epoch, data, txn_signature
+                SELECT pubkey, owner, lamports, executable, rent_epoch, data, txn_signature
                 FROM events.update_account_distributed
                 WHERE pubkey = ?
                   AND slot IN ?
@@ -492,7 +493,7 @@ impl ClickHouseDb {
         );
 
         let query = r"
-            SELECT owner, lamports, executable, rent_epoch, data, txn_signature
+            SELECT pubkey, owner, lamports, executable, rent_epoch, data, txn_signature
             FROM events.update_account_distributed
             WHERE pubkey = ?
               AND slot = ?
@@ -527,6 +528,38 @@ impl ClickHouseDb {
         );
 
         Ok(account)
+    }
+
+    pub async fn get_accounts_in_transaction(
+        &self,
+        sol_sig: &[u8],
+        slot: u64,
+    ) -> ChResult<Vec<AccountData>> {
+        info!("get_accounts_in_transaction {{signature: {sol_sig:?} }}");
+
+        let query = r"
+            SELECT DISTINCT ON (pubkey)
+                pubkey, owner, lamports, executable, rent_epoch, data, txn_signature
+            FROM events.update_account_distributed
+            WHERE txn_signature = ?
+                AND slot = ?
+            ORDER BY write_version DESC
+            ";
+
+        let rows = self
+            .client
+            .query(query)
+            .bind(sol_sig)
+            .bind(slot)
+            .fetch_all::<AccountRow>()
+            .await?;
+
+        rows.into_iter()
+            .map(|row: AccountRow| {
+                row.try_into()
+                    .map_err(|err| ChError::Db(clickhouse::error::Error::Custom(err)))
+            })
+            .collect()
     }
 
     async fn get_older_account_row_at(
@@ -644,7 +677,7 @@ impl ClickHouseDb {
         // Try to find account changes within the given slot.
         let query = r"
             SELECT DISTINCT ON (pubkey, txn_signature, write_version)
-                   owner, lamports, executable, rent_epoch, data, txn_signature
+                   pubkey, owner, lamports, executable, rent_epoch, data, txn_signature
             FROM events.update_account_distributed
             WHERE slot = ? AND pubkey = ?
             ORDER BY write_version DESC

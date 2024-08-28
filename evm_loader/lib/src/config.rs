@@ -102,8 +102,7 @@ pub fn load_db_config_from_environment() -> DbConfig {
         .as_str()
     {
         "rocksdb" => DbConfig::RocksDbConfig(load_rocks_db_config_from_environment()),
-        "clickhouse" | "" => DbConfig::ChDbConfig(load_ch_db_config_from_environment()),
-        _ => panic!("TRACER_DB_TYPE env var must be either 'clickhouse' or 'rocksdb'"),
+        _ => DbConfig::ChDbConfig(load_ch_db_config_from_environment()),
     }
 }
 

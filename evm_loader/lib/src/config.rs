@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair};
 use std::{env, str::FromStr};
+use tracing::info;
 
 const DEFAULT_ROCKSDB_PORT: u16 = 9888;
 
@@ -96,13 +97,17 @@ pub fn load_api_config_from_environment() -> APIOptions {
 
 #[must_use]
 pub fn load_db_config_from_environment() -> DbConfig {
-    match env::var("TRACER_DB_TYPE")
+    if env::var("TRACER_DB_TYPE")
         .unwrap_or_else(|_| "clickhouse".to_string())
         .to_lowercase()
         .as_str()
+        == "rocksdb"
     {
-        "rocksdb" => DbConfig::RocksDbConfig(load_rocks_db_config_from_environment()),
-        _ => DbConfig::ChDbConfig(load_ch_db_config_from_environment()),
+        info!("Loading rocksdb config from env!");
+        DbConfig::RocksDbConfig(load_rocks_db_config_from_environment())
+    } else {
+        info!("Loading clickhouse config from env!");
+        DbConfig::ChDbConfig(load_ch_db_config_from_environment())
     }
 }
 

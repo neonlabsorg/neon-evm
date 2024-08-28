@@ -257,7 +257,7 @@ def trigger_proxy_action(evm_pr_version_branch, is_evm_release, evm_sha_tag, evm
 
     runs_before = github.get_proxy_runs_list(proxy_branch)
     runs_count_before = github.get_proxy_runs_count(proxy_branch)
-    github.run_proxy_dispatches(proxy_branch, evm_tag, evm_sha_tag, full_test_suite, initial_pr)
+    github.run_proxy_dispatches(proxy_branch, evm_tag, evm_sha_tag, evm_pr_version_branch, full_test_suite, initial_pr)
     wait_condition(lambda: github.get_proxy_runs_count(proxy_branch) > runs_count_before)
 
     runs_after = github.get_proxy_runs_list(proxy_branch)

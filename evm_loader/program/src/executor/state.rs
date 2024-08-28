@@ -29,7 +29,7 @@ pub type TouchedAccounts = TreeMap<Pubkey, u64>;
 /// Persistent part of `ExecutorState`.
 #[repr(C)]
 pub struct ExecutorStateData {
-    cache: RefCell<Cache>,
+    pub cache: Cache,
     actions: Vector<Action>,
     stack: Vector<usize>,
     exit_status: Option<ExitStatus>,
@@ -57,7 +57,7 @@ impl<'a> ExecutorStateData {
     }
 
     pub fn get_cache(&self) -> Cache {
-        self.cache.borrow().clone()
+        self.cache.clone()
     }
 
     #[must_use]
@@ -82,7 +82,7 @@ impl<'a> ExecutorStateData {
 
     fn new_instance(cache: Cache) -> Self {
         Self {
-            cache: RefCell::new(cache),
+            cache,
             actions: Vector::with_capacity_in(64, acc_allocator()),
             stack: Vector::with_capacity_in(16, acc_allocator()),
             exit_status: None,
@@ -420,7 +420,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         }
 
         let number = number.as_u64();
-        let block_slot = self.data.cache.borrow().block_number.as_u64();
+        let block_slot = self.data.cache.block_number.as_u64();
         let lower_block_slot = if block_slot < 257 {
             0
         } else {
@@ -435,13 +435,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     fn block_number(&self) -> Result<U256> {
-        let cache = self.data.cache.borrow();
-        Ok(cache.block_number)
+        Ok(self.data.cache.block_number)
     }
 
     fn block_timestamp(&self) -> Result<U256> {
-        let cache = self.data.cache.borrow();
-        Ok(cache.block_timestamp)
+        Ok(self.data.cache.block_timestamp)
     }
 
     async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {

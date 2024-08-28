@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair};
 use std::{env, str::FromStr};
-use tracing::info;
 
 const DEFAULT_ROCKSDB_PORT: u16 = 9888;
 

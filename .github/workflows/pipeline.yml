@@ -24,59 +24,55 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  build-neon-evm:
+  build-image:
     runs-on: neon-evm-1
+    outputs:
+      evm_tag: ${{ steps.tags.outputs.evm_tag }}
+      evm_sha_tag: ${{ steps.tags.outputs.evm_sha_tag }}
+      evm_pr_version_branch: ${{ steps.tags.outputs.evm_pr_version_branch }}
+      is_evm_release: ${{ steps.tags.outputs.is_evm_release }}
+      neon_test_tag: ${{ steps.tags.outputs.neon_test_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Specify image tags
+        run: |
+          python3 ./.github/workflows/deploy.py specify_image_tags \
+          --git_sha=${{ github.sha }} \
+          --git_ref=${{ github.ref }} \
+          --git_head_ref=${{ github.head_ref }} \
+          --git_base_ref=${{ github.base_ref }}
+      - name: Set outputs
+        id: tags
+        run: |
+          echo "evm_tag=${{ env.EVM_TAG }}" >> "$GITHUB_OUTPUT"
+          echo "evm_sha_tag=${{ env.EVM_SHA_TAG }}" >> "$GITHUB_OUTPUT"
+          echo "evm_pr_version_branch=${{ env.PROXY_PR_VERSION_BRANCH }}" >> "$GITHUB_OUTPUT"
+          echo "is_evm_release=${{ env.IS_EVM_RELEASE }}" >> "$GITHUB_OUTPUT"
+          echo "neon_test_tag=${{ env.NEON_TEST_TAG }}" >> "$GITHUB_OUTPUT"
       - name: build docker image
         run: |
           python3 ./.github/workflows/deploy.py build_docker_image \
-          --github_sha=${GITHUB_SHA}
+          --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }}
       - name: publish image
         run: |
           python3 ./.github/workflows/deploy.py publish_image \
-          --github_sha=${GITHUB_SHA} \
-          --head_ref=${{ github.head_ref }} \
-          --github_ref_name=${{github.ref_name}}
-  run-neon-evm-tests:
+          --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }} \
+          --evm_tag=${{ steps.tags.outputs.evm_tag }}
+  run-tests:
     runs-on: test-runner
     needs:
-      - build-neon-evm
+      - build-image
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Define base branch if the action is tag creation
-        id: tag_creation
-        if: startsWith(github.ref , 'refs/tags/')
-        run: |
-          base_branch=`echo ${{ github.ref_name }} | sed 's/\.[0-9]*$/\.x/'`
-          echo "base_branch=$base_branch" >> $GITHUB_OUTPUT
-          echo "base_branch=$base_branch"
-      - name: Define neon test branch
-        id: neon_test_branch
-        run: |
-          if [[ "${{ github.ref }}" =~ "refs/heads/"[vt][0-9]+\.[0-9]+\.x ]]; then # version branch
-            tag=${GITHUB_REF/refs\/heads\//}
-
-          elif [[ "${{ steps.tag_creation.outputs.base_branch }}" != "" ]]; then # tag creation
-            tag=${{ steps.tag_creation.outputs.base_branch }}
-
-          elif [[ "${{ github.head_ref }}" != "" ]]; then # pr to feature or version branch or develop
-            tag=${{ github.head_ref }}
-          else
-            tag='develop'
-          fi
-          echo "value=${tag}"
-          echo "value=${tag}" >> $GITHUB_OUTPUT
       - name: Run tests
         run: |
           python3 ./.github/workflows/deploy.py run_tests \
-          --github_sha=${GITHUB_SHA} \
-          --neon_test_branch=${{ steps.neon_test_branch.outputs.value }} \
-          --base_ref_branch=${{ github.base_ref }} \
+          --evm_sha_tag=${{ needs.build-image.outputs.evm_sha_tag }} \
+          --neon_test_tag=${{ needs.build-image.outputs.neon_test_tag }} \
           --run_number=${{ github.run_number }} \
           --run_attempt=${{ github.run_attempt }}
       - name: Cancel the build if job failed
@@ -85,7 +81,7 @@ jobs:
   trigger-proxy-tests:
     runs-on: trigger-runner
     needs:
-      - build-neon-evm
+      - build-image
     steps:
       - uses: actions/checkout@v4
         with:
@@ -93,10 +89,10 @@ jobs:
       - name: Trigger proxy build
         run: |
           python3 ./.github/workflows/deploy.py trigger_proxy_action \
-          --github_sha=${GITHUB_SHA} \
-          --head_ref_branch=${{ github.head_ref }} \
-          --base_ref_branch=${{ github.base_ref }} \
-          --github_ref=${{ github.ref }} \
+          --evm_pr_version_branch=${{ needs.build-image.outputs.evm_pr_version_branch }} \
+          --is_evm_release=${{ needs.build-image.outputs.is_evm_release }} \
+          --evm_sha_tag=${{ needs.build-image.outputs.evm_sha_tag }} \
+          --evm_tag=${{ needs.build-image.outputs.evm_tag }} \
           --token=${{secrets.GHTOKEN }} \
           --labels='${{ toJson(github.event.pull_request.labels.*.name) }}' \
           --pr_url="${{ github.api_url }}/repos/${{ github.repository }}/issues" \
@@ -107,6 +103,7 @@ jobs:
   finalize-image:
     runs-on: neon-evm-1
     needs:
+      - build-image
       - trigger-proxy-tests
       - run-neon-evm-tests
     steps:
@@ -116,26 +113,13 @@ jobs:
       - name: Finalize image
         run: |
           python3 ./.github/workflows/deploy.py finalize_image \
-          --github_ref=${GITHUB_REF} \
-          --github_sha=${GITHUB_SHA}
-      - name: Check if it version branch
-        id: is_version_branch
-        run: |
-          if [[ "${{ github.ref }}" =~ "refs/heads/"[vt][0-9]+\.[0-9]+\.x ]]; then
-              echo "value=true"
-              echo "value=true" >> $GITHUB_OUTPUT
-          else
-              echo "value=false"
-              echo "value=false" >> $GITHUB_OUTPUT
-          fi
+          --evm_sha_tag=${{ needs.build-image.outputs.evm_sha_tag }} \
+          --evm_tag=${{ needs.build-image.outputs.evm_tag }}
+
       - name: Send notification to slack
-        if: |
-          failure() &&
-           (github.ref_name == 'develop' ||
-             github.ref_name == 'master' ||
-             steps.is_version_branch.outputs.value ||
-             startsWith(github.ref , 'refs/tags/'))
+        if: failure()
         run: |
           python3 ./.github/workflows/deploy.py send_notification \
+          --evm_tag=${{ needs.build-image.outputs.evm_tag }} \
           --url=${{secrets.SLACK_EVM_CHANNEL_URL}} \
           --build_url=${BUILD_URL}

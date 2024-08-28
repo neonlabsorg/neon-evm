@@ -96,18 +96,15 @@ pub fn load_api_config_from_environment() -> APIOptions {
 
 #[must_use]
 pub fn load_db_config_from_environment() -> DbConfig {
-    env::var("TRACER_DB_TYPE")
-        .ok()
-        .and_then(|db_type| match db_type.to_lowercase().as_str() {
-            "rocksdb" => Some(DbConfig::RocksDbConfig(
-                load_rocks_db_config_from_environment(),
-            )),
-            "clickhouse" => Some(DbConfig::ChDbConfig(load_ch_db_config_from_environment())),
-            // TODO, this env should be explicitely set but for now I create a default to pass CI tests
-            // as I am not sure where else to set it
-            _ => Some(DbConfig::ChDbConfig(load_ch_db_config_from_environment())),
-        })
-        .expect("TRACER_DB_TYPE variable must be either 'clickhouse' or 'rocksdb'")
+    match env::var("TRACER_DB_TYPE")
+        .unwrap_or_else(|_| "clickhouse".to_string())
+        .to_lowercase()
+        .as_str()
+    {
+        "rocksdb" => DbConfig::RocksDbConfig(load_rocks_db_config_from_environment()),
+        "clickhouse" => DbConfig::ChDbConfig(load_ch_db_config_from_environment()),
+        _ => panic!("TRACER_DB_TYPE env var must be either 'clickhouse' or 'rocksdb'"),
+    }
 }
 
 pub fn load_ch_db_config_from_environment() -> ChDbConfig {

@@ -42,11 +42,13 @@ pub struct SolanaAccount {
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct EmulateResponse {
     pub exit_status: String,
     pub external_solana_call: bool,
     pub reverts_before_solana_calls: bool,
     pub reverts_after_solana_calls: bool,
+    pub is_timestamp_number_used: bool,
     #[serde_as(as = "Hex")]
     pub result: Vec<u8>,
     pub steps_executed: u64,
@@ -75,6 +77,7 @@ impl EmulateResponse {
             external_solana_call: false,
             reverts_before_solana_calls: false,
             reverts_after_solana_calls: false,
+            is_timestamp_number_used: backend.backend().is_timestamp_number_used(),
             result: exit_status.into_result().unwrap_or_default(),
             steps_executed: 0,
             used_gas: 0,
@@ -270,6 +273,7 @@ async fn calculate_response<T: Rpc + BuildConfigSimulator, Tr: Tracer>(
             external_solana_call: execute_status.external_solana_call,
             reverts_before_solana_calls: execute_status.reverts_before_solana_calls,
             reverts_after_solana_calls: execute_status.reverts_after_solana_calls,
+            is_timestamp_number_used: storage.is_timestamp_number_used(),
             steps_executed,
             used_gas,
             solana_accounts,
@@ -348,6 +352,7 @@ async fn emulate_trx<'rpc, T: Tracer>(
                 external_solana_call: response.external_solana_call,
                 reverts_before_solana_calls: response.reverts_before_solana_calls,
                 reverts_after_solana_calls: response.reverts_after_solana_calls,
+                is_timestamp_number_used: true,
                 accounts_data: None,
 
                 // ...and consumed resources from the both responses (because the real execution can occur in the future)

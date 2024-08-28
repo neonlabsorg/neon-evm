@@ -11,13 +11,19 @@ use solana_sdk::{
 
 pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use evm_loader::solana_program::debug_account_data::debug_account_data;
+use serde::{Deserialize, Serialize};
+use serde_with::hex::Hex;
+use serde_with::serde_as;
 
-#[derive(Clone)]
+#[allow(clippy::unsafe_derive_deserialize)]
+#[serde_as]
+#[derive(Clone, Serialize, Deserialize)]
 #[repr(C)]
 pub struct AccountData {
     original_length: u32,
     pub pubkey: Pubkey,
     pub lamports: u64,
+    #[serde_as(as = "Hex")]
     data: Vec<u8>,
     pub owner: Pubkey,
     pub executable: bool,

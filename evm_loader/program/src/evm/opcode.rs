@@ -751,11 +751,12 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         Ok(Action::Continue)
     }
 
-    /// London hardfork, EIP-3198: current block's base fee
-    /// NOT SUPPORTED
+    /// London hardfork, EIP-3198: current block's base fee, taken from the transaction.
+    /// N.B. for DynamicFee transaction (EIP-1559), gas_price here is equal to:
+    /// `max_fee_per_gas` - `max_priority_fee_per_gas`.
     #[maybe_async]
     pub async fn opcode_basefee(&mut self, _backend: &mut B) -> Result<Action> {
-        self.stack.push_zero()?;
+        self.stack.push_u256(self.gas_price)?;
 
         Ok(Action::Continue)
     }

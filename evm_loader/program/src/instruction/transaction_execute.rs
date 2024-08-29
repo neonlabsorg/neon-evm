@@ -6,6 +6,7 @@ use crate::evm::tracing::NoopEventListener;
 use crate::evm::Machine;
 use crate::executor::{ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
+use crate::instruction::priority_fee_txn_calculator;
 use crate::instruction::transaction_step::log_return_value;
 use crate::types::{boxx::Boxx, Address, Transaction};
 
@@ -60,7 +61,8 @@ pub fn execute(
     log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
     let gas_cost = used_gas.saturating_mul(gas_price);
-    account_storage.transfer_gas_payment(origin, chain_id, gas_cost)?;
+    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(&trx, used_gas)?;
+    account_storage.transfer_gas_payment(origin, chain_id, gas_cost + priority_fee)?;
 
     log_return_value(&exit_reason);
 
@@ -110,7 +112,8 @@ pub fn execute_with_solana_call(
     log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
     let gas_cost = used_gas.saturating_mul(gas_price);
-    account_storage.transfer_gas_payment(origin, chain_id, gas_cost)?;
+    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(&trx, used_gas)?;
+    account_storage.transfer_gas_payment(origin, chain_id, gas_cost + priority_fee)?;
 
     log_return_value(&exit_reason);
 

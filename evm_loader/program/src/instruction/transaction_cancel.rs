@@ -3,6 +3,7 @@ use crate::config::DEFAULT_CHAIN_ID;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::gasometer::{CANCEL_TRX_COST, LAST_ITERATION_COST};
+use crate::instruction::priority_fee_txn_calculator;
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::rent::Rent;
@@ -61,7 +62,8 @@ fn execute<'a>(
     ]);
 
     let gas = U256::from(CANCEL_TRX_COST + LAST_ITERATION_COST);
-    let _ = storage.consume_gas(gas, accounts.try_operator_balance()); // ignore error
+    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(storage.trx(), gas)?;
+    let _ = storage.consume_gas(gas, priority_fee, accounts.try_operator_balance()); // ignore error
 
     let origin = storage.trx_origin();
     let (origin_pubkey, _) = origin.find_balance_address(program_id, trx_chain_id);

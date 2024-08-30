@@ -32,6 +32,7 @@ pub struct APIOptions {
 pub enum DbConfig {
     RocksDbConfig(RocksDbConfig),
     ChDbConfig(ChDbConfig),
+    NoDbConfig(NoDbConfig),
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChDbConfig {
@@ -45,6 +46,9 @@ pub struct RocksDbConfig {
     pub rocksdb_host: String,
     pub rocksdb_port: u16,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NoDbConfig {}
 
 /// # Errors
 #[must_use]
@@ -80,9 +84,7 @@ pub fn load_api_config_from_environment() -> APIOptions {
         .and_then(|v| Pubkey::from_str(&v).ok())
         .expect("SOLANA_KEY_FOR_CONFIG variable must be a valid pubkey");
 
-    // Mandatory db config here
-    let db_config = load_db_config_from_environment()
-        .expect("TRACER_DB_TYPE variable must be either 'clickhouse', 'rocksdb'");
+    let db_config = load_db_config_from_environment();
 
     APIOptions {
         solana_cli_config_path,
@@ -97,7 +99,7 @@ pub fn load_api_config_from_environment() -> APIOptions {
 }
 
 #[must_use]
-pub fn load_db_config_from_environment() -> Option<DbConfig> {
+pub fn load_db_config_from_environment() -> DbConfig {
     env::var("TRACER_DB_TYPE")
         .ok()
         .and_then(|db_type| match db_type.to_lowercase().as_str() {
@@ -105,11 +107,10 @@ pub fn load_db_config_from_environment() -> Option<DbConfig> {
                 load_rocks_db_config_from_environment(),
             )),
             "clickhouse" => Some(DbConfig::ChDbConfig(load_ch_db_config_from_environment())),
-            "none" => None,
-            _ => {
-                panic!("TRACER_DB_TYPE variable must be either 'clickhouse', 'rocksdb', or 'none'")
-            }
+            "none" => Some(DbConfig::NoDbConfig(NoDbConfig {})),
+            _ => None,
         })
+        .expect("TRACER_DB_TYPE variable must be either 'clickhouse', 'rocksdb', or 'none'")
 }
 
 pub fn load_ch_db_config_from_environment() -> ChDbConfig {

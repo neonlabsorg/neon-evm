@@ -41,7 +41,6 @@ impl<'a> ProgramAccountStorage<'a> {
         let mut source = BalanceAccount::from_account(&crate::ID, source)?;
 
         let mut target = self.accounts.operator_balance();
-
         source.increment_revision(&self.rent, &self.accounts)?;
         target.consume_gas(&mut source, value)
     }

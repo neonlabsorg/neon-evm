@@ -8,7 +8,8 @@ use crate::error::{Error, Result};
 use crate::evm::tracing::NoopEventListener;
 use crate::evm::{ExitStatus, Machine};
 use crate::executor::{Action, ExecutorState, ExecutorStateData};
-use crate::gasometer::Gasometer;
+use crate::gasometer::{Gasometer, LAMPORTS_PER_SIGNATURE};
+use crate::instruction::priority_fee_txn_calculator;
 use crate::types::boxx::boxx;
 use crate::types::TreeMap;
 use crate::types::Vector;
@@ -37,11 +38,12 @@ pub fn do_begin<'a>(
     origin_account.increment_revision(account_storage.rent(), account_storage.db())?;
     origin_account.increment_nonce()?;
 
-    // Burn `gas_limit` tokens from the origin account
-    // Later we will mint them to the operator
-    // Remaining tokens are returned to the origin in the last iteration
+    // Burn `gas_limit` tokens (both base fee and priority, if any) from the origin account.
+    // Later we will mint them to the operator.
+    // Remaining tokens are returned to the origin in the last iteration.
     let gas_limit_in_tokens = storage.trx().gas_limit_in_tokens()?;
-    origin_account.burn(gas_limit_in_tokens)?;
+    let max_priority_fee_in_tokens = storage.trx().priority_fee_limit_in_tokens()?;
+    origin_account.burn(gas_limit_in_tokens + max_priority_fee_in_tokens)?;
 
     allocate_or_reinit_state(&mut account_storage, &mut storage, true)?;
     let mut state_data = storage.read_executor_state();
@@ -186,7 +188,17 @@ fn finalize<'a, 'b>(
         &total_used_gas.to_le_bytes(),
     ]);
 
-    storage.consume_gas(used_gas, accounts.db().try_operator_balance())?;
+    // Calculate priority fee for the current iteration.
+    let priority_fee_in_tokens = priority_fee_txn_calculator::handle_priority_fee(
+        storage.trx(),
+        LAMPORTS_PER_SIGNATURE.into(),
+    )?;
+
+    storage.consume_gas(
+        used_gas,
+        priority_fee_in_tokens,
+        accounts.db().try_operator_balance(),
+    )?;
 
     if let Some(status) = status {
         log_return_value(&status);

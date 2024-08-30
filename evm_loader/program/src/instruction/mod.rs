@@ -271,6 +271,7 @@ pub mod neon_tokens_deposit;
 pub mod operator_create_balance;
 pub mod operator_delete_balance;
 pub mod operator_withdraw_balance;
+pub mod priority_fee_txn_calculator;
 pub mod transaction_cancel;
 pub mod transaction_execute;
 pub mod transaction_execute_from_account;

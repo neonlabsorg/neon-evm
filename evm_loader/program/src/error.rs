@@ -107,6 +107,9 @@ pub enum Error {
     #[error("Out of Gas, limit = {0}, required = {1}")]
     OutOfGas(U256, U256),
 
+    #[error("Out of Priority Fee, limit = {0}, required = {1}")]
+    OutOfPriorityFee(U256, U256),
+
     #[error("Invalid gas balance account")]
     GasReceiverInvalidChainId,
 
@@ -203,6 +206,17 @@ pub enum Error {
 
     #[error("Operator Balance - invalid address")]
     OperatorBalanceInvalidAddress,
+
+    #[error(
+        "Instructions that execute Ethereum DynamicGas transaction (EIP-1559) should specify priority fee."
+    )]
+    PriorityFeeNotSpecified,
+
+    #[error("Error while parsing priority fee instructions: {0}")]
+    PriorityFeeParsingError(String),
+
+    #[error("Priority fee calculation error: {0}")]
+    PriorityFeeError(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

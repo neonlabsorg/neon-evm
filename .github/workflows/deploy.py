@@ -40,7 +40,7 @@ VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 RELEASE_TAG_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.\d{1,2}"
 
 docker_client = docker.APIClient()
-NEON_TEST_IMAGE_NAME = f"{DOCKERHUB_ORG_NAME.lower()}/neon_tests"
+NEON_TEST_IMAGE_NAME = "neon_tests"
 
 PROXY_ENDPOINT = os.environ.get("PROXY_ENDPOINT")
 NEON_TESTS_ENDPOINT = os.environ.get("NEON_TESTS_ENDPOINT")
@@ -99,13 +99,13 @@ def specify_image_tags(git_ref,
         is_evm_release = False
 
     # test_image_tag
-    if evm_tag and is_image_exist("neon-tests", evm_tag):
+    if evm_tag and is_image_exist(NEON_TEST_IMAGE_NAME, evm_tag):
         neon_test_tag = evm_tag
     elif is_evm_release:
         neon_test_tag = re.sub(r'\.[0-9]*$', '.x', evm_tag)
-        if not is_image_exist("neon-tests", neon_test_tag):
-            raise RuntimeError(f"neon-tests image with {neon_test_tag} tag isn't found")
-    elif evm_pr_version_branch and is_image_exist("neon-tests", evm_pr_version_branch):
+        if not is_image_exist(NEON_TEST_IMAGE_NAME, neon_test_tag):
+            raise RuntimeError(f"{NEON_TEST_IMAGE_NAME} image with {neon_test_tag} tag isn't found")
+    elif evm_pr_version_branch and is_image_exist(NEON_TEST_IMAGE_NAME, evm_pr_version_branch):
         neon_test_tag = evm_pr_version_branch
     else:
         neon_test_tag = "latest"
@@ -171,7 +171,7 @@ def run_subprocess(command):
 @click.option('--run_attempt')
 def run_tests(evm_sha_tag, neon_test_tag, run_number, run_attempt):
     os.environ["EVM_LOADER_IMAGE"] = f"{IMAGE_NAME}:{evm_sha_tag}"
-    os.environ["NEON_TESTS_IMAGE"] = f"{NEON_TEST_IMAGE_NAME}:{neon_test_tag}"
+    os.environ["NEON_TESTS_IMAGE"] = f"{DOCKERHUB_ORG_NAME}/{NEON_TEST_IMAGE_NAME}:{neon_test_tag}"
     project_name = f"neon-evm-{evm_sha_tag}-{run_number}-{run_attempt}"
     stop_containers(project_name)
 

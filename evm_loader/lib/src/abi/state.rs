@@ -4,17 +4,19 @@ use crate::types::TracerDbType;
 use crate::NeonError;
 
 pub struct State {
-    pub tracer_db: TracerDbType,
+    pub tracer_db: Option<TracerDbType>,
     pub rpc_client: CloneRpcClient,
+    // TODO: Where is this used other than new?  Do we need this as field
     pub config: APIOptions,
 }
 
 impl State {
     #[must_use]
     pub async fn new(config: APIOptions) -> Self {
-        let tracer_db = TracerDbType::from_config(&config.db_config).await;
+        // let tracer_db = TracerDbType::maybe_from_config(&config.db_config).await;
+
         Self {
-            tracer_db,
+            tracer_db: TracerDbType::maybe_from_config(&config.db_config).await,
             rpc_client: CloneRpcClient::new_from_api_config(&config),
             config,
         }
@@ -27,7 +29,14 @@ impl State {
     ) -> Result<RpcEnum, NeonError> {
         Ok(if let Some(slot) = slot {
             RpcEnum::CallDbClient(
-                CallDbClient::new(self.tracer_db.clone(), slot, tx_index_in_block).await?,
+                CallDbClient::new(
+                    self.tracer_db
+                        .clone()
+                        .expect("TracerDB must be configured for CallDbClient"),
+                    slot,
+                    tx_index_in_block,
+                )
+                .await?,
             )
         } else {
             RpcEnum::CloneRpcClient(self.rpc_client.clone())

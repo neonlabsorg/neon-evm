@@ -1,13 +1,11 @@
 pub mod tracer_ch_common;
 
-pub mod no_db;
 pub(crate) mod tracer_ch_db;
 pub mod tracer_rocks_db;
 
 use crate::commands::get_config::ChainInfo;
 use crate::config::DbConfig;
 use crate::tracing::TraceCallConfig;
-pub use crate::types::no_db::NoDb;
 use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
 pub use crate::types::tracer_ch_db::ClickHouseDb;
 pub use crate::types::tracer_rocks_db::RocksDb;
@@ -30,7 +28,7 @@ use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
 use solana_sdk::signature::Signature;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::HashMap;
-use DbConfig::{ChDbConfig, NoDbConfig, RocksDbConfig};
+use DbConfig::{ChDbConfig, RocksDbConfig};
 
 pub type DbResult<T> = Result<T, anyhow::Error>;
 
@@ -38,7 +36,6 @@ pub type DbResult<T> = Result<T, anyhow::Error>;
 pub enum TracerDbType {
     ClickHouseDb,
     RocksDb,
-    NoDb,
 }
 
 impl TracerDbType {
@@ -46,7 +43,14 @@ impl TracerDbType {
         match db_config {
             RocksDbConfig(rocks_db_config) => RocksDb::new(rocks_db_config).await.into(),
             ChDbConfig(ch_db_config) => ClickHouseDb::new(ch_db_config).into(),
-            NoDbConfig(..) => NoDb::default().into(),
+        }
+    }
+
+    pub async fn maybe_from_config(maybe_db_config: &Option<DbConfig>) -> Option<Self> {
+        if let Some(db_config) = maybe_db_config {
+            Some(Self::from_config(&db_config).await)
+        } else {
+            None
         }
     }
 }
@@ -56,7 +60,6 @@ impl Clone for TracerDbType {
         match self {
             Self::RocksDb(r) => r.clone().into(),
             Self::ClickHouseDb(c) => c.clone().into(),
-            Self::NoDb(n) => n.clone().into(),
         }
     }
 }

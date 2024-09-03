@@ -90,7 +90,7 @@ impl TxParams {
             } else {
                 let access_list_tx = AccessListTx {
                     nonce,
-                    gas_price: U256::ZERO,
+                    gas_price: self.gas_price.unwrap_or(U256::ZERO),
                     gas_limit: self.gas_limit.unwrap_or(U256::MAX),
                     target: self.to,
                     value: self.value.unwrap_or_default(),
@@ -106,7 +106,7 @@ impl TxParams {
         } else {
             let legacy_tx = LegacyTx {
                 nonce,
-                gas_price: U256::ZERO,
+                gas_price: self.gas_price.unwrap_or(U256::ZERO),
                 gas_limit: self.gas_limit.unwrap_or(U256::MAX),
                 target: self.to,
                 value: self.value.unwrap_or_default(),

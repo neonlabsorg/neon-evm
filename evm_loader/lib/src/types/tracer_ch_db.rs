@@ -1,8 +1,7 @@
-#![allow(dead_code)]
 use crate::{
     commands::get_neon_elf::get_elf_parameter,
     types::tracer_ch_common::{AccountRow, ChError, RevisionRow, SlotParent, ROOT_BLOCK_DELAY},
-    types::{DbResult, TracerDb},
+    types::{DbResult, TracerDbTrait},
 };
 
 use super::tracer_ch_common::{ChResult, EthSyncStatus, EthSyncing, RevisionMap, SlotParentRooted};
@@ -33,9 +32,8 @@ pub struct ClickHouseDb {
     pub client: Client,
 }
 
-#[allow(dead_code)]
 #[async_trait]
-impl TracerDb for ClickHouseDb {
+impl TracerDbTrait for ClickHouseDb {
     // Returned value is not used for tracer methods.
     async fn get_block_time(&self, slot: Slot) -> DbResult<UnixTimestamp> {
         let time_start = Instant::now();

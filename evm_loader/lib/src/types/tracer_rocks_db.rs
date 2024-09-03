@@ -24,7 +24,7 @@ pub struct AccountParams {
 }
 
 use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
-use crate::types::{DbResult, TracerDb};
+use crate::types::{DbResult, TracerDbTrait};
 // use reconnecting_jsonrpsee_ws_client::{Client, CallRetryPolicy, rpc_params, ExponentialBackoff};
 #[derive(Clone, Debug)]
 pub struct RocksDb {
@@ -51,13 +51,13 @@ impl RocksDb {
                 tracing::info!("Created rocksdb client at {url}");
                 Self { url, client: arc_c }
             }
-            Err(e) => panic!("Couln't start rocksDb client at {url}: {e}"),
+            Err(e) => panic!("Couldn't start rocksDb client at {url}: {e}"),
         }
     }
 }
 
 #[async_trait]
-impl TracerDb for RocksDb {
+impl TracerDbTrait for RocksDb {
     async fn get_block_time(&self, slot: Slot) -> DbResult<UnixTimestamp> {
         let response: String = self
             .client

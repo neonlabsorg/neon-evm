@@ -29,11 +29,11 @@ use serde_json::json;
 
 lazy_static! {
     static ref RUNTIME: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
-    static ref STATE: State = state_sync();
+    static ref STATE: State = init_state_sync();
 }
 
 #[must_use]
-pub fn state_sync() -> State {
+pub fn init_state_sync() -> State {
     tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(async { State::new(load_config()).await })

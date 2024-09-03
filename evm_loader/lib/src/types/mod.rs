@@ -33,12 +33,12 @@ use DbConfig::{ChDbConfig, RocksDbConfig};
 pub type DbResult<T> = Result<T, anyhow::Error>;
 
 #[enum_dispatch]
-pub enum TracerDbType {
+pub enum TracerDb {
     ClickHouseDb,
     RocksDb,
 }
 
-impl TracerDbType {
+impl TracerDb {
     pub async fn from_config(db_config: &DbConfig) -> Self {
         match db_config {
             RocksDbConfig(rocks_db_config) => RocksDb::new(rocks_db_config).await.into(),
@@ -55,7 +55,7 @@ impl TracerDbType {
     }
 }
 
-impl Clone for TracerDbType {
+impl Clone for TracerDb {
     fn clone(&self) -> Self {
         match self {
             Self::RocksDb(r) => r.clone().into(),
@@ -65,8 +65,8 @@ impl Clone for TracerDbType {
 }
 
 #[async_trait]
-#[enum_dispatch(TracerDbType)]
-pub trait TracerDb {
+#[enum_dispatch(TracerDb)]
+pub trait TracerDbTrait {
     async fn get_block_time(&self, slot: Slot) -> DbResult<UnixTimestamp>;
 
     async fn get_earliest_rooted_slot(&self) -> DbResult<u64>;

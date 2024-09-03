@@ -98,7 +98,6 @@ pub enum NeonError {
     Panic(String),
     #[error("ClickHouse: {0}")]
     ClickHouse(ChError),
-    // TODO from rocksdb::Error
     #[error("RocksDbError {0}")]
     RocksDb(anyhow::Error),
     #[error("Slot {0} is less than earliest_rooted_slot={1}")]

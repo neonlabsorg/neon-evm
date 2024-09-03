@@ -103,7 +103,8 @@ pub fn load_db_config_from_environment() -> Option<DbConfig> {
                 load_rocks_db_config_from_environment(),
             )),
             "clickhouse" => Some(DbConfig::ChDbConfig(load_ch_db_config_from_environment())),
-            _ => panic!("TRACER_DB_TYPE env var must be either 'clickhouse' or 'rocksdb'"),
+            "none" => None,
+            _ => panic!("TRACER_DB_TYPE env var must be either 'clickhouse', 'rocksdb', or 'none'"),
         })?
 }
 

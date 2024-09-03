@@ -126,7 +126,7 @@ def build_docker_image(evm_sha_tag):
                  "SOLANA_IMAGE": solana_image,
                  "SOLANA_BPF_VERSION": SOLANA_BPF_VERSION}
 
-    tag = f"{IMAGE_NAME}:{evm_sha_tag}"
+    tag = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}:{evm_sha_tag}"
     click.echo("start build")
     output = docker_client.build(tag=tag, buildargs=buildargs, path="./", decode=True)
     process_output(output)
@@ -153,9 +153,10 @@ def finalize_image(evm_sha_tag, evm_tag):
 
 
 def push_image_with_tag(sha, tag):
+    image = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}"
     docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
-    docker_client.tag(f"{IMAGE_NAME}:{sha}", f"{IMAGE_NAME}:{tag}")
-    out = docker_client.push(f"{IMAGE_NAME}:{tag}", decode=True, stream=True)
+    docker_client.tag(f"{image}:{sha}", f"{image}:{tag}")
+    out = docker_client.push(f"{image}:{tag}", decode=True, stream=True)
     process_output(out)
 
 

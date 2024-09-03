@@ -48,7 +48,7 @@ impl TracerDbType {
 
     pub async fn maybe_from_config(maybe_db_config: &Option<DbConfig>) -> Option<Self> {
         if let Some(db_config) = maybe_db_config {
-            Some(Self::from_config(&db_config).await)
+            Some(Self::from_config(db_config).await)
         } else {
             None
         }

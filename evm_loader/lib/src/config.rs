@@ -96,20 +96,15 @@ pub fn load_api_config_from_environment() -> APIOptions {
 
 #[must_use]
 pub fn load_db_config_from_environment() -> Option<DbConfig> {
-    if let Some(var) = env::var("TRACER_DB_TYPE")
+    env::var("TRACER_DB_TYPE")
         .ok()
-        .map(|var| var.to_lowercase())
-    {
-        match var.as_str() {
+        .map(|var| match var.to_lowercase().as_str() {
             "rocksdb" => Some(DbConfig::RocksDbConfig(
                 load_rocks_db_config_from_environment(),
             )),
             "clickhouse" => Some(DbConfig::ChDbConfig(load_ch_db_config_from_environment())),
             _ => panic!("TRACER_DB_TYPE env var must be either 'clickhouse' or 'rocksdb'"),
-        }
-    } else {
-        None
-    }
+        })?
 }
 
 pub fn load_ch_db_config_from_environment() -> ChDbConfig {

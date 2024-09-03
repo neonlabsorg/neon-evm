@@ -370,6 +370,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             let value = Self::precompile(&self.context.contract, &self.call_data).unwrap();
             backend.commit_snapshot();
 
+            end_vm!(self, backend, ExitStatus::Return(value.clone()));
             ExitStatus::Return(value)
         } else {
             loop {

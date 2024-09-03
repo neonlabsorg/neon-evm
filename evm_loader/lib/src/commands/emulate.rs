@@ -159,11 +159,8 @@ pub async fn execute<T: Tracer>(
     }
 
     if let Some(level) = emulate_request.provide_account_info {
-        result.0.accounts_data = Some(provide_account_data(
-            &storage,
-            &result.0.solana_accounts,
-            &level,
-        ));
+        result.0.accounts_data =
+            Some(provide_account_data(&storage, &result.0.solana_accounts, &level).await?);
     }
 
     Ok(result)
@@ -252,22 +249,29 @@ async fn emulate_trx<T: Tracer>(
     ))
 }
 
-fn provide_account_data(
-    storage: &EmulatorAccountStorage<impl Rpc>,
-    solana_accounts: &Vec<SolanaAccount>,
+async fn provide_account_data(
+    storage: &EmulatorAccountStorage<'_, impl Rpc>,
+    solana_accounts: &[SolanaAccount],
     level: &AccountInfoLevel,
-) -> Vec<AccountData> {
-    let mut accounts_data = Vec::<AccountData>::new();
+) -> NeonResult<Vec<AccountData>> {
+    let pubkeys = solana_accounts
+        .iter()
+        .filter_map(|v| {
+            if v.is_writable || AccountInfoLevel::Changed != *level {
+                Some(v.pubkey)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
 
-    for account in solana_accounts {
-        if !account.is_writable && AccountInfoLevel::Changed == *level {
-            continue;
-        }
+    let result = storage.get_multiple_accounts(&pubkeys).await?;
 
-        if let Some(account_data) = storage.accounts_get(&account.pubkey) {
-            accounts_data.push(account_data.clone());
-        }
-    }
-
-    accounts_data
+    Ok(pubkeys
+        .iter()
+        .zip(result.into_iter())
+        .filter_map(|(pubkey, account)| {
+            account.map(|acc| AccountData::new_from_account(*pubkey, &acc))
+        })
+        .collect::<Vec<_>>())
 }

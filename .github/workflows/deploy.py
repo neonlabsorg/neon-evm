@@ -30,7 +30,7 @@ ERR_MSG_TPL = {
 
 DOCKER_USER = os.environ.get("DHUBU")
 DOCKER_PASSWORD = os.environ.get("DHUBP")
-IMAGE_NAME = os.environ.get("IMAGE_NAME")
+IMAGE_NAME = os.environ.get("IMAGE_NAME", "evm_loader")
 RUN_LINK_REPO = os.environ.get("RUN_LINK_REPO")
 DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
 SOLANA_NODE_VERSION = 'v1.18.18'
@@ -126,7 +126,7 @@ def build_docker_image(evm_sha_tag):
                  "SOLANA_IMAGE": solana_image,
                  "SOLANA_BPF_VERSION": SOLANA_BPF_VERSION}
 
-    tag = f"{IMAGE_NAME}:{evm_sha_tag}"
+    tag = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}:{evm_sha_tag}"
     click.echo("start build")
     output = docker_client.build(tag=tag, buildargs=buildargs, path="./", decode=True)
     process_output(output)
@@ -153,9 +153,10 @@ def finalize_image(evm_sha_tag, evm_tag):
 
 
 def push_image_with_tag(sha, tag):
+    image = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}"
     docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
-    docker_client.tag(f"{IMAGE_NAME}:{sha}", f"{IMAGE_NAME}:{tag}")
-    out = docker_client.push(f"{IMAGE_NAME}:{tag}", decode=True, stream=True)
+    docker_client.tag(f"{image}:{sha}", f"{image}:{tag}")
+    out = docker_client.push(f"{image}:{tag}", decode=True, stream=True)
     process_output(out)
 
 
@@ -167,10 +168,10 @@ def run_subprocess(command):
 @cli.command(name="run_tests")
 @click.option('--evm_sha_tag')
 @click.option('--neon_test_tag')
-@click.option('--run_number')
-@click.option('--run_attempt')
+@click.option('--run_number', default=1)
+@click.option('--run_attempt', default=1)
 def run_tests(evm_sha_tag, neon_test_tag, run_number, run_attempt):
-    os.environ["EVM_LOADER_IMAGE"] = f"{IMAGE_NAME}:{evm_sha_tag}"
+    os.environ["EVM_LOADER_IMAGE"] = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}:{evm_sha_tag}"
     os.environ["NEON_TESTS_IMAGE"] = f"{DOCKERHUB_ORG_NAME}/{NEON_TEST_IMAGE_NAME}:{neon_test_tag}"
     project_name = f"neon-evm-{evm_sha_tag}-{run_number}-{run_attempt}"
     stop_containers(project_name)
@@ -180,6 +181,7 @@ def run_tests(evm_sha_tag, neon_test_tag, run_number, run_attempt):
     test_container_name = get_container_name(project_name, "tests")
 
     click.echo("Start tests")
+    print(test_container_name)
     exec_id = docker_client.exec_create(
         container=test_container_name, cmd="python3 clickfile.py run evm --numprocesses 8 --network docker_net")
     logs = docker_client.exec_start(exec_id['Id'], stream=True)
@@ -190,7 +192,7 @@ def run_tests(evm_sha_tag, neon_test_tag, run_number, run_attempt):
         current_line = line.decode('utf-8')
         all_logs += current_line
         click.echo(current_line)
-        if 'ERROR ' in current_line or 'FAILED ' in current_line:
+        if 'ERROR ' in current_line or 'FAILED ' in current_line or 'Error: ' in current_line:
             tests_are_failed = True
             print("Tests are failed")
 
@@ -209,8 +211,7 @@ def get_container_name(project_name, service_name):
         f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml ps",
         shell=True, capture_output=True, text=True).stdout
     click.echo(data)
-    pattern = rf'{project_name}_{service_name}_[1-9]+'
-
+    pattern = rf'{project_name}[-_]{service_name}[-_]1'
     match = re.search(pattern, data)
     return match.group(0)
 

@@ -1,5 +1,5 @@
 use super::{e, Rpc};
-use crate::types::{TracerDb, TracerDbType};
+use crate::types::{TracerDb, TracerDbTrait};
 use crate::NeonError;
 use crate::NeonError::RocksDb;
 use async_trait::async_trait;
@@ -15,14 +15,14 @@ use solana_sdk::{
 };
 
 pub struct CallDbClient {
-    tracer_db: TracerDbType,
+    tracer_db: TracerDb,
     slot: u64,
     tx_index_in_block: Option<u64>,
 }
 
 impl CallDbClient {
     pub async fn new(
-        tracer_db: TracerDbType,
+        tracer_db: TracerDb,
         slot: u64,
         tx_index_in_block: Option<u64>,
     ) -> Result<Self, NeonError> {

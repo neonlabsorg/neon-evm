@@ -1,3 +1,4 @@
+use crate::account_data::AccountData;
 use crate::config::RocksDbConfig;
 use async_trait::async_trait;
 use jsonrpsee::core::client::ClientT;
@@ -148,5 +149,14 @@ impl TracerDbTrait for RocksDb {
 
     async fn get_sync_status(&self) -> DbResult<EthSyncStatus> {
         Ok(EthSyncStatus::new(None))
+    }
+
+    async fn get_accounts_in_transaction(
+        &self,
+        _sol_sig: &[u8],
+        _slot: u64,
+    ) -> DbResult<Vec<AccountData>> {
+        // TODO implement
+        Ok(Vec::new())
     }
 }

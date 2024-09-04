@@ -264,6 +264,44 @@ impl TracerDbTrait for ClickHouseDb {
 
         Ok(EthSyncStatus::new(None))
     }
+
+    async fn get_accounts_in_transaction(
+        &self,
+        sol_sig: &[u8],
+        slot: u64,
+    ) -> DbResult<Vec<AccountData>> {
+        info!("get_accounts_in_transaction {{signature: {sol_sig:?} }}");
+
+        let query = r"
+            SELECT DISTINCT ON (pubkey)
+                pubkey, owner, lamports, executable, rent_epoch, data, txn_signature
+            FROM events.update_account_distributed
+            WHERE txn_signature = ?
+                AND slot = ?
+            ORDER BY write_version DESC
+            ";
+
+        let rows = self
+            .client
+            .query(query)
+            .bind(sol_sig)
+            .bind(slot)
+            .fetch_all::<AccountRow>()
+            .await?;
+
+        let mut accounts: Vec<AccountData> = Vec::new();
+
+        for row in rows {
+            let account_data = row.try_into().map_err(|e| {
+                anyhow!(ChError::Db(clickhouse::error::Error::Custom(format!(
+                    "get_accounts_in_transaction: Failed to convert row to AccountData, error: {e}",
+                ))))
+            })?;
+            accounts.push(account_data);
+        }
+
+        Ok(accounts)
+    }
 }
 
 impl ClickHouseDb {
@@ -526,38 +564,6 @@ impl ClickHouseDb {
         );
 
         Ok(account)
-    }
-
-    pub async fn get_accounts_in_transaction(
-        &self,
-        sol_sig: &[u8],
-        slot: u64,
-    ) -> ChResult<Vec<AccountData>> {
-        info!("get_accounts_in_transaction {{signature: {sol_sig:?} }}");
-
-        let query = r"
-            SELECT DISTINCT ON (pubkey)
-                pubkey, owner, lamports, executable, rent_epoch, data, txn_signature
-            FROM events.update_account_distributed
-            WHERE txn_signature = ?
-                AND slot = ?
-            ORDER BY write_version DESC
-            ";
-
-        let rows = self
-            .client
-            .query(query)
-            .bind(sol_sig)
-            .bind(slot)
-            .fetch_all::<AccountRow>()
-            .await?;
-
-        rows.into_iter()
-            .map(|row: AccountRow| {
-                row.try_into()
-                    .map_err(|err| ChError::Db(clickhouse::error::Error::Custom(err)))
-            })
-            .collect()
     }
 
     async fn get_older_account_row_at(

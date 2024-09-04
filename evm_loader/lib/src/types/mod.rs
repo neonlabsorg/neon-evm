@@ -3,6 +3,7 @@ pub mod tracer_ch_common;
 pub(crate) mod tracer_ch_db;
 pub mod tracer_rocks_db;
 
+use crate::account_data::AccountData;
 use crate::commands::get_config::ChainInfo;
 use crate::config::DbConfig;
 use crate::tracing::TraceCallConfig;
@@ -89,6 +90,12 @@ pub trait TracerDbTrait {
     async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<u64>;
 
     async fn get_sync_status(&self) -> DbResult<EthSyncStatus>;
+
+    async fn get_accounts_in_transaction(
+        &self,
+        sol_sig: &[u8],
+        slot: u64,
+    ) -> DbResult<Vec<AccountData>>;
 }
 
 #[serde_as]

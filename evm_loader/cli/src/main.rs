@@ -155,14 +155,12 @@ async fn build_rpc(options: &ArgMatches<'_>, config: &Config) -> Result<RpcEnum,
         .map(|slot_str| slot_str.parse().expect("slot parse error"));
 
     Ok(if let Some(slot) = slot {
-        RpcEnum::CallDbClient(
-            CallDbClient::new(
-                TracerDb::new(config.db_config.as_ref().expect("db-config not found")),
-                slot,
-                None,
-            )
-            .await?,
-        )
+        let db_config = config
+            .db_config
+            .clone()
+            .ok_or(NeonError::LoadingDBConfigError)?;
+        let tracer_db = TracerDb::from_config(&db_config).await;
+        RpcEnum::CallDbClient(CallDbClient::new(tracer_db, slot, None).await?)
     } else {
         RpcEnum::CloneRpcClient(CloneRpcClient::new_from_config(config))
     })

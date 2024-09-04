@@ -1,6 +1,7 @@
 use super::{e, Rpc};
-use crate::types::TracerDb;
+use crate::types::{TracerDb, TracerDbTrait};
 use crate::NeonError;
+use crate::NeonError::RocksDb;
 use async_trait::async_trait;
 use log::debug;
 use solana_client::{
@@ -28,7 +29,8 @@ impl CallDbClient {
         let earliest_rooted_slot = tracer_db
             .get_earliest_rooted_slot()
             .await
-            .map_err(NeonError::ClickHouse)?;
+            .map_err(RocksDb)?;
+
         if slot < earliest_rooted_slot {
             return Err(NeonError::EarlySlot(slot, earliest_rooted_slot));
         }

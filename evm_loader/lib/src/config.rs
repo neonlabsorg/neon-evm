@@ -1,8 +1,8 @@
-use std::{env, str::FromStr};
-
-use crate::types::ChDbConfig;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair};
+use std::{env, str::FromStr};
+
+const DEFAULT_ROCKSDB_PORT: u16 = 9888;
 
 #[derive(Debug)]
 pub struct Config {
@@ -11,7 +11,7 @@ pub struct Config {
     pub fee_payer: Option<Keypair>,
     pub commitment: CommitmentConfig,
     pub solana_cli_config: solana_cli_config::Config,
-    pub db_config: Option<ChDbConfig>,
+    pub db_config: Option<DbConfig>,
     pub json_rpc_url: String,
     pub keypair_path: String,
 }
@@ -25,7 +25,25 @@ pub struct APIOptions {
     pub solana_max_retries: usize,
     pub evm_loader: Pubkey,
     pub key_for_config: Pubkey,
-    pub db_config: ChDbConfig,
+    pub db_config: Option<DbConfig>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum DbConfig {
+    RocksDbConfig(RocksDbConfig),
+    ChDbConfig(ChDbConfig),
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ChDbConfig {
+    pub clickhouse_url: Vec<String>,
+    pub clickhouse_user: Option<String>,
+    pub clickhouse_password: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RocksDbConfig {
+    pub rocksdb_host: String,
+    pub rocksdb_port: u16,
 }
 
 /// # Errors
@@ -76,8 +94,21 @@ pub fn load_api_config_from_environment() -> APIOptions {
     }
 }
 
-/// # Errors
-fn load_db_config_from_environment() -> ChDbConfig {
+#[must_use]
+pub fn load_db_config_from_environment() -> Option<DbConfig> {
+    env::var("TRACER_DB_TYPE")
+        .ok()
+        .map(|var| match var.to_lowercase().as_str() {
+            "rocksdb" => Some(DbConfig::RocksDbConfig(
+                load_rocks_db_config_from_environment(),
+            )),
+            "clickhouse" => Some(DbConfig::ChDbConfig(load_ch_db_config_from_environment())),
+            "none" => None,
+            _ => panic!("TRACER_DB_TYPE env var must be either 'clickhouse', 'rocksdb', or 'none'"),
+        })?
+}
+
+pub fn load_ch_db_config_from_environment() -> ChDbConfig {
     let clickhouse_url = env::var("NEON_DB_CLICKHOUSE_URLS")
         .map(|urls| {
             urls.split(';')
@@ -98,5 +129,24 @@ fn load_db_config_from_environment() -> ChDbConfig {
         clickhouse_url,
         clickhouse_user,
         clickhouse_password,
+    }
+}
+
+pub fn load_rocks_db_config_from_environment() -> RocksDbConfig {
+    let rocksdb_host = env::var("ROCKSDB_HOST")
+        .as_deref()
+        .unwrap_or("127.0.0.1")
+        .to_owned();
+
+    let rocksdb_port: u16 = env::var("ROCKSDB_PORT")
+        .ok()
+        .and_then(|port| port.parse::<u16>().ok())
+        .unwrap_or(DEFAULT_ROCKSDB_PORT);
+
+    tracing::info!("rocksdb host {rocksdb_host}, port {rocksdb_port}");
+
+    RocksDbConfig {
+        rocksdb_host,
+        rocksdb_port,
     }
 }

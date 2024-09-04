@@ -1,6 +1,19 @@
 pub mod tracer_ch_common;
-mod tracer_ch_db;
 
+pub(crate) mod tracer_ch_db;
+pub mod tracer_rocks_db;
+
+use crate::account_data::AccountData;
+use crate::commands::get_config::ChainInfo;
+use crate::config::DbConfig;
+use crate::tracing::TraceCallConfig;
+use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
+pub use crate::types::tracer_ch_db::ClickHouseDb;
+pub use crate::types::tracer_rocks_db::RocksDb;
+use async_trait::async_trait;
+use enum_dispatch::enum_dispatch;
+use ethnum::U256;
+use evm_loader::solana_program::clock::{Slot, UnixTimestamp};
 pub use evm_loader::types::Address;
 use evm_loader::types::{StorageKey, Transaction};
 use evm_loader::{
@@ -10,24 +23,79 @@ use evm_loader::{
         TransactionPayload,
     },
 };
+use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
+use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
+use solana_sdk::signature::Signature;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::HashMap;
-pub use tracer_ch_db::ClickHouseDb as TracerDb;
+use DbConfig::{ChDbConfig, RocksDbConfig};
 
-use crate::tracing::TraceCallConfig;
+pub type DbResult<T> = Result<T, anyhow::Error>;
 
-use ethnum::U256;
-use serde::{Deserialize, Serialize};
-use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
+#[enum_dispatch]
+pub enum TracerDb {
+    ClickHouseDb,
+    RocksDb,
+}
 
-use crate::commands::get_config::ChainInfo;
+impl TracerDb {
+    pub async fn from_config(db_config: &DbConfig) -> Self {
+        match db_config {
+            RocksDbConfig(rocks_db_config) => RocksDb::new(rocks_db_config).await.into(),
+            ChDbConfig(ch_db_config) => ClickHouseDb::new(ch_db_config).into(),
+        }
+    }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Default)]
-pub struct ChDbConfig {
-    pub clickhouse_url: Vec<String>,
-    pub clickhouse_user: Option<String>,
-    pub clickhouse_password: Option<String>,
+    pub async fn maybe_from_config(maybe_db_config: &Option<DbConfig>) -> Option<Self> {
+        if let Some(db_config) = maybe_db_config {
+            Some(Self::from_config(db_config).await)
+        } else {
+            None
+        }
+    }
+}
+
+impl Clone for TracerDb {
+    fn clone(&self) -> Self {
+        match self {
+            Self::RocksDb(r) => r.clone().into(),
+            Self::ClickHouseDb(c) => c.clone().into(),
+        }
+    }
+}
+
+#[async_trait]
+#[enum_dispatch(TracerDb)]
+pub trait TracerDbTrait {
+    async fn get_block_time(&self, slot: Slot) -> DbResult<UnixTimestamp>;
+
+    async fn get_earliest_rooted_slot(&self) -> DbResult<u64>;
+
+    async fn get_latest_block(&self) -> DbResult<u64>;
+
+    async fn get_account_at(
+        &self,
+        pubkey: &Pubkey,
+        slot: u64,
+        tx_index_in_block: Option<u64>,
+    ) -> DbResult<Option<Account>>;
+
+    async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64>;
+
+    async fn get_neon_revisions(&self, _pubkey: &Pubkey) -> DbResult<RevisionMap>;
+
+    async fn get_neon_revision(&self, _slot: Slot, _pubkey: &Pubkey) -> DbResult<String>;
+
+    async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<u64>;
+
+    async fn get_sync_status(&self) -> DbResult<EthSyncStatus>;
+
+    async fn get_accounts_in_transaction(
+        &self,
+        sol_sig: &[u8],
+        slot: u64,
+    ) -> DbResult<Vec<AccountData>>;
 }
 
 #[serde_as]

@@ -223,13 +223,20 @@ impl<'a> ProgramAccountStorage<'a> {
                     let (_, bump) = self.keys.contract_with_bump_seed(&crate::ID, address);
                     let sign: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], address.as_bytes(), &[bump]];
 
-                    let len = values.len();
+                    let mut filtered_values = HashMap::new();
+                    for (key, value) in values {
+                        if value != [0u8; 32] {
+                            filtered_values.insert(key, value);
+                        }
+                    }
+
+                    let len = filtered_values.len();
                     let mut storage =
                         StorageCell::create(cell_address, len, &self.accounts, sign, &self.rent)?;
                     let mut cells = storage.cells_mut();
 
                     assert_eq!(cells.len(), len);
-                    for (cell, (subindex, value)) in cells.iter_mut().zip(values) {
+                    for (cell, (subindex, value)) in cells.iter_mut().zip(filtered_values) {
                         cell.subindex = subindex;
                         cell.value = value;
                     }

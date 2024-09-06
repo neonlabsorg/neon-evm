@@ -153,10 +153,16 @@ impl TracerDbTrait for RocksDb {
 
     async fn get_accounts_in_transaction(
         &self,
-        _sol_sig: &[u8],
-        _slot: u64,
+        sol_sig: &[u8],
+        slot: u64,
     ) -> DbResult<Vec<AccountData>> {
-        // TODO implement
-        Ok(Vec::new())
+
+        let signature = Signature::try_from(sol_sig)?;
+        let response: String = self
+            .client
+            .request("get_accounts_in_transaction", rpc_params![signature.to_string(), slot])
+            .await?;
+        info!("response: {:?}", response);
+        Ok(from_str(response.as_str())?)
     }
 }

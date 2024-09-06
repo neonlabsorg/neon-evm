@@ -15,7 +15,7 @@ use solana_sdk::{
 use std::env;
 use std::str::FromStr;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{debug, info};
 
 #[derive(Clone, Serialize)]
 pub struct AccountParams {
@@ -156,13 +156,15 @@ impl TracerDbTrait for RocksDb {
         sol_sig: &[u8],
         slot: u64,
     ) -> DbResult<Vec<AccountData>> {
-
         let signature = Signature::try_from(sol_sig)?;
         let response: String = self
             .client
-            .request("get_accounts_in_transaction", rpc_params![signature.to_string(), slot])
+            .request(
+                "get_accounts_in_transaction",
+                rpc_params![signature.to_string(), slot],
+            )
             .await?;
-        info!("response: {:?}", response);
+        debug!("response: {:?}", response);
         Ok(from_str(response.as_str())?)
     }
 }

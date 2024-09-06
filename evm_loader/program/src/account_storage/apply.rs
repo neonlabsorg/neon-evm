@@ -231,6 +231,10 @@ impl<'a> ProgramAccountStorage<'a> {
                     }
 
                     let len = filtered_values.len();
+
+                    if filtered_values.is_empty() {
+                        return Ok(());
+                    }
                     let mut storage =
                         StorageCell::create(cell_address, len, &self.accounts, sign, &self.rent)?;
                     let mut cells = storage.cells_mut();

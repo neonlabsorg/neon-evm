@@ -249,6 +249,10 @@ impl<'a> StorageCell<'a> {
             return Ok(());
         }
 
+        if value == &[0u8; 32] {
+            return Ok(());
+        }
+
         let new_len = self.account.data_len() + size_of::<Cell>(); // new_len <= 8.25 kb
         self.account.realloc(new_len, false)?;
 

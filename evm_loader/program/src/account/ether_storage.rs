@@ -240,33 +240,12 @@ impl<'a> StorageCell<'a> {
     pub fn update(&mut self, subindex: u8, value: &[u8; 32]) -> Result<()> {
         // todo: if value is zero - destroy cell
 
-        let mut found_zero: bool = false;
-        let mut zero_index: usize = 0;
-        let mut current_index: usize = 0;
-
         for cell in &mut *self.cells_mut() {
             if cell.subindex != subindex {
-                current_index += 1;
                 continue;
             }
 
-            if value != &[0u8; 32] {
-                cell.value.copy_from_slice(value);
-                return Ok(());
-            }
-
-            found_zero = true;
-            zero_index = current_index;
-            break;
-        }
-
-        if found_zero {
-            let length = self.cells().len();
-            self.cells_mut().swap(zero_index, length - 1);
-
-            let new_len = self.account.data_len() - size_of::<Cell>();
-            self.account.realloc(new_len, false)?;
-
+            cell.value.copy_from_slice(value);
             return Ok(());
         }
 

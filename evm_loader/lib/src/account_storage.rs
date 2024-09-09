@@ -1257,6 +1257,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             } else {
                 ContractAccount::from_account(self.program_id(), contract_data.into_account_info())?
             };
+
             contract.set_storage_value(index.as_usize(), &value);
             contract.update_lamports(&self.rent);
             self.mark_account(contract_data.pubkey, true);
@@ -1270,6 +1271,9 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
                 .map_err(map_neon_error)?
                 .borrow_mut();
 
+            if storage_data.is_empty() && value != &[0;32] {
+                return Ok(());
+            }
             let mut storage = self.get_or_create_ethereum_storage(&mut storage_data)?;
             storage.update(subindex, &value)?;
             storage.update_lamports(&self.rent);

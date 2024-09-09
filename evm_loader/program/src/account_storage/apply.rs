@@ -230,6 +230,10 @@ impl<'a> ProgramAccountStorage<'a> {
                         }
                     }
 
+                    if filtered_values.is_empty() {
+                        continue;
+                    }
+
                     let len = filtered_values.len();
 
                     let mut storage =

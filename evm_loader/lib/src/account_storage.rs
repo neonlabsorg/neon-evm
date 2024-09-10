@@ -32,6 +32,7 @@ use solana_sdk::{
     transaction_context::TransactionReturnData,
 };
 use std::collections::{HashMap, HashSet};
+use std::ops::Deref;
 use std::{
     cell::{Ref, RefCell, RefMut},
     convert::TryInto,
@@ -652,23 +653,16 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
     }
 
-    async fn get_storage_account(
-        &self,
-        address: Address,
-        index: U256,
-    ) -> NeonResult<&RefCell<AccountData>> {
+    async fn get_storage_account(&self, address: Address, index: U256) -> Option<&Account> {
         let (base, _) = address.find_solana_address(self.program_id());
         let cell_address = StorageCellAddress::new(self.program_id(), &base, &index);
         let cell_pubkey = *cell_address.pubkey();
 
-        if let Some(account) = self.accounts.get(&cell_pubkey) {
-            return Ok(account);
-        }
+        // if let Some(account) = self.accounts.get(&cell_pubkey) {
+        // Some(account);
+        // }
 
-        match self._get_account_from_rpc(cell_pubkey).await? {
-            Some(account) => self.add_account(cell_pubkey, account).await,
-            None => Ok(self.add_empty_account(cell_pubkey)),
-        }
+        self._get_account_from_rpc(cell_pubkey).await.ok().flatten()
     }
 
     pub async fn ethereum_balance_map_or<F, R>(
@@ -723,13 +717,19 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     where
         F: FnOnce(&StorageCell) -> R,
     {
-        let mut storage_data = self.get_storage_account(address, index).await?.borrow_mut();
-        if storage_data.is_empty() {
-            Ok(default)
-        } else {
-            let account_info = storage_data.into_account_info();
+        let storage_data = self.get_storage_account(address, index).await;
+
+        if storage_data.is_some() {
+            let account_data = self
+                .add_account(*self.program_id(), storage_data.unwrap())
+                .await?;
+            let mut account_data = account_data.borrow_mut();
+            let account_info = account_data.into_account_info();
             let storage = StorageCell::from_account(self.program_id(), account_info)?;
             Ok(action(&storage))
+        } else {
+            self.add_empty_account(*self.program_id());
+            Ok(default)
         }
     }
 
@@ -1265,20 +1265,23 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             let subindex = (index & 0xFF).as_u8();
             let index = index & !U256::new(0xFF);
 
-            let mut storage_data = self
-                .get_storage_account(address, index)
-                .await
-                .map_err(map_neon_error)?
-                .borrow_mut();
+            let storage_data = self.get_storage_account(address, index).await;
 
-            if storage_data.is_empty() && value == [0; 32] {
+            if storage_data.is_none() && value == [0; 32] {
                 return Ok(());
             }
 
-            let mut storage = self.get_or_create_ethereum_storage(&mut storage_data)?;
+            let (base, _) = address.find_solana_address(self.program_id());
+            let cell_address = StorageCellAddress::new(self.program_id(), &base, &index);
+            let cell_pubkey = *cell_address.pubkey();
+
+            let account_data = self.add_account(cell_pubkey, storage_data.unwrap()).await;
+            let mut account_data = account_data.unwrap().borrow_mut();
+
+            let mut storage = self.get_or_create_ethereum_storage(&mut account_data)?;
             storage.update(subindex, &value)?;
             storage.update_lamports(&self.rent);
-            self.mark_account(storage_data.pubkey, true);
+            self.mark_account(account_data.pubkey, true);
         }
 
         Ok(())

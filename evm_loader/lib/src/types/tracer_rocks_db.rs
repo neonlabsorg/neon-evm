@@ -164,7 +164,15 @@ impl TracerDbTrait for RocksDb {
                 rpc_params![signature.to_string(), slot],
             )
             .await?;
-        debug!("response: {:?}", response);
-        Ok(from_str(response.as_str())?)
+
+        let response: Vec<(&str, Account)> = from_str(response.as_str())?;
+        debug!("Accounts in response: {:?}", response);
+        let account_data_vec = response
+            .iter()
+            .map(|(pubkey, acc)| {
+                AccountData::new_from_account(Pubkey::from_str(pubkey).unwrap(), acc)
+            })
+            .collect();
+        Ok(account_data_vec)
     }
 }

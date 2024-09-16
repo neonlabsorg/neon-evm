@@ -656,19 +656,18 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         &self,
         address: Address,
         index: U256,
-    ) -> NeonResult<Option<&RefCell<AccountData>>> {
+    ) -> NeonResult<&RefCell<AccountData>> {
         let (base, _) = address.find_solana_address(self.program_id());
         let cell_address = StorageCellAddress::new(self.program_id(), &base, &index);
         let cell_pubkey = *cell_address.pubkey();
 
         if let Some(account) = self.accounts.get(&cell_pubkey) {
-            return Ok(Some(account));
+            return Ok(account);
         }
 
         match self._get_account_from_rpc(cell_pubkey).await? {
-            Some(account) => Ok(Some(self.add_account(cell_pubkey, account).await?)),
-            None => Ok(None),
-            // None => Ok(Some(self.add_empty_account(cell_pubkey))),
+            Some(account) => self.add_account(cell_pubkey, account).await,
+            None => Ok(self.add_empty_account(cell_pubkey)),
         }
     }
 
@@ -724,18 +723,11 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     where
         F: FnOnce(&StorageCell) -> R,
     {
-        let storage_data = self.get_storage_account(address, index).await?;
-
-        let (base, _) = address.find_solana_address(self.program_id());
-        let cell_address = StorageCellAddress::new(self.program_id(), &base, &index);
-        let cell_pubkey = *cell_address.pubkey();
-
-        if storage_data.is_none() {
-            self.add_empty_account(cell_pubkey);
+        let mut storage_data = self.get_storage_account(address, index).await?.borrow_mut();
+        if storage_data.is_empty() {
             Ok(default)
         } else {
-            let mut account_info = storage_data.unwrap().borrow_mut();
-            let account_info = account_info.into_account_info();
+            let account_info = storage_data.into_account_info();
             let storage = StorageCell::from_account(self.program_id(), account_info)?;
             Ok(action(&storage))
         }
@@ -1144,19 +1136,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
                 cell.get(subindex)
             })
             .await
-            .unwrap_or([0; 32])
-
-            // let eth_storage_map = self
-            //     .ethereum_storage_map_or(address, index, <[u8; 32]>::default(), |cell| {
-            //         cell.get(subindex)
-            //     })
-            //     .await
-            //
-            // eth_storage_map.unwrap_or([0u8; 32])
-            // match eth_storage_map {
-            //     Ok(eth_storage) => eth_storage,
-            //     Err(_) => [0u8; 32],
-            // }
+            .unwrap()
         };
 
         info!("storage {address} -> {index} = {}", hex::encode(value));
@@ -1265,7 +1245,6 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         info!("set_storage {address} -> {index} = {}", hex::encode(value));
         const STATIC_STORAGE_LIMIT: U256 = U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128);
 
-        println!("set_storage:: Value={:#?}", value);
         if index < STATIC_STORAGE_LIMIT {
             let mut contract_data = self
                 .get_contract_account(address)
@@ -1283,95 +1262,23 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             contract.update_lamports(&self.rent);
             self.mark_account(contract_data.pubkey, true);
         } else {
-            if value == [0; 32] {
-                return Ok(());
-            }
-
             let subindex = (index & 0xFF).as_u8();
             let index = index & !U256::new(0xFF);
 
-            let storage_data = self
+            let mut storage_data = self
                 .get_storage_account(address, index)
                 .await
-                .map_err(map_neon_error)?;
+                .map_err(map_neon_error)?
+                .borrow_mut();
 
-            dbg!(value);
-            // if storage_data.is_none() && value == [0; 32] {
-            //     println!("=========================================================0");
-            //     return Ok(());
-            // }
-            //
-            // if storage_data.is_some() && value == [0; 32] {
-            //     println!("=========================================================1");
-            //     return Ok(());
-            // }
-
-            if storage_data.is_none() && value != [0; 32] {
-                println!("=========================================================2");
-                let (base, _) = address.find_solana_address(self.program_id());
-                let cell_address = StorageCellAddress::new(self.program_id(), &base, &index);
-                let cell_pubkey = *cell_address.pubkey();
-                println!("=========================================================21");
-
-                let mut storage_data = self.add_empty_account(cell_pubkey).borrow_mut();
-                println!("=========================================================22");
-
-                let mut storage = self.get_or_create_ethereum_storage(&mut storage_data)?;
-                storage.update(subindex, &value)?;
-
-                println!("=========================================================23");
-                storage.update_lamports(&self.rent);
-                self.mark_account(storage_data.pubkey, true);
-
-                println!("=========================================================24");
-
-                return Ok(());
-            }
-            if storage_data.is_some() && value != [0; 32] {
-                println!("=========================================================3");
-                let mut storage_data = storage_data.unwrap().borrow_mut();
-                let mut storage = self.get_or_create_ethereum_storage(&mut storage_data)?;
-                println!("=========================================================31");
-                storage.update(subindex, &value)?;
-                storage.update_lamports(&self.rent);
-                println!("=========================================================32");
-                self.mark_account(storage_data.pubkey, true);
-                println!("=========================================================33");
+            if storage_data.is_empty() && value == [0; 32] {
                 return Ok(());
             }
 
-            // let mut storage_data = storage_data.unwrap().borrow_mut();ca
-            // match (storage_data, value == [0u8; 32]) {
-            //     (None, true) => {
-            //         println!("1 Storage data is none");
-            //         return Ok(());
-            //     }
-            //     (Some(_), true) => {
-            //         println!("2 Storage data is none");
-            //         return Ok(());
-            //     }
-            //     (Some(_), false) => {
-            //         println!("3 Storage data is not none");
-            //         let mut storage = self.get_or_create_ethereum_storage(&mut storage_data)?;
-            //         storage.update(subindex, &value)?;
-            //         storage.update_lamports(&self.rent);
-            //         self.mark_account(storage_data.pubkey, true);
-            //         return Ok(());
-            //     }
-            //     (None, false) => {
-            //         let (base, _) = address.find_solana_address(self.program_id());
-            //         let cell_address = StorageCellAddress::new(self.program_id(), &base, &index);
-            //         let cell_pubkey = *cell_address.pubkey();
-            //
-            //         let mut storage_data = self.add_empty_account(cell_pubkey).borrow_mut();
-            //
-            //         let mut storage = self.get_or_create_ethereum_storage(&mut storage_data)?;
-            //         storage.update(subindex, &value)?;
-            //         storage.update_lamports(&self.rent);
-            //         self.mark_account(storage_data.pubkey, true);
-            //         return Ok(());
-            //     }
-            // };
+            let mut storage = self.get_or_create_ethereum_storage(&mut storage_data)?;
+            storage.update(subindex, &value)?;
+            storage.update_lamports(&self.rent);
+            self.mark_account(storage_data.pubkey, true);
         }
 
         Ok(())

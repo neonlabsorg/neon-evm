@@ -32,7 +32,7 @@ RUN cargo fmt --check && \
 
 # Add neon_test_invoke_program to the genesis
 ARG DOCKERHUB_ORG_NAME
-FROM $DOCKERHUB_ORG_NAME/neon_test_programs:latest AS neon_test_programs
+FROM ${DOCKERHUB_ORG_NAME}/neon_test_programs:latest AS neon_test_programs
 
 # Define solana-image that contains utility
 FROM builder AS base

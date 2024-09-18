@@ -124,7 +124,8 @@ def build_docker_image(evm_sha_tag):
     docker_client.pull(solana_image)
     buildargs = {"REVISION": evm_sha_tag,
                  "SOLANA_IMAGE": solana_image,
-                 "SOLANA_BPF_VERSION": SOLANA_BPF_VERSION}
+                 "SOLANA_BPF_VERSION": SOLANA_BPF_VERSION,
+                 "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME}
 
     tag = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}:{evm_sha_tag}"
     click.echo("start build")

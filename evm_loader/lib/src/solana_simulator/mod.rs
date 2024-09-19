@@ -218,7 +218,7 @@ impl SolanaSimulator {
     }
 
     pub fn process_transaction(
-        &self,
+        &mut self,
         blockhash: Hash,
         tx: &SanitizedTransaction,
     ) -> Result<TransactionSimulationResult, Error> {
@@ -307,6 +307,16 @@ impl SolanaSimulator {
         } else {
             Some(return_data)
         };
+
+        if status.is_ok() {
+            for (pubkey, account) in &accounts {
+                if solana_sdk::sysvar::instructions::check_id(pubkey) {
+                    continue;
+                }
+
+                self.accounts_db.insert(*pubkey, account.clone());
+            }
+        }
 
         Ok(TransactionSimulationResult {
             result: status,
@@ -483,7 +493,7 @@ impl SolanaSimulator {
     }
 
     pub fn simulate_legacy_transaction(
-        &self,
+        &mut self,
         tx: solana_sdk::transaction::Transaction,
     ) -> Result<TransactionSimulationResult, Error> {
         let versioned_transaction = VersionedTransaction::from(tx);

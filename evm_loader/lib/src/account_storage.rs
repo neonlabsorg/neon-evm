@@ -1271,7 +1271,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
                 .map_err(map_neon_error)?
                 .borrow_mut();
 
-            if value == [0; 32] {
+            if storage_data.is_empty() && value == [0; 32] {
                 return Ok(());
             }
 

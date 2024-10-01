@@ -13,7 +13,6 @@ use toml::Table;
 #[derive(Deserialize)]
 pub struct NetSpecificConfig {
     pub program_id: String,
-    pub operators_whitelist: Vec<String>,
     pub neon_chain_id: u64,
     pub neon_token_mint: String,
     pub chains: Vec<Chain>,
@@ -32,12 +31,6 @@ impl Parse for NetSpecificConfig {
         let root = file_contents.parse::<Table>().unwrap();
 
         let program_id = root["program_id"].as_str().unwrap().to_string();
-        let operators_whitelist = root["operators_whitelist"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v.as_str().unwrap().to_string())
-            .collect::<Vec<_>>();
 
         let no_update_tracking_owners = root["no_update_tracking_owners"]
             .as_array()
@@ -73,7 +66,6 @@ impl Parse for NetSpecificConfig {
 
         Ok(Self {
             program_id,
-            operators_whitelist,
             neon_chain_id,
             neon_token_mint,
             chains,

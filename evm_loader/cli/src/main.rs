@@ -47,15 +47,21 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
             let rpc = build_rpc(options, config).await?;
 
             let request = read_tx_from_stdin()?;
-            emulate::execute(&rpc, config.evm_loader, request, None::<TracerTypeEnum>)
-                .await
-                .map(|(result, _)| json!(result))
+            emulate::execute(
+                &rpc,
+                &config.db_config,
+                &config.evm_loader,
+                request,
+                None::<TracerTypeEnum>,
+            )
+            .await
+            .map(|(result, _)| json!(result))
         }
         ("trace", Some(_)) => {
             let rpc = build_rpc(options, config).await?;
 
             let request = read_tx_from_stdin()?;
-            trace::trace_transaction(&rpc, config.evm_loader, request)
+            trace::trace_transaction(&rpc, &config.db_config, &config.evm_loader, request)
                 .await
                 .map(|trace| json!(trace))
         }

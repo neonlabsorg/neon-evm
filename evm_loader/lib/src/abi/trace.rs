@@ -16,5 +16,5 @@ pub async fn execute(
     let params: EmulateApiRequest =
         serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
 
-    trace::trace_transaction(rpc, config.evm_loader, params.body).await
+    trace::trace_transaction(rpc, &config.db_config, &config.evm_loader, params.body).await
 }

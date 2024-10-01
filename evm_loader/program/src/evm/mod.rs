@@ -449,4 +449,8 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         ManuallyDrop::new(other)
     }
+
+    pub fn set_tracer(&mut self, tracer: Option<T>) {
+        self.tracer = tracer;
+    }
 }

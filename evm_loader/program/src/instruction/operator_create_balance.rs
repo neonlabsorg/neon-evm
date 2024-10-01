@@ -13,7 +13,7 @@ pub fn process<'a>(
 ) -> Result<()> {
     log_msg!("Instruction: Create Operator Balance Account");
 
-    let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[0]) }?;
+    let operator = Operator::from_account(&accounts[0])?;
     let system = program::System::from_account(&accounts[1])?;
     let account = &accounts[2];
 

@@ -31,7 +31,7 @@ impl<'a> Accounts<'a> {
             balance_account: &accounts[3],
             contract_account: &accounts[4],
             token_program: program::Token::from_account(&accounts[5])?,
-            operator: unsafe { Operator::from_account_not_whitelisted(&accounts[6]) }?,
+            operator: Operator::from_account(&accounts[6])?,
             system_program: program::System::from_account(&accounts[7])?,
         })
     }

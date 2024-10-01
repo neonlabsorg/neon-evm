@@ -18,11 +18,12 @@ use crate::types::{
     AccessListTx, Address, LegacyTx, Transaction, TransactionPayload, TreeMap,
 };
 
-use ethnum::U256;
+use ethnum::{AsU256, U256};
 use solana_program::hash::Hash;
 use solana_program::system_program;
+use solana_program::sysvar::Sysvar;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
-
+// use solana_program::clock::Clock;
 use super::{
     AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder, OperatorBalanceAccount,
     StateFinalizedAccount, StorageCell, ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_BALANCE,
@@ -102,6 +103,8 @@ struct Data {
     pub priority_fee_used: U256,
     /// Steps executed in the transaction
     pub steps_executed: u64,
+    /// Timeout from the last transaction usage
+    pub timeout: u64,
 }
 
 // Stores relative offsets for the corresponding objects as allocated by the AccountAllocator.
@@ -195,6 +198,8 @@ impl<'a> StateAccount<'a> {
             gas_used: U256::ZERO,
             priority_fee_used: U256::ZERO,
             steps_executed: 0_u64,
+            timeout: solana_program::clock::Clock::get()
+                .map(|clock| clock.slot.as_u256().as_u64())?,
         });
 
         let data_offset = {
@@ -228,6 +233,10 @@ impl<'a> StateAccount<'a> {
     ) -> Result<(Self, AccountsStatus)> {
         let mut status = AccountsStatus::Ok;
         let mut state = Self::from_account(program_id, info)?;
+
+        let timeout =
+            solana_program::clock::Clock::get().map(|clock| clock.slot.as_u256().as_u64())?;
+        state.data.timeout = timeout;
 
         let is_touched_account = |key: &Pubkey| -> bool {
             state
@@ -437,6 +446,11 @@ impl<'a> StateAccount<'a> {
         let offset = self.leak_and_offset(data);
         let mut header = super::header_mut::<Header>(&self.account);
         header.executor_state_offset = offset;
+    }
+
+    #[must_use]
+    pub fn get_timeout(&self) -> u64 {
+        self.data.timeout
     }
 
     pub fn dealloc_executor_state(&self) {

@@ -1,4 +1,5 @@
 pub use address::Address;
+pub use execution_map::{ExecutionMap, ExecutionStep};
 pub use transaction::AccessListTx;
 pub use transaction::DynamicFeeTx;
 pub use transaction::LegacyTx;
@@ -14,4 +15,5 @@ pub mod tree_map;
 #[macro_use]
 pub mod vector;
 pub mod boxx;
+pub mod execution_map;
 pub mod read_raw_utils;

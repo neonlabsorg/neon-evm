@@ -9,9 +9,6 @@ pub struct Operator<'a> {
 }
 
 impl<'a> Operator<'a> {
-    /// # Safety
-    /// Due to critical vulnerability, operator can destroy the world
-    /// We trust whitelisted operators to not do this
     pub fn from_account(info: &'a AccountInfo<'a>) -> Result<Self, ProgramError> {
         if !solana_program::system_program::check_id(info.owner) {
             return Err!(ProgramError::InvalidArgument; "Account {} - expected system owned", info.key);

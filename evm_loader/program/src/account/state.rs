@@ -23,7 +23,6 @@ use solana_program::hash::Hash;
 use solana_program::system_program;
 use solana_program::sysvar::Sysvar;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
-// use solana_program::clock::Clock;
 use super::{
     AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder, OperatorBalanceAccount,
     StateFinalizedAccount, StorageCell, ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_BALANCE,
@@ -449,7 +448,7 @@ impl<'a> StateAccount<'a> {
     }
 
     #[must_use]
-    pub fn get_timeout(&self) -> u64 {
+    pub fn timeout(&self) -> u64 {
         self.data.timeout
     }
 

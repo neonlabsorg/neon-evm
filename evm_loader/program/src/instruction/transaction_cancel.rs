@@ -34,7 +34,7 @@ pub fn process<'a>(
     let is_timeout = (solana_program::clock::Clock::get()
         .map(|clock| clock.slot.as_u256().as_u64())?
         - storage.timeout())
-        > crate::config::NEON_TIMEOUT;
+        > crate::config::TIMEOUT;
 
     if is_timeout {
         validate(&storage, transaction_hash)?;

@@ -102,6 +102,8 @@ struct Data {
     pub priority_fee_used: U256,
     /// Steps executed in the transaction
     pub steps_executed: u64,
+    /// Address of the tree account (present for scheduled transactions).
+    pub tree_account: Option<Pubkey>,
 }
 
 // Stores relative offsets for the corresponding objects as allocated by the AccountAllocator.
@@ -161,6 +163,7 @@ impl<'a> StateAccount<'a> {
         accounts: &AccountsDB<'a>,
         origin: Address,
         transaction: Transaction,
+        tree_account: Option<Pubkey>,
     ) -> Result<Self> {
         let owner = match super::tag(program_id, &info)? {
             TAG_HOLDER => {
@@ -195,6 +198,7 @@ impl<'a> StateAccount<'a> {
             gas_used: U256::ZERO,
             priority_fee_used: U256::ZERO,
             steps_executed: 0_u64,
+            tree_account,
         });
 
         let data_offset = {
@@ -262,10 +266,17 @@ impl<'a> StateAccount<'a> {
     }
 
     pub fn finalize(self, program_id: &Pubkey) -> Result<()> {
-        debug_print!("Finalize Storage {}", self.account.key);
-
         // Change tag to finalized
-        StateFinalizedAccount::convert_from_state(program_id, self)?;
+        if self.has_tree_account() {
+            debug_print!(
+                "Finalize Storage {} for scheduled transaction",
+                self.account.key
+            );
+            StateFinalizedAccount::scheduled_finalize_from_state(program_id, self)?;
+        } else {
+            debug_print!("Finalize Storage {}", self.account.key);
+            StateFinalizedAccount::finalize_from_state(program_id, self)?;
+        }
 
         Ok(())
     }
@@ -311,6 +322,15 @@ impl<'a> StateAccount<'a> {
     #[must_use]
     pub fn trx_origin(&self) -> Address {
         self.data.origin
+    }
+
+    #[must_use]
+    pub fn tree_account(&self) -> Option<Pubkey> {
+        self.data.tree_account
+    }
+
+    fn has_tree_account(&self) -> bool {
+        self.data.tree_account.is_some()
     }
 
     #[must_use]

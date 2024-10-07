@@ -38,6 +38,8 @@ pub const HEAP_OFFSET_PTR: usize = holder::HEAP_OFFSET_OFFSET;
 pub const TAG_EMPTY: u8 = 0;
 pub const TAG_STATE: u8 = 25;
 pub const TAG_STATE_FINALIZED: u8 = 32;
+pub const TAG_SCHEDULED_STATE_FINALIZED: u8 = 35;
+pub const TAG_SCHEDULED_STATE_CANCELLED: u8 = 38;
 pub const TAG_HOLDER: u8 = 52;
 
 pub const TAG_ACCOUNT_BALANCE: u8 = 60;

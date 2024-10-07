@@ -95,6 +95,9 @@ pub enum Error {
     #[error("Transaction already finalized")]
     StorageAccountFinalized,
 
+    #[error("Finalized storage Account {0} has invalid tag, actual {1}")]
+    FinalizedStorageAccountInvalidTag(Pubkey, u8),
+
     #[error("Unknown extension method selector {1:?}, contract {0}")]
     UnknownPrecompileMethodSelector(Address, [u8; 4]),
 

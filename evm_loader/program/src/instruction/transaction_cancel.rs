@@ -31,10 +31,17 @@ pub fn process<'a>(
     let accounts_db = AccountsDB::new(&accounts[3..], operator, Some(operator_balance), None, None);
     let (storage, _) = StateAccount::restore(program_id, &storage_info, &accounts_db)?;
 
-    let is_timeout = (solana_program::clock::Clock::get()
-        .map(|clock| clock.slot.as_u256().as_u64())?
-        - storage.timeout())
-        > crate::config::TIMEOUT;
+    let current_timestamp =
+        solana_program::clock::Clock::get().map(|clock| clock.slot.as_u256().as_u64())?;
+    let storage_timeout = storage.timeout();
+    let config_timeout = crate::config::TIMEOUT;
+
+    let is_timeout = (current_timestamp - storage_timeout) > config_timeout;
+    log_msg!("process   ->  current_timestamp = {}", current_timestamp);
+    log_msg!("process   ->  storage.timeout = {}", storage_timeout);
+    log_msg!("process   ->  crate::config::TIMEOUT = {}", config_timeout);
+
+    log_msg!("process   ->  is_timeout = {}", is_timeout);
 
     if is_timeout {
         validate(&storage, transaction_hash)?;

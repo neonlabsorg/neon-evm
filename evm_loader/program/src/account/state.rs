@@ -125,7 +125,15 @@ pub struct StateAccount<'a> {
     data: ManuallyDrop<Boxx<Data>>,
 }
 
-type StateAccountCoreApiView = (Transaction, Pubkey, Address, Vec<Pubkey>, u64);
+/// (transaction, owner, tree account, origin, accounts, steps).
+type StateAccountCoreApiView = (
+    Transaction,
+    Pubkey,
+    Option<Pubkey>,
+    Address,
+    Vec<Pubkey>,
+    u64,
+);
 
 const BUFFER_OFFSET: usize = ACCOUNT_PREFIX_LEN + size_of::<Header>();
 
@@ -615,6 +623,7 @@ impl<'a> StateAccount<'a> {
 
             // Reading parts of `StateAccount`.
             let owner = read_unaligned(addr_of!((*data_ptr).owner));
+            let tree_account = read_unaligned(addr_of!((*data_ptr).tree_account));
             let origin = read_unaligned(addr_of!((*data_ptr).origin));
             let keys_ptr = addr_of!((*data_ptr).revisions).cast::<usize>();
 
@@ -627,7 +636,7 @@ impl<'a> StateAccount<'a> {
 
             let steps = read_unaligned(addr_of!((*data_ptr).steps_executed));
 
-            Ok((tx, owner, origin, accounts, steps))
+            Ok((tx, owner, tree_account, origin, accounts, steps))
         }
     }
 }

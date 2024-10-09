@@ -19,8 +19,8 @@ use evm_loader::types::{StorageKey, Transaction};
 use evm_loader::{
     account_storage::AccountStorage,
     types::{
-        vector::VectorVecExt, vector::VectorVecSlowExt, AccessListTx, DynamicFeeTx, LegacyTx,
-        TransactionPayload,
+        vector::VectorVecExt, vector::VectorVecSlowExt, AccessListTx, DynamicFeeTx, ExecutionMap,
+        LegacyTx, TransactionPayload,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -268,6 +268,7 @@ pub struct EmulateRequest {
     #[serde_as(as = "Option<HashMap<DisplayFromStr,_>>")]
     pub solana_overrides: Option<HashMap<Pubkey, Option<SerializedAccount>>>,
     pub provide_account_info: Option<AccountInfoLevel>,
+    pub execution_map: Option<ExecutionMap>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -481,7 +482,8 @@ mod tests {
                     "data": "0102030405"
                 }
             },
-            "provide_account_info": null
+            "provide_account_info": null,
+            "execution_map": null
         }
         "#;
 

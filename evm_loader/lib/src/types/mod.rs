@@ -187,6 +187,7 @@ impl TxParams {
             };
             TransactionPayload::Legacy(legacy_tx)
         };
+        // TODO TransactionPayload::Scheduled support (if needed?)
 
         let tx = Transaction {
             transaction: payload,

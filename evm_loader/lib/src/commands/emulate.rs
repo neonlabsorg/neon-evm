@@ -407,7 +407,7 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
         let mut tracer_result: Option<T> = None;
         for execution_step in &execution_map {
             if execution_step.steps == 0 {
-                break;
+                continue;
             }
 
             if execution_step.is_reset {

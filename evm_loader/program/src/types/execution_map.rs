@@ -14,3 +14,15 @@ pub struct ExecutionStep {
 pub struct ExecutionMap {
     pub steps: Vec<ExecutionStep>,
 }
+
+impl ExecutionMap {
+    #[must_use]
+    pub fn has_reset(&self) -> bool {
+        for step in &self.steps {
+            if step.is_reset {
+                return true;
+            }
+        }
+        false
+    }
+}

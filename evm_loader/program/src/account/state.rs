@@ -229,13 +229,16 @@ impl<'a> StateAccount<'a> {
         program_id: &Pubkey,
         info: &AccountInfo<'a>,
         accounts: &AccountsDB,
+        update_last_usage: bool,
     ) -> Result<(Self, AccountsStatus)> {
         let mut status = AccountsStatus::Ok;
         let mut state = Self::from_account(program_id, info)?;
 
-        let timeout =
-            solana_program::clock::Clock::get().map(|clock| clock.slot.as_u256().as_u64())?;
-        state.data.timeout = timeout;
+        if update_last_usage {
+            let timeout =
+                solana_program::clock::Clock::get().map(|clock| clock.slot.as_u256().as_u64())?;
+            state.data.timeout = timeout;
+        }
 
         let is_touched_account = |key: &Pubkey| -> bool {
             state

@@ -54,6 +54,7 @@ pub struct GetHolderResponse {
     pub accounts: Option<Vec<Pubkey>>,
 
     pub steps_executed: u64,
+    pub last_slot: u64,
 }
 
 impl GetHolderResponse {
@@ -139,7 +140,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
             // StateAccount::from_account doesn't work here because state contains heap
             // and transaction inside state account has been allocated via this heap.
             // Data should be read by pointers with offsets.
-            let (transaction, owner, origin, accounts, steps) =
+            let (transaction, owner, origin, accounts, steps, last_used_slot) =
                 StateAccount::get_state_account_view(program_id, &info)?;
 
             let tx_params = TxParams::from_transaction(origin, &transaction);
@@ -157,6 +158,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 origin: Some(origin),
                 accounts: Some(accounts),
                 steps_executed: steps,
+                last_slot: last_used_slot,
             })
         }
         _ => Err(ProgramError::InvalidAccountData.into()),

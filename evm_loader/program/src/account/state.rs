@@ -125,7 +125,7 @@ pub struct StateAccount<'a> {
     data: ManuallyDrop<Boxx<Data>>,
 }
 
-type StateAccountCoreApiView = (Transaction, Pubkey, Address, Vec<Pubkey>, u64);
+type StateAccountCoreApiView = (Transaction, Pubkey, Address, Vec<Pubkey>, u64, u64);
 
 const BUFFER_OFFSET: usize = ACCOUNT_PREFIX_LEN + size_of::<Header>();
 
@@ -622,8 +622,9 @@ impl<'a> StateAccount<'a> {
                 .collect();
 
             let steps = read_unaligned(addr_of!((*data_ptr).steps_executed));
+            let last_slot = read_unaligned(addr_of!((*data_ptr).timeout));
 
-            Ok((tx, owner, origin, accounts, steps))
+            Ok((tx, owner, origin, accounts, steps, last_slot))
         }
     }
 }

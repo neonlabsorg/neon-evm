@@ -57,6 +57,7 @@ impl<'a> solana_program::account_info::IntoAccountInfo<'a> for &'a mut OwnedAcco
 }
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct Cache {
     pub block_number: U256,
     pub block_timestamp: U256,

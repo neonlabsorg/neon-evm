@@ -123,7 +123,7 @@ pub struct StateAccount<'a> {
     data: ManuallyDrop<Boxx<Data>>,
 }
 
-type StateAccountCoreApiView = (Transaction, Pubkey, Address, Vec<Pubkey>, u64);
+type StateAccountCoreApiView = (Transaction, Pubkey, Address, Vec<Pubkey>, u64, (U256, U256));
 
 const BUFFER_OFFSET: usize = ACCOUNT_PREFIX_LEN + size_of::<Header>();
 
@@ -524,17 +524,15 @@ impl<'a> StateAccount<'a> {
     ) -> Result<StateAccountCoreApiView> {
         super::validate_tag(program_id, account, TAG_STATE)?;
 
+        let account_data_ptr = account.data.borrow().as_ptr();
         let header = super::header::<Header>(account);
         let memory_space_delta = {
-            account.data.borrow().as_ptr() as isize
+            account_data_ptr as isize
                 - isize::try_from(crate::allocator::STATE_ACCOUNT_DATA_ADDRESS)?
         };
         // Pointer to the Data is needed to get pointers to the fields in a safe way (using addr_of!).
         let data_ptr = unsafe {
-            account
-                .data
-                .borrow()
-                .as_ptr()
+            account_data_ptr
                 .add(header.data_offset)
                 .cast::<Data>()
                 .cast_mut()
@@ -607,7 +605,20 @@ impl<'a> StateAccount<'a> {
 
             let steps = read_unaligned(addr_of!((*data_ptr).steps_executed));
 
-            Ok((tx, owner, origin, accounts, steps))
+            // Reading the Cache from ExecutorStateData
+            let executor_state_ptr = account_data_ptr
+                .add(header.executor_state_offset)
+                .cast::<ExecutorStateData>();
+            let cache = read_unaligned(addr_of!((*executor_state_ptr).cache));
+
+            Ok((
+                tx,
+                owner,
+                origin,
+                accounts,
+                steps,
+                (cache.block_timestamp, cache.block_number),
+            ))
         }
     }
 }

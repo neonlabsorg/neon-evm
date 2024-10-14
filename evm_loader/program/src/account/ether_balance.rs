@@ -35,9 +35,19 @@ impl AccountHeader for HeaderWithRevision {
     const VERSION: u8 = 2;
 }
 
+#[repr(C, packed)]
+pub struct HeaderWithSolanaAddress {
+    pub v2: HeaderWithRevision,
+    pub solana_address: Pubkey,
+}
+
+impl AccountHeader for HeaderWithSolanaAddress {
+    const VERSION: u8 = 3;
+}
+
 // Set the last version of the Header struct here
 // and change the `header_size` and `header_upgrade` functions
-pub type Header = HeaderWithRevision;
+pub type Header = HeaderWithSolanaAddress;
 
 #[derive(Clone)]
 pub struct BalanceAccount<'a> {
@@ -65,6 +75,23 @@ impl<'a> BalanceAccount<'a> {
     #[must_use]
     pub fn info(&self) -> &AccountInfo<'a> {
         &self.account
+    }
+
+    pub fn create_for_solana_user(
+        pubkey: Pubkey,
+        chain_id: u64,
+        accounts: &AccountsDB<'a>,
+        rent: &Rent,
+    ) -> Result<Self> {
+        let address = Address::from_solana_address(&pubkey);
+
+        let balance = Self::create(address, chain_id, accounts, None, rent)?;
+        {
+            let mut header = super::header_mut::<Header>(&balance.account);
+            header.solana_address = pubkey;
+        }
+
+        Ok(balance)
     }
 
     pub fn create(
@@ -134,12 +161,41 @@ impl<'a> BalanceAccount<'a> {
     ) -> Result<Self> {
         super::set_tag(program_id, &account, TAG_ACCOUNT_BALANCE, Header::VERSION)?;
         {
-            let mut header = super::header_mut::<Header>(&account);
-            header.v0.address = address;
-            header.v0.chain_id = chain_id;
-            header.v0.trx_count = 0;
-            header.v0.balance = U256::ZERO;
+            let mut header = super::header_mut::<HeaderV0>(&account);
+            header.address = address;
+            header.chain_id = chain_id;
+            header.trx_count = 0;
+            header.balance = U256::ZERO;
+        }
+        {
+            let mut header = super::header_mut::<HeaderWithRevision>(&account);
             header.revision = 1;
+        }
+
+        Ok(Self { account })
+    }
+
+    pub fn initialize_for_solana_user(
+        account: AccountInfo<'a>,
+        program_id: &Pubkey,
+        pubkey: Pubkey,
+        chain_id: u64,
+    ) -> Result<Self> {
+        super::set_tag(program_id, &account, TAG_ACCOUNT_BALANCE, Header::VERSION)?;
+        {
+            let mut header = super::header_mut::<HeaderV0>(&account);
+            header.address = Address::from_solana_address(&pubkey);
+            header.chain_id = chain_id;
+            header.trx_count = 0;
+            header.balance = U256::ZERO;
+        }
+        {
+            let mut header = super::header_mut::<HeaderWithRevision>(&account);
+            header.revision = 1;
+        }
+        {
+            let mut header = super::header_mut::<HeaderWithSolanaAddress>(&account);
+            header.solana_address = pubkey;
         }
 
         Ok(Self { account })
@@ -149,6 +205,7 @@ impl<'a> BalanceAccount<'a> {
         match super::header_version(&self.account) {
             0 | 1 => size_of::<HeaderV0>(),
             HeaderWithRevision::VERSION => size_of::<HeaderWithRevision>(),
+            HeaderWithSolanaAddress::VERSION => size_of::<HeaderWithSolanaAddress>(),
             _ => panic!("Unknown header version"),
         }
     }
@@ -160,6 +217,9 @@ impl<'a> BalanceAccount<'a> {
             }
             HeaderWithRevision::VERSION => {
                 super::expand_header::<HeaderWithRevision, Header>(&self.account, rent, db)?;
+            }
+            HeaderWithSolanaAddress::VERSION => {
+                super::expand_header::<HeaderWithSolanaAddress, Header>(&self.account, rent, db)?;
             }
             _ => panic!("Unknown header version"),
         }
@@ -176,6 +236,21 @@ impl<'a> BalanceAccount<'a> {
     pub fn address(&self) -> Address {
         let header = super::header::<HeaderV0>(&self.account);
         header.address
+    }
+
+    #[must_use]
+    pub fn solana_address(&self) -> Option<Pubkey> {
+        if super::header_version(&self.account) < HeaderWithSolanaAddress::VERSION {
+            return None;
+        }
+
+        let header = super::header::<HeaderWithSolanaAddress>(&self.account);
+
+        if header.solana_address == Pubkey::default() {
+            return None;
+        }
+
+        Some(header.solana_address)
     }
 
     #[must_use]

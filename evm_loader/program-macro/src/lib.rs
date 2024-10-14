@@ -67,6 +67,7 @@ pub fn net_specific_config_parser(tokens: TokenStream) -> TokenStream {
     let NetSpecificConfig {
         program_id,
         neon_chain_id,
+        sol_chain_id,
         neon_token_mint,
         operators_whitelist,
         no_update_tracking_owners,
@@ -104,6 +105,7 @@ pub fn net_specific_config_parser(tokens: TokenStream) -> TokenStream {
     quote! {
         pub const PROGRAM_ID: solana_program::pubkey::Pubkey = solana_program::pubkey!(#program_id);
         pub const DEFAULT_CHAIN_ID: u64 = #neon_chain_id;
+        pub const SOL_CHAIN_ID: u64 = #sol_chain_id;
 
         neon_elf_param!(NEON_CHAIN_ID, #neon_chain_id_str);
         neon_elf_param!(NEON_TOKEN_MINT, #neon_token_mint);

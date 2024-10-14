@@ -29,6 +29,7 @@ pub struct GetBalanceResponse {
     pub trx_count: u64,
     pub balance: U256,
     pub status: BalanceStatus,
+    pub user_pubkey: Option<Pubkey>,
 }
 
 impl GetBalanceResponse {
@@ -40,6 +41,7 @@ impl GetBalanceResponse {
             trx_count: 0,
             balance: U256::ZERO,
             status: BalanceStatus::Empty,
+            user_pubkey: None,
         }
     }
 }
@@ -60,6 +62,7 @@ fn read_account(
         trx_count: balance_account.nonce(),
         balance: balance_account.balance(),
         status: BalanceStatus::Ok,
+        user_pubkey: balance_account.solana_address(),
     })
 }
 
@@ -80,6 +83,7 @@ fn read_legacy_account(
         trx_count: balance_account.trx_count,
         balance: balance_account.balance,
         status: BalanceStatus::Legacy,
+        user_pubkey: None,
     })
 }
 

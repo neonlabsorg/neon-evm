@@ -927,6 +927,15 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     pub fn logs(&self) -> Vec<Log> {
         self.logs.clone()
     }
+
+    fn chain_id(&self, chain: &str) -> u64 {
+        for chain_info in &self.chains {
+            if chain_info.name == chain {
+                return chain_info.id;
+            }
+        }
+        unreachable!();
+    }
 }
 
 impl<T: Rpc> LogCollector for EmulatorAccountStorage<'_, T> {
@@ -955,7 +964,6 @@ impl<T: Rpc> LogCollector for EmulatorAccountStorage<'_, T> {
 #[async_trait(?Send)]
 impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     fn program_id(&self) -> &Pubkey {
-        debug!("program_id");
         &self.program_id
     }
 
@@ -1033,6 +1041,19 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         .unwrap()
     }
 
+    async fn solana_user_address(&self, address: Address) -> Option<Pubkey> {
+        info!("solana_user_address {address}");
+
+        self.ethereum_balance_map_or(
+            address,
+            self.chain_id("sol"),
+            None,
+            |account: &BalanceAccount| account.solana_address(),
+        )
+        .await
+        .unwrap()
+    }
+
     fn is_valid_chain_id(&self, chain_id: u64) -> bool {
         for chain in &self.chains {
             if chain.id == chain_id {
@@ -1054,13 +1075,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     }
 
     fn default_chain_id(&self) -> u64 {
-        for chain in &self.chains {
-            if chain.name == "neon" {
-                return chain.id;
-            }
-        }
-
-        unreachable!();
+        self.chain_id("neon")
     }
 
     async fn contract_chain_id(&self, address: Address) -> evm_loader::error::Result<u64> {

@@ -374,10 +374,10 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             ExitStatus::Return(value)
         } else {
             loop {
-                step += 1;
-                if step > step_limit {
+                if step >= step_limit {
                     break ExitStatus::StepLimit;
                 }
+                step += 1;
 
                 let opcode = self.execution_code.get_or_default(self.pc);
 

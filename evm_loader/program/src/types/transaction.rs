@@ -1,6 +1,6 @@
 use ethnum::U256;
 use maybe_async::maybe_async;
-use rlp::{DecoderError, Rlp};
+use rlp::{DecoderError, Encodable, Rlp};
 use serde::{Deserialize, Serialize};
 use solana_program::instruction::{get_stack_height, TRANSACTION_LEVEL_STACK_HEIGHT};
 use std::convert::TryInto;
@@ -357,6 +357,25 @@ pub struct ScheduledTx {
     pub max_priority_fee_per_gas: U256,
 }
 
+impl rlp::Encodable for ScheduledTx {
+    fn rlp_append(&self, stream: &mut rlp::RlpStream) {
+        // Only the body, tx_type is omitted (as in the decode).
+        stream.append(&self.payer);
+        stream.append(&self.sender);
+        stream.append(&self.nonce);
+        stream.append(&self.index);
+        stream.append(&self.intent);
+        stream.append(&self.intent_call_data.as_slice());
+        stream.append(&self.target);
+        stream.append(&self.call_data.as_slice());
+        stream.append(&self.value.to_be_bytes().as_slice());
+        stream.append(&self.chain_id.to_be_bytes().as_slice());
+        stream.append(&self.gas_limit.to_be_bytes().as_slice());
+        stream.append(&self.max_fee_per_gas.to_be_bytes().as_slice());
+        stream.append(&self.max_priority_fee_per_gas.to_be_bytes().as_slice());
+    }
+}
+
 impl rlp::Decodable for ScheduledTx {
     fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
         let rlp_len = {
@@ -436,7 +455,7 @@ pub struct Transaction {
 }
 
 impl Transaction {
-    pub fn from_payload(
+    fn from_payload(
         transaction_type: &Option<TransactionEnvelope>,
         chain_id: Option<U256>,
         transaction_rlp: &rlp::Rlp,
@@ -610,6 +629,47 @@ impl Transaction {
 }
 
 impl Transaction {
+    pub fn scheduled_from_rlp(transaction: &[u8]) -> Result<Self, Error> {
+        let (transaction_type, transaction) = TransactionEnvelope::get_type(transaction);
+
+        let tx = match transaction_type {
+            Some(TransactionEnvelope::Scheduled) => {
+                let scheduled_tx = rlp::decode::<ScheduledTx>(transaction).map_err(Error::from)?;
+                let chain_id = scheduled_tx.chain_id;
+                let tx = TransactionPayload::Scheduled(scheduled_tx);
+                Transaction::from_payload(
+                    &Some(TransactionEnvelope::Scheduled),
+                    Some(chain_id),
+                    &rlp::Rlp::new(transaction),
+                    tx,
+                )?
+            }
+            _ => {
+                // Forbid constructing classic Eth transactions via code-path dedicated for scheduled txns.
+                // Use `scheduled_from_rlp` instead.
+                // N.B. Panic instead of error- usage would indicate a bug in the caller's code
+                // (e.g. Neon Proxy) rather than an error.
+                panic!("Classic Eth transactions should be constructed via from_rlp method.");
+            }
+        };
+
+        Ok(tx)
+    }
+
+    // TODO: check if Vec is an appropriate type to work with.
+    // Also, at least one full copy happens here, can we serialize directly into the Vec?
+    #[must_use]
+    pub fn scheduled_to_rlp(&self) -> Vec<u8> {
+        match self.transaction {
+            TransactionPayload::Scheduled(ref scheduled_tx) => scheduled_tx.rlp_bytes().to_vec(),
+            _ => {
+                // N.B. Panic instead of error- usage would indicate a bug in the caller's code
+                // (e.g. Neon Proxy) rather than an error.
+                panic!("Classic transactions are not allowed to be serialized from EVM.")
+            }
+        }
+    }
+
     pub fn from_rlp(transaction: &[u8]) -> Result<Self, Error> {
         let (transaction_type, transaction) = TransactionEnvelope::get_type(transaction);
 
@@ -650,15 +710,11 @@ impl Transaction {
                 )?
             }
             Some(TransactionEnvelope::Scheduled) => {
-                let scheduled_tx = rlp::decode::<ScheduledTx>(transaction).map_err(Error::from)?;
-                let chain_id = scheduled_tx.chain_id;
-                let tx = TransactionPayload::Scheduled(scheduled_tx);
-                Transaction::from_payload(
-                    &Some(TransactionEnvelope::Scheduled),
-                    Some(chain_id),
-                    &rlp::Rlp::new(transaction),
-                    tx,
-                )?
+                // Forbid constructing ScheduledTx via `from_rlp`, so it doesn't interfere with the "classic"
+                // Neon instructions and native Eth transactions.
+                // Use `scheduled_from_rlp` instead.
+                // N.B. Panic, instead of error, because usage would indicate a bug rather than an error.
+                panic!("Scheduled transaction should be constructed via special method - scheduled_from_rlp");
             }
             None => {
                 let legacy_tx = rlp::decode::<LegacyTx>(transaction).map_err(Error::from)?;

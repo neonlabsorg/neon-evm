@@ -111,6 +111,7 @@ pub enum ExitStatus {
     Revert(Vector<u8>),
     Suicide,
     StepLimit,
+    Cancel,
 }
 
 impl Display for ExitStatus {
@@ -126,6 +127,7 @@ impl ExitStatus {
             ExitStatus::Return(_) | ExitStatus::Stop | ExitStatus::Suicide => "succeed",
             ExitStatus::Revert(_) => "revert",
             ExitStatus::StepLimit => "step limit exceeded",
+            ExitStatus::Cancel => "cancel",
         }
     }
 
@@ -133,7 +135,7 @@ impl ExitStatus {
     pub fn is_succeed(&self) -> Option<bool> {
         match self {
             ExitStatus::Stop | ExitStatus::Return(_) | ExitStatus::Suicide => Some(true),
-            ExitStatus::Revert(_) => Some(false),
+            ExitStatus::Revert(_) | ExitStatus::Cancel => Some(false),
             ExitStatus::StepLimit => None,
         }
     }
@@ -142,7 +144,9 @@ impl ExitStatus {
     pub fn into_result(self) -> Option<Vec<u8>> {
         match self {
             ExitStatus::Return(v) | ExitStatus::Revert(v) => Some(v.to_vec()),
-            ExitStatus::Stop | ExitStatus::Suicide | ExitStatus::StepLimit => None,
+            ExitStatus::Stop | ExitStatus::Suicide | ExitStatus::StepLimit | ExitStatus::Cancel => {
+                None
+            }
         }
     }
 }
@@ -448,6 +452,13 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         self.tracer = other.tracer.take();
 
         ManuallyDrop::new(other)
+    }
+
+    // backend and exit_status might not be used because end_vm! macros won't run on target_os is not solana
+    #[allow(unused_variables)]
+    pub async fn end_vm(&mut self, backend: &B, exit_status: ExitStatus) -> Result<()> {
+        end_vm!(self, backend, exit_status);
+        Ok(())
     }
 
     pub fn set_tracer(&mut self, tracer: Option<T>) {

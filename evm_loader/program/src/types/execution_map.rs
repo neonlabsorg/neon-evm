@@ -18,11 +18,6 @@ pub struct ExecutionMap {
 impl ExecutionMap {
     #[must_use]
     pub fn has_reset(&self) -> bool {
-        for step in &self.steps {
-            if step.is_reset {
-                return true;
-            }
-        }
-        false
+        self.steps.iter().any(|s| s.is_reset)
     }
 }

@@ -59,7 +59,7 @@ pub struct EmulateResponse {
 struct Overrides {
     pub blocks: Option<BlockOverrides>,
     pub states: Option<HashMap<Address, AccountOverride>>,
-    pub solanas: Option<HashMap<Pubkey, Option<Account>>>,
+    pub solana_accounts: Option<HashMap<Pubkey, Option<Account>>>,
 }
 
 impl EmulateResponse {
@@ -95,7 +95,7 @@ fn init_overrides(emulate_request: &EmulateRequest) -> Overrides {
         .as_ref()
         .and_then(|t| t.state_overrides.clone());
 
-    let solanas = emulate_request.solana_overrides.clone().map(|overrides| {
+    let solana_accounts = emulate_request.solana_overrides.clone().map(|overrides| {
         overrides
             .iter()
             .map(|(pubkey, account)| (*pubkey, account.as_ref().map(Account::from)))
@@ -105,7 +105,7 @@ fn init_overrides(emulate_request: &EmulateRequest) -> Overrides {
     Overrides {
         blocks,
         states,
-        solanas,
+        solana_accounts,
     }
 }
 
@@ -163,7 +163,7 @@ async fn initialize_storage<'rpc, T: Rpc + BuildConfigSimulator>(
         emulate_request.chains.clone(),
         overrides.blocks,
         overrides.states,
-        overrides.solanas,
+        overrides.solana_accounts,
         emulate_request.tx.chain_id,
     )
     .await

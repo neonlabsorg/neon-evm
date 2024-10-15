@@ -111,6 +111,7 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     state_overrides: Option<AccountOverrides>,
     accounts_cache: FrozenMap<Pubkey, Box<Option<Account>>>,
     used_accounts: FrozenMap<Pubkey, Box<RefCell<SolanaAccount>>>,
+    balance_addr_to_pubkey: FrozenMap<Address, Box<Pubkey>>,
     return_data: Option<TransactionReturnData>,
     logs: Vec<Log>,
     logs_stack: Vec<usize>,
@@ -174,6 +175,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             rent,
             accounts_cache,
             used_accounts: FrozenMap::new(),
+            balance_addr_to_pubkey: FrozenMap::new(),
             return_data: None,
             logs: vec![],
             logs_stack: vec![],
@@ -208,6 +210,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             state_overrides: other.state_overrides.clone(),
             accounts_cache: other.accounts_cache.clone(),
             used_accounts: other.used_accounts.clone(),
+            balance_addr_to_pubkey: other.balance_addr_to_pubkey.clone(),
             return_data: None,
             logs: other.logs.clone(),
             logs_stack: other.logs_stack.clone(),
@@ -272,6 +275,11 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             }
         }
         Ok(())
+    }
+
+    pub fn add_balance_pubkey(&self, address: Address, pubkey: Pubkey) {
+        self.balance_addr_to_pubkey
+            .insert(address, Box::new(pubkey));
     }
 
     async fn download_accounts(&self, pubkeys: &[Pubkey]) -> Result<(), NeonError> {
@@ -744,12 +752,20 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         account_data.expand(required_len);
         account_data.lamports = self.rent.minimum_balance(account_data.get_length());
 
-        BalanceAccount::initialize(
-            account_data.into_account_info(),
-            &self.program_id,
-            address,
-            chain_id,
-        )
+        match self.balance_addr_to_pubkey.get(&address) {
+            Some(pubkey) => BalanceAccount::initialize_for_solana_user(
+                account_data.into_account_info(),
+                &self.program_id,
+                *pubkey,
+                chain_id,
+            ),
+            None => BalanceAccount::initialize(
+                account_data.into_account_info(),
+                &self.program_id,
+                address,
+                chain_id,
+            ),
+        }
     }
 
     fn get_or_create_ethereum_balance(

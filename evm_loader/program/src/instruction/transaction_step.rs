@@ -219,7 +219,7 @@ pub fn log_return_value(status: &ExitStatus) {
         ExitStatus::Return(_) => 0x12,
         ExitStatus::Suicide => 0x13,
         ExitStatus::Revert(_) => 0xd0,
-        ExitStatus::StepLimit => unreachable!(),
+        ExitStatus::StepLimit | ExitStatus::Cancel => unreachable!(),
     };
 
     log_msg!("exit_status={:#04X}", code); // Tests compatibility

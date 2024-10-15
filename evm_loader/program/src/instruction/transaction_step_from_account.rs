@@ -106,7 +106,8 @@ pub fn process_inner<'a>(
         }
         TAG_STATE => {
             let (storage, accounts_status) =
-                StateAccount::restore(program_id, &holder_or_storage, &accounts_db, true)?;
+                StateAccount::restore(program_id, &holder_or_storage, &accounts_db)?;
+            StateAccount::update_last_usage_slot(program_id, &holder_or_storage)?;
 
             operator_balance.validate_transaction(storage.trx())?;
             let miner_address = operator_balance.miner(storage.trx_origin());

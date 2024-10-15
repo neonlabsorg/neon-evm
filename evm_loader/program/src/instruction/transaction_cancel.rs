@@ -33,13 +33,16 @@ pub fn process<'a>(
 
     let current_timestamp =
         solana_program::clock::Clock::get().map(|clock| clock.slot.as_u256().as_u64())?;
-    let storage_timeout = storage.timeout();
-    let config_timeout = crate::config::TIMEOUT;
+    let last_used_slot = storage.last_used_slot();
+    let config_cancel_timeout = crate::config::CANCEL_TIMEOUT;
 
-    let is_timeout = (current_timestamp - storage_timeout) > config_timeout;
+    let is_timeout = (current_timestamp - last_used_slot) > config_cancel_timeout;
     log_msg!("process   ->  current_timestamp = {}", current_timestamp);
-    log_msg!("process   ->  storage.timeout = {}", storage_timeout);
-    log_msg!("process   ->  crate::config::TIMEOUT = {}", config_timeout);
+    log_msg!("process   ->  storage.timeout = {}", last_used_slot);
+    log_msg!(
+        "process   ->  crate::config::TIMEOUT = {}",
+        config_cancel_timeout
+    );
 
     log_msg!("process   ->  is_timeout = {}", is_timeout);
 

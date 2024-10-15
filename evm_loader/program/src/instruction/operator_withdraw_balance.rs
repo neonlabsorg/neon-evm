@@ -14,7 +14,7 @@ pub fn process<'a>(
     log_msg!("Instruction: Withdraw Operator Balance Account");
 
     let system = System::from_account(&accounts[0])?;
-    let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1]) }?;
+    let operator = Operator::from_account(&accounts[1])?;
     let mut operator_balance = OperatorBalanceAccount::from_account(program_id, &accounts[2])?;
     let mut target_balance = BalanceAccount::from_account(program_id, accounts[3].clone())?;
 

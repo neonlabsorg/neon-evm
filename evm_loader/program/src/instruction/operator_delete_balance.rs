@@ -10,7 +10,7 @@ pub fn process<'a>(
 ) -> Result<()> {
     log_msg!("Instruction: Delete Operator Balance Account");
 
-    let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[0]) }?;
+    let operator = Operator::from_account(&accounts[0])?;
     let operator_balance = OperatorBalanceAccount::from_account(program_id, &accounts[1])?;
 
     operator_balance.validate_owner(&operator)?;

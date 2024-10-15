@@ -14,11 +14,12 @@ use crate::{
     errors::NeonError,
     NeonResult,
 };
+use ethnum::U256;
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::error::build_revert_message;
-use evm_loader::types::{Address, Transaction};
+use evm_loader::types::{Address, ExecutionMap, Transaction};
 use evm_loader::{
-    config::{EVM_STEPS_MIN, PAYMENT_TO_TREASURE},
+    config::{EVM_STEPS_MIN, GAS_LIMIT_MULTIPLIER_NO_CHAINID, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
     executor::SyncedExecutorState,
     gasometer::LAMPORTS_PER_SIGNATURE,
@@ -199,7 +200,12 @@ async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>
     }
 
     if do_transfer_gas_limit {
-        transfer_gas_limit(&mut storage, &tx, &origin, chain_id).await?;
+        let increase_gas_limit = emulate_request
+            .execution_map
+            .as_ref()
+            .map_or(false, ExecutionMap::has_step_no_chain_id);
+
+        transfer_gas_limit(&mut storage, &tx, &origin, chain_id, increase_gas_limit).await?;
     }
 
     storage
@@ -224,17 +230,17 @@ async fn transfer_gas_limit<'rpc, T: Rpc + BuildConfigSimulator>(
     tx: &Transaction,
     origin: &Address,
     chain_id: u64,
+    increase_gas_limit: bool,
 ) -> NeonResult<()> {
     let gas_limit_in_tokens = tx.gas_limit_in_tokens()?;
     let max_priority_fee_in_tokens = tx.priority_fee_limit_in_tokens()?;
 
-    storage
-        .burn(
-            *origin,
-            chain_id,
-            gas_limit_in_tokens + max_priority_fee_in_tokens,
-        )
-        .await?;
+    let mut gas_limit = gas_limit_in_tokens + max_priority_fee_in_tokens;
+
+    if increase_gas_limit {
+        gas_limit = gas_limit.saturating_mul(U256::from(GAS_LIMIT_MULTIPLIER_NO_CHAINID));
+    }
+    storage.burn(*origin, chain_id, gas_limit).await?;
 
     Ok(())
 }

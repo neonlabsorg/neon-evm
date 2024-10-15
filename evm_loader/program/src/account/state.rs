@@ -229,16 +229,9 @@ impl<'a> StateAccount<'a> {
         program_id: &Pubkey,
         info: &AccountInfo<'a>,
         accounts: &AccountsDB,
-        update_last_usage: bool,
     ) -> Result<(Self, AccountsStatus)> {
         let mut status = AccountsStatus::Ok;
         let mut state = Self::from_account(program_id, info)?;
-
-        if update_last_usage {
-            let current_slot =
-                solana_program::clock::Clock::get().map(|clock| clock.slot.as_u256().as_u64())?;
-            state.data.last_used_slot = current_slot;
-        }
 
         let is_touched_account = |key: &Pubkey| -> bool {
             state
@@ -270,6 +263,14 @@ impl<'a> StateAccount<'a> {
         }
 
         Ok((state, status))
+    }
+
+    pub fn update_last_usage_slot(program_id: &Pubkey, info: &AccountInfo<'a>) -> Result<()> {
+        let mut state = Self::from_account(program_id, info)?;
+        state.data.last_used_slot =
+            solana_program::clock::Clock::get().map(|clock| clock.slot.as_u256().as_u64())?;
+
+        Ok(())
     }
 
     pub fn finalize(self, program_id: &Pubkey) -> Result<()> {

@@ -102,8 +102,8 @@ struct Data {
     pub priority_fee_used: U256,
     /// Steps executed in the transaction
     pub steps_executed: u64,
-    /// Timeout from the last transaction usage
-    pub timeout: u64,
+    /// Last slot that was used by the transaction
+    pub last_used_slot: u64,
 }
 
 // Stores relative offsets for the corresponding objects as allocated by the AccountAllocator.
@@ -197,7 +197,7 @@ impl<'a> StateAccount<'a> {
             gas_used: U256::ZERO,
             priority_fee_used: U256::ZERO,
             steps_executed: 0_u64,
-            timeout: solana_program::clock::Clock::get()
+            last_used_slot: solana_program::clock::Clock::get()
                 .map(|clock| clock.slot.as_u256().as_u64())?,
         });
 
@@ -235,9 +235,9 @@ impl<'a> StateAccount<'a> {
         let mut state = Self::from_account(program_id, info)?;
 
         if update_last_usage {
-            let timeout =
+            let current_slot =
                 solana_program::clock::Clock::get().map(|clock| clock.slot.as_u256().as_u64())?;
-            state.data.timeout = timeout;
+            state.data.last_used_slot = current_slot;
         }
 
         let is_touched_account = |key: &Pubkey| -> bool {
@@ -451,8 +451,8 @@ impl<'a> StateAccount<'a> {
     }
 
     #[must_use]
-    pub fn timeout(&self) -> u64 {
-        self.data.timeout
+    pub fn last_used_slot(&self) -> u64 {
+        self.data.last_used_slot
     }
 
     pub fn dealloc_executor_state(&self) {
@@ -622,7 +622,7 @@ impl<'a> StateAccount<'a> {
                 .collect();
 
             let steps = read_unaligned(addr_of!((*data_ptr).steps_executed));
-            let last_slot = read_unaligned(addr_of!((*data_ptr).timeout));
+            let last_slot = read_unaligned(addr_of!((*data_ptr).last_used_slot));
 
             Ok((tx, owner, origin, accounts, steps, last_slot))
         }

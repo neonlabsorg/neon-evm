@@ -107,12 +107,34 @@ pub struct AccessListItem {
     pub storage_keys: Vec<StorageKey>,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub enum FromAddress {
+    Ethereum(Address),
+    Solana(Pubkey),
+}
+
+impl Default for FromAddress {
+    fn default() -> Self {
+        Self::Ethereum(Address::default())
+    }
+}
+
+impl FromAddress {
+    #[must_use]
+    pub fn address(&self) -> Address {
+        match self {
+            Self::Ethereum(address) => *address,
+            Self::Solana(pubkey) => Address::from_solana_address(pubkey),
+        }
+    }
+}
+
 #[serde_as]
 #[skip_serializing_none]
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct TxParams {
     pub nonce: Option<u64>,
-    pub from: Address,
+    pub from: FromAddress,
     pub to: Option<Address>,
     #[serde_as(as = "Option<Hex>")]
     pub data: Option<Vec<u8>>,
@@ -130,7 +152,8 @@ impl TxParams {
     pub async fn into_transaction(self, backend: &impl AccountStorage) -> (Address, Transaction) {
         let chain_id = self.chain_id.unwrap_or_else(|| backend.default_chain_id());
 
-        let origin_nonce = backend.nonce(self.from, chain_id).await;
+        let from = self.from.address();
+        let origin_nonce = backend.nonce(from, chain_id).await;
         let nonce = self.nonce.unwrap_or(origin_nonce);
 
         let payload = if let Some(access_list) = self.access_list {
@@ -196,13 +219,13 @@ impl TxParams {
             signed_hash: [0; 32],
         };
 
-        (self.from, tx)
+        (from, tx)
     }
 
     #[must_use]
     pub fn from_transaction(origin: Address, tx: &Transaction) -> Self {
         Self {
-            from: origin,
+            from: FromAddress::Ethereum(origin),
             to: tx.target(),
             nonce: Some(tx.nonce()),
             data: Some(tx.call_data().to_vec()),

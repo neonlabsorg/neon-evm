@@ -220,6 +220,33 @@ pub enum Error {
 
     #[error("Priority fee calculation error: {0}")]
     PriorityFeeError(String),
+
+    #[error("Transaction Tree - not ready for destruction")]
+    TreeAccountNotReadyForDestruction,
+
+    #[error("Transaction Tree - last index overflow")]
+    TreeAccountLastIndexOverflow,
+
+    #[error("Transaction Tree - invalid transaction type")]
+    TreeAccountTxInvalidType,
+
+    #[error("Transaction Tree - invalid transaction data")]
+    TreeAccountTxInvalidData,
+
+    #[error("Transaction Tree - invalid child transaction index")]
+    TreeAccountTxInvalidChildIndex,
+
+    #[error("Transaction Tree - transaction invalid parent count")]
+    TreeAccountTxInvalidParentCount,
+
+    #[error("Transaction Tree - transaction invalid success execute limit")]
+    TreeAccountTxInvalidSuccessLimit,
+
+    #[error("Transaction Tree - transaction not found")]
+    TreeAccountTxNotFound,
+
+    #[error("Transaction Tree - transaction invalid status")]
+    TreeAccountTxInvalidStatus,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

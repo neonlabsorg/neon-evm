@@ -26,7 +26,8 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 use super::{
     AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder, OperatorBalanceAccount,
     StateFinalizedAccount, StorageCell, ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_BALANCE,
-    TAG_ACCOUNT_CONTRACT, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED, TAG_STORAGE_CELL,
+    TAG_ACCOUNT_CONTRACT, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED,
+    TAG_STATE, TAG_STATE_FINALIZED, TAG_STORAGE_CELL,
 };
 
 #[derive(PartialEq, Eq)]
@@ -143,8 +144,21 @@ impl<'a> StateAccount<'a> {
         self.account
     }
 
+    fn validate_tag(program_id: &Pubkey, account: &AccountInfo<'a>) -> Result<()> {
+        let tag = super::tag(program_id, account)?;
+
+        if tag == TAG_STATE
+            || tag == TAG_SCHEDULED_STATE_FINALIZED
+            || tag == TAG_SCHEDULED_STATE_CANCELLED
+        {
+            Ok(())
+        } else {
+            Err(Error::StorageAccountInvalidTag(*account.key, tag))
+        }
+    }
+
     pub fn from_account(program_id: &Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
-        super::validate_tag(program_id, account, TAG_STATE)?;
+        Self::validate_tag(program_id, account)?;
 
         let header = super::header::<Header>(account);
         let data_ptr = unsafe {
@@ -185,7 +199,7 @@ impl<'a> StateAccount<'a> {
                 finalized.validate_trx(&transaction)?;
                 finalized.owner()
             }
-            tag => return Err(Error::AccountInvalidTag(*info.key, tag)),
+            tag => return Err(Error::StorageAccountInvalidTag(*info.key, tag)),
         };
 
         // accounts.into_iter returns sorted accounts, so it's safe.
@@ -277,13 +291,19 @@ impl<'a> StateAccount<'a> {
         // Change tag to finalized
         if self.has_tree_account() {
             debug_print!(
-                "Finalize Storage {} for scheduled transaction",
+                "Finalize State {} for scheduled transaction",
                 self.account.key
             );
-            StateFinalizedAccount::scheduled_finalize_from_state(program_id, self)?;
+            // Change the tag, leave all the data unchanged.
+            super::set_tag(
+                program_id,
+                &self.account,
+                TAG_SCHEDULED_STATE_FINALIZED,
+                Header::VERSION,
+            )?;
         } else {
-            debug_print!("Finalize Storage {}", self.account.key);
-            StateFinalizedAccount::finalize_from_state(program_id, self)?;
+            debug_print!("Finalize State {}", self.account.key);
+            StateFinalizedAccount::convert_from_state(program_id, self)?;
         }
 
         Ok(())

@@ -34,7 +34,7 @@ pub fn process<'a>(
             &[&[
                 TREASURY_POOL_SEED.as_bytes(),
                 &treasury_index.to_le_bytes(),
-                &[treasury.get_bump_seed()],
+                &[treasury.bump_seed()],
             ]],
         )?;
     };

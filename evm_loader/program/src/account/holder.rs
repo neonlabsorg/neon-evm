@@ -30,7 +30,7 @@ pub struct Holder<'a> {
 }
 
 // Offset of the memory cell that denotes pointer to the heap from the start of the header.
-const HEAP_PTR_OFFSET: usize = 96;
+const HEAP_PTR_OFFSET: usize = 72;
 const HEADER_OFFSET: usize = ACCOUNT_PREFIX_LEN;
 pub const BUFFER_OFFSET: usize = HEADER_OFFSET + HEAP_PTR_OFFSET + size_of::<usize>();
 

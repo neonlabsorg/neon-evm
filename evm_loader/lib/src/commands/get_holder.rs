@@ -107,7 +107,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 ..GetHolderResponse::default()
             })
         }
-        TAG_STATE_FINALIZED | TAG_SCHEDULED_STATE_FINALIZED | TAG_SCHEDULED_STATE_CANCELLED => {
+        TAG_STATE_FINALIZED => {
             let state = StateFinalizedAccount::from_account(program_id, info)?;
             Ok(GetHolderResponse {
                 status: Status::Finalized,
@@ -119,7 +119,6 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 // Also, the data about transaction is already not in the holder anymore.
                 // We explicitly set tx_type=0 to indicate that there shouldn't be new gas params.
                 tx_type: Some(0),
-                tree_account: state.tree_account().ok(),
                 ..GetHolderResponse::default()
             })
         }
@@ -138,7 +137,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 ..GetHolderResponse::default()
             })
         }
-        TAG_STATE => {
+        TAG_STATE | TAG_SCHEDULED_STATE_FINALIZED | TAG_SCHEDULED_STATE_CANCELLED => {
             // StateAccount::from_account doesn't work here because state contains heap
             // and transaction inside state account has been allocated via this heap.
             // Data should be read by pointers with offsets.

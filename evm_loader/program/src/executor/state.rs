@@ -46,6 +46,8 @@ impl<'a> ExecutorStateData {
         let cache = Cache {
             block_number: backend.block_number(),
             block_timestamp: backend.block_timestamp(),
+            actions_offset: 0,
+            accounts: TreeMap::<Pubkey, OwnedAccountInfo>::new(),
         };
 
         Self {
@@ -431,13 +433,15 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(cache.block_timestamp)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
         self.touch_solana(address);
-
+        // collect accounts for actions that we don't processed yet
         let metas = self
             .data
             .actions
             .iter()
+            .skip(self.data.cache.borrow_mut().actions_offset)
             .filter_map(|a| {
                 if let Action::ExternalInstruction { accounts, .. } = a {
                     Some(accounts)
@@ -449,20 +453,39 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             .collect::<Vec<_>>();
 
         if !metas.iter().any(|m| (m.pubkey == address) && m.is_writable) {
+            // account with given address don't changed by current actions
+            // put offset to cache
+            self.data.cache.borrow_mut().actions_offset = self.data.actions.len();
+
+            if let Some(account) = self.data.cache.borrow_mut().accounts.get(&address) {
+                return Ok(account.clone()); // take account from cache
+            }
             let account = self.backend.clone_solana_account(&address).await;
-            return Ok(account);
+            return Ok(account); // take account from backend
         }
 
         let mut accounts = BTreeMap::<Pubkey, OwnedAccountInfo>::new();
-
         for m in metas {
-            self.touch_solana(m.pubkey);
+            self.touch_solana(m.pubkey); // touch account whatever cached or not
 
-            let account = self.backend.clone_solana_account(&m.pubkey).await;
-            accounts.insert(m.pubkey, account);
+            // do we have account in the cash? if not - take it from backend
+            let mut use_cache = false;
+            if let Some(account) = self.data.cache.borrow_mut().accounts.get(&m.pubkey) {
+                accounts.insert(m.pubkey, account.clone());
+                use_cache = true;
+            }
+            if !use_cache {
+                let acc = self.backend.clone_solana_account(&m.pubkey).await;
+                accounts.insert(m.pubkey, acc);
+            }
         }
 
-        for action in &self.data.actions {
+        for action in self
+            .data
+            .actions
+            .iter()
+            .skip(self.data.cache.borrow_mut().actions_offset)
+        {
             if let Action::ExternalInstruction {
                 program_id,
                 data,
@@ -506,6 +529,15 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
                 }
             }
         }
+        // put offset to cache
+        self.data.cache.borrow_mut().actions_offset = self.data.actions.len();
+        for (addr, acc) in &accounts {
+            self.data
+                .cache
+                .borrow_mut()
+                .accounts
+                .insert(*addr, acc.clone()); // put accounts to cache
+        }
 
         Ok(accounts[&address].clone())
     }
@@ -543,6 +575,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             .expect("Fatal Error: Inconsistent EVM Call Stack");
 
         self.data.actions.truncate(actions_len);
+        self.data.cache.borrow_mut().accounts.clear();
+        self.data.cache.borrow_mut().actions_offset = 0;
 
         if self.data.stack.is_empty() {
             // sanity check

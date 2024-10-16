@@ -490,7 +490,7 @@ mod tests {
                 }
             ],
             "tx": {
-                "from": "0x3fd219e7cf0e701fcf5a6903b40d47ca4e597d99",
+                "from": {"Ethereum": "0x3fd219e7cf0e701fcf5a6903b40d47ca4e597d99"},
                 "to": "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883",
                 "value": "0x0",
                 "data": "3ff21f8e",

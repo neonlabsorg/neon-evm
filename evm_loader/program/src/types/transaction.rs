@@ -1,6 +1,6 @@
 use ethnum::U256;
 use maybe_async::maybe_async;
-use rlp::{DecoderError, Encodable, Rlp};
+use rlp::{DecoderError, Rlp};
 use serde::{Deserialize, Serialize};
 use solana_program::instruction::{get_stack_height, TRANSACTION_LEVEL_STACK_HEIGHT};
 use std::convert::TryInto;
@@ -345,7 +345,7 @@ pub struct ScheduledTx {
     pub payer: Address,
     pub sender: Option<Address>,
     pub nonce: u64,
-    pub index: u32,
+    pub index: u16,
     pub intent: Option<Address>,
     pub intent_call_data: Vector<u8>,
     pub target: Option<Address>,
@@ -357,9 +357,20 @@ pub struct ScheduledTx {
     pub max_priority_fee_per_gas: U256,
 }
 
+impl ScheduledTx {
+    #[must_use]
+    pub fn hash(&self) -> [u8; 32] {
+        use solana_program::keccak::hashv;
+
+        let rlp = rlp::encode(self);
+        hashv(&[&[0x7f, 0x01], &rlp]).to_bytes()
+    }
+}
+
 impl rlp::Encodable for ScheduledTx {
     fn rlp_append(&self, stream: &mut rlp::RlpStream) {
         // Only the body, tx_type is omitted (as in the decode).
+        stream.begin_list(13);
         stream.append(&self.payer);
         stream.append(&self.sender);
         stream.append(&self.nonce);
@@ -391,7 +402,7 @@ impl rlp::Decodable for ScheduledTx {
         let sender: Option<Address> = decode_optional_address(&rlp.at(1)?)?;
 
         let nonce: u64 = rlp.val_at(2)?;
-        let index: u32 = rlp.val_at(3)?;
+        let index: u16 = rlp.val_at(3)?;
 
         let intent: Option<Address> = decode_optional_address(&rlp.at(4)?)?;
         let intent_call_data: Vector<u8> = decode_byte_vector(&rlp.at(5)?)?;
@@ -461,41 +472,38 @@ impl Transaction {
         transaction_rlp: &rlp::Rlp,
         transaction: TransactionPayload,
     ) -> Result<Self, rlp::DecoderError> {
+        use solana_program::keccak::{hash, hashv, Hash};
+
         let (hash, signed_hash) = match *transaction_type {
             // Legacy transaction wrapped in envelop
             Some(TransactionEnvelope::Legacy) => {
-                let hash =
-                    solana_program::keccak::hashv(&[&[0x00], transaction_rlp.as_raw()]).to_bytes();
+                let Hash(hash) = hashv(&[&[0x00], transaction_rlp.as_raw()]);
                 let signed_hash = Self::calculate_legacy_signature(transaction_rlp, chain_id)?;
 
                 (hash, signed_hash)
             }
             // Access List transaction
             Some(TransactionEnvelope::AccessList) => {
-                let hash =
-                    solana_program::keccak::hashv(&[&[0x01], transaction_rlp.as_raw()]).to_bytes();
+                let Hash(hash) = hashv(&[&[0x01], transaction_rlp.as_raw()]);
                 let signed_hash = Self::eip2718_signed_hash(&[0x01], transaction_rlp, 8)?;
 
                 (hash, signed_hash)
             }
             // Dynamic Fee transaction
             Some(TransactionEnvelope::DynamicFee) => {
-                let hash =
-                    solana_program::keccak::hashv(&[&[0x02], transaction_rlp.as_raw()]).to_bytes();
+                let Hash(hash) = hashv(&[&[0x02], transaction_rlp.as_raw()]);
                 let signed_hash = Self::eip2718_signed_hash(&[0x02], transaction_rlp, 9)?;
 
                 (hash, signed_hash)
             }
+            // Scheduled transaction
             Some(TransactionEnvelope::Scheduled) => {
-                let hash =
-                    solana_program::keccak::hashv(&[&[0x7f, 0x01], transaction_rlp.as_raw()])
-                        .to_bytes();
-                //TODO clarify with signed hash / signature.
-                (hash, hash)
+                let Hash(hash) = hashv(&[&[0x7f, 0x01], transaction_rlp.as_raw()]);
+                (hash, [0_u8; 32])
             }
             // Legacy trasaction
             None => {
-                let hash = solana_program::keccak::hash(transaction_rlp.as_raw()).to_bytes();
+                let Hash(hash) = hash(transaction_rlp.as_raw());
                 let signed_hash = Self::calculate_legacy_signature(transaction_rlp, chain_id)?;
 
                 (hash, signed_hash)
@@ -654,20 +662,6 @@ impl Transaction {
         };
 
         Ok(tx)
-    }
-
-    // TODO: check if Vec is an appropriate type to work with.
-    // Also, at least one full copy happens here, can we serialize directly into the Vec?
-    #[must_use]
-    pub fn scheduled_to_rlp(&self) -> Vec<u8> {
-        match self.transaction {
-            TransactionPayload::Scheduled(ref scheduled_tx) => scheduled_tx.rlp_bytes().to_vec(),
-            _ => {
-                // N.B. Panic instead of error- usage would indicate a bug in the caller's code
-                // (e.g. Neon Proxy) rather than an error.
-                panic!("Classic transactions are not allowed to be serialized from EVM.")
-            }
-        }
     }
 
     pub fn from_rlp(transaction: &[u8]) -> Result<Self, Error> {

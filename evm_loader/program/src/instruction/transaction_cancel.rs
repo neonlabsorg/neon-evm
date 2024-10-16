@@ -53,17 +53,16 @@ fn execute<'a>(
 ) -> Result<()> {
     let trx_chain_id = storage.trx().chain_id().unwrap_or(DEFAULT_CHAIN_ID);
 
-    let used_gas = U256::ZERO;
-    let total_used_gas = storage.gas_used();
+    let used_gas = U256::from(CANCEL_TRX_COST + LAST_ITERATION_COST);
+    let total_used_gas = storage.gas_used() + used_gas;
     log_data(&[
         b"GAS",
         &used_gas.to_le_bytes(),
         &total_used_gas.to_le_bytes(),
     ]);
 
-    let gas = U256::from(CANCEL_TRX_COST + LAST_ITERATION_COST);
-    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(storage.trx(), gas)?;
-    let _ = storage.consume_gas(gas, priority_fee, accounts.try_operator_balance()); // ignore error
+    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(storage.trx(), used_gas)?;
+    let _ = storage.consume_gas(used_gas, priority_fee, accounts.try_operator_balance()); // ignore error
 
     let origin = storage.trx_origin();
     let (origin_pubkey, _) = origin.find_balance_address(program_id, trx_chain_id);

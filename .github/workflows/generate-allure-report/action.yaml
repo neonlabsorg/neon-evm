@@ -1,0 +1,63 @@
+name: "Allure report"
+description: "Generate allure report from test container"
+inputs:
+  container:
+    description: 'container name'
+    required: true
+  network:
+    description: 'network name'
+    required: true
+  aws_access_key_id:
+    description: 'aws access key id'
+    required: true
+  aws_secret_access_key:
+    description: 'aws secret access key'
+    required: true
+  tests_name:
+    description: 'basic/oz/economic/ui/evm'
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: "Archive report"
+      if: always()
+      run: |
+        docker exec -i ${{ inputs.container }} tar -czvf ./allure-results.tar.gz /opt/neon-tests/allure-results
+        docker cp ${{ inputs.container }}:/opt/neon-tests/allure-results.tar.gz ./
+      shell: bash
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: ${{ inputs.tests_name }}-allure-results.tar.gz
+        path: allure-results.tar.gz
+    - name: "Download allure history"
+      if: always()
+      shell: bash
+      run: |
+        docker exec -i -e GITHUB_REF_NAME=${{ github.ref_name }} \
+        -e AWS_ACCESS_KEY_ID=${{ inputs.aws_access_key_id }} \
+        -e AWS_SECRET_ACCESS_KEY=${{ inputs.aws_secret_access_key }} \
+        ${{ inputs.container }} \
+         python3 ./clickfile.py allure get-history ${{ inputs.tests_name }} \
+          --network ${{ inputs.network }}
+    - name: "Generate allure report"
+      if: always()
+      shell: bash
+      run: |
+        docker exec -i ${{ inputs.container }} python3 ./clickfile.py allure generate
+    - name: "Upload allure history"
+      if: always()
+      shell: bash
+      run: |
+        docker exec -i -e GITHUB_REF_NAME=${{ github.ref_name }} \
+        -e GITHUB_RUN_NUMBER=${{ github.run_number }} \
+        -e AWS_ACCESS_KEY_ID=${{ inputs.aws_access_key_id }} \
+        -e AWS_SECRET_ACCESS_KEY=${{ inputs.aws_secret_access_key }} \
+        ${{ inputs.container }} \
+        python3 ./clickfile.py allure upload-report ${{ inputs.tests_name }} --network ${{ inputs.network }}
+    - name: "Add result info to github page summary"
+      if: always()
+      shell: bash
+      run: |
+        docker cp ${{ inputs.container }}:/opt/neon-tests/allure_report_info ./
+        cat allure_report_info >> $GITHUB_STEP_SUMMARY

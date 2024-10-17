@@ -184,7 +184,7 @@ def run_tests(evm_sha_tag, neon_test_tag, run_number, run_attempt):
     click.echo("Start tests")
     print(test_container_name)
     exec_id = docker_client.exec_create(
-        container=test_container_name, cmd="python3 clickfile.py run evm --numprocesses 8 --network docker_net --make-report")
+        container=test_container_name, cmd="python3 clickfile.py run evm --numprocesses 8 --network docker_net")
     logs = docker_client.exec_start(exec_id['Id'], stream=True)
 
     tests_are_failed = False

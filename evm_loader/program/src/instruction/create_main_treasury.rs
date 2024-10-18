@@ -32,7 +32,7 @@ impl<'a> Accounts<'a> {
             token_program: Token::from_account(&accounts[3])?,
             system_program: System::from_account(&accounts[4])?,
             mint: &accounts[5],
-            payer: unsafe { Operator::from_account_not_whitelisted(&accounts[6]) }?,
+            payer: Operator::from_account(&accounts[6])?,
         })
     }
 }

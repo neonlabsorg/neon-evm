@@ -5,7 +5,7 @@ use crate::error::{Error, Result};
 use crate::gasometer::{CANCEL_TRX_COST, LAST_ITERATION_COST};
 use crate::instruction::priority_fee_txn_calculator;
 use arrayref::array_ref;
-use ethnum::U256;
+use ethnum::{AsU256, U256};
 use solana_program::rent::Rent;
 use solana_program::sysvar::Sysvar;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
@@ -31,8 +31,19 @@ pub fn process<'a>(
     let accounts_db = AccountsDB::new(&accounts[3..], operator, Some(operator_balance), None, None);
     let (storage, _) = StateAccount::restore(program_id, &storage_info, &accounts_db)?;
 
-    validate(&storage, transaction_hash)?;
-    execute(program_id, accounts_db, storage)
+    let current_timestamp =
+        solana_program::clock::Clock::get().map(|clock| clock.slot.as_u256().as_u64())?;
+    let last_used_slot = storage.last_used_slot();
+    let config_cancel_timeout = crate::config::CANCEL_TIMEOUT;
+
+    let is_timeouted = (current_timestamp - last_used_slot) > config_cancel_timeout;
+
+    if is_timeouted {
+        validate(&storage, transaction_hash)?;
+        execute(program_id, accounts_db, storage)
+    } else {
+        Ok(())
+    }
 }
 
 fn validate(storage: &StateAccount, transaction_hash: &[u8; 32]) -> Result<()> {

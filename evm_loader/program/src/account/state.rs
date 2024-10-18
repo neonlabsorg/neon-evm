@@ -18,16 +18,16 @@ use crate::types::{
     AccessListTx, Address, LegacyTx, Transaction, TransactionPayload, TreeMap,
 };
 
-use ethnum::U256;
-use solana_program::hash::Hash;
-use solana_program::system_program;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
-
 use super::{
     AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder, OperatorBalanceAccount,
     StateFinalizedAccount, StorageCell, ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_BALANCE,
     TAG_ACCOUNT_CONTRACT, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED, TAG_STORAGE_CELL,
 };
+use ethnum::{AsU256, U256};
+use solana_program::hash::Hash;
+use solana_program::system_program;
+use solana_program::sysvar::Sysvar;
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 #[derive(PartialEq, Eq)]
 pub enum AccountsStatus {
@@ -102,6 +102,8 @@ struct Data {
     pub priority_fee_used: U256,
     /// Steps executed in the transaction
     pub steps_executed: u64,
+    /// Last slot that was used by the transaction
+    pub last_used_slot: u64,
 }
 
 // Stores relative offsets for the corresponding objects as allocated by the AccountAllocator.
@@ -123,7 +125,7 @@ pub struct StateAccount<'a> {
     data: ManuallyDrop<Boxx<Data>>,
 }
 
-type StateAccountCoreApiView = (Transaction, Pubkey, Address, Vec<Pubkey>, u64);
+type StateAccountCoreApiView = (Transaction, Pubkey, Address, Vec<Pubkey>, u64, u64);
 
 const BUFFER_OFFSET: usize = ACCOUNT_PREFIX_LEN + size_of::<Header>();
 
@@ -195,6 +197,8 @@ impl<'a> StateAccount<'a> {
             gas_used: U256::ZERO,
             priority_fee_used: U256::ZERO,
             steps_executed: 0_u64,
+            last_used_slot: solana_program::clock::Clock::get()
+                .map(|clock| clock.slot.as_u256().as_u64())?,
         });
 
         let data_offset = {
@@ -259,6 +263,14 @@ impl<'a> StateAccount<'a> {
         }
 
         Ok((state, status))
+    }
+
+    pub fn update_last_usage_slot(program_id: &Pubkey, info: &AccountInfo<'a>) -> Result<()> {
+        let mut state = Self::from_account(program_id, info)?;
+        state.data.last_used_slot =
+            solana_program::clock::Clock::get().map(|clock| clock.slot.as_u256().as_u64())?;
+
+        Ok(())
     }
 
     pub fn finalize(self, program_id: &Pubkey) -> Result<()> {
@@ -439,6 +451,11 @@ impl<'a> StateAccount<'a> {
         header.executor_state_offset = offset;
     }
 
+    #[must_use]
+    pub fn last_used_slot(&self) -> u64 {
+        self.data.last_used_slot
+    }
+
     pub fn dealloc_executor_state(&self) {
         unsafe { ManuallyDrop::drop(&mut self.read_executor_state()) };
         let mut header = super::header_mut::<Header>(&self.account);
@@ -606,8 +623,9 @@ impl<'a> StateAccount<'a> {
                 .collect();
 
             let steps = read_unaligned(addr_of!((*data_ptr).steps_executed));
+            let last_slot = read_unaligned(addr_of!((*data_ptr).last_used_slot));
 
-            Ok((tx, owner, origin, accounts, steps))
+            Ok((tx, owner, origin, accounts, steps, last_slot))
         }
     }
 }

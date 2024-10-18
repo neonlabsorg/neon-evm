@@ -36,17 +36,9 @@ pub fn process<'a>(
     let last_used_slot = storage.last_used_slot();
     let config_cancel_timeout = crate::config::CANCEL_TIMEOUT;
 
-    let is_timeout = (current_timestamp - last_used_slot) > config_cancel_timeout;
-    log_msg!("process   ->  current_timestamp = {}", current_timestamp);
-    log_msg!("process   ->  storage.timeout = {}", last_used_slot);
-    log_msg!(
-        "process   ->  crate::config::TIMEOUT = {}",
-        config_cancel_timeout
-    );
+    let is_timeouted = (current_timestamp - last_used_slot) > config_cancel_timeout;
 
-    log_msg!("process   ->  is_timeout = {}", is_timeout);
-
-    if is_timeout {
+    if is_timeouted {
         validate(&storage, transaction_hash)?;
         execute(program_id, accounts_db, storage)
     } else {

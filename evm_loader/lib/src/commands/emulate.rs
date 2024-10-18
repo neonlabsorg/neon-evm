@@ -17,7 +17,7 @@ use crate::{
 use ethnum::U256;
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::error::build_revert_message;
-use evm_loader::types::{Address, ExecutionMap, Transaction};
+use evm_loader::types::{Address, Transaction};
 use evm_loader::{
     config::{EVM_STEPS_MIN, GAS_LIMIT_MULTIPLIER_NO_CHAINID, PAYMENT_TO_TREASURE},
     evm::{ExitStatus, Machine},
@@ -438,10 +438,7 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
         .unwrap_or_else(|| storage.default_chain_id());
     increment_nonce(&mut storage, &origin, chain_id).await?;
 
-    let increase_gas_limit = emulate_request
-        .execution_map
-        .as_ref()
-        .map_or(false, ExecutionMap::has_step_no_chain_id);
+    let increase_gas_limit = emulate_request.tx.chain_id.is_none();
 
     transfer_gas_limit(&mut storage, &tx, &origin, chain_id, increase_gas_limit).await?;
 

@@ -11,6 +11,7 @@ updates:
       assignees:
         - "anton-lisanin"
         - "s-medvedev"
+      labels: [ ]
       ignore:
         - dependency-name: "solana-program"
         - dependency-name: "spl-token"

@@ -183,10 +183,8 @@ async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>
     program_id: &Pubkey,
     emulate_request: &EmulateRequest,
     rpc: &'rpc T,
-    do_increment_nonce: bool,
-    do_transfer_gas_limit: bool,
 ) -> NeonResult<(EmulatorAccountStorage<'rpc, T>, Transaction)> {
-    let mut storage = initialize_storage(rpc, program_id, emulate_request).await?;
+    let storage = initialize_storage(rpc, program_id, emulate_request).await?;
 
     let (origin, tx) = emulate_request.tx.clone().into_transaction(&storage).await;
 
@@ -194,19 +192,6 @@ async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>
     info!("tx: {:?}", tx);
 
     let chain_id = tx.chain_id().unwrap_or_else(|| storage.default_chain_id());
-
-    if do_increment_nonce {
-        increment_nonce(&mut storage, &origin, chain_id).await?;
-    }
-
-    if do_transfer_gas_limit {
-        let increase_gas_limit = emulate_request
-            .execution_map
-            .as_ref()
-            .map_or(false, ExecutionMap::has_step_no_chain_id);
-
-        transfer_gas_limit(&mut storage, &tx, &origin, chain_id, increase_gas_limit).await?;
-    }
 
     storage
         .mark_balance_account(&origin, chain_id, true)
@@ -316,8 +301,13 @@ async fn emulate_trx<'rpc, T: Tracer>(
 
     if emulate_request.execution_map.is_none() {
         let (mut storage, tx) =
-            initialize_storage_and_transaction(program_id, emulate_request, rpc, true, false)
-                .await?;
+            initialize_storage_and_transaction(program_id, emulate_request, rpc).await?;
+
+        let chain_id = emulate_request
+            .tx
+            .chain_id
+            .unwrap_or_else(|| storage.default_chain_id());
+        increment_nonce(&mut storage, &emulate_request.tx.from, chain_id).await?;
 
         let mut result =
             emulate_trx_single_step(&mut storage, &tx, tracer, emulate_request, step_limit).await?;
@@ -440,7 +430,20 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
 
     let mut rpc = create_rpc(db_config, block, index).await?;
     let (mut storage, mut tx) =
-        initialize_storage_and_transaction(program_id, emulate_request, &rpc, true, true).await?;
+        initialize_storage_and_transaction(program_id, emulate_request, &rpc).await?;
+
+    let chain_id = emulate_request
+        .tx
+        .chain_id
+        .unwrap_or_else(|| storage.default_chain_id());
+    increment_nonce(&mut storage, &origin, chain_id).await?;
+
+    let increase_gas_limit = emulate_request
+        .execution_map
+        .as_ref()
+        .map_or(false, ExecutionMap::has_step_no_chain_id);
+
+    transfer_gas_limit(&mut storage, &tx, &origin, chain_id, increase_gas_limit).await?;
 
     let (exit_status, steps_executed, tracer) = {
         let mut backend = SyncedExecutorState::new(&mut storage);
@@ -469,14 +472,8 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
                 steps_executed = 0u64;
 
                 rpc = create_rpc(db_config, execution_step.block, execution_step.index).await?;
-                (storage, tx) = initialize_storage_and_transaction(
-                    program_id,
-                    emulate_request,
-                    &rpc,
-                    false,
-                    false,
-                )
-                .await?;
+                (storage, tx) =
+                    initialize_storage_and_transaction(program_id, emulate_request, &rpc).await?;
 
                 backend = SyncedExecutorState::new(&mut storage);
                 evm = match Machine::new(&tx, origin, &mut backend, tracer_result).await {
@@ -495,14 +492,13 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
                 drop(rpc);
 
                 rpc = create_rpc(db_config, block, index).await?;
-                (storage, _) = initialize_storage_and_transaction(
-                    program_id,
-                    emulate_request,
-                    &rpc,
-                    true,
-                    true,
-                )
-                .await?;
+                (storage, _) =
+                    initialize_storage_and_transaction(program_id, emulate_request, &rpc).await?;
+
+                increment_nonce(&mut storage, &origin, chain_id).await?;
+                transfer_gas_limit(&mut storage, &tx, &origin, chain_id, increase_gas_limit)
+                    .await?;
+
                 backend = SyncedExecutorState::new(&mut storage);
 
                 // do not create evm because it initiates transfer to "to"

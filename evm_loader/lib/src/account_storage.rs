@@ -105,8 +105,9 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     operator: Pubkey,
     chains: Vec<ChainInfo>,
     block_number: u64,
+    block_number_used: RefCell<bool>,
     block_timestamp: i64,
-    timestamp_used: RefCell<bool>,
+    block_timestamp_used: RefCell<bool>,
     rent: Rent,
     state_overrides: Option<AccountOverrides>,
     accounts_cache: FrozenMap<Pubkey, Box<Option<Account>>>,
@@ -168,8 +169,9 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             execute_status: ExecuteStatus::default(),
             rpc,
             block_number,
+            block_number_used: RefCell::new(false),
             block_timestamp,
-            timestamp_used: RefCell::new(false),
+            block_timestamp_used: RefCell::new(false),
             state_overrides,
             rent,
             accounts_cache,
@@ -202,8 +204,9 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             execute_status: ExecuteStatus::default(),
             rpc: other.rpc,
             block_number: other.block_number.saturating_add(block_shift),
+            block_number_used: RefCell::new(false),
             block_timestamp: other.block_timestamp.saturating_add(timestamp_shift),
-            timestamp_used: RefCell::new(false),
+            block_timestamp_used: RefCell::new(false),
             rent: other.rent,
             state_overrides: other.state_overrides.clone(),
             accounts_cache: other.accounts_cache.clone(),
@@ -921,7 +924,11 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     }
 
     pub fn is_timestamp_used(&self) -> bool {
-        *self.timestamp_used.borrow()
+        *self.block_timestamp_used.borrow()
+    }
+
+    pub fn is_timestamp_number_used(&self) -> bool {
+        *self.block_timestamp_used.borrow() || *self.block_number_used.borrow()
     }
 
     pub fn logs(&self) -> Vec<Log> {
@@ -966,12 +973,13 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
 
     fn block_number(&self) -> U256 {
         info!("block_number");
+        *self.block_number_used.borrow_mut() = true;
         self.block_number.into()
     }
 
     fn block_timestamp(&self) -> U256 {
         info!("block_timestamp");
-        *self.timestamp_used.borrow_mut() = true;
+        *self.block_timestamp_used.borrow_mut() = true;
         self.block_timestamp.try_into().unwrap()
     }
 

@@ -433,15 +433,16 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(cache.block_timestamp)
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::await_holding_refcell_ref)]
     async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
         self.touch_solana(address);
-        // collect accounts for actions that we don't processed yet
+        let mut cache = self.data.cache.borrow_mut();
+        // find accounts for actions we haven't processed yet
         let metas = self
             .data
             .actions
             .iter()
-            .skip(self.data.cache.borrow_mut().actions_offset)
+            .skip(cache.actions_offset)
             .filter_map(|a| {
                 if let Action::ExternalInstruction { accounts, .. } = a {
                     Some(accounts)
@@ -453,39 +454,29 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             .collect::<Vec<_>>();
 
         if !metas.iter().any(|m| (m.pubkey == address) && m.is_writable) {
-            // account with given address don't changed by current actions
-            // put offset to cache
-            self.data.cache.borrow_mut().actions_offset = self.data.actions.len();
-
-            if let Some(account) = self.data.cache.borrow_mut().accounts.get(&address) {
-                return Ok(account.clone()); // take account from cache
+            // account with input address not changed by unprocessed actions,
+            // so return it immediately from the cache or backend
+            if let Some(account) = cache.accounts.get(&address) {
+                return Ok(account.clone());
             }
             let account = self.backend.clone_solana_account(&address).await;
-            return Ok(account); // take account from backend
+            return Ok(account);
         }
 
+        // collect accounts and emulate
         let mut accounts = BTreeMap::<Pubkey, OwnedAccountInfo>::new();
         for m in metas {
-            self.touch_solana(m.pubkey); // touch account whatever cached or not
+            self.touch_solana(m.pubkey);
 
-            // do we have account in the cash? if not - take it from backend
-            let mut use_cache = false;
-            if let Some(account) = self.data.cache.borrow_mut().accounts.get(&m.pubkey) {
+            if let Some(account) = cache.accounts.get(&m.pubkey) {
                 accounts.insert(m.pubkey, account.clone());
-                use_cache = true;
-            }
-            if !use_cache {
+            } else {
                 let acc = self.backend.clone_solana_account(&m.pubkey).await;
                 accounts.insert(m.pubkey, acc);
             }
         }
 
-        for action in self
-            .data
-            .actions
-            .iter()
-            .skip(self.data.cache.borrow_mut().actions_offset)
-        {
+        for action in self.data.actions.iter().skip(cache.actions_offset) {
             if let Action::ExternalInstruction {
                 program_id,
                 data,
@@ -529,17 +520,14 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
                 }
             }
         }
-        // put offset to cache
-        self.data.cache.borrow_mut().actions_offset = self.data.actions.len();
-        for (addr, acc) in &accounts {
-            self.data
-                .cache
-                .borrow_mut()
-                .accounts
-                .insert(*addr, acc.clone()); // put accounts to cache
+        cache.actions_offset = self.data.actions.len();
+        let result_acc = accounts[&address].clone();
+        for (address, account) in accounts {
+            if account.is_writable {
+                cache.accounts.insert(address, account);
+            }
         }
-
-        Ok(accounts[&address].clone())
+        Ok(result_acc)
     }
 
     fn rent(&self) -> &Rent {

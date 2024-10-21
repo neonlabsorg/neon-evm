@@ -78,7 +78,7 @@ jobs:
         uses: "andymckay/cancel-action@0.4"
       - name: "Generate allure report"
         if: always()
-        uses: ./.github/actions/generate-allure-report
+        uses: ./.github/workflows/generate-allure-report
         with:
           container: ${{ env.CONTAINER }}
           network: ${{ env.NETWORK }}

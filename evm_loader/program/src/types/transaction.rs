@@ -900,6 +900,14 @@ impl Transaction {
     }
 
     #[must_use]
+    pub fn is_scheduled_tx(&self) -> bool {
+        if let TransactionPayload::Scheduled(_) = self.transaction {
+            return true;
+        }
+        false
+    }
+
+    #[must_use]
     pub fn max_fee_per_gas(&self) -> Option<U256> {
         match self.transaction {
             TransactionPayload::Legacy(_) | TransactionPayload::AccessList(_) => None,
@@ -936,6 +944,26 @@ impl Transaction {
         }
     }
 
+    #[must_use]
+    pub fn if_scheduled(&self) -> Option<&ScheduledTx> {
+        match &self.transaction {
+            TransactionPayload::AccessList(_)
+            | TransactionPayload::DynamicFee(_)
+            | TransactionPayload::Legacy(_) => None,
+            TransactionPayload::Scheduled(ref scheduled) => Some(scheduled),
+        }
+    }
+
+    #[must_use]
+    pub fn tree_account_index(&self) -> Option<u16> {
+        match &self.transaction {
+            TransactionPayload::AccessList(_)
+            | TransactionPayload::DynamicFee(_)
+            | TransactionPayload::Legacy(_) => None,
+            TransactionPayload::Scheduled(ScheduledTx { index, .. }) => Some(*index),
+        }
+    }
+
     pub fn use_gas_limit_multiplier(&mut self) {
         let gas_multiplier = U256::from(GAS_LIMIT_MULTIPLIER_NO_CHAINID);
 
@@ -963,10 +991,28 @@ impl Transaction {
             return Err(Error::InvalidChainId(chain_id));
         }
 
+        // Nonce validation is slightly different for classic and scheduled transactions.
+        //
+        // Classic transactions:
+        // origin's nonce should be equal to txn's nonce because it's validated during
+        // the first iteration and then incremented.
+        //
+        // Scheduled transactions:
+        // payer's nonce (origin) can be greater than what's stored in the transaction because payer
+        // is the same for the whole scheduled execution tree. However, payer's nonce is also
+        // incremented only once - at the start of the first scheduled txn.
         let origin_nonce = backend.nonce(origin, chain_id).await;
-        if origin_nonce != self.nonce() {
-            let error = Error::InvalidTransactionNonce(origin, origin_nonce, self.nonce());
-            return Err(error);
+        #[allow(clippy::collapsible_else_if)]
+        if self.is_scheduled_tx() {
+            if origin_nonce < self.nonce() {
+                let error = Error::InvalidTransactionNonce(origin, origin_nonce, self.nonce());
+                return Err(error);
+            }
+        } else {
+            if origin_nonce != self.nonce() {
+                let error = Error::InvalidTransactionNonce(origin, origin_nonce, self.nonce());
+                return Err(error);
+            }
         }
 
         // The reason to forbid the calls for DynamicFee transactions - priority fee calculation

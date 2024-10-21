@@ -1,13 +1,13 @@
 use crate::account::legacy::{TAG_HOLDER_DEPRECATED, TAG_STATE_FINALIZED_DEPRECATED};
 use crate::account::{
-    program, AccountsDB, AccountsStatus, Holder, Operator, OperatorBalanceAccount,
+    program, AccountsDB, AccountsStatus, Operator, OperatorBalanceAccount,
     OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
+use crate::instruction::transaction_internals::holder_parse_trx;
 use crate::instruction::transaction_step::{do_begin, do_continue};
-use crate::types::Transaction;
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
@@ -57,27 +57,7 @@ pub fn process_inner<'a>(
 
     match tag {
         TAG_HOLDER | TAG_HOLDER_DEPRECATED => {
-            let mut trx = {
-                let mut holder = Holder::from_account(program_id, holder_or_storage.clone())?;
-
-                // We have to initialize the heap before creating Transaction object, but since
-                // transaction's rlp itself is stored in the holder account, we have two options:
-                // 1. Copy the rlp and initialize the heap right after the holder's header.
-                //   This way, the space occupied by the rlp within holder will be reused.
-                // 2. Don't copy the rlp, initialize the heap after transaction rlp in the holder.
-                // The first option (chosen) saves the holder space in exchange for compute units.
-                // The second option wastes the holder space (because transaction bytes will be
-                // stored two times), but doesnt copy.
-                let transaction_rlp_copy = holder.transaction().to_vec();
-                holder.init_heap(0)?;
-                holder.validate_owner(&operator)?;
-
-                let trx = Transaction::from_rlp(&transaction_rlp_copy)?;
-
-                holder.validate_transaction(&trx)?;
-
-                trx
-            };
+            let mut trx = holder_parse_trx(holder_or_storage.clone(), &operator, program_id)?;
             let origin = trx.recover_caller_address()?;
 
             operator_balance.validate_transaction(&trx)?;

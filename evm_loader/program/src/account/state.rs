@@ -211,6 +211,11 @@ impl<'a> StateAccount<'a> {
             })
             .collect::<TreeMap<Pubkey, AccountRevision>>();
 
+        assert!(
+            !(transaction.is_scheduled_tx() ^ tree_account.is_some()),
+            "Tree account should be present iff it's a scheduled transaction."
+        );
+
         let data = boxx(Data {
             owner,
             transaction,
@@ -287,24 +292,50 @@ impl<'a> StateAccount<'a> {
         Ok((state, status))
     }
 
+    #[must_use]
+    pub fn account_key(&self) -> &Pubkey {
+        self.account.key
+    }
+
     pub fn finalize(self, program_id: &Pubkey) -> Result<()> {
-        // Change tag to finalized
+        self.finalize_impl(program_id, TAG_SCHEDULED_STATE_FINALIZED)
+    }
+
+    pub fn cancel(self, program_id: &Pubkey) -> Result<()> {
+        self.finalize_impl(program_id, TAG_SCHEDULED_STATE_CANCELLED)
+    }
+
+    fn finalize_impl(self, program_id: &Pubkey, scheduled_transition_tag: u8) -> Result<()> {
+        super::validate_tag(program_id, &self.account, TAG_STATE)?;
+
         if self.has_tree_account() {
             debug_print!(
-                "Finalize State {} for scheduled transaction",
-                self.account.key
+                "Pre-finalize State {} into {} for scheduled transaction",
+                self.account.key,
+                scheduled_transition_tag
             );
             // Change the tag, leave all the data unchanged.
             super::set_tag(
                 program_id,
                 &self.account,
-                TAG_SCHEDULED_STATE_FINALIZED,
+                scheduled_transition_tag,
                 Header::VERSION,
             )?;
         } else {
             debug_print!("Finalize State {}", self.account.key);
             StateFinalizedAccount::convert_from_state(program_id, self)?;
         }
+
+        Ok(())
+    }
+
+    pub fn finish_scheduled_tx(self, program_id: &Pubkey) -> Result<()> {
+        super::validate_tag(program_id, &self.account, TAG_SCHEDULED_STATE_FINALIZED)?;
+        debug_print!(
+            "Finalize State {} for scheduled transaction",
+            self.account.key
+        );
+        StateFinalizedAccount::convert_from_state(program_id, self)?;
 
         Ok(())
     }
@@ -450,13 +481,21 @@ impl<'a> StateAccount<'a> {
         assert!(origin.chain_id() == trx_chain_id);
         assert!(origin.address() == self.trx_origin());
 
+        let total_refund = self.materialize_unused_gas()?;
+
+        origin.mint(total_refund)
+    }
+
+    /// Use available gas and return it to the caller.
+    /// It's caller's responsibility to mint the unused gas tokens to the appropriate recipient.
+    pub fn materialize_unused_gas(&mut self) -> Result<U256> {
         let unused_gas = self.gas_available();
         let gas_fee_tokens = self.use_gas(unused_gas)?;
 
         let unused_priority_fee = self.priority_fee_in_tokens_available()?;
         self.use_priority_fee_tokens(unused_priority_fee)?;
 
-        origin.mint(gas_fee_tokens + unused_priority_fee)
+        Ok(gas_fee_tokens + unused_priority_fee)
     }
 
     #[must_use]

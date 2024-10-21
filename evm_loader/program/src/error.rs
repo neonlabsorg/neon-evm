@@ -247,6 +247,18 @@ pub enum Error {
 
     #[error("Transaction Tree - transaction invalid status")]
     TreeAccountTxInvalidStatus,
+
+    #[error("Attempt to perform an operation with classic transaction, whereas scheduled transaction is expected")]
+    NotScheduledTransaction,
+
+    #[error("Scheduled Transaction has invalid tree account: expected={0}, actual={1}")]
+    ScheduledTxInvalidTreeAccount(Pubkey, Pubkey),
+
+    #[error("Scheduled Transaction is not ready to be finalized: holder={0}")]
+    ScheduledTxNoExitStatus(Pubkey),
+
+    #[error("Schedule Transaction is already in progress, holder={0}")]
+    ScheduledTxAlreadyInProgress(Pubkey),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

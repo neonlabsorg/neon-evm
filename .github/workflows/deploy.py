@@ -355,12 +355,12 @@ def process_output(output):
                 message = "problem executing Docker: {}".format(". ".join(errors))
                 raise SystemError(message)
 
-# @cli.group("allure")
-# @click.pass_context
-# def allure_cli(ctx):
-#     """Commands for load test manipulation."""
-# 
-# 
+@cli.group("allure")
+@click.pass_context
+def allure_cli(ctx):
+    """Commands for load test manipulation."""
+
+
 # @allure_cli.command("get-history", help="Download allure history")
 # @click.argument("name", type=click.STRING)
 # @click.option("-n", "--network", default="night-stand", type=str, help="In which stand run tests")
@@ -420,11 +420,11 @@ def process_output(output):
 #         f.write(f"🔗 Allure [report]({report_url})\n")
 
 
-# @allure_cli.command("generate", help="Generate allure history")
-# def generate_allure_report():
-#     cmd = subprocess.run("allure generate", shell=True)
-#     if cmd.returncode != 0:
-#         sys.exit(cmd.returncode)
+@allure_cli.command("generate", help="Generate allure history")
+def generate_allure_report():
+    cmd = subprocess.run("allure generate", shell=True)
+    if cmd.returncode != 0:
+        sys.exit(cmd.returncode)
 
 if __name__ == "__main__":
     cli()

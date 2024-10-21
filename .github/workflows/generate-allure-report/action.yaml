@@ -16,24 +16,16 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/upload-artifact@v4
+    - uses: actions/download-artifact@v2
       if: always()
       with:
-        name: evm-tests-allure-results.tar.gz
+        name: allure-results.tar.gz
         path: allure-results.tar.gz
-    - name: "Download allure history"
-      if: always()
-      shell: bash
-      run: |
-        docker exec -i -e GITHUB_REF_NAME=${{ github.ref_name }} \
-        -e AWS_ACCESS_KEY_ID=${{ inputs.aws_access_key_id }} \
-        -e AWS_SECRET_ACCESS_KEY=${{ inputs.aws_secret_access_key }} \
-        ${{ inputs.container }} \
-         python3 ./deploy.py allure get-history evm-tests --network ${{ inputs.network }}
     - name: "Generate allure report"
       if: always()
       shell: bash
       run: |
+        tar -xzvf allure-results.tar.gz ./allure-results
         docker exec -i ${{ inputs.container }} python3 ./clickfile.py allure generate
     - name: "Upload allure history"
       if: always()

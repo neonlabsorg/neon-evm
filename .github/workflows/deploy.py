@@ -201,6 +201,9 @@ def run_tests(evm_sha_tag, neon_test_tag, run_number, run_attempt):
 
     run_subprocess(f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml logs neon-core-api")
 
+    docker_client.exec_create(container=test_container_name, cmd="tar -czvf /opt/neon-tests/allure-results.tar.gz /opt/neon-tests/allure-results")
+    docker_client.exec_create(container=test_container_name, cmd="cp /opt/neon-tests/allure-results.tar.gz /")
+
     stop_containers(project_name)
 
     if tests_are_failed or exec_status == 1:

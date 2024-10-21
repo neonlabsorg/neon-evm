@@ -79,6 +79,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: allure-results.tar.gz
+          path: allure-results.tar.gz
       - name: "Generate allure report"
         if: always()
         uses: ./.github/workflows/generate-allure-report

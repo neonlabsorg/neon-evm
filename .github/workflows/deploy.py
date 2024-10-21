@@ -200,7 +200,7 @@ def run_tests(evm_sha_tag, neon_test_tag, run_number, run_attempt):
     exec_status = docker_client.exec_inspect(exec_id['Id'])["ExitCode"]
 
     run_subprocess(f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml logs neon-core-api")
-    run_subprocess(f"docker cp -r {test_container_name}:/opt/neon-tests/allure-results /allure-results")
+    run_subprocess(f"docker cp {test_container_name}:/opt/neon-tests/allure-results /allure-results")
 
     stop_containers(project_name)
 

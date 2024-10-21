@@ -73,7 +73,7 @@ jobs:
           --neon_test_tag=${{ needs.build-image.outputs.neon_test_tag }} \
           --run_number=${{ github.run_number }} \
           --run_attempt=${{ github.run_attempt }}
-          ls -la
+          tar -czvf allure-results.tar.gz allure-results
       - name: Upload allure results
         if: always()
         uses: actions/upload-artifact@v4

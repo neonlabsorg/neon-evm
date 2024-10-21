@@ -73,9 +73,6 @@ jobs:
           --neon_test_tag=${{ needs.build-image.outputs.neon_test_tag }} \
           --run_number=${{ github.run_number }} \
           --run_attempt=${{ github.run_attempt }}
-      - name: Cancel the build if job failed
-        if: "failure()"
-        uses: "andymckay/cancel-action@0.4"
       - name: "Generate allure report"
         if: always()
         uses: ./.github/workflows/generate-allure-report
@@ -84,6 +81,9 @@ jobs:
           network: ${{ env.NETWORK }}
           aws_access_key_id:  ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws_secret_access_key:  ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Cancel the build if job failed
+        if: "failure()"
+        uses: "andymckay/cancel-action@0.4"
   trigger-proxy-tests:
     runs-on: trigger-runner
     needs:

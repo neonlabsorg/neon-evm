@@ -16,12 +16,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: "Archive report"
-      if: always()
-      run: |
-        docker exec -i ${{ inputs.container }} tar -czvf ./allure-results.tar.gz /opt/neon-tests/allure-results
-        docker cp ${{ inputs.container }}:/opt/neon-tests/allure-results.tar.gz ./
-      shell: bash
     - uses: actions/upload-artifact@v4
       if: always()
       with:

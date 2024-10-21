@@ -13,9 +13,6 @@ inputs:
   aws_secret_access_key:
     description: 'aws secret access key'
     required: true
-  tests_name:
-    description: 'basic/oz/economic/ui/evm'
-    required: true
 runs:
   using: composite
   steps:
@@ -28,7 +25,7 @@ runs:
     - uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: ${{ inputs.tests_name }}-allure-results.tar.gz
+        name: evm-tests-allure-results.tar.gz
         path: allure-results.tar.gz
     - name: "Download allure history"
       if: always()
@@ -38,8 +35,7 @@ runs:
         -e AWS_ACCESS_KEY_ID=${{ inputs.aws_access_key_id }} \
         -e AWS_SECRET_ACCESS_KEY=${{ inputs.aws_secret_access_key }} \
         ${{ inputs.container }} \
-         python3 ./clickfile.py allure get-history ${{ inputs.tests_name }} \
-          --network ${{ inputs.network }}
+         python3 ./deploy.py allure get-history evm-tests --network ${{ inputs.network }}
     - name: "Generate allure report"
       if: always()
       shell: bash

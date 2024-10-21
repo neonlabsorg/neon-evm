@@ -76,6 +76,14 @@ jobs:
       - name: Cancel the build if job failed
         if: "failure()"
         uses: "andymckay/cancel-action@0.4"
+      - name: "Generate allure report"
+        if: always()
+        uses: ./.github/actions/generate-allure-report
+        with:
+          container: ${{ env.CONTAINER }}
+          network: ${{ env.NETWORK }}
+          aws_access_key_id:  ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key:  ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   trigger-proxy-tests:
     runs-on: trigger-runner
     needs:

@@ -7,6 +7,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
+use crate::debug::log_data;
 use crate::{instruction, instruction::EvmInstruction};
 
 entrypoint!(process_instruction);
@@ -53,6 +54,10 @@ fn process_instruction<'a>(
             Err(ProgramError::InvalidInstructionData.into())
         }
     }
+    .map_err(|e| {
+        log_data(&[e.code(), e.to_string().as_bytes()]);
+        e
+    })
     .map_err(ProgramError::from)
 }
 
@@ -176,5 +181,9 @@ fn process_instruction<'a>(
             instruction::operator_withdraw_balance::process(program_id, accounts, instruction)
         }
     }
+    .map_err(|e| {
+        log_data(&[e.code(), e.to_string().as_bytes()]);
+        e
+    })
     .map_err(ProgramError::from)
 }

@@ -16,6 +16,7 @@ use crate::types::{Address, Vector};
 
 /// Errors that may be returned by the EVM Loader program.
 #[derive(Error, Debug)]
+#[repr(u32)]
 pub enum Error {
     #[error("Error: {0}")]
     Custom(String),

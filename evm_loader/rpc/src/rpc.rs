@@ -1,7 +1,7 @@
 use crate::context::Context;
 use crate::handlers::{
-    emulate, get_balance, get_config, get_contract, get_holder, get_storage_at, info, lib_info,
-    trace,
+    emulate, get_balance, get_config, get_contract, get_holder, get_storage_at,
+    get_transaction_tree, info, lib_info, trace,
 };
 
 use jsonrpc_v2::{Data, MapRouter, Server};
@@ -20,5 +20,13 @@ pub fn build_rpc(ctx: Context) -> Arc<Server<MapRouter>> {
         .with_method(LibMethod::GetConfig.to_string(), get_config::handle)
         .with_method(LibMethod::GetHolder.to_string(), get_holder::handle)
         .with_method(LibMethod::GetContract.to_string(), get_contract::handle)
+        .with_method(
+            LibMethod::GetBalanceWithPubkey.to_string(),
+            get_balance::handle_with_pubkey,
+        )
+        .with_method(
+            LibMethod::GetTransactionTree.to_string(),
+            get_transaction_tree::handle,
+        )
         .finish()
 }

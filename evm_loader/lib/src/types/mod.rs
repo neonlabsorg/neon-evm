@@ -335,6 +335,24 @@ pub struct GetBalanceRequest {
 
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug, Default)]
+pub struct GetBalanceWithPubkeyRequest {
+    #[serde_as(as = "OneOrMany<DisplayFromStr>")]
+    pub account: Vec<Pubkey>,
+    pub slot: Option<u64>,
+    pub id: Option<String>,
+}
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct GetTransactionTreeRequest {
+    pub origin: Address,
+    pub nonce: u64,
+    pub slot: Option<u64>,
+    pub id: Option<String>,
+}
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct GetContractRequest {
     #[serde_as(as = "OneOrMany<_>")]
     pub contract: Vec<Address>,

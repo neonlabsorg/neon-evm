@@ -227,6 +227,12 @@ pub enum Error {
     #[error("Transaction Tree - last index overflow")]
     TreeAccountLastIndexOverflow,
 
+    #[error("Transaction Tree - invalid payer")]
+    TreeAccountInvalidPayer,
+
+    #[error("Transaction Tree - invalid chainId")]
+    TreeAccountInvalidChainId,
+
     #[error("Transaction Tree - invalid transaction type")]
     TreeAccountTxInvalidType,
 

@@ -13,9 +13,13 @@ pub use holder::{Header as HolderHeader, Holder};
 pub use incinerator::Incinerator;
 pub use operator::Operator;
 pub use operator_balance::{OperatorBalanceAccount, OperatorBalanceValidator};
+pub use signer::Signer;
 pub use state::{AccountsStatus, StateAccount};
 pub use state_finalized::{Header as StateFinalizedHeader, StateFinalizedAccount};
-pub use transaction_tree::{Status as TransactionTreeNodeStatus, TransactionTree};
+pub use transaction_tree::{
+    NodeInitializer, Status as TransactionTreeNodeStatus, TransactionTree, TreeInitializer,
+    NO_CHILD_TRANSACTION,
+};
 pub use treasury::{MainTreasury, Treasury};
 
 use self::program::System;
@@ -29,6 +33,7 @@ pub mod legacy;
 mod operator;
 mod operator_balance;
 pub mod program;
+mod signer;
 mod state;
 mod state_finalized;
 pub mod token;
@@ -197,7 +202,7 @@ pub unsafe fn delete(account: &AccountInfo, operator: &Operator) {
 
 /// # Safety
 /// *Permanently delete all data* in the account. Transfer lamports to the treasury.
-pub unsafe fn delete_with_treasury(account: &AccountInfo, treasury: &Treasury) {
+pub unsafe fn delete_with_treasury(account: &AccountInfo, treasury: &Treasury) -> Result<()> {
     debug_print!("DELETE ACCOUNT {}", account.key);
 
     **treasury.lamports.borrow_mut() += account.lamports();
@@ -205,6 +210,11 @@ pub unsafe fn delete_with_treasury(account: &AccountInfo, treasury: &Treasury) {
 
     let mut data = account.data.borrow_mut();
     data.fill(0);
+
+    account.realloc(0, false)?;
+    account.assign(&solana_program::system_program::ID);
+
+    Ok(())
 }
 
 pub struct AccountsDB<'a> {

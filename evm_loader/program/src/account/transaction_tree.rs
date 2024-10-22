@@ -13,29 +13,19 @@ use crate::evm::ExitStatus;
 use crate::types::{Address, Transaction, TransactionPayload};
 use ethnum::U256;
 use solana_program::{
-    account_info::AccountInfo, clock::Clock, pubkey::Pubkey, rent::Rent, sysvar::Sysvar,
+    account_info::AccountInfo, clock::Clock, pubkey::Pubkey, rent::Rent, system_program,
+    sysvar::Sysvar,
 };
 
 #[repr(u8)]
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub enum Status {
     Failed = 0x00,
     Success = 0x01,
     Skipped = 0x02,
     InProgress = 0x03,
+    #[default]
     NotStarted = 0xFF,
-}
-
-impl std::fmt::Display for Status {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Status::Failed => write!(f, "Failed"),
-            Status::Success => write!(f, "Success"),
-            Status::Skipped => write!(f, "Skipped"),
-            Status::InProgress => write!(f, "InProgress"),
-            Status::NotStarted => write!(f, "NotStarted"),
-        }
-    }
 }
 
 #[repr(C, packed)]
@@ -46,13 +36,16 @@ pub struct Node {
     pub result_hash: [u8; 32],
     pub transaction_hash: [u8; 32],
 
+    pub gas_limit: U256,
+    pub value: U256,
+
     pub child_transaction: u16,
     pub success_execute_limit: u16,
     pub parent_count: u16,
 }
-static_assertions::assert_eq_size!(Node, [u8; 71]);
+static_assertions::assert_eq_size!(Node, [u8; 135]);
 
-const NO_CHILD_TRANSACTION: u16 = u16::MAX;
+pub const NO_CHILD_TRANSACTION: u16 = u16::MAX;
 
 #[repr(C, packed)]
 pub struct HeaderV0 {
@@ -61,11 +54,10 @@ pub struct HeaderV0 {
     chain_id: u64,
     max_fee_per_gas: U256,
     max_priority_fee_per_gas: U256,
-    gas_limit: U256,
     balance: U256,
     last_index: u16,
 }
-static_assertions::assert_eq_size!(HeaderV0, [u8; 166]);
+static_assertions::assert_eq_size!(HeaderV0, [u8; 134]);
 
 impl AccountHeader for HeaderV0 {
     const VERSION: u8 = 0;
@@ -80,6 +72,7 @@ pub struct NodeInitializer {
     pub child: u16,
     pub success_execute_limit: u16,
     pub gas_limit: U256,
+    pub value: U256,
 }
 
 pub struct TreeInitializer {
@@ -118,7 +111,8 @@ impl<'a> TransactionTree<'a> {
         &self.account
     }
 
-    fn find_pubkey(payer: Address, nonce: u64) -> (Pubkey, u8) {
+    #[must_use]
+    pub fn find_address(program_id: &Pubkey, payer: Address, nonce: u64) -> (Pubkey, u8) {
         let seeds: &[&[u8]] = &[
             &[ACCOUNT_SEED_VERSION],
             b"TREE",
@@ -126,7 +120,7 @@ impl<'a> TransactionTree<'a> {
             &nonce.to_le_bytes(),
         ];
 
-        Pubkey::find_program_address(seeds, &crate::ID)
+        Pubkey::find_program_address(seeds, program_id)
     }
 
     pub fn create(
@@ -138,9 +132,13 @@ impl<'a> TransactionTree<'a> {
         clock: &Clock,
     ) -> Result<Self> {
         // Validate account
-        let (pubkey, bump_seed) = Self::find_pubkey(init.payer, init.nonce);
+        let (pubkey, bump_seed) = Self::find_address(&crate::ID, init.payer, init.nonce);
         if account.key != &pubkey {
             return Err(Error::AccountInvalidKey(*account.key, pubkey));
+        }
+
+        if account.owner != &system_program::ID {
+            return Err(Error::AccountInvalidOwner(*account.key, system_program::ID));
         }
 
         let seeds: &[&[u8]] = &[
@@ -154,11 +152,8 @@ impl<'a> TransactionTree<'a> {
         // Validate init data
         let nodes = init.nodes;
         let mut parent_counts = vec![0_u16; nodes.len()];
-        let mut total_gas_limit = U256::ZERO;
 
         for node in &nodes {
-            total_gas_limit = total_gas_limit.saturating_add(node.gas_limit);
-
             if node.child == NO_CHILD_TRANSACTION {
                 continue;
             }
@@ -198,7 +193,6 @@ impl<'a> TransactionTree<'a> {
             header.chain_id = init.chain_id;
             header.max_fee_per_gas = init.max_fee_per_gas;
             header.max_priority_fee_per_gas = init.max_priority_fee_per_gas;
-            header.gas_limit = total_gas_limit;
             header.balance = U256::ZERO;
             header.last_index = nodes.len().try_into()?;
         }
@@ -208,6 +202,8 @@ impl<'a> TransactionTree<'a> {
             node.status = Status::NotStarted;
             node.result_hash = [0; 32];
             node.transaction_hash = init.transaction_hash;
+            node.gas_limit = init.gas_limit;
+            node.value = init.value;
             node.child_transaction = init.child;
             node.success_execute_limit = init.success_execute_limit;
             node.parent_count = parent_count;
@@ -217,8 +213,33 @@ impl<'a> TransactionTree<'a> {
     }
 
     #[must_use]
+    pub fn is_in_progress(&self) -> bool {
+        self.nodes()
+            .iter()
+            .any(|n| matches!(n.status, Status::InProgress))
+    }
+
+    #[must_use]
+    pub fn is_complete(&self) -> bool {
+        self.nodes()
+            .iter()
+            .all(|n| !matches!(n.status, Status::InProgress | Status::NotStarted))
+    }
+
+    #[must_use]
+    pub fn is_not_started(&self) -> bool {
+        self.nodes()
+            .iter()
+            .all(|n| matches!(n.status, Status::NotStarted))
+    }
+
+    #[must_use]
     pub fn can_be_destroyed(&self, clock: &Clock) -> bool {
         if self.balance() != U256::ZERO {
+            return false;
+        }
+
+        if self.is_in_progress() {
             return false;
         }
 
@@ -226,22 +247,17 @@ impl<'a> TransactionTree<'a> {
             return true;
         }
 
-        self.nodes()
-            .iter()
-            .all(|node| !matches!(node.status, Status::InProgress | Status::NotStarted))
+        self.is_complete()
     }
 
-    pub fn destroy(&self, treasury: &Treasury<'a>) -> Result<()> {
+    pub fn destroy(self, treasury: &Treasury<'a>) -> Result<()> {
         let clock = Clock::get()?;
+
         if !self.can_be_destroyed(&clock) {
             return Err(Error::TreeAccountNotReadyForDestruction);
         }
 
-        unsafe {
-            super::delete_with_treasury(&self.account, treasury);
-        }
-
-        Ok(())
+        unsafe { super::delete_with_treasury(&self.account, treasury) }
     }
 
     fn validate_transaction(&self, tx: &Transaction) -> Result<u16> {
@@ -251,20 +267,30 @@ impl<'a> TransactionTree<'a> {
             return Err(Error::TreeAccountTxInvalidType);
         };
 
+        let (pubkey, _) = Self::find_address(&crate::ID, tx.payer, tx.nonce);
+        if &pubkey != self.account.key {
+            return Err(Error::TreeAccountTxInvalidData);
+        }
+
         if tx.index as usize >= self.nodes().len() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        if self.node(tx.index).transaction_hash != hash {
+        let node = self.node(tx.index);
+        if node.transaction_hash != hash {
+            return Err(Error::TreeAccountTxInvalidData);
+        }
+
+        let gas_limit = node.gas_limit; // Copy from unaligned
+        if gas_limit != tx.gas_limit {
+            return Err(Error::TreeAccountTxInvalidData);
+        }
+        let value = node.value;
+        if value != tx.value {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
         if tx.payer != self.payer() {
-            return Err(Error::TreeAccountTxInvalidData);
-        }
-
-        let (pubkey, _) = Self::find_pubkey(tx.payer, tx.nonce);
-        if &pubkey != self.account.key {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
@@ -277,6 +303,15 @@ impl<'a> TransactionTree<'a> {
         }
 
         if tx.max_priority_fee_per_gas != self.max_priority_fee_per_gas() {
+            return Err(Error::TreeAccountTxInvalidData);
+        }
+
+        // We don't support intents at the moment
+        if tx.intent.is_some() {
+            return Err(Error::TreeAccountTxInvalidData);
+        }
+
+        if !tx.intent_call_data.is_empty() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
@@ -392,9 +427,17 @@ impl<'a> TransactionTree<'a> {
     }
 
     #[must_use]
-    pub fn gas_limit(&self) -> U256 {
-        let header = super::header::<HeaderV0>(&self.account);
-        header.gas_limit
+    pub fn total_gas_limit(&self) -> U256 {
+        self.nodes()
+            .iter()
+            .fold(U256::ZERO, |v, node| v.saturating_add(node.gas_limit))
+    }
+
+    #[must_use]
+    pub fn total_value(&self) -> U256 {
+        self.nodes()
+            .iter()
+            .fold(U256::ZERO, |v, node| v.saturating_add(node.value))
     }
 
     #[must_use]

@@ -197,6 +197,32 @@ pub enum EvmInstruction {
     ///  0..4 - treasury index in little-endian
     TransactionExecuteFromAccountWithSolanaCall,
 
+    /// Create the Tree Account from Scheduled Transaction
+    ///
+    /// Accounts:
+    ///  `[SIGNER]` Solana user
+    ///  `[WRITE]` Balance Account of the user
+    ///  `[WRITE]` Treasury Account
+    ///  `[WRITE]` Tree Account
+    ///  `[WRITE]` wSOL token pool
+    ///  `[]` System program
+    ScheduledTransactionCreate,
+
+    /// Create the Tree Account from multiple transaction hashes
+    ///  `[SIGNER]` Solana user
+    ///  `[WRITE]` Balance Account of the user
+    ///  `[WRITE]` Treasury Account
+    ///  `[WRITE]` Tree Account
+    ///  `[WRITE]` wSOL token pool
+    ///  `[]` System program
+    ScheduledTransactionCreateMultiple,
+
+    /// Destroy the Tree Account
+    ///  `[WRITE]` Balance Account of the user
+    ///  `[WRITE]` Treasury Account
+    ///  `[WRITE]` Tree Account
+    ScheduledTransactionDestroy,
+
     /// Start the Scheduled Transaction from Instruction
     ///
     /// Accounts:
@@ -286,10 +312,14 @@ impl EvmInstruction {
             0x3A => Self::OperatorBalanceCreate,   // 58
             0x3B => Self::OperatorBalanceDelete,   // 59
             0x3C => Self::OperatorBalanceWithdraw, // 60
+
             0x46 => Self::ScheduledTransactionStartFromAccount, // 70
             0x47 => Self::ScheduledTransactionStartFromInstruction, // 71
-            0x48 => Self::ScheduledTransactionSkip, // 72
-            0x49 => Self::ScheduledTransactionFinish, //73
+            0x48 => Self::ScheduledTransactionSkip,             // 72
+            0x49 => Self::ScheduledTransactionFinish,           // 73
+            0x4A => Self::ScheduledTransactionCreate,           // 74
+            0x4B => Self::ScheduledTransactionCreateMultiple,   // 75
+            0x4C => Self::ScheduledTransactionDestroy,          // 76
 
             0xA0 => Self::ConfigGetChainCount, // 160
             0xA1 => Self::ConfigGetChainInfo,
@@ -324,6 +354,9 @@ pub mod operator_create_balance;
 pub mod operator_delete_balance;
 pub mod operator_withdraw_balance;
 pub mod priority_fee_txn_calculator;
+pub mod scheduled_transaction_create;
+pub mod scheduled_transaction_create_multiple;
+pub mod scheduled_transaction_destroy;
 pub mod scheduled_transaction_finish;
 pub mod scheduled_transaction_skip;
 pub mod scheduled_transaction_start;

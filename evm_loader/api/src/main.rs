@@ -23,10 +23,12 @@ use std::{env, net::SocketAddr, str::FromStr};
 use crate::api_server::handlers::build_info::build_info_route;
 use crate::api_server::handlers::emulate::emulate;
 use crate::api_server::handlers::get_balance::get_balance;
+use crate::api_server::handlers::get_balance::get_balance_with_pubkey;
 use crate::api_server::handlers::get_config::get_config;
 use crate::api_server::handlers::get_contract::get_contract;
 use crate::api_server::handlers::get_holder::get_holder_account_data;
 use crate::api_server::handlers::get_storage_at::get_storage_at;
+use crate::api_server::handlers::get_transaction_tree::get_transaction_tree;
 use crate::api_server::handlers::simulate_solana::simulate_solana;
 use crate::api_server::handlers::trace::trace;
 use crate::build_info::get_build_info;
@@ -73,10 +75,12 @@ async fn main() -> NeonApiResult<()> {
                 .service(build_info_route)
                 .service(emulate)
                 .service(get_balance)
+                .service(get_balance_with_pubkey)
                 .service(get_contract)
                 .service(get_storage_at)
                 .service(get_config)
                 .service(get_holder_account_data)
+                .service(get_transaction_tree)
                 .service(trace)
                 .service(simulate_solana)
                 .wrap(RequestIdentifier::with_uuid()),

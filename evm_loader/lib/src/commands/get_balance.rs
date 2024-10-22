@@ -1,8 +1,8 @@
 #![allow(clippy::future_not_send)]
 
 use ethnum::U256;
-use evm_loader::account::legacy::LegacyEtherData;
 use evm_loader::account::BalanceAccount;
+use evm_loader::{account::legacy::LegacyEtherData, types::Address};
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account::Account, pubkey::Pubkey};
 
@@ -149,4 +149,20 @@ pub async fn execute(
     }
 
     Ok(result)
+}
+
+pub async fn execute_with_pubkey(
+    rpc: &(impl Rpc + BuildConfigSimulator),
+    program_id: &Pubkey,
+    pubkeys: &[Pubkey],
+) -> NeonResult<Vec<GetBalanceResponse>> {
+    let chain_id = super::get_config::read_sol_chain_id(rpc, *program_id).await?;
+
+    let addresses = pubkeys
+        .iter()
+        .map(Address::from_solana_address)
+        .map(|address| BalanceAddress { address, chain_id })
+        .collect::<Vec<_>>();
+
+    execute(rpc, program_id, &addresses).await
 }

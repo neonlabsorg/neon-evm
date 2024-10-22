@@ -1,4 +1,4 @@
-use super::{Operator, Treasury};
+use super::{Operator, Signer, Treasury};
 use solana_program::account_info::AccountInfo;
 use solana_program::program::{invoke_signed_unchecked, invoke_unchecked};
 use solana_program::program_error::ProgramError;
@@ -191,6 +191,25 @@ impl<'a> System<'a> {
     pub fn transfer(
         &self,
         source: &Operator<'a>,
+        target: &AccountInfo<'a>,
+        lamports: u64,
+    ) -> Result<(), ProgramError> {
+        crate::debug_print!(
+            "system transfer {} lamports from {} to {}",
+            lamports,
+            source.key,
+            target.key
+        );
+
+        invoke_unchecked(
+            &system_instruction::transfer(source.key, target.key, lamports),
+            &[source.info.clone(), target.clone(), self.0.clone()],
+        )
+    }
+
+    pub fn transfer_from_signer(
+        &self,
+        source: &Signer<'a>,
         target: &AccountInfo<'a>,
         lamports: u64,
     ) -> Result<(), ProgramError> {

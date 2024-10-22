@@ -6,6 +6,7 @@ pub mod get_config;
 pub mod get_contract;
 pub mod get_holder;
 pub mod get_storage_at;
+pub mod get_transaction_tree;
 pub mod info;
 pub mod lib_info;
 pub mod trace;

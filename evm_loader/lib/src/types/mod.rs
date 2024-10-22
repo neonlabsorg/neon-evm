@@ -113,9 +113,27 @@ pub enum FromAddress {
     Solana(Pubkey),
 }
 
-impl Default for FromAddress {
-    fn default() -> Self {
-        Self::Ethereum(Address::default())
+impl std::fmt::Display for FromAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ethereum(address) => address.fmt(f),
+            Self::Solana(pubkey) => pubkey.fmt(f),
+        }
+    }
+}
+
+impl std::str::FromStr for FromAddress {
+    type Err = solana_sdk::pubkey::ParsePubkeyError;
+
+    #[allow(clippy::option_if_let_else)] // map_or_else makes code unreadable
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Ok(address) = s.parse::<Address>() {
+            Ok(Self::Ethereum(address))
+        } else if let Ok(pubkey) = s.parse::<Pubkey>() {
+            Ok(Self::Solana(pubkey))
+        } else {
+            Err(solana_sdk::pubkey::ParsePubkeyError::Invalid)
+        }
     }
 }
 
@@ -131,9 +149,10 @@ impl FromAddress {
 
 #[serde_as]
 #[skip_serializing_none]
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct TxParams {
     pub nonce: Option<u64>,
+    #[serde_as(as = "DisplayFromStr")]
     pub from: FromAddress,
     pub to: Option<Address>,
     #[serde_as(as = "Option<Hex>")]
@@ -508,7 +527,7 @@ mod tests {
                 }
             ],
             "tx": {
-                "from": {"Ethereum": "0x3fd219e7cf0e701fcf5a6903b40d47ca4e597d99"},
+                "from": "0x3fd219e7cf0e701fcf5a6903b40d47ca4e597d99",
                 "to": "0x0673ac30e9c5dd7955ae9fb7e46b3cddca435883",
                 "value": "0x0",
                 "data": "3ff21f8e",

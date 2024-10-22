@@ -13,8 +13,13 @@ pub use holder::{Header as HolderHeader, Holder};
 pub use incinerator::Incinerator;
 pub use operator::Operator;
 pub use operator_balance::{OperatorBalanceAccount, OperatorBalanceValidator};
+pub use signer::Signer;
 pub use state::{AccountsStatus, StateAccount};
 pub use state_finalized::{Header as StateFinalizedHeader, StateFinalizedAccount};
+pub use transaction_tree::{
+    NodeInitializer, Status as TransactionTreeNodeStatus, TransactionTree, TreeInitializer,
+    NO_CHILD_TRANSACTION,
+};
 pub use treasury::{MainTreasury, Treasury};
 
 use self::program::System;
@@ -28,9 +33,11 @@ pub mod legacy;
 mod operator;
 mod operator_balance;
 pub mod program;
+mod signer;
 mod state;
 mod state_finalized;
 pub mod token;
+mod transaction_tree;
 mod treasury;
 
 pub const HEAP_OFFSET_PTR: usize = holder::HEAP_OFFSET_OFFSET;
@@ -38,12 +45,15 @@ pub const HEAP_OFFSET_PTR: usize = holder::HEAP_OFFSET_OFFSET;
 pub const TAG_EMPTY: u8 = 0;
 pub const TAG_STATE: u8 = 25;
 pub const TAG_STATE_FINALIZED: u8 = 32;
+pub const TAG_SCHEDULED_STATE_FINALIZED: u8 = 35;
+pub const TAG_SCHEDULED_STATE_CANCELLED: u8 = 38;
 pub const TAG_HOLDER: u8 = 52;
 
 pub const TAG_ACCOUNT_BALANCE: u8 = 60;
 pub const TAG_ACCOUNT_CONTRACT: u8 = 70;
 pub const TAG_OPERATOR_BALANCE: u8 = 80;
 pub const TAG_STORAGE_CELL: u8 = 43;
+pub const TAG_TRANSACTION_TREE: u8 = 90;
 
 const TAG_OFFSET: usize = 0;
 const HEADER_VERSION_OFFSET: usize = 1;
@@ -188,6 +198,23 @@ pub unsafe fn delete(account: &AccountInfo, operator: &Operator) {
 
     let mut data = account.data.borrow_mut();
     data.fill(0);
+}
+
+/// # Safety
+/// *Permanently delete all data* in the account. Transfer lamports to the treasury.
+pub unsafe fn delete_with_treasury(account: &AccountInfo, treasury: &Treasury) -> Result<()> {
+    debug_print!("DELETE ACCOUNT {}", account.key);
+
+    **treasury.lamports.borrow_mut() += account.lamports();
+    **account.lamports.borrow_mut() = 0;
+
+    let mut data = account.data.borrow_mut();
+    data.fill(0);
+
+    account.realloc(0, false)?;
+    account.assign(&solana_program::system_program::ID);
+
+    Ok(())
 }
 
 pub struct AccountsDB<'a> {

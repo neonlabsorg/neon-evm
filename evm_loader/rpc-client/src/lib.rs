@@ -13,11 +13,11 @@ use neon_lib::{
     commands::{
         emulate::EmulateResponse, get_balance::GetBalanceResponse, get_config::GetConfigResponse,
         get_contract::GetContractResponse, get_holder::GetHolderResponse,
-        get_storage_at::GetStorageAtReturn,
+        get_storage_at::GetStorageAtReturn, get_transaction_tree::GetTreeResponse,
     },
     types::{
-        EmulateApiRequest, GetBalanceRequest, GetContractRequest, GetHolderRequest,
-        GetStorageAtRequest,
+        EmulateApiRequest, GetBalanceRequest, GetBalanceWithPubkeyRequest, GetContractRequest,
+        GetHolderRequest, GetStorageAtRequest, GetTransactionTreeRequest,
     },
 };
 
@@ -30,6 +30,10 @@ pub trait NeonRpcClient {
         &self,
         params: GetBalanceRequest,
     ) -> NeonRpcClientResult<Vec<GetBalanceResponse>>;
+    async fn balance_with_pubkey(
+        &self,
+        params: GetBalanceWithPubkeyRequest,
+    ) -> NeonRpcClientResult<Vec<GetBalanceResponse>>;
     async fn get_contract(
         &self,
         params: GetContractRequest,
@@ -40,5 +44,9 @@ pub trait NeonRpcClient {
         &self,
         params: GetStorageAtRequest,
     ) -> NeonRpcClientResult<GetStorageAtReturn>;
+    async fn get_transaction_tree(
+        &self,
+        params: GetTransactionTreeRequest,
+    ) -> NeonRpcClientResult<GetTreeResponse>;
     async fn trace(&self, params: EmulateApiRequest) -> NeonRpcClientResult<serde_json::Value>;
 }

@@ -15,6 +15,7 @@ pub struct NetSpecificConfig {
     pub program_id: String,
     pub operators_whitelist: Vec<String>,
     pub neon_chain_id: u64,
+    pub sol_chain_id: u64,
     pub neon_token_mint: String,
     pub chains: Vec<Chain>,
     pub no_update_tracking_owners: Vec<String>,
@@ -60,22 +61,25 @@ impl Parse for NetSpecificConfig {
             })
             .collect::<Vec<_>>();
 
-        let (neon_chain_id, neon_token_mint) = chains
-            .iter()
-            .find_map(|c| {
-                if c.name == "neon" {
-                    Some((c.id, c.token.clone()))
-                } else {
-                    None
-                }
-            })
-            .unwrap();
+        let mut neon_chain_id = None;
+        let mut sol_chain_id = None;
+        let mut neon_token_mint = None;
+        for c in &chains {
+            if c.name == "neon" {
+                neon_chain_id = Some(c.id);
+                neon_token_mint = Some(c.token.clone());
+            }
+            if c.name == "sol" {
+                sol_chain_id = Some(c.id);
+            }
+        }
 
         Ok(Self {
             program_id,
             operators_whitelist,
-            neon_chain_id,
-            neon_token_mint,
+            neon_chain_id: neon_chain_id.expect("Neon chain not found in the config file"),
+            sol_chain_id: sol_chain_id.expect("SOL chain not found in the config file"),
+            neon_token_mint: neon_token_mint.unwrap(),
             chains,
             no_update_tracking_owners,
         })

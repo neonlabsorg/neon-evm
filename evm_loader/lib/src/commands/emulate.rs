@@ -2,7 +2,7 @@ use crate::account_data::AccountData;
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::rpc::Rpc;
 use crate::tracing::tracers::Tracer;
-use crate::types::{AccountInfoLevel, EmulateRequest, TxParams};
+use crate::types::{AccountInfoLevel, EmulateRequest, FromAddress, TxParams};
 use crate::{
     account_storage::{EmulatorAccountStorage, SyncedAccountStorage},
     errors::NeonError,
@@ -173,6 +173,12 @@ async fn emulate_trx<T: Tracer>(
     tracer: Option<T>,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     info!("tx_params: {:?}", tx_params);
+
+    // Store the from pubkey in the storage to correctly initialize the BalanceAccount.
+    if let FromAddress::Solana(pubkey) = &tx_params.from {
+        storage.add_balance_pubkey(tx_params.from.address(), *pubkey);
+        info!("from is solana address: {:?}", pubkey);
+    }
 
     let (origin, tx) = tx_params.into_transaction(storage).await;
 

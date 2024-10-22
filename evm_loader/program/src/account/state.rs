@@ -12,10 +12,10 @@ use crate::evm::tracing::EventListener;
 use crate::evm::Machine;
 use crate::executor::ExecutorStateData;
 use crate::types::boxx::{boxx, Boxx};
-use crate::types::DynamicFeeTx;
 use crate::types::{
     read_raw_utils::{read_vec, ReconstructRaw},
-    AccessListTx, Address, LegacyTx, Transaction, TransactionPayload, TreeMap,
+    AccessListTx, Address, DynamicFeeTx, LegacyTx, ScheduledTx, Transaction, TransactionPayload,
+    TreeMap,
 };
 
 use ethnum::U256;
@@ -26,7 +26,8 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 use super::{
     AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder, OperatorBalanceAccount,
     StateFinalizedAccount, StorageCell, ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_BALANCE,
-    TAG_ACCOUNT_CONTRACT, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED, TAG_STORAGE_CELL,
+    TAG_ACCOUNT_CONTRACT, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED,
+    TAG_STATE, TAG_STATE_FINALIZED, TAG_STORAGE_CELL,
 };
 
 #[derive(PartialEq, Eq)]
@@ -102,6 +103,8 @@ struct Data {
     pub priority_fee_used: U256,
     /// Steps executed in the transaction
     pub steps_executed: u64,
+    /// Address of the tree account (present for scheduled transactions).
+    pub tree_account: Option<Pubkey>,
 }
 
 // Stores relative offsets for the corresponding objects as allocated by the AccountAllocator.
@@ -123,7 +126,15 @@ pub struct StateAccount<'a> {
     data: ManuallyDrop<Boxx<Data>>,
 }
 
-type StateAccountCoreApiView = (Transaction, Pubkey, Address, Vec<Pubkey>, u64);
+/// (transaction, owner, tree account, origin, accounts, steps).
+type StateAccountCoreApiView = (
+    Transaction,
+    Pubkey,
+    Option<Pubkey>,
+    Address,
+    Vec<Pubkey>,
+    u64,
+);
 
 const BUFFER_OFFSET: usize = ACCOUNT_PREFIX_LEN + size_of::<Header>();
 
@@ -133,8 +144,21 @@ impl<'a> StateAccount<'a> {
         self.account
     }
 
+    fn validate_tag(program_id: &Pubkey, account: &AccountInfo<'a>) -> Result<()> {
+        let tag = super::tag(program_id, account)?;
+
+        if tag == TAG_STATE
+            || tag == TAG_SCHEDULED_STATE_FINALIZED
+            || tag == TAG_SCHEDULED_STATE_CANCELLED
+        {
+            Ok(())
+        } else {
+            Err(Error::StorageAccountInvalidTag(*account.key, tag))
+        }
+    }
+
     pub fn from_account(program_id: &Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
-        super::validate_tag(program_id, account, TAG_STATE)?;
+        Self::validate_tag(program_id, account)?;
 
         let header = super::header::<Header>(account);
         let data_ptr = unsafe {
@@ -161,6 +185,7 @@ impl<'a> StateAccount<'a> {
         accounts: &AccountsDB<'a>,
         origin: Address,
         transaction: Transaction,
+        tree_account: Option<Pubkey>,
     ) -> Result<Self> {
         let owner = match super::tag(program_id, &info)? {
             TAG_HOLDER => {
@@ -174,7 +199,7 @@ impl<'a> StateAccount<'a> {
                 finalized.validate_trx(&transaction)?;
                 finalized.owner()
             }
-            tag => return Err(Error::AccountInvalidTag(*info.key, tag)),
+            tag => return Err(Error::StorageAccountInvalidTag(*info.key, tag)),
         };
 
         // accounts.into_iter returns sorted accounts, so it's safe.
@@ -186,6 +211,11 @@ impl<'a> StateAccount<'a> {
             })
             .collect::<TreeMap<Pubkey, AccountRevision>>();
 
+        assert!(
+            !(transaction.is_scheduled_tx() ^ tree_account.is_some()),
+            "Tree account should be present iff it's a scheduled transaction."
+        );
+
         let data = boxx(Data {
             owner,
             transaction,
@@ -195,6 +225,7 @@ impl<'a> StateAccount<'a> {
             gas_used: U256::ZERO,
             priority_fee_used: U256::ZERO,
             steps_executed: 0_u64,
+            tree_account,
         });
 
         let data_offset = {
@@ -261,10 +292,49 @@ impl<'a> StateAccount<'a> {
         Ok((state, status))
     }
 
-    pub fn finalize(self, program_id: &Pubkey) -> Result<()> {
-        debug_print!("Finalize Storage {}", self.account.key);
+    #[must_use]
+    pub fn account_key(&self) -> &Pubkey {
+        self.account.key
+    }
 
-        // Change tag to finalized
+    pub fn finalize(self, program_id: &Pubkey) -> Result<()> {
+        self.finalize_impl(program_id, TAG_SCHEDULED_STATE_FINALIZED)
+    }
+
+    pub fn cancel(self, program_id: &Pubkey) -> Result<()> {
+        self.finalize_impl(program_id, TAG_SCHEDULED_STATE_CANCELLED)
+    }
+
+    fn finalize_impl(self, program_id: &Pubkey, scheduled_transition_tag: u8) -> Result<()> {
+        super::validate_tag(program_id, &self.account, TAG_STATE)?;
+
+        if self.has_tree_account() {
+            debug_print!(
+                "Pre-finalize State {} into {} for scheduled transaction",
+                self.account.key,
+                scheduled_transition_tag
+            );
+            // Change the tag, leave all the data unchanged.
+            super::set_tag(
+                program_id,
+                &self.account,
+                scheduled_transition_tag,
+                Header::VERSION,
+            )?;
+        } else {
+            debug_print!("Finalize State {}", self.account.key);
+            StateFinalizedAccount::convert_from_state(program_id, self)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn finish_scheduled_tx(self, program_id: &Pubkey) -> Result<()> {
+        super::validate_tag(program_id, &self.account, TAG_SCHEDULED_STATE_FINALIZED)?;
+        debug_print!(
+            "Finalize State {} for scheduled transaction",
+            self.account.key
+        );
         StateFinalizedAccount::convert_from_state(program_id, self)?;
 
         Ok(())
@@ -311,6 +381,15 @@ impl<'a> StateAccount<'a> {
     #[must_use]
     pub fn trx_origin(&self) -> Address {
         self.data.origin
+    }
+
+    #[must_use]
+    pub fn tree_account(&self) -> Option<Pubkey> {
+        self.data.tree_account
+    }
+
+    fn has_tree_account(&self) -> bool {
+        self.data.tree_account.is_some()
     }
 
     #[must_use]
@@ -402,13 +481,21 @@ impl<'a> StateAccount<'a> {
         assert!(origin.chain_id() == trx_chain_id);
         assert!(origin.address() == self.trx_origin());
 
+        let total_refund = self.materialize_unused_gas()?;
+
+        origin.mint(total_refund)
+    }
+
+    /// Use available gas and return it to the caller.
+    /// It's caller's responsibility to mint the unused gas tokens to the appropriate recipient.
+    pub fn materialize_unused_gas(&mut self) -> Result<U256> {
         let unused_gas = self.gas_available();
         let gas_fee_tokens = self.use_gas(unused_gas)?;
 
         let unused_priority_fee = self.priority_fee_in_tokens_available()?;
         self.use_priority_fee_tokens(unused_priority_fee)?;
 
-        origin.mint(gas_fee_tokens + unused_priority_fee)
+        Ok(gas_fee_tokens + unused_priority_fee)
     }
 
     #[must_use]
@@ -576,6 +663,15 @@ impl<'a> StateAccount<'a> {
                         memory_space_delta,
                     ))
                 }
+                3 => {
+                    let scheduled_paylod_ptr = payload_ptr
+                        .wrapping_add(payload_ptr.align_offset(align_of::<ScheduledTx>()));
+
+                    TransactionPayload::Scheduled(ScheduledTx::build(
+                        scheduled_paylod_ptr.cast::<ScheduledTx>(),
+                        memory_space_delta,
+                    ))
+                }
                 _ => {
                     return Err(Error::Custom(
                         "Incorrect transaction payload type.".to_owned(),
@@ -595,6 +691,7 @@ impl<'a> StateAccount<'a> {
 
             // Reading parts of `StateAccount`.
             let owner = read_unaligned(addr_of!((*data_ptr).owner));
+            let tree_account = read_unaligned(addr_of!((*data_ptr).tree_account));
             let origin = read_unaligned(addr_of!((*data_ptr).origin));
             let keys_ptr = addr_of!((*data_ptr).revisions).cast::<usize>();
 
@@ -607,7 +704,7 @@ impl<'a> StateAccount<'a> {
 
             let steps = read_unaligned(addr_of!((*data_ptr).steps_executed));
 
-            Ok((tx, owner, origin, accounts, steps))
+            Ok((tx, owner, tree_account, origin, accounts, steps))
         }
     }
 }

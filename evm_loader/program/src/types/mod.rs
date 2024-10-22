@@ -3,6 +3,7 @@ pub use execution_map::{ExecutionMap, ExecutionStep};
 pub use transaction::AccessListTx;
 pub use transaction::DynamicFeeTx;
 pub use transaction::LegacyTx;
+pub use transaction::ScheduledTx;
 pub use transaction::StorageKey;
 pub use transaction::Transaction;
 pub use transaction::TransactionPayload;

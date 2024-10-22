@@ -70,11 +70,12 @@ fn execute<'a>(
 
     {
         let origin_info = accounts.get(&origin_pubkey).clone();
-        let mut account = BalanceAccount::from_account(program_id, origin_info)?;
-        account.increment_revision(&Rent::get()?, &accounts)?;
+        let mut balance = BalanceAccount::from_account(program_id, origin_info)?;
+        balance.increment_revision(&Rent::get()?, &accounts)?;
 
-        storage.refund_unused_gas(&mut account)?;
+        //TODO do not refund for scheduled, refund in scheduled_finalize
+        storage.refund_unused_gas(&mut balance)?;
     }
 
-    storage.finalize(program_id)
+    storage.cancel(program_id)
 }

@@ -4,7 +4,8 @@ use solana_program::{account_info::AccountInfo, program_pack::Pack, pubkey::Pubk
 use std::ops::Deref;
 
 pub struct Treasury<'a> {
-    info: &'a AccountInfo<'a>,
+    pub info: &'a AccountInfo<'a>,
+    index: u32,
     bump_seed: u8,
 }
 
@@ -24,7 +25,11 @@ impl<'a> Treasury<'a> {
             return Err(Error::AccountInvalidKey(*info.key, expected_key));
         }
 
-        Ok(Self { info, bump_seed })
+        Ok(Self {
+            info,
+            index,
+            bump_seed,
+        })
     }
 
     #[must_use]
@@ -36,8 +41,13 @@ impl<'a> Treasury<'a> {
     }
 
     #[must_use]
-    pub fn get_bump_seed(&self) -> u8 {
+    pub fn bump_seed(&self) -> u8 {
         self.bump_seed
+    }
+
+    #[must_use]
+    pub fn index(&self) -> u32 {
+        self.index
     }
 }
 
@@ -77,7 +87,7 @@ impl<'a> MainTreasury<'a> {
     }
 
     #[must_use]
-    pub fn get_bump_seed(&self) -> u8 {
+    pub fn bump_seed(&self) -> u8 {
         self.bump_seed
     }
 }

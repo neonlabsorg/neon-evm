@@ -111,6 +111,7 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     state_overrides: Option<AccountOverrides>,
     accounts_cache: FrozenMap<Pubkey, Box<Option<Account>>>,
     used_accounts: FrozenMap<Pubkey, Box<RefCell<SolanaAccount>>>,
+    balance_addr_to_pubkey: FrozenMap<Address, Box<Pubkey>>,
     return_data: Option<TransactionReturnData>,
     logs: Vec<Log>,
     logs_stack: Vec<usize>,
@@ -174,6 +175,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             rent,
             accounts_cache,
             used_accounts: FrozenMap::new(),
+            balance_addr_to_pubkey: FrozenMap::new(),
             return_data: None,
             logs: vec![],
             logs_stack: vec![],
@@ -208,6 +210,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             state_overrides: other.state_overrides.clone(),
             accounts_cache: other.accounts_cache.clone(),
             used_accounts: other.used_accounts.clone(),
+            balance_addr_to_pubkey: other.balance_addr_to_pubkey.clone(),
             return_data: None,
             logs: other.logs.clone(),
             logs_stack: other.logs_stack.clone(),
@@ -272,6 +275,11 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             }
         }
         Ok(())
+    }
+
+    pub fn add_balance_pubkey(&self, address: Address, pubkey: Pubkey) {
+        self.balance_addr_to_pubkey
+            .insert(address, Box::new(pubkey));
     }
 
     async fn download_accounts(&self, pubkeys: &[Pubkey]) -> Result<(), NeonError> {
@@ -744,12 +752,20 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         account_data.expand(required_len);
         account_data.lamports = self.rent.minimum_balance(account_data.get_length());
 
-        BalanceAccount::initialize(
-            account_data.into_account_info(),
-            &self.program_id,
-            address,
-            chain_id,
-        )
+        match self.balance_addr_to_pubkey.get(&address) {
+            Some(pubkey) => BalanceAccount::initialize_for_solana_user(
+                account_data.into_account_info(),
+                &self.program_id,
+                *pubkey,
+                chain_id,
+            ),
+            None => BalanceAccount::initialize(
+                account_data.into_account_info(),
+                &self.program_id,
+                address,
+                chain_id,
+            ),
+        }
     }
 
     fn get_or_create_ethereum_balance(
@@ -927,6 +943,15 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
     pub fn logs(&self) -> Vec<Log> {
         self.logs.clone()
     }
+
+    fn chain_id(&self, chain: &str) -> u64 {
+        for chain_info in &self.chains {
+            if chain_info.name == chain {
+                return chain_info.id;
+            }
+        }
+        unreachable!();
+    }
 }
 
 impl<T: Rpc> LogCollector for EmulatorAccountStorage<'_, T> {
@@ -955,7 +980,6 @@ impl<T: Rpc> LogCollector for EmulatorAccountStorage<'_, T> {
 #[async_trait(?Send)]
 impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     fn program_id(&self) -> &Pubkey {
-        debug!("program_id");
         &self.program_id
     }
 
@@ -1033,6 +1057,19 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         .unwrap()
     }
 
+    async fn solana_user_address(&self, address: Address) -> Option<Pubkey> {
+        info!("solana_user_address {address}");
+
+        self.ethereum_balance_map_or(
+            address,
+            self.chain_id("sol"),
+            None,
+            |account: &BalanceAccount| account.solana_address(),
+        )
+        .await
+        .unwrap()
+    }
+
     fn is_valid_chain_id(&self, chain_id: u64) -> bool {
         for chain in &self.chains {
             if chain.id == chain_id {
@@ -1054,13 +1091,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     }
 
     fn default_chain_id(&self) -> u64 {
-        for chain in &self.chains {
-            if chain.name == "neon" {
-                return chain.id;
-            }
-        }
-
-        unreachable!();
+        self.chain_id("neon")
     }
 
     async fn contract_chain_id(&self, address: Address) -> evm_loader::error::Result<u64> {

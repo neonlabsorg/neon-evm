@@ -1,4 +1,4 @@
-use super::Operator;
+use super::{Operator, Signer, Treasury};
 use solana_program::account_info::AccountInfo;
 use solana_program::program::{invoke_signed_unchecked, invoke_unchecked};
 use solana_program::program_error::ProgramError;
@@ -67,6 +67,60 @@ impl<'a> System<'a> {
                 ),
                 &[payer.info.clone(), new_account.clone(), self.0.clone()],
                 &[new_account_seeds],
+            )
+        }
+    }
+
+    pub fn create_pda_account_with_treasury_payer(
+        &self,
+        owner: &Pubkey,
+        payer: &Treasury<'a>,
+        new_account: &AccountInfo<'a>,
+        new_account_seeds: &[&[u8]],
+        space: usize,
+        rent: &Rent,
+    ) -> Result<(), ProgramError> {
+        let minimum_balance = rent.minimum_balance(space).max(1);
+
+        let treasury_seeds: &[&[u8]] = &[
+            crate::config::TREASURY_POOL_SEED.as_bytes(),
+            &payer.index().to_le_bytes(),
+            &[payer.bump_seed()],
+        ];
+
+        if new_account.lamports() > 0 {
+            let required_lamports = minimum_balance.saturating_sub(new_account.lamports());
+
+            if required_lamports > 0 {
+                invoke_signed_unchecked(
+                    &system_instruction::transfer(payer.key, new_account.key, required_lamports),
+                    &[payer.info.clone(), new_account.clone(), self.0.clone()],
+                    &[treasury_seeds],
+                )?;
+            }
+
+            invoke_signed_unchecked(
+                &system_instruction::allocate(new_account.key, space as u64),
+                &[new_account.clone(), self.0.clone()],
+                &[new_account_seeds],
+            )?;
+
+            invoke_signed_unchecked(
+                &system_instruction::assign(new_account.key, owner),
+                &[new_account.clone(), self.0.clone()],
+                &[new_account_seeds],
+            )
+        } else {
+            invoke_signed_unchecked(
+                &system_instruction::create_account(
+                    payer.key,
+                    new_account.key,
+                    minimum_balance,
+                    space as u64,
+                    owner,
+                ),
+                &[payer.info.clone(), new_account.clone(), self.0.clone()],
+                &[treasury_seeds, new_account_seeds],
             )
         }
     }
@@ -150,6 +204,51 @@ impl<'a> System<'a> {
         invoke_unchecked(
             &system_instruction::transfer(source.key, target.key, lamports),
             &[source.info.clone(), target.clone(), self.0.clone()],
+        )
+    }
+
+    pub fn transfer_from_signer(
+        &self,
+        source: &Signer<'a>,
+        target: &AccountInfo<'a>,
+        lamports: u64,
+    ) -> Result<(), ProgramError> {
+        crate::debug_print!(
+            "system transfer {} lamports from {} to {}",
+            lamports,
+            source.key,
+            target.key
+        );
+
+        invoke_unchecked(
+            &system_instruction::transfer(source.key, target.key, lamports),
+            &[source.info.clone(), target.clone(), self.0.clone()],
+        )
+    }
+
+    pub fn transfer_from_treasury(
+        &self,
+        source: &Treasury<'a>,
+        target: &AccountInfo<'a>,
+        lamports: u64,
+    ) -> Result<(), ProgramError> {
+        crate::debug_print!(
+            "system transfer {} lamports from treasury {} to {}",
+            lamports,
+            source.key,
+            target.key
+        );
+
+        let seeds: &[&[u8]] = &[
+            crate::config::TREASURY_POOL_SEED.as_bytes(),
+            &source.index().to_le_bytes(),
+            &[source.bump_seed()],
+        ];
+
+        invoke_signed_unchecked(
+            &system_instruction::transfer(source.key, target.key, lamports),
+            &[source.info.clone(), target.clone(), self.0.clone()],
+            &[seeds],
         )
     }
 }

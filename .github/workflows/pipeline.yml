@@ -37,6 +37,7 @@ jobs:
           fetch-depth: 0
       - name: Specify image tags
         run: |
+          pip3 install -r ./.github/workflows/requirements.txt
           python3 ./.github/workflows/deploy.py specify_image_tags \
           --git_ref=${{ github.ref }} \
           --git_head_ref=${{ github.head_ref }} \

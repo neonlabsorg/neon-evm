@@ -1,15 +1,17 @@
-import os
-import re
-import time
-
-import docker
-import sys
-import subprocess
-import requests
 import json
+import mimetypes
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import time
 import typing as tp
 from urllib.parse import urlparse
 
+import boto3
+import docker
+import requests
 from github_api_client import GithubClient
 
 try:
@@ -33,8 +35,8 @@ DOCKER_PASSWORD = os.environ.get("DHUBP")
 IMAGE_NAME = os.environ.get("IMAGE_NAME", "evm_loader")
 RUN_LINK_REPO = os.environ.get("RUN_LINK_REPO")
 DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
-SOLANA_NODE_VERSION = 'v1.18.18'
-SOLANA_BPF_VERSION = 'v1.18.18'
+SOLANA_NODE_VERSION = "v1.18.18"
+SOLANA_BPF_VERSION = "v1.18.18"
 
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 RELEASE_TAG_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.\d{1,2}"
@@ -44,6 +46,8 @@ NEON_TEST_IMAGE_NAME = "neon_tests"
 
 PROXY_ENDPOINT = os.environ.get("PROXY_ENDPOINT")
 NEON_TESTS_ENDPOINT = os.environ.get("NEON_TESTS_ENDPOINT")
+NEON_TESTS_BUCKET_NAME = os.environ.get("AWS_S3_BUCKET", "neon-test-allure")
+ALLURE_REPORT_URL = "allure_report.url"
 
 
 @click.group()
@@ -52,7 +56,7 @@ def cli():
 
 
 def ref_to_image_tag(ref):
-    return ref.split('/')[-1]
+    return ref.split("/")[-1]
 
 
 def set_github_env(envs: tp.Dict, upper=True) -> None:
@@ -67,17 +71,16 @@ def set_github_env(envs: tp.Dict, upper=True) -> None:
 
 def is_image_exist(image, tag):
     response = requests.get(
-        url=f"https://registry.hub.docker.com/v2/repositories/{DOCKERHUB_ORG_NAME}/{image}/tags/{tag}")
+        url=f"https://registry.hub.docker.com/v2/repositories/{DOCKERHUB_ORG_NAME}/{image}/tags/{tag}"
+    )
     return response.status_code == 200
 
 
 @cli.command(name="specify_image_tags")
-@click.option('--git_ref')
-@click.option('--git_head_ref')
-@click.option('--git_base_ref')
-def specify_image_tags(git_ref,
-                       git_head_ref,
-                       git_base_ref):
+@click.option("--git_ref")
+@click.option("--git_head_ref")
+@click.option("--git_base_ref")
+def specify_image_tags(git_ref, git_head_ref, git_base_ref):
     # evm_tag
     if "refs/pull" in git_ref:
         evm_tag = ref_to_image_tag(git_head_ref)
@@ -102,7 +105,7 @@ def specify_image_tags(git_ref,
     if evm_tag and is_image_exist(NEON_TEST_IMAGE_NAME, evm_tag):
         neon_test_tag = evm_tag
     elif is_evm_release:
-        neon_test_tag = re.sub(r'\.[0-9]*$', '.x', evm_tag)
+        neon_test_tag = re.sub(r"\.[0-9]*$", ".x", evm_tag)
         if not is_image_exist(NEON_TEST_IMAGE_NAME, neon_test_tag):
             raise RuntimeError(f"{NEON_TEST_IMAGE_NAME} image with {neon_test_tag} tag isn't found")
     elif evm_pr_version_branch and is_image_exist(NEON_TEST_IMAGE_NAME, evm_pr_version_branch):
@@ -110,22 +113,26 @@ def specify_image_tags(git_ref,
     else:
         neon_test_tag = "latest"
 
-    env = dict(evm_tag=evm_tag,
-               evm_pr_version_branch=evm_pr_version_branch,
-               is_evm_release=is_evm_release,
-               neon_test_tag=neon_test_tag)
+    env = dict(
+        evm_tag=evm_tag,
+        evm_pr_version_branch=evm_pr_version_branch,
+        is_evm_release=is_evm_release,
+        neon_test_tag=neon_test_tag,
+    )
     set_github_env(env)
 
 
 @cli.command(name="build_docker_image")
-@click.option('--evm_sha_tag')
+@click.option("--evm_sha_tag")
 def build_docker_image(evm_sha_tag):
-    solana_image = f'solanalabs/solana:{SOLANA_NODE_VERSION}'
+    solana_image = f"solanalabs/solana:{SOLANA_NODE_VERSION}"
     docker_client.pull(solana_image)
-    buildargs = {"REVISION": evm_sha_tag,
-                 "SOLANA_IMAGE": solana_image,
-                 "SOLANA_BPF_VERSION": SOLANA_BPF_VERSION,
-                 "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME}
+    buildargs = {
+        "REVISION": evm_sha_tag,
+        "SOLANA_IMAGE": solana_image,
+        "SOLANA_BPF_VERSION": SOLANA_BPF_VERSION,
+        "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME,
+    }
 
     tag = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}:{evm_sha_tag}"
     click.echo("start build")
@@ -134,8 +141,8 @@ def build_docker_image(evm_sha_tag):
 
 
 @cli.command(name="publish_image")
-@click.option('--evm_sha_tag')
-@click.option('--evm_tag')
+@click.option("--evm_sha_tag")
+@click.option("--evm_tag")
 def publish_image(evm_sha_tag, evm_tag):
     push_image_with_tag(evm_sha_tag, evm_sha_tag)
     # push latest and version tags only on the finalizing step
@@ -144,8 +151,8 @@ def publish_image(evm_sha_tag, evm_tag):
 
 
 @cli.command(name="finalize_image")
-@click.option('--evm_sha_tag')
-@click.option('--evm_tag')
+@click.option("--evm_sha_tag")
+@click.option("--evm_tag")
 def finalize_image(evm_sha_tag, evm_tag):
     if re.match(RELEASE_TAG_TEMPLATE, evm_tag) is not None or evm_tag == "latest":
         push_image_with_tag(evm_sha_tag, evm_tag)
@@ -167,10 +174,10 @@ def run_subprocess(command):
 
 
 @cli.command(name="run_tests")
-@click.option('--evm_sha_tag')
-@click.option('--neon_test_tag')
-@click.option('--run_number', default=1)
-@click.option('--run_attempt', default=1)
+@click.option("--evm_sha_tag")
+@click.option("--neon_test_tag")
+@click.option("--run_number", default=1)
+@click.option("--run_attempt", default=1)
 def run_tests(evm_sha_tag, neon_test_tag, run_number, run_attempt):
     os.environ["EVM_LOADER_IMAGE"] = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}:{evm_sha_tag}"
     os.environ["NEON_TESTS_IMAGE"] = f"{DOCKERHUB_ORG_NAME}/{NEON_TEST_IMAGE_NAME}:{neon_test_tag}"
@@ -184,22 +191,24 @@ def run_tests(evm_sha_tag, neon_test_tag, run_number, run_attempt):
     click.echo("Start tests")
     print(test_container_name)
     exec_id = docker_client.exec_create(
-        container=test_container_name, cmd="python3 clickfile.py run evm --numprocesses 8 --network docker_net")
-    logs = docker_client.exec_start(exec_id['Id'], stream=True)
+        container=test_container_name, cmd="python3 clickfile.py run evm --numprocesses 8 --network docker_net"
+    )
+    logs = docker_client.exec_start(exec_id["Id"], stream=True)
 
     tests_are_failed = False
     all_logs = ""
     for line in logs:
-        current_line = line.decode('utf-8')
+        current_line = line.decode("utf-8")
         all_logs += current_line
         click.echo(current_line)
-        if 'ERROR ' in current_line or 'FAILED ' in current_line or 'Error: ' in current_line:
+        if "ERROR " in current_line or "FAILED " in current_line or "Error: " in current_line:
             tests_are_failed = True
             print("Tests are failed")
 
-    exec_status = docker_client.exec_inspect(exec_id['Id'])["ExitCode"]
+    exec_status = docker_client.exec_inspect(exec_id["Id"])["ExitCode"]
 
     run_subprocess(f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml logs neon-core-api")
+    run_subprocess(f"docker cp {test_container_name}:/opt/neon-tests/allure-results ./allure-results")
 
     stop_containers(project_name)
 
@@ -209,10 +218,10 @@ def run_tests(evm_sha_tag, neon_test_tag, run_number, run_attempt):
 
 def get_container_name(project_name, service_name):
     data = subprocess.run(
-        f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml ps",
-        shell=True, capture_output=True, text=True).stdout
+        f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml ps", shell=True, capture_output=True, text=True
+    ).stdout
     click.echo(data)
-    pattern = rf'{project_name}[-_]{service_name}[-_]1'
+    pattern = rf"{project_name}[-_]{service_name}[-_]1"
     match = re.search(pattern, data)
     return match.group(0)
 
@@ -222,20 +231,19 @@ def stop_containers(project_name):
 
 
 @cli.command(name="trigger_proxy_action")
-@click.option('--evm_pr_version_branch')
-@click.option('--is_evm_release')
-@click.option('--evm_sha_tag')
-@click.option('--evm_tag')
-@click.option('--token')
-@click.option('--labels')
-@click.option('--pr_url')
-@click.option('--pr_number')
-def trigger_proxy_action(evm_pr_version_branch, is_evm_release, evm_sha_tag, evm_tag, token, labels,
-                         pr_url, pr_number):
+@click.option("--evm_pr_version_branch")
+@click.option("--is_evm_release")
+@click.option("--evm_sha_tag")
+@click.option("--evm_tag")
+@click.option("--token")
+@click.option("--labels")
+@click.option("--pr_url")
+@click.option("--pr_number")
+def trigger_proxy_action(evm_pr_version_branch, is_evm_release, evm_sha_tag, evm_tag, token, labels, pr_url, pr_number):
     is_version_branch = re.match(VERSION_BRANCH_TEMPLATE, evm_tag) is not None
-    is_FTS_labeled = 'fullTestSuit' in labels
+    is_FTS_labeled = "fullTestSuit" in labels
 
-    if evm_tag == "latest" or is_evm_release == 'True' or is_version_branch or is_FTS_labeled:
+    if evm_tag == "latest" or is_evm_release == "True" or is_version_branch or is_FTS_labeled:
         full_test_suite = True
     else:
         full_test_suite = False
@@ -247,12 +255,12 @@ def trigger_proxy_action(evm_pr_version_branch, is_evm_release, evm_sha_tag, evm
         proxy_branch = evm_tag
     elif evm_pr_version_branch:
         proxy_branch = evm_pr_version_branch
-    elif is_evm_release == 'True':
-        proxy_branch = re.sub(r'\.\d+$', '.x', evm_tag)
+    elif is_evm_release == "True":
+        proxy_branch = re.sub(r"\.\d+$", ".x", evm_tag)
     elif is_version_branch:
         proxy_branch = evm_tag
     else:
-        proxy_branch = 'develop'
+        proxy_branch = "develop"
     click.echo(f"Proxy branch: {proxy_branch}")
 
     initial_pr = f"{pr_url}/{pr_number}/comments" if pr_number else ""
@@ -294,9 +302,11 @@ def wait_condition(func_cond, timeout_sec=60, delay=0.5):
 @click.option("--build_url", help="github action test build url.")
 def send_notification(evm_tag, url, build_url):
 
-    if re.match(RELEASE_TAG_TEMPLATE, evm_tag) is not None \
-        or re.match(VERSION_BRANCH_TEMPLATE, evm_tag) is not None \
-            or evm_tag == "latest":
+    if (
+        re.match(RELEASE_TAG_TEMPLATE, evm_tag) is not None
+        or re.match(VERSION_BRANCH_TEMPLATE, evm_tag) is not None
+        or evm_tag == "latest"
+    ):
         tpl = ERR_MSG_TPL.copy()
 
         parsed_build_url = urlparse(build_url).path.split("/")
@@ -353,6 +363,85 @@ def process_output(output):
             if errors:
                 message = "problem executing Docker: {}".format(". ".join(errors))
                 raise SystemError(message)
+
+
+client = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "eu-central-1"))
+
+
+def download(source, destination, bucket=NEON_TESTS_BUCKET_NAME):
+    files = list_bucket(source, bucket)
+    for f in files:
+        dst_file = pathlib.Path(destination) / f["Key"].split(str(source))[1][1:]
+        if not dst_file.parent.exists():
+            dst_file.parent.mkdir(parents=True)
+        client.download_file(bucket, f["Key"], str(dst_file))
+
+
+def upload(source, destination, bucket=NEON_TESTS_BUCKET_NAME):
+    source = pathlib.Path(source)
+    destination = pathlib.Path(destination)
+
+    if source.is_file():
+        mimetype = mimetypes.guess_type(source.name)[0]
+        client.upload_file(str(source), bucket, str(destination / source.name), ExtraArgs={"ContentType": mimetype})
+        return
+
+    for f in source.glob("**/*"):
+        if not f.is_file():
+            continue
+        mimetype = mimetypes.guess_type(f.name)[0]
+        client.upload_file(
+            str(f), bucket, str(destination / f.relative_to(source)), ExtraArgs={"ContentType": mimetype}
+        )
+
+
+def list_bucket(directory, bucket=NEON_TESTS_BUCKET_NAME):
+    result = client.list_objects_v2(Bucket=bucket, Prefix=str(directory))
+    return result.get("Contents", [])
+
+
+@cli.group("allure")
+@click.pass_context
+def allure_cli(ctx):
+    """Commands for load test manipulation."""
+    pass
+
+
+@allure_cli.command("upload-report", help="Upload allure history")
+@click.option(
+    "-s",
+    "--source",
+    default="./allure-report",
+    type=click.Path(file_okay=False, dir_okay=True),
+)
+def upload_allure_report(source: str = "./allure-report"):
+    branch = os.environ.get("GITHUB_REF_NAME")
+    build_id = os.environ.get("GITHUB_RUN_NUMBER")
+    upload(source, branch / build_id)
+    report_url = f"http://neon-test-allure.s3-website.eu-central-1.amazonaws.com/{path / build_id}"
+
+    with open(ALLURE_REPORT_URL, "w") as f:
+        f.write(report_url)
+
+    with open("/tmp/index.html", "w") as f:
+        f.write(
+            f"""<!DOCTYPE html><meta charset="utf-8"><meta http-equiv="refresh" content="0; URL={report_url}">
+        <meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0">
+        """
+        )
+
+    upload("/tmp/index.html", branch)
+    print(f"Allure report link: {report_url}")
+
+    with open("allure_report_info", "w") as f:
+        f.write(f"🔗 Allure [report]({report_url})\n")
+
+
+@allure_cli.command("generate", help="Generate allure history")
+def generate_allure_report():
+    cmd = subprocess.run("allure generate", shell=True)
+    if cmd.returncode != 0:
+        sys.exit(cmd.returncode)
 
 
 if __name__ == "__main__":

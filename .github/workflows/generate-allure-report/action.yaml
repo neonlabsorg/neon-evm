@@ -1,0 +1,45 @@
+name: "Allure report"
+description: "Generate allure report from test container"
+inputs:
+  container:
+    description: 'container name'
+    required: true
+  network:
+    description: 'network name'
+    required: true
+  aws_access_key_id:
+    description: 'aws access key id'
+    required: true
+  aws_secret_access_key:
+    description: 'aws secret access key'
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v4
+      if: always()
+      with:
+        name: allure-results.tar.gz
+        path: allure-results.tar.gz
+    - name: "Generate allure report"
+      if: always()
+      shell: bash
+      run: |
+        tar -xzvf allure-results.tar.gz ./allure-results
+        docker exec -i ${{ inputs.container }} python3 ./clickfile.py allure generate
+    - name: "Upload allure history"
+      if: always()
+      shell: bash
+      run: |
+        docker exec -i -e GITHUB_REF_NAME=${{ github.ref_name }} \
+        -e GITHUB_RUN_NUMBER=${{ github.run_number }} \
+        -e AWS_ACCESS_KEY_ID=${{ inputs.aws_access_key_id }} \
+        -e AWS_SECRET_ACCESS_KEY=${{ inputs.aws_secret_access_key }} \
+        ${{ inputs.container }} \
+        python3 ./clickfile.py allure upload-report ${{ inputs.tests_name }} --network ${{ inputs.network }}
+    - name: "Add result info to github page summary"
+      if: always()
+      shell: bash
+      run: |
+        docker cp ${{ inputs.container }}:/opt/neon-tests/allure_report_info ./
+        cat allure_report_info >> $GITHUB_STEP_SUMMARY

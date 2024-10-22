@@ -37,6 +37,7 @@ jobs:
           fetch-depth: 0
       - name: Specify image tags
         run: |
+          pip3 install -r ./.github/workflows/requirements.txt
           python3 ./.github/workflows/deploy.py specify_image_tags \
           --git_ref=${{ github.ref }} \
           --git_head_ref=${{ github.head_ref }} \
@@ -73,6 +74,21 @@ jobs:
           --neon_test_tag=${{ needs.build-image.outputs.neon_test_tag }} \
           --run_number=${{ github.run_number }} \
           --run_attempt=${{ github.run_attempt }}
+          tar -czvf allure-results.tar.gz allure-results
+      - name: Upload allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results.tar.gz
+          path: allure-results.tar.gz
+      - name: "Generate allure report"
+        if: always()
+        uses: ./.github/workflows/generate-allure-report
+        with:
+          container: ${{ env.CONTAINER }}
+          network: ${{ env.NETWORK }}
+          aws_access_key_id:  ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key:  ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       - name: Cancel the build if job failed
         if: "failure()"
         uses: "andymckay/cancel-action@0.4"

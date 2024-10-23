@@ -263,7 +263,6 @@ pub enum Error {
     #[error("Transaction Tree - invalid transaction data ChainId")]
     TreeAccountTxInvalidDataChainId,
 
-
     #[error("Transaction Tree - invalid transaction data Fee")]
     TreeAccountTxInvalidDataFee,
 

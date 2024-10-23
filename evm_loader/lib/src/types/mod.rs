@@ -107,12 +107,53 @@ pub struct AccessListItem {
     pub storage_keys: Vec<StorageKey>,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub enum FromAddress {
+    Ethereum(Address),
+    Solana(Pubkey),
+}
+
+impl std::fmt::Display for FromAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ethereum(address) => address.fmt(f),
+            Self::Solana(pubkey) => pubkey.fmt(f),
+        }
+    }
+}
+
+impl std::str::FromStr for FromAddress {
+    type Err = solana_sdk::pubkey::ParsePubkeyError;
+
+    #[allow(clippy::option_if_let_else)] // map_or_else makes code unreadable
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Ok(address) = s.parse::<Address>() {
+            Ok(Self::Ethereum(address))
+        } else if let Ok(pubkey) = s.parse::<Pubkey>() {
+            Ok(Self::Solana(pubkey))
+        } else {
+            Err(solana_sdk::pubkey::ParsePubkeyError::Invalid)
+        }
+    }
+}
+
+impl FromAddress {
+    #[must_use]
+    pub fn address(&self) -> Address {
+        match self {
+            Self::Ethereum(address) => *address,
+            Self::Solana(pubkey) => Address::from_solana_address(pubkey),
+        }
+    }
+}
+
 #[serde_as]
 #[skip_serializing_none]
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct TxParams {
     pub nonce: Option<u64>,
-    pub from: Address,
+    #[serde_as(as = "DisplayFromStr")]
+    pub from: FromAddress,
     pub to: Option<Address>,
     #[serde_as(as = "Option<Hex>")]
     pub data: Option<Vec<u8>>,
@@ -130,7 +171,8 @@ impl TxParams {
     pub async fn into_transaction(self, backend: &impl AccountStorage) -> (Address, Transaction) {
         let chain_id = self.chain_id.unwrap_or_else(|| backend.default_chain_id());
 
-        let origin_nonce = backend.nonce(self.from, chain_id).await;
+        let from = self.from.address();
+        let origin_nonce = backend.nonce(from, chain_id).await;
         let nonce = self.nonce.unwrap_or(origin_nonce);
 
         let payload = if let Some(access_list) = self.access_list {
@@ -187,6 +229,7 @@ impl TxParams {
             };
             TransactionPayload::Legacy(legacy_tx)
         };
+        // TODO TransactionPayload::Scheduled support (if needed?)
 
         let tx = Transaction {
             transaction: payload,
@@ -195,13 +238,13 @@ impl TxParams {
             signed_hash: [0; 32],
         };
 
-        (self.from, tx)
+        (from, tx)
     }
 
     #[must_use]
     pub fn from_transaction(origin: Address, tx: &Transaction) -> Self {
         Self {
-            from: origin,
+            from: FromAddress::Ethereum(origin),
             to: tx.target(),
             nonce: Some(tx.nonce()),
             data: Some(tx.call_data().to_vec()),
@@ -305,6 +348,24 @@ impl BalanceAddress {
 pub struct GetBalanceRequest {
     #[serde_as(as = "OneOrMany<_>")]
     pub account: Vec<BalanceAddress>,
+    pub slot: Option<u64>,
+    pub id: Option<String>,
+}
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct GetBalanceWithPubkeyRequest {
+    #[serde_as(as = "OneOrMany<DisplayFromStr>")]
+    pub account: Vec<Pubkey>,
+    pub slot: Option<u64>,
+    pub id: Option<String>,
+}
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct GetTransactionTreeRequest {
+    pub origin: Address,
+    pub nonce: u64,
     pub slot: Option<u64>,
     pub id: Option<String>,
 }

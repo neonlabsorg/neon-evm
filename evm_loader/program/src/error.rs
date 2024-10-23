@@ -95,6 +95,9 @@ pub enum Error {
     #[error("Transaction already finalized")]
     StorageAccountFinalized,
 
+    #[error("Storage Account {0} has invalid tag, actual {1}")]
+    StorageAccountInvalidTag(Pubkey, u8),
+
     #[error("Unknown extension method selector {1:?}, contract {0}")]
     UnknownPrecompileMethodSelector(Address, [u8; 4]),
 
@@ -217,6 +220,90 @@ pub enum Error {
 
     #[error("Priority fee calculation error: {0}")]
     PriorityFeeError(String),
+
+    #[error("Transaction Tree - not ready for destruction")]
+    TreeAccountNotReadyForDestruction,
+
+    #[error("Transaction Tree - last index overflow")]
+    TreeAccountLastIndexOverflow,
+
+    #[error("Transaction Tree - invalid payer")]
+    TreeAccountInvalidPayer,
+
+    #[error("Transaction Tree - invalid chainId")]
+    TreeAccountInvalidChainId,
+
+    #[error("Transaction Tree - invalid transaction type")]
+    TreeAccountTxInvalidType,
+
+    #[error("Transaction Tree - invalid child transaction index")]
+    TreeAccountTxInvalidChildIndex,
+
+    #[error("Transaction Tree - invalid transaction data")]
+    TreeAccountTxInvalidData,
+
+    #[error("Transaction Tree - invalid transaction data pubkey")]
+    TreeAccountTxInvalidDataPubkey,
+
+    #[error("Transaction Tree - invalid transaction data index")]
+    TreeAccountTxInvalidDataIndex,
+
+    #[error("Transaction Tree - invalid transaction data hash")]
+    TreeAccountTxInvalidDataHash,
+
+    #[error("Transaction Tree - invalid transaction data Gas")]
+    TreeAccountTxInvalidDataGas,
+
+    #[error("Transaction Tree - invalid transaction data Value")]
+    TreeAccountTxInvalidDataValue,
+
+    #[error("Transaction Tree - invalid transaction data payer")]
+    TreeAccountTxInvalidDataPayer,
+
+    #[error("Transaction Tree - invalid transaction data ChainId")]
+    TreeAccountTxInvalidDataChainId,
+
+    #[error("Transaction Tree - invalid transaction data Fee")]
+    TreeAccountTxInvalidDataFee,
+
+    #[error("Transaction Tree - invalid transaction data PriorityFee")]
+    TreeAccountTxInvalidDataPriorityFee,
+
+    #[error("Transaction Tree - invalid transaction data Intent")]
+    TreeAccountTxInvalidDataIntent,
+
+    #[error("Transaction Tree - invalid transaction data CallData")]
+    TreeAccountTxInvalidDataCallData,
+
+    #[error("Transaction Tree - invalid transaction data Balance")]
+    TreeAccountTxInvalidDataBalance,
+
+    #[error("Transaction Tree - invalid transaction data Sender")]
+    TreeAccountTxInvalidDataSender,
+
+    #[error("Transaction Tree - transaction invalid parent count")]
+    TreeAccountTxInvalidParentCount,
+
+    #[error("Transaction Tree - transaction invalid success execute limit")]
+    TreeAccountTxInvalidSuccessLimit,
+
+    #[error("Transaction Tree - transaction not found")]
+    TreeAccountTxNotFound,
+
+    #[error("Transaction Tree - transaction invalid status")]
+    TreeAccountTxInvalidStatus,
+
+    #[error("Attempt to perform an operation with classic transaction, whereas scheduled transaction is expected")]
+    NotScheduledTransaction,
+
+    #[error("Scheduled Transaction has invalid tree account: expected={0}, actual={1}")]
+    ScheduledTxInvalidTreeAccount(Pubkey, Pubkey),
+
+    #[error("Scheduled Transaction is not ready to be finalized: holder={0}")]
+    ScheduledTxNoExitStatus(Pubkey),
+
+    #[error("Schedule Transaction is already in progress, holder={0}")]
+    ScheduledTxAlreadyInProgress(Pubkey),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

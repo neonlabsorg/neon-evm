@@ -44,6 +44,16 @@ impl Address {
         Self(*bytes)
     }
 
+    #[must_use]
+    pub fn from_solana_address(source: &Pubkey) -> Self {
+        use solana_program::keccak::{hash, Hash};
+
+        let Hash(hash) = hash(&source.to_bytes());
+
+        let bytes = arrayref::array_ref![hash, 12, 20];
+        Self(*bytes)
+    }
+
     pub fn from_hex(mut s: &str) -> Result<Self, Error> {
         if s.starts_with("0x") {
             s = &s[2..];

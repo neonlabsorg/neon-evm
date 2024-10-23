@@ -142,6 +142,44 @@ fn process_instruction<'a>(
                 instruction,
             )
         }
+        EvmInstruction::ScheduledTransactionStartFromInstruction => {
+            instruction::scheduled_transaction_start_from_instruction::process(
+                program_id,
+                accounts,
+                instruction,
+            )
+        }
+        EvmInstruction::ScheduledTransactionStartFromAccount => {
+            instruction::scheduled_transaction_start_from_account::process(
+                program_id,
+                accounts,
+                instruction,
+            )
+        }
+        EvmInstruction::ScheduledTransactionFinish => {
+            instruction::scheduled_transaction_finish::process(program_id, accounts, instruction)
+        }
+        EvmInstruction::ScheduledTransactionSkip => {
+            // TODO adjust.
+            instruction::scheduled_transaction_start_from_instruction::process(
+                program_id,
+                accounts,
+                instruction,
+            )
+        }
+        EvmInstruction::ScheduledTransactionCreate => {
+            instruction::scheduled_transaction_create::process(program_id, accounts, instruction)
+        }
+        EvmInstruction::ScheduledTransactionCreateMultiple => {
+            instruction::scheduled_transaction_create_multiple::process(
+                program_id,
+                accounts,
+                instruction,
+            )
+        }
+        EvmInstruction::ScheduledTransactionDestroy => {
+            instruction::scheduled_transaction_destroy::process(program_id, accounts, instruction)
+        }
         EvmInstruction::ConfigGetChainCount => {
             instruction::config_get_chain_count::process(program_id, accounts, instruction)
         }

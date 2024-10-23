@@ -71,7 +71,8 @@ pub fn process<'a>(
             excessive_lamports += crate::account::legacy::update_legacy_accounts(&accounts_db)?;
             gasometer.refund_lamports(excessive_lamports);
 
-            let storage = StateAccount::new(program_id, storage_info, &accounts_db, origin, trx)?;
+            let storage =
+                StateAccount::new(program_id, storage_info, &accounts_db, origin, trx, None)?;
 
             do_begin(accounts_db, storage, gasometer)
         }

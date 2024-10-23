@@ -58,4 +58,8 @@ pub enum LibMethod {
     Trace,
     #[strum(serialize = "simulate_solana")]
     SimulateSolana,
+    #[strum(serialize = "balance_with_pubkey")]
+    GetBalanceWithPubkey,
+    #[strum(serialize = "transaction_tree")]
+    GetTransactionTree,
 }

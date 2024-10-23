@@ -3,16 +3,17 @@
 use async_trait::async_trait;
 use jsonrpsee_core::{client::ClientT, rpc_params};
 use jsonrpsee_http_client::{HttpClient, HttpClientBuilder};
+use neon_lib::types::GetBalanceWithPubkeyRequest;
 use neon_lib::LibMethod;
 use neon_lib::{
     commands::{
         emulate::EmulateResponse, get_balance::GetBalanceResponse, get_config::GetConfigResponse,
         get_contract::GetContractResponse, get_holder::GetHolderResponse,
-        get_storage_at::GetStorageAtReturn,
+        get_storage_at::GetStorageAtReturn, get_transaction_tree::GetTreeResponse,
     },
     types::{
         EmulateApiRequest, GetBalanceRequest, GetContractRequest, GetHolderRequest,
-        GetStorageAtRequest,
+        GetStorageAtRequest, GetTransactionTreeRequest,
     },
 };
 use serde::de::DeserializeOwned;
@@ -65,6 +66,13 @@ impl NeonRpcClient for NeonRpcHttpClient {
         self.request(LibMethod::GetBalance, params).await
     }
 
+    async fn balance_with_pubkey(
+        &self,
+        params: GetBalanceWithPubkeyRequest,
+    ) -> NeonRpcClientResult<Vec<GetBalanceResponse>> {
+        self.request(LibMethod::GetBalanceWithPubkey, params).await
+    }
+
     async fn get_contract(
         &self,
         params: GetContractRequest,
@@ -85,6 +93,13 @@ impl NeonRpcClient for NeonRpcHttpClient {
         params: GetStorageAtRequest,
     ) -> NeonRpcClientResult<GetStorageAtReturn> {
         self.request(LibMethod::GetStorageAt, params).await
+    }
+
+    async fn get_transaction_tree(
+        &self,
+        params: GetTransactionTreeRequest,
+    ) -> NeonRpcClientResult<GetTreeResponse> {
+        self.request(LibMethod::GetTransactionTree, params).await
     }
 
     async fn trace(&self, params: EmulateApiRequest) -> NeonRpcClientResult<serde_json::Value> {

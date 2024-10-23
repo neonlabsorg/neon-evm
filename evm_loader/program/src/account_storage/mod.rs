@@ -64,6 +64,8 @@ pub trait AccountStorage: LogCollector {
     async fn nonce(&self, address: Address, chain_id: u64) -> u64;
     /// Get account balance
     async fn balance(&self, address: Address, chain_id: u64) -> U256;
+    /// Get solana user pubkey
+    async fn solana_user_address(&self, address: Address) -> Option<Pubkey>;
 
     fn is_valid_chain_id(&self, chain_id: u64) -> bool;
     fn chain_id_to_token(&self, chain_id: u64) -> Pubkey;

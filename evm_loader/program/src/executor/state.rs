@@ -195,6 +195,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         self.backend.contract_pubkey(address)
     }
 
+    async fn solana_user_address(&self, address: Address) -> Result<Option<Pubkey>> {
+        let pubkey = self.backend.solana_user_address(address).await;
+        Ok(pubkey)
+    }
+
     async fn nonce(&self, from_address: Address, from_chain_id: u64) -> Result<u64> {
         let mut nonce = self.backend.nonce(from_address, from_chain_id).await;
         let mut increment = 0_u64;

@@ -55,7 +55,7 @@ fn process_instruction<'a>(
         }
     }
     .map_err(|e| {
-        log_data(&[&[e.code()], b"ERROR_CHECK", &e.to_string().to_le_bytes()]);
+        log_data(&[b"ERROR", &[e.code()], &e.to_string().as_bytes()]);
         e
     })
     .map_err(ProgramError::from)
@@ -182,7 +182,7 @@ fn process_instruction<'a>(
         }
     }
     .map_err(|e| {
-        log_data(&[&[e.code()], b"ERROR_CHECK", &e.to_string().to_le_bytes()]);
+        log_data(&[b"ERROR", &[e.code()], &e.to_string().as_bytes()]);
         e
     })
     .map_err(ProgramError::from)

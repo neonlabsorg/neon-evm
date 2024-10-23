@@ -15,8 +15,7 @@ use thiserror::Error;
 use crate::types::{Address, Vector};
 
 /// Errors that may be returned by the EVM Loader program.
-#[derive(Error, Debug)]
-#[repr(u32)]
+#[derive(Error, Debug, strum::EnumDiscriminants)]
 pub enum Error {
     #[error("Error: {0}")]
     Custom(String),
@@ -218,6 +217,14 @@ pub enum Error {
 
     #[error("Priority fee calculation error: {0}")]
     PriorityFeeError(String),
+}
+
+impl Error {
+    #[must_use]
+    pub fn code(&self) -> u32 {
+        let discriminant = ErrorDiscriminants::from(self);
+        discriminant as u32
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

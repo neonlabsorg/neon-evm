@@ -56,6 +56,7 @@ serde = { version = "1.0.204", default-features = false, features = ["derive", "
 ethnum = { version = "1.5", default-features = false, features = ["serde"] }
 cfg-if = { version = "1.0" }
 log = { version = "0.4", default-features = false, optional = true }
+strum = { version = "0.26.3", features = ["derive"] }
 maybe-async = "0.2.10"
 async-trait = { version = "0.1.81", optional = true }
 allocator-api2 = "0.2.16"

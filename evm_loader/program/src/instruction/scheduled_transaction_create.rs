@@ -20,34 +20,34 @@ use super::neon_tokens_deposit::AUTHORITY_SEED;
 
 fn validate_scheduled_tx(tx: &ScheduledTx, payer: Address) -> Result<U256> {
     if tx.payer != payer {
-        return Err(Error::TreeAccountTxInvalidData);
+        return Err(Error::TreeAccountTxInvalidDataPayer);
     }
 
     if tx.sender.is_some() {
-        return Err(Error::TreeAccountTxInvalidData);
+        return Err(Error::TreeAccountTxInvalidDataSender);
     }
 
     if tx.index != 0 {
-        return Err(Error::TreeAccountTxInvalidData);
+        return Err(Error::TreeAccountTxInvalidDataIndex);
     }
 
     if tx.intent.is_some() {
-        return Err(Error::TreeAccountTxInvalidData);
+        return Err(Error::TreeAccountTxInvalidDataIntent);
     }
 
     if !tx.intent_call_data.is_empty() {
-        return Err(Error::TreeAccountTxInvalidData);
+        return Err(Error::TreeAccountTxInvalidDataCallData);
     }
 
     if tx.chain_id != U256::from(SOL_CHAIN_ID) {
-        return Err(Error::TreeAccountTxInvalidData);
+        return Err(Error::TreeAccountTxInvalidDataChainId);
     }
 
     let Some(required_gas) = tx.gas_limit.checked_mul(tx.max_fee_per_gas) else {
-        return Err(Error::TreeAccountTxInvalidData);
+        return Err(Error::TreeAccountTxInvalidDataFee);
     };
     let Some(required_balance) = required_gas.checked_add(tx.value) else {
-        return Err(Error::TreeAccountTxInvalidData);
+        return Err(Error::TreeAccountTxInvalidDataValue);
     };
 
     Ok(required_balance)

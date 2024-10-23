@@ -58,13 +58,13 @@ fn calculate_required_balance(init_data: &TreeInitializer) -> Result<U256> {
 
     for node in &init_data.nodes {
         let Some(gas) = node.gas_limit.checked_mul(init_data.max_fee_per_gas) else {
-            return Err(Error::TreeAccountTxInvalidData);
+            return Err(Error::TreeAccountTxInvalidDataGas);
         };
         let Some(node_balance) = gas.checked_add(node.value) else {
-            return Err(Error::TreeAccountTxInvalidData);
+            return Err(Error::TreeAccountTxInvalidDataValue);
         };
         let Some(new_total_balance) = total_balance.checked_add(node_balance) else {
-            return Err(Error::TreeAccountTxInvalidData);
+            return Err(Error::TreeAccountTxInvalidDataBalance);
         };
 
         total_balance = new_total_balance;

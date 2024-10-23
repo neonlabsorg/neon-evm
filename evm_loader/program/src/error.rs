@@ -275,6 +275,12 @@ pub enum Error {
     #[error("Transaction Tree - invalid transaction data CallData")]
     TreeAccountTxInvalidDataCallData,
 
+    #[error("Transaction Tree - invalid transaction data Balance")]
+    TreeAccountTxInvalidDataBalance,
+
+    #[error("Transaction Tree - invalid transaction data Sender")]
+    TreeAccountTxInvalidDataSender,
+
     #[error("Transaction Tree - transaction invalid parent count")]
     TreeAccountTxInvalidParentCount,
 

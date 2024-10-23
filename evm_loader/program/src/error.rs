@@ -221,9 +221,9 @@ pub enum Error {
 
 impl Error {
     #[must_use]
-    pub fn code(&self) -> u32 {
+    pub fn code(&self) -> u8 {
         let discriminant = ErrorDiscriminants::from(self);
-        discriminant as u32
+        discriminant as u8
     }
 }
 

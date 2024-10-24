@@ -23,6 +23,8 @@ use solana_sdk::{
 #[enum_dispatch]
 pub trait Rpc {
     async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>>;
+
+    async fn get_account_at(&self, key: &Pubkey,offset:u64, data_size:u64 ) -> ClientResult<Option<Account>>;
     async fn get_multiple_accounts(&self, pubkeys: &[Pubkey])
         -> ClientResult<Vec<Option<Account>>>;
     async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp>;

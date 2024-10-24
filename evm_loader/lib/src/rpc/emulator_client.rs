@@ -26,6 +26,14 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
         let account = self._get_account_from_rpc(*key).await?.cloned();
         Ok(account)
     }
+    async fn get_account_slice(
+        &self,
+        key: &Pubkey,
+        _offset: usize,
+        _data_size: usize,
+    ) -> ClientResult<Option<Account>> {
+        self.get_account(key).await
+    }
 
     async fn get_multiple_accounts(
         &self,

@@ -44,7 +44,7 @@ impl CallDbClient {
 
     async fn get_account_at(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
         self.tracer_db
-            .get_account_at(key, self.slot, self.tx_index_in_block)
+            .get_account_at(key, self.slot, self.tx_index_in_block, None)
             .await
             .map_err(|e| e!("load account error", key, e))
     }
@@ -55,7 +55,14 @@ impl Rpc for CallDbClient {
     async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
         self.get_account_at(key).await
     }
-
+    async fn get_account_slice(
+        &self,
+        key: &Pubkey,
+        _offset: usize,
+        _data_size: usize,
+    ) -> ClientResult<Option<Account>> {
+        self.get_account(key).await
+    }
     async fn get_multiple_accounts(
         &self,
         pubkeys: &[Pubkey],

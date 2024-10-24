@@ -3609,6 +3609,7 @@ dependencies = [
  "enum_dispatch",
  "ethnum",
  "evm-loader",
+ "futures",
  "goblin 0.8.2",
  "hex",
  "hex-literal",

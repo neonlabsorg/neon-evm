@@ -26,6 +26,8 @@ use std::{
     },
     time::Instant,
 };
+// use serde_json::to_string;
+use solana_account_decoder::UiDataSliceConfig;
 
 #[derive(Clone)]
 pub struct ClickHouseDb {
@@ -93,10 +95,11 @@ impl TracerDbTrait for ClickHouseDb {
         pubkey: &Pubkey,
         slot: u64,
         tx_index_in_block: Option<u64>,
+        bin_slice: Option<UiDataSliceConfig>,
     ) -> DbResult<Option<Account>> {
         if let Some(tx_index_in_block) = tx_index_in_block {
             return if let Some(account) = self
-                .get_account_at_index_in_block(pubkey, slot, tx_index_in_block)
+                .get_account_at_index_in_block(pubkey, slot, tx_index_in_block, bin_slice)
                 .await?
             {
                 Ok(Some(account))
@@ -523,26 +526,42 @@ impl ClickHouseDb {
         pubkey: &Pubkey,
         slot: u64,
         tx_index_in_block: u64,
+        bin_slice: Option<UiDataSliceConfig>,
     ) -> ChResult<Option<Account>> {
         info!(
             "get_account_at_index_in_block {{ pubkey: {pubkey}, slot: {slot}, tx_index_in_block: {tx_index_in_block} }}"
         );
 
-        let query = r"
-            SELECT pubkey, owner, lamports, executable, rent_epoch, data, txn_signature
+        // = if bin_slice.is_some() {  format!(r"substring(data, {}, {})", ) } else{ r"data"};
+
+        let request_data = match bin_slice {
+            Some(slice_config) => {
+                format!(
+                    r"substring(data, {}, {})",
+                    slice_config.offset, slice_config.length
+                )
+            }
+            None => String::from("data"),
+        };
+        // will it works much faster if it is constant string?
+        let query = format!(
+            r"
+            SELECT pubkey, owner, lamports, executable, rent_epoch, {} , txn_signature
             FROM events.update_account_distributed
             WHERE pubkey = ?
               AND slot = ?
               AND write_version <= ?
             ORDER BY write_version DESC
             LIMIT 1
-        ";
+        ",
+            request_data
+        );
 
         let time_start = Instant::now();
 
         let account = Self::row_opt(
             self.client
-                .query(query)
+                .query(&query)
                 .bind(format!("{:?}", pubkey.to_bytes()))
                 .bind(slot)
                 .bind(tx_index_in_block)
@@ -734,7 +753,7 @@ impl ClickHouseDb {
 
         // If not found, get closest account state in one of previous slots
         if let Some(parent) = slot.parent {
-            self.get_account_at(pubkey, parent, None).await
+            self.get_account_at(pubkey, parent, None, None).await
         } else {
             Ok(None)
         }

@@ -7,8 +7,8 @@ use crate::account::{
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
+use crate::instruction::instruction_internals::holder_parse_trx;
 use crate::instruction::scheduled_transaction_start::do_scheduled_start;
-use crate::instruction::transaction_internals::holder_parse_trx;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
@@ -41,7 +41,7 @@ pub fn process<'a>(
 
     match tag {
         TAG_HOLDER => {
-            let trx = holder_parse_trx(holder.clone(), &operator, program_id)?;
+            let trx = holder_parse_trx(holder.clone(), &operator, program_id, true)?;
 
             // Validate that it's indeed a scheduled tx.
             if !trx.is_scheduled_tx() {

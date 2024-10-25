@@ -2,7 +2,7 @@ use crate::account::{AccountsDB, StateAccount, TransactionTree};
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::error::Result;
 use crate::gasometer::Gasometer;
-use crate::instruction::transaction_internals::{allocate_evm, finalize};
+use crate::instruction::instruction_internals::{allocate_evm, finalize};
 
 pub fn do_scheduled_start<'a>(
     accounts: AccountsDB<'a>,

@@ -7,7 +7,7 @@ use crate::evm::tracing::NoopEventListener;
 use crate::evm::ExitStatus;
 use crate::executor::ExecutorState;
 use crate::gasometer::Gasometer;
-use crate::instruction::transaction_internals::{allocate_evm, finalize, reinit_evm, EvmBackend};
+use crate::instruction::instruction_internals::{allocate_evm, finalize, reinit_evm, EvmBackend};
 
 pub fn do_begin<'a>(
     accounts: AccountsDB<'a>,

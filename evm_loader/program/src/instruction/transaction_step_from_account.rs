@@ -6,7 +6,7 @@ use crate::account::{
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
-use crate::instruction::transaction_internals::holder_parse_trx;
+use crate::instruction::instruction_internals::holder_parse_trx;
 use crate::instruction::transaction_step::{do_begin, do_continue};
 use arrayref::array_ref;
 use ethnum::U256;
@@ -57,7 +57,8 @@ pub fn process_inner<'a>(
 
     match tag {
         TAG_HOLDER | TAG_HOLDER_DEPRECATED => {
-            let mut trx = holder_parse_trx(holder_or_storage.clone(), &operator, program_id)?;
+            let mut trx =
+                holder_parse_trx(holder_or_storage.clone(), &operator, program_id, false)?;
             let origin = trx.recover_caller_address()?;
 
             operator_balance.validate_transaction(&trx)?;

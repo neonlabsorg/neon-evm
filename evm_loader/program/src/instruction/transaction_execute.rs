@@ -6,8 +6,8 @@ use crate::evm::tracing::NoopEventListener;
 use crate::evm::Machine;
 use crate::executor::{ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
+use crate::instruction::instruction_internals::log_return_value;
 use crate::instruction::priority_fee_txn_calculator;
-use crate::instruction::transaction_internals::log_return_value;
 use crate::types::{boxx::Boxx, Address, Transaction};
 
 pub fn execute(

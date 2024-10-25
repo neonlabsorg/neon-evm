@@ -65,6 +65,7 @@ pub fn holder_parse_trx(
     info: AccountInfo<'_>,
     operator: &Operator,
     program_id: &Pubkey,
+    is_scheduled: bool,
 ) -> Result<Transaction> {
     let mut holder = Holder::from_account(program_id, info)?;
 
@@ -80,7 +81,13 @@ pub fn holder_parse_trx(
     holder.init_heap(0)?;
     holder.validate_owner(&operator)?;
 
-    let trx = Transaction::from_rlp(&transaction_rlp_copy)?;
+    let trx = {
+        if is_scheduled {
+            Transaction::scheduled_from_rlp(&transaction_rlp_copy)
+        } else {
+            Transaction::from_rlp(&transaction_rlp_copy)
+        }
+    }?;
 
     holder.validate_transaction(&trx)?;
 

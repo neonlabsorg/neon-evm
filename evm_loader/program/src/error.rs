@@ -254,6 +254,7 @@ pub enum Error {
     #[error("Transaction Tree - transaction invalid status")]
     TreeAccountTxInvalidStatus,
 
+    // TODO reconcile with the TreeAccountTxInvalidType - potential duplicate.
     #[error("Attempt to perform an operation with classic transaction, whereas scheduled transaction is expected")]
     NotScheduledTransaction,
 

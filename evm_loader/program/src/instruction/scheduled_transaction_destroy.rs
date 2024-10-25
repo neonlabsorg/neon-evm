@@ -5,7 +5,7 @@ use crate::{
 use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-/// Execute Ethereum transaction in a single Solana transaction
+/// Destroy the Scheduled Transaction.
 pub fn process<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],

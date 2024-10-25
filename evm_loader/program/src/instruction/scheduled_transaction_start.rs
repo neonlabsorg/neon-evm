@@ -1,8 +1,9 @@
 use crate::account::{AccountsDB, StateAccount, TransactionTree};
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
 use crate::instruction::instruction_internals::{allocate_evm, finalize};
+use crate::types::{ScheduledTx, Transaction};
 
 pub fn do_scheduled_start<'a>(
     accounts: AccountsDB<'a>,
@@ -46,4 +47,24 @@ pub fn do_scheduled_start<'a>(
         gasometer,
         touched_accounts,
     )
+}
+
+pub fn validate_scheduled_tx<'a>(
+    trx: &'a Transaction,
+    instruction_index: u16,
+) -> Result<&'a ScheduledTx> {
+    // Validate that it's indeed a scheduled tx.
+    if !trx.is_scheduled_tx() {
+        return Err(Error::NotScheduledTransaction);
+    }
+
+    let scheduled_trx = trx.if_scheduled().unwrap();
+    let trx_index = trx.tree_account_index().unwrap();
+    if trx_index == instruction_index {
+        Ok(scheduled_trx)
+    } else {
+        Err(Error::ScheduledTxInvalidIndex(trx_index, instruction_index))
+    }
+    // Validation that the given transaction corresponds to the node in the tree account
+    // is happening inside the tree account.
 }

@@ -266,6 +266,9 @@ pub enum Error {
 
     #[error("Schedule Transaction is already in progress, holder={0}")]
     ScheduledTxAlreadyInProgress(Pubkey),
+
+    #[error("Scheduled Transaction has invalid index: inside transaction={0}, inside instruction data={1}")]
+    ScheduledTxInvalidIndex(u16, u16),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

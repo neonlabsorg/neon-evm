@@ -259,7 +259,6 @@ pub enum EvmInstruction {
     ///  `[WRITE]`  Other accounts
     /// Instruction data:
     ///  0..4 - index of scheduled transaction in the Tree Account in little-endian
-    ///  4..8 - step count in little endian
     ScheduledTransactionSkip,
 
     /// Finalize Scheduled Transaction

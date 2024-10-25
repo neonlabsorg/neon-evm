@@ -8,21 +8,26 @@ use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
 use crate::instruction::instruction_internals::holder_parse_trx;
-use crate::instruction::scheduled_transaction_start::do_scheduled_start;
+use crate::instruction::scheduled_transaction_start::{do_scheduled_start, validate_scheduled_tx};
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use arrayref::array_ref;
 
 pub fn process<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
-    _instruction: &[u8],
+    instruction: &[u8],
 ) -> Result<()> {
     log_msg!("Instruction: Start Scheduled Transaction from Account");
+
+    let tree_index = u16::try_from(u32::from_le_bytes(*array_ref![instruction, 0, 4]))?;
 
     let holder = accounts[0].clone();
     let transaction_tree = TransactionTree::from_account(&program_id, accounts[1].clone())?;
     let operator = Operator::from_account(&accounts[2])?;
     let operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
+
+    operator_balance.validate_owner(&operator)?;
 
     let accounts_db = AccountsDB::new(
         &accounts[4..],
@@ -42,13 +47,9 @@ pub fn process<'a>(
     match tag {
         TAG_HOLDER => {
             let trx = holder_parse_trx(holder.clone(), &operator, program_id, true)?;
+            let scheduled_trx = validate_scheduled_tx(&trx, tree_index)?;
 
-            // Validate that it's indeed a scheduled tx.
-            if !trx.is_scheduled_tx() {
-                return Err(Error::NotScheduledTransaction);
-            }
-
-            let origin = trx.if_scheduled().unwrap().payer;
+            let origin = scheduled_trx.payer;
 
             operator_balance.validate_transaction(&trx)?;
             let miner_address = operator_balance.miner(origin);

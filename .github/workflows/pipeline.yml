@@ -46,7 +46,7 @@ jobs:
         run: |
           echo "evm_tag=${{ env.EVM_TAG }}" >> "$GITHUB_OUTPUT"
           echo "evm_sha_tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-          echo "evm_pr_version_branch=${{ env.PROXY_PR_VERSION_BRANCH }}" >> "$GITHUB_OUTPUT"
+          echo "evm_pr_version_branch=${{ env.EVM_PR_VERSION_BRANCH }}" >> "$GITHUB_OUTPUT"
           echo "is_evm_release=${{ env.IS_EVM_RELEASE }}" >> "$GITHUB_OUTPUT"
           echo "neon_test_tag=${{ env.NEON_TEST_TAG }}" >> "$GITHUB_OUTPUT"
       - name: build docker image

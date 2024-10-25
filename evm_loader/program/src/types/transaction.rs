@@ -341,7 +341,7 @@ impl rlp::Decodable for DynamicFeeTx {
 
 /// A "shell" representation of `ScheduledTx` without the persistent Vectors.
 /// Intended for use in cases when there's no heap account.
-/// TODO: rework the whole transaction to be able to use ScheduledTx when account heap is absent.
+/// TODO: rework the whole transaction to be able to use `ScheduledTx` when account heap is absent.
 #[derive(Debug)]
 #[repr(C)]
 pub struct ScheduledTxShell {

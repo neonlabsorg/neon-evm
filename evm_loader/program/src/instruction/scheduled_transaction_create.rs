@@ -6,7 +6,7 @@ use crate::account::{
 use crate::config::SOL_CHAIN_ID;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
-use crate::types::{Address, ScheduledTx, Transaction, TransactionPayload};
+use crate::types::{Address, ScheduledTxShell};
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
@@ -18,7 +18,7 @@ use spl_associated_token_account::get_associated_token_address;
 
 use super::neon_tokens_deposit::AUTHORITY_SEED;
 
-fn validate_scheduled_tx(tx: &ScheduledTx, payer: Address) -> Result<U256> {
+fn validate_scheduled_tx(tx: &ScheduledTxShell, payer: Address) -> Result<U256> {
     if tx.payer != payer {
         return Err(Error::TreeAccountTxInvalidData);
     }
@@ -35,9 +35,7 @@ fn validate_scheduled_tx(tx: &ScheduledTx, payer: Address) -> Result<U256> {
         return Err(Error::TreeAccountTxInvalidData);
     }
 
-    if !tx.intent_call_data.is_empty() {
-        return Err(Error::TreeAccountTxInvalidData);
-    }
+    // Validation of intent_call_data is missing because `ScheduledTxShell` is used.
 
     if tx.chain_id != U256::from(SOL_CHAIN_ID) {
         return Err(Error::TreeAccountTxInvalidData);
@@ -154,11 +152,8 @@ pub fn process<'a>(
     let system = System::from_account(&accounts[5])?;
 
     // Validate Transaction
-    let tx = Transaction::scheduled_from_rlp(messsage)?;
-    let tx_hash = tx.hash();
-    let TransactionPayload::Scheduled(tx) = tx.transaction else {
-        return Err(Error::TreeAccountTxInvalidType);
-    };
+    let tx = ScheduledTxShell::from_rlp(messsage).map_err(|_| Error::TreeAccountTxInvalidType)?;
+    let tx_hash = tx.hash;
 
     let payer = Address::from_solana_address(signer.key);
     let required_balance = validate_scheduled_tx(&tx, payer)?;

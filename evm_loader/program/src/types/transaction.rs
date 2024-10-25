@@ -57,7 +57,7 @@ impl AsRef<[u8]> for StorageKey {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransactionEnvelope {
     Legacy,
     AccessList,
@@ -339,6 +339,97 @@ impl rlp::Decodable for DynamicFeeTx {
     }
 }
 
+/// A "shell" representation of `ScheduledTx` without the persistent Vectors.
+/// Intended for use in cases when there's no heap account.
+/// TODO: rework the whole transaction to be able to use ScheduledTx when account heap is absent.
+#[derive(Debug)]
+#[repr(C)]
+pub struct ScheduledTxShell {
+    pub payer: Address,
+    pub sender: Option<Address>,
+    pub nonce: u64,
+    pub index: u16,
+    pub intent: Option<Address>,
+    pub target: Option<Address>,
+    pub value: U256,
+    pub chain_id: U256,
+    pub gas_limit: U256,
+    pub max_fee_per_gas: U256,
+    pub max_priority_fee_per_gas: U256,
+    pub hash: [u8; 32],
+}
+
+impl ScheduledTxShell {
+    pub fn from_rlp(message: &[u8]) -> crate::error::Result<Self> {
+        use solana_program::keccak::hashv;
+
+        let (tx_type, tx_body) = TransactionEnvelope::get_type(message);
+        tx_type
+            .map(|f| f == TransactionEnvelope::Scheduled)
+            .ok_or(crate::error::Error::TreeAccountTxInvalidType)?;
+
+        let rlp = rlp::Rlp::new(tx_body);
+        let hash = hashv(&[&[0x7f, 0x01], tx_body]).to_bytes();
+        ScheduledTxShell::decode(&rlp, hash).map_err(Error::from)
+    }
+
+    fn decode(rlp: &rlp::Rlp, hash: [u8; 32]) -> Result<Self, rlp::DecoderError> {
+        let rlp_len = {
+            let info = rlp.payload_info()?;
+            info.header_len + info.value_len
+        };
+
+        if rlp.as_raw().len() != rlp_len {
+            return Err(rlp::DecoderError::RlpInconsistentLengthAndData);
+        }
+
+        let payer: Address = rlp.at(0)?.as_val()?;
+        let sender: Option<Address> = decode_optional_address(&rlp.at(1)?)?;
+
+        let nonce: u64 = rlp.val_at(2)?;
+        let index: u16 = rlp.val_at(3)?;
+
+        let intent: Option<Address> = decode_optional_address(&rlp.at(4)?)?;
+        // index 5 is skipped (intent_call_data).
+        let target: Option<Address> = decode_optional_address(&rlp.at(6)?)?;
+        // index 7 is skipped (call_data).
+
+        let value: U256 = u256(&rlp.at(8)?)?;
+        let chain_id: U256 = u256(&rlp.at(9)?)?;
+
+        let gas_limit: U256 = u256(&rlp.at(10)?)?;
+        let max_fee_per_gas: U256 = u256(&rlp.at(11)?)?;
+        let max_priority_fee_per_gas: U256 = u256(&rlp.at(12)?)?;
+
+        if max_fee_per_gas < max_priority_fee_per_gas {
+            return Err(rlp::DecoderError::Custom(
+                "max_fee_per_gas < max_priority_fee_per_gas",
+            ));
+        }
+
+        if rlp.at(13).is_ok() {
+            return Err(rlp::DecoderError::RlpIncorrectListLen);
+        }
+
+        let tx = ScheduledTxShell {
+            payer,
+            sender,
+            nonce,
+            index,
+            intent,
+            target,
+            value,
+            chain_id,
+            gas_limit,
+            max_fee_per_gas,
+            max_priority_fee_per_gas,
+            hash,
+        };
+
+        Ok(tx)
+    }
+}
+
 #[derive(Debug, ReconstructRaw)]
 #[repr(C)]
 pub struct ScheduledTx {
@@ -357,6 +448,7 @@ pub struct ScheduledTx {
     pub max_priority_fee_per_gas: U256,
 }
 
+// TODO remove if unused in the end. Possibly, the Transaction::hash() can be used instead.
 impl ScheduledTx {
     #[must_use]
     pub fn hash(&self) -> [u8; 32] {
@@ -475,7 +567,7 @@ impl Transaction {
         use solana_program::keccak::{hash, hashv, Hash};
 
         let (hash, signed_hash) = match *transaction_type {
-            // Legacy transaction wrapped in envelop
+            // Legacy transaction wrapped in envelope
             Some(TransactionEnvelope::Legacy) => {
                 let Hash(hash) = hashv(&[&[0x00], transaction_rlp.as_raw()]);
                 let signed_hash = Self::calculate_legacy_signature(transaction_rlp, chain_id)?;

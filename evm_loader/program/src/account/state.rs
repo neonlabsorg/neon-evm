@@ -609,7 +609,7 @@ impl<'a> StateAccount<'a> {
             let executor_state_ptr = account_data_ptr
                 .add(header.executor_state_offset)
                 .cast::<ExecutorStateData>();
-            let cache = read_unaligned(addr_of!((*executor_state_ptr).cache));
+            let block_params = read_unaligned(addr_of!((*executor_state_ptr).block_params));
 
             Ok((
                 tx,
@@ -617,7 +617,7 @@ impl<'a> StateAccount<'a> {
                 origin,
                 accounts,
                 steps,
-                (cache.block_timestamp, cache.block_number),
+                (block_params.block_timestamp, block_params.block_number),
             ))
         }
     }

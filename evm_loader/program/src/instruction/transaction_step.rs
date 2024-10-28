@@ -123,17 +123,19 @@ fn allocate_or_reinit_state(
         }
 
         // Dealloc executor state that was potentially alloced in previous iterations before the reset.
-        // Also, copy the cache for use into the new ExecutorStateData.
-        let mut cache = None;
+        // Also, copy the block params for use into the new ExecutorStateData.
+        let mut block_params = None;
         if storage.is_executor_state_alloced() {
-            cache = Some(storage.read_executor_state().get_cache());
+            block_params = Some(storage.read_executor_state().get_block_params());
             storage.dealloc_executor_state();
         }
 
         let mut state_data = {
-            // Preserve the previous cache.
-            if cache.is_some() {
-                boxx(ExecutorStateData::new_with_cache(cache.unwrap()))
+            // Preserve the previous block params.
+            if block_params.is_some() {
+                boxx(ExecutorStateData::new_with_block_params(
+                    block_params.unwrap(),
+                ))
             } else {
                 boxx(ExecutorStateData::new(account_storage))
             }

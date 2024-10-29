@@ -208,9 +208,7 @@ pub unsafe fn delete_with_treasury(account: &AccountInfo, treasury: &Treasury) -
     **treasury.lamports.borrow_mut() += account.lamports();
     **account.lamports.borrow_mut() = 0;
 
-    let mut data = account.data.borrow_mut();
-    data.fill(0);
-
+    account.data.borrow_mut().fill(0);
     account.realloc(0, false)?;
     account.assign(&solana_program::system_program::ID);
 

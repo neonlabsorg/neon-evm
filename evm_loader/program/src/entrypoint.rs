@@ -159,9 +159,15 @@ fn process_instruction<'a>(
         EvmInstruction::ScheduledTransactionFinish => {
             instruction::scheduled_transaction_finish::process(program_id, accounts, instruction)
         }
-        EvmInstruction::ScheduledTransactionSkip => {
-            // TODO adjust.
-            instruction::scheduled_transaction_start_from_instruction::process(
+        EvmInstruction::ScheduledTransactionSkipFromAccount => {
+            instruction::scheduled_transaction_skip_from_account::process(
+                program_id,
+                accounts,
+                instruction,
+            )
+        }
+        EvmInstruction::ScheduledTransactionSkipFromInstruction => {
+            instruction::scheduled_transaction_skip_from_instruction::process(
                 program_id,
                 accounts,
                 instruction,

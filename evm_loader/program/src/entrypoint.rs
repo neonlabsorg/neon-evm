@@ -7,7 +7,6 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-use crate::debug::log_data;
 use crate::{instruction, instruction::EvmInstruction};
 
 entrypoint!(process_instruction);
@@ -55,7 +54,7 @@ fn process_instruction<'a>(
         }
     }
     .map_err(|e| {
-        log_data(&[b"ERROR", &[e.code()], &e.to_string().as_bytes()]);
+        e.log_data();
         e
     })
     .map_err(ProgramError::from)
@@ -226,7 +225,7 @@ fn process_instruction<'a>(
         }
     }
     .map_err(|e| {
-        log_data(&[b"ERROR", &[e.code()], &e.to_string().as_bytes()]);
+        e.log_data();
         e
     })
     .map_err(ProgramError::from)

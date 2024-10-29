@@ -455,7 +455,7 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
         let mut exit_status: ExitStatus = ExitStatus::Stop;
         let mut steps_executed = 0u64;
         let mut tracer_result: Option<T> = None;
-        for execution_step in &execution_map {
+        for (pos, execution_step) in execution_map.iter().enumerate() {
             if execution_step.steps == 0 && !execution_step.is_cancel {
                 continue;
             }
@@ -503,7 +503,7 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
                 exit_status = ExitStatus::Cancel;
 
                 break;
-            } else {
+            } else if pos != 0 {
                 evm.set_tracer(tracer_result);
             }
 

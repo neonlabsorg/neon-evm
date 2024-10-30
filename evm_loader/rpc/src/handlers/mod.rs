@@ -13,11 +13,11 @@ pub mod trace;
 use crate::context::Context;
 use jsonrpc_v2::Data;
 use neon_lib::LibMethod;
-use neon_lib_interface::{types::NeonEVMLibError, NeonEVMLib_Ref};
+use neon_lib_interface::{types::NeonEVMLibError, NeonEVMLibRef};
 use serde::Serialize;
 use serde_json::Value;
 
-fn get_library(context: &Data<Context>) -> Result<&NeonEVMLib_Ref, jsonrpc_v2::Error> {
+fn get_library(context: &Data<Context>) -> Result<&NeonEVMLibRef, jsonrpc_v2::Error> {
     // just for testing
     let hash = context
         .libraries

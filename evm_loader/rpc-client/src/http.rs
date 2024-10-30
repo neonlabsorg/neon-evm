@@ -55,7 +55,7 @@ impl Default for NeonRpcHttpClientBuilder {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl NeonRpcClient for NeonRpcHttpClient {
     async fn emulate(&self, params: EmulateApiRequest) -> NeonRpcClientResult<EmulateResponse> {
         self.request(LibMethod::Emulate, params).await

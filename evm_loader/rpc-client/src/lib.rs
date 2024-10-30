@@ -24,8 +24,8 @@ use neon_lib::{
 
 type NeonRpcClientResult<T> = Result<T, NeonRpcClientError>;
 
-#[async_trait(?Send)]
-pub trait NeonRpcClient {
+#[async_trait]
+pub trait NeonRpcClient: Sync + Send + 'static {
     async fn emulate(&self, params: EmulateApiRequest) -> NeonRpcClientResult<EmulateResponse>;
     async fn balance(
         &self,

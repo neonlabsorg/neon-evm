@@ -14,7 +14,13 @@ pub async fn execute(
     let params: EmulateApiRequest =
         serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
 
-    emulate::execute(rpc, config.evm_loader, params.body, None::<TracerTypeEnum>)
-        .await
-        .map(|(response, _)| response)
+    emulate::execute(
+        rpc,
+        &config.db_config,
+        &config.evm_loader,
+        params.body,
+        None::<TracerTypeEnum>,
+    )
+    .await
+    .map(|(response, _)| response)
 }

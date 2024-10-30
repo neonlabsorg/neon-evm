@@ -357,6 +357,23 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         Ok(accounts)
     }
 
+    pub async fn mark_balance_account(
+        &self,
+        address: &Address,
+        chain_id: u64,
+        is_writable: bool,
+    ) -> NeonResult<()> {
+        let balance_data = self
+            .get_balance_account(*address, chain_id)
+            .await
+            .map_err(map_neon_error)?
+            .borrow_mut();
+
+        self.mark_account(balance_data.pubkey, is_writable);
+
+        Ok(())
+    }
+
     fn mark_account(&self, pubkey: Pubkey, is_writable: bool) {
         let mut data = self._get_account_mark(pubkey);
         data.is_writable |= is_writable;

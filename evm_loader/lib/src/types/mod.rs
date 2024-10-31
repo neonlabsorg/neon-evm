@@ -132,8 +132,9 @@ impl TxParams {
 
         let origin_nonce = backend.nonce(self.from, chain_id).await;
         let nonce = self.nonce.unwrap_or(origin_nonce);
+        let max_fee_per_gas = self.max_fee_per_gas.unwrap_or(U256::ZERO);
 
-        let payload = if let Some(max_priority_fee_per_gas) = self.max_priority_fee_per_gas {
+        let payload = if max_fee_per_gas != U256::ZERO {
             let access_list: Vec<_> = self
                 .access_list
                 .unwrap_or_default()
@@ -143,8 +144,8 @@ impl TxParams {
 
             let dynamic_fee_tx = DynamicFeeTx {
                 nonce,
-                max_priority_fee_per_gas,
-                max_fee_per_gas: self.max_fee_per_gas.unwrap_or(max_priority_fee_per_gas * 2),
+                max_fee_per_gas,
+                max_priority_fee_per_gas: self.max_priority_fee_per_gas.unwrap_or(U256::ZERO),
                 gas_limit: self.gas_limit.unwrap_or(U256::MAX),
                 target: self.to,
                 value: self.value.unwrap_or_default(),

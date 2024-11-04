@@ -18,6 +18,7 @@ use crate::types::tree_map::TreeMap;
 use crate::types::vector::{Vector, VectorSliceExt, VectorSliceSlowExt};
 
 use super::action::Action;
+use super::block_params::BlockParams;
 use super::cache::Cache;
 use super::precompile_extension::PrecompiledContracts;
 use super::OwnedAccountInfo;
@@ -30,6 +31,7 @@ pub type TouchedAccounts = TreeMap<Pubkey, u64>;
 #[repr(C)]
 pub struct ExecutorStateData {
     cache: RefCell<Cache>,
+    pub block_params: BlockParams,
     actions: Vector<Action>,
     stack: Vector<usize>,
     exit_status: Option<ExitStatus>,
@@ -43,20 +45,21 @@ pub struct ExecutorState<'a, B: AccountStorage> {
 
 impl<'a> ExecutorStateData {
     pub fn new<B: AccountStorage>(backend: &B) -> Self {
-        let cache = Cache {
+        let block_params = BlockParams {
             block_number: backend.block_number(),
             block_timestamp: backend.block_timestamp(),
-            actions_offset: 0,
-            accounts: TreeMap::<Pubkey, OwnedAccountInfo>::new(),
         };
 
-        Self {
-            cache: RefCell::new(cache),
-            actions: Vector::with_capacity_in(64, acc_allocator()),
-            stack: Vector::with_capacity_in(16, acc_allocator()),
-            exit_status: None,
-            touched_accounts: RefCell::new(TouchedAccounts::new()),
-        }
+        ExecutorStateData::new_instance(block_params)
+    }
+
+    #[must_use]
+    pub fn new_with_block_params(block_params: BlockParams) -> Self {
+        ExecutorStateData::new_instance(block_params)
+    }
+
+    pub fn get_block_params(&self) -> BlockParams {
+        self.block_params.clone()
     }
 
     #[must_use]
@@ -77,6 +80,20 @@ impl<'a> ExecutorStateData {
     #[must_use]
     pub fn into_actions(&'a self) -> &'a Vector<Action> {
         &self.actions
+    }
+
+    fn new_instance(block_params: BlockParams) -> Self {
+        Self {
+            cache: RefCell::new(Cache {
+                actions_offset: 0,
+                accounts: TreeMap::<Pubkey, OwnedAccountInfo>::new(),
+            }),
+            block_params,
+            actions: Vector::with_capacity_in(64, acc_allocator()),
+            stack: Vector::with_capacity_in(16, acc_allocator()),
+            exit_status: None,
+            touched_accounts: RefCell::new(TouchedAccounts::new()),
+        }
     }
 }
 
@@ -409,7 +426,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         }
 
         let number = number.as_u64();
-        let block_slot = self.data.cache.borrow().block_number.as_u64();
+        let block_slot = self.data.block_params.block_number.as_u64();
         let lower_block_slot = if block_slot < 257 {
             0
         } else {
@@ -424,13 +441,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     fn block_number(&self) -> Result<U256> {
-        let cache = self.data.cache.borrow();
-        Ok(cache.block_number)
+        Ok(self.data.block_params.block_number)
     }
 
     fn block_timestamp(&self) -> Result<U256> {
-        let cache = self.data.cache.borrow();
-        Ok(cache.block_timestamp)
+        Ok(self.data.block_params.block_timestamp)
     }
 
     #[allow(clippy::await_holding_refcell_ref)]

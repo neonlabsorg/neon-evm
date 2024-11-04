@@ -52,7 +52,7 @@ impl PrecompiledContracts {
     #[maybe_async]
     pub async fn call_precompile_extension<State: Database>(
         state: &mut State,
-        context: &Context,
+        context: &mut Context,
         address: &Address,
         input: &[u8],
         is_static: bool,

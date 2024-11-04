@@ -102,6 +102,8 @@ struct Data {
     pub priority_fee_used: U256,
     /// Steps executed in the transaction
     pub steps_executed: u64,
+    /// Steps interrupted due Solana program call
+    pub steps_interrupted: u64,
 }
 
 // Stores relative offsets for the corresponding objects as allocated by the AccountAllocator.
@@ -195,6 +197,7 @@ impl<'a> StateAccount<'a> {
             gas_used: U256::ZERO,
             priority_fee_used: U256::ZERO,
             steps_executed: 0_u64,
+            steps_interrupted: 0_u64,
         });
 
         let data_offset = {
@@ -424,6 +427,25 @@ impl<'a> StateAccount<'a> {
         self.data.steps_executed = self
             .data
             .steps_executed
+            .checked_add(steps)
+            .ok_or(Error::IntegerOverflow)?;
+
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn steps_interrupted(&self) -> u64 {
+        self.data.steps_interrupted
+    }
+
+    pub fn reset_steps_interrupted(&mut self) {
+        self.data.steps_interrupted = 0;
+    }
+
+    pub fn increment_steps_interrupted(&mut self, steps: u64) -> Result<()> {
+        self.data.steps_interrupted = self
+            .data
+            .steps_interrupted
             .checked_add(steps)
             .ok_or(Error::IntegerOverflow)?;
 

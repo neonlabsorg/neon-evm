@@ -29,6 +29,7 @@ pub enum Action {
     Return(Vector<u8>),
     Revert(Vector<u8>),
     Suicide,
+    Interrupted,
     Noop,
 }
 
@@ -1110,6 +1111,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             contract_chain_id: chain_id,
             value,
             code_address: None,
+            interrupt_solana_call: true,
         };
 
         begin_vm!(self, backend, context, chain_id, init_code);
@@ -1164,6 +1166,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             contract_chain_id: backend.contract_chain_id(address).await.unwrap_or(chain_id),
             value,
             code_address: Some(address),
+            interrupt_solana_call: true,
         };
 
         begin_vm!(self, backend, context, chain_id, call_data);
@@ -1304,6 +1307,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             contract_chain_id: backend.contract_chain_id(address).await.unwrap_or(chain_id),
             value: U256::ZERO,
             code_address: Some(address),
+            interrupt_solana_call: true,
         };
 
         begin_vm!(self, backend, context, chain_id, call_data);
@@ -1337,16 +1341,21 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             Some(x) => Some(x),
             None => {
                 backend
-                    .precompile_extension(&self.context, address, &self.call_data, self.is_static)
+                    .precompile_extension(
+                        &mut self.context,
+                        address,
+                        &self.call_data,
+                        self.is_static,
+                    )
                     .await
             }
         };
 
-        if let Some(return_data) = result.transpose()? {
-            return self.opcode_return_impl(return_data, backend).await;
+        match result {
+            Some(Ok(return_data)) => self.opcode_return_impl(return_data, backend).await,
+            Some(Err(Error::InterruptedCall)) => Ok(Action::Interrupted),
+            _ => Ok(Action::Noop),
         }
-
-        Ok(Action::Noop)
     }
 
     /// Halt execution returning output data

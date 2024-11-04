@@ -276,7 +276,7 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
 
     async fn precompile_extension(
         &mut self,
-        context: &Context,
+        context: &mut Context,
         address: &Address,
         data: &[u8],
         is_static: bool,

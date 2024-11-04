@@ -110,6 +110,7 @@ pub enum ExitStatus {
     Return(Vector<u8>),
     Revert(Vector<u8>),
     Suicide,
+    Interrupted,
     StepLimit,
     Cancel,
 }
@@ -126,6 +127,7 @@ impl ExitStatus {
         match self {
             ExitStatus::Return(_) | ExitStatus::Stop | ExitStatus::Suicide => "succeed",
             ExitStatus::Revert(_) => "revert",
+            ExitStatus::Interrupted => "interrupted due Solana call",
             ExitStatus::StepLimit => "step limit exceeded",
             ExitStatus::Cancel => "cancel",
         }
@@ -135,7 +137,7 @@ impl ExitStatus {
     pub fn is_succeed(&self) -> Option<bool> {
         match self {
             ExitStatus::Stop | ExitStatus::Return(_) | ExitStatus::Suicide => Some(true),
-            ExitStatus::Revert(_) | ExitStatus::Cancel => Some(false),
+            ExitStatus::Revert(_) | ExitStatus::Interrupted | ExitStatus::Cancel => Some(false),
             ExitStatus::StepLimit => None,
         }
     }
@@ -144,9 +146,11 @@ impl ExitStatus {
     pub fn into_result(self) -> Option<Vec<u8>> {
         match self {
             ExitStatus::Return(v) | ExitStatus::Revert(v) => Some(v.to_vec()),
-            ExitStatus::Stop | ExitStatus::Suicide | ExitStatus::StepLimit | ExitStatus::Cancel => {
-                None
-            }
+            ExitStatus::Stop
+            | ExitStatus::Suicide
+            | ExitStatus::Interrupted
+            | ExitStatus::StepLimit
+            | ExitStatus::Cancel => None,
         }
     }
 }
@@ -165,8 +169,8 @@ pub struct Context {
     pub contract: Address,
     pub contract_chain_id: u64,
     pub value: U256,
-
     pub code_address: Option<Address>,
+    pub interrupt_solana_call: bool,
 }
 
 #[repr(C)]
@@ -275,6 +279,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 contract_chain_id: backend.contract_chain_id(target).await.unwrap_or(chain_id),
                 value: trx.value(),
                 code_address: Some(target),
+                interrupt_solana_call: true,
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
@@ -327,6 +332,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 contract_chain_id: chain_id,
                 value: trx.value(),
                 code_address: None,
+                interrupt_solana_call: true,
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
@@ -402,6 +408,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                     Action::Return(value) => break ExitStatus::Return(value),
                     Action::Revert(value) => break ExitStatus::Revert(value),
                     Action::Suicide => break ExitStatus::Suicide,
+                    Action::Interrupted => break ExitStatus::Interrupted,
                     Action::Noop => {}
                 };
             }

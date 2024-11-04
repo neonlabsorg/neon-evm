@@ -192,6 +192,9 @@ pub enum Error {
     #[error("Program not allowed to call itself")]
     RecursiveCall,
 
+    #[error("Solana programs was interrupted")]
+    InterruptedCall,
+
     #[error("External call fails {0}: {1}")]
     ExternalCallFailed(Pubkey, String),
 

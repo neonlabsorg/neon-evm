@@ -73,7 +73,7 @@ pub trait Database: LogCollector {
 
     async fn precompile_extension(
         &mut self,
-        context: &Context,
+        context: &mut Context,
         address: &Address,
         data: &[u8],
         is_static: bool,

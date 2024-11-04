@@ -7,7 +7,7 @@ use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::evm::tracing::NoopEventListener;
 use crate::evm::{ExitStatus, Machine};
-use crate::executor::{Action, ExecutorState, ExecutorStateData};
+use crate::executor::{Action, ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::{Gasometer, LAMPORTS_PER_SIGNATURE};
 use crate::instruction::priority_fee_txn_calculator;
 use crate::types::boxx::boxx;
@@ -78,6 +78,58 @@ pub fn do_continue<'a>(
     if reset {
         log_data(&[b"RESET"]);
     }
+    if storage.steps_interrupted() > 0 {
+        let chain_id = storage
+            .trx()
+            .chain_id()
+            .unwrap_or(crate::config::DEFAULT_CHAIN_ID);
+        let gas_limit = storage.trx().gas_limit();
+        let gas_price = storage.trx().gas_price();
+
+        storage
+            .trx()
+            .validate(storage.trx_origin(), &account_storage)?;
+        account_storage
+            .origin(storage.trx_origin(), &storage.trx())?
+            .increment_nonce()?;
+        let (exit_reason, steps_executed) = {
+            let mut backend = SyncedExecutorState::new(&mut account_storage);
+            let mut evm = Machine::new(
+                &storage.trx(),
+                storage.trx_origin(),
+                &mut backend,
+                None::<NoopEventListener>,
+            )?;
+            let (result, steps_executed, _) = evm.execute(u64::MAX, &mut backend)?;
+            (result, steps_executed)
+        };
+        log_data(&[
+            b"STEPS",
+            &steps_executed.to_le_bytes(), // Iteration steps
+            &steps_executed.to_le_bytes(), // Total steps is the same as iteration steps
+        ]);
+        account_storage.increment_revision_for_modified_contracts()?;
+        account_storage.transfer_treasury_payment()?;
+
+        //gasometer.record_operator_expenses(account_storage.operator());
+        let used_gas = gasometer.used_gas();
+        if used_gas > gas_limit {
+            return Err(Error::OutOfGas(gas_limit, used_gas));
+        }
+        log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
+
+        let gas_cost = used_gas.saturating_mul(gas_price);
+        let priority_fee =
+            priority_fee_txn_calculator::handle_priority_fee(&storage.trx(), used_gas)?;
+        account_storage.transfer_gas_payment(
+            storage.trx_origin(),
+            chain_id,
+            gas_cost + priority_fee,
+        )?;
+
+        log_return_value(&exit_reason);
+        return Ok(());
+    }
 
     allocate_or_reinit_state(&mut account_storage, &mut storage, reset)?;
     let mut state_data = storage.read_executor_state();
@@ -116,6 +168,7 @@ fn allocate_or_reinit_state(
 ) -> Result<()> {
     if is_allocate {
         storage.reset_steps_executed();
+        storage.reset_steps_interrupted();
 
         // Dealloc evm that was potentially alloced in previous iterations before the reset.
         if storage.is_evm_alloced() {
@@ -182,7 +235,11 @@ fn finalize<'a, 'b>(
     }
 
     let status = if let Some((status, actions)) = results {
-        if accounts.allocate(actions)? == AllocateResult::Ready {
+        if *status == ExitStatus::Interrupted {
+            accounts.apply_state_change(actions)?;
+            storage.increment_steps_interrupted(1)?;
+            None
+        } else if accounts.allocate(actions)? == AllocateResult::Ready {
             accounts.apply_state_change(actions)?;
             Some(status)
         } else {
@@ -232,6 +289,7 @@ pub fn log_return_value(status: &ExitStatus) {
         ExitStatus::Stop => 0x11,
         ExitStatus::Return(_) => 0x12,
         ExitStatus::Suicide => 0x13,
+        ExitStatus::Interrupted => 0x14,
         ExitStatus::Revert(_) => 0xd0,
         ExitStatus::StepLimit | ExitStatus::Cancel => unreachable!(),
     };

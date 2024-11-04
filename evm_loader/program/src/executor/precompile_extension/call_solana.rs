@@ -35,7 +35,7 @@ pub async fn call_solana<State: Database>(
     state: &mut State,
     address: &Address,
     input: &[u8],
-    context: &crate::evm::Context,
+    context: &mut crate::evm::Context,
     is_static: bool,
 ) -> Result<Vector<u8>> {
     if context.value != 0 {
@@ -309,7 +309,7 @@ pub async fn call_solana<State: Database>(
 #[maybe_async]
 async fn execute_external_instruction<State: Database>(
     state: &mut State,
-    context: &crate::evm::Context,
+    context: &mut crate::evm::Context,
     instruction: Instruction,
     signer_seeds: Vector<Vector<u8>>,
     required_lamports: u64,
@@ -317,6 +317,10 @@ async fn execute_external_instruction<State: Database>(
     #[cfg(not(target_os = "solana"))]
     log::info!("instruction: {:?}", instruction);
 
+    if context.interrupt_solana_call {
+        context.interrupt_solana_call = false;
+        return Err(Error::InterruptedCall);
+    }
     let called_program = instruction.program_id;
     state.set_return_data(&[]);
 

@@ -122,6 +122,7 @@ def specify_image_tags(git_ref,
 def build_docker_image(evm_sha_tag):
     solana_image = f'solanalabs/solana:{SOLANA_NODE_VERSION}'
     docker_client.pull(solana_image)
+    docker_client.pull(f"{DOCKERHUB_ORG_NAME}/neon_test_programs:latest")
     buildargs = {"REVISION": evm_sha_tag,
                  "SOLANA_IMAGE": solana_image,
                  "SOLANA_BPF_VERSION": SOLANA_BPF_VERSION,

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::{e, Rpc, SliceConfig};
 use crate::types::{TracerDb, TracerDbTrait};
 use crate::NeonError;
@@ -73,6 +75,68 @@ impl Rpc for CallDbClient {
     }
 
     async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {
-        Ok(vec![]) // TODO
+        use std::time::{Duration, Instant};
+        use tokio::sync::Mutex;
+
+        struct Cache {
+            // feature to slot when activated, if not then None
+            data: HashMap<Pubkey, Option<u64>>,
+            timestamp: Instant,
+        }
+
+        static CACHE: Mutex<Option<Cache>> = Mutex::const_new(None);
+        let mut cache = CACHE.lock().await;
+
+        if let Some(cache) = cache.as_ref() {
+            if cache.timestamp.elapsed() < Duration::from_secs(24 * 60 * 60) {
+                let mut keys: Vec<Pubkey> = cache.data.keys().copied().collect();
+
+                keys.retain(|pubkey| {
+                    let value = cache.data.get(pubkey);
+
+                    if let Some(Some(slot)) = value {
+                        if slot <= &self.slot {
+                            return false;
+                        }
+                    }
+
+                    true
+                });
+
+                return Ok(keys);
+            }
+        }
+
+        let feature_keys: Vec<Pubkey> = solana_sdk::feature_set::FEATURE_NAMES
+            .keys()
+            .copied()
+            .collect();
+
+        let features = Rpc::get_multiple_accounts(self, &feature_keys).await?;
+
+        let mut result = HashMap::<Pubkey, Option<u64>>::new();
+        for (pubkey, feature) in feature_keys.iter().zip(features) {
+            let slot = feature
+                .and_then(|a| solana_sdk::feature::from_account(&a))
+                .and_then(|f| f.activated_at);
+
+            result.insert(*pubkey, slot);
+        }
+
+        cache.replace(Cache {
+            data: result.clone(),
+            timestamp: Instant::now(),
+        });
+        drop(cache);
+
+        Ok(result
+            .into_iter()
+            .filter_map(|(pubkey, slot)| {
+                if slot.is_none() {
+                    return Some(pubkey);
+                }
+                None
+            })
+            .collect())
     }
 }

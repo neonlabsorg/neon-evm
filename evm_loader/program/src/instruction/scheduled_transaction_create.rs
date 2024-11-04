@@ -176,6 +176,7 @@ pub fn process<'a>(
             max_priority_fee_per_gas: tx.max_priority_fee_per_gas,
             nodes: vec![NodeInitializer {
                 transaction_hash: tx_hash,
+                sender: tx.payer,
                 child: NO_CHILD_TRANSACTION,
                 success_execute_limit: 0,
                 gas_limit: tx.gas_limit,

@@ -36,6 +36,7 @@ pub struct Node {
     pub result_hash: [u8; 32],
     pub transaction_hash: [u8; 32],
 
+    pub sender: Address,
     pub gas_limit: U256,
     pub value: U256,
 
@@ -43,7 +44,7 @@ pub struct Node {
     pub success_execute_limit: u16,
     pub parent_count: u16,
 }
-static_assertions::assert_eq_size!(Node, [u8; 135]);
+static_assertions::assert_eq_size!(Node, [u8; 155]);
 
 pub const NO_CHILD_TRANSACTION: u16 = u16::MAX;
 
@@ -69,6 +70,7 @@ pub type Header = HeaderV0;
 
 pub struct NodeInitializer {
     pub transaction_hash: [u8; 32],
+    pub sender: Address,
     pub child: u16,
     pub success_execute_limit: u16,
     pub gas_limit: U256,
@@ -202,6 +204,7 @@ impl<'a> TransactionTree<'a> {
             node.status = Status::NotStarted;
             node.result_hash = [0; 32];
             node.transaction_hash = init.transaction_hash;
+            node.sender = init.sender;
             node.gas_limit = init.gas_limit;
             node.value = init.value;
             node.child_transaction = init.child;
@@ -278,6 +281,10 @@ impl<'a> TransactionTree<'a> {
 
         let node = self.node(tx.index);
         if node.transaction_hash != hash {
+            return Err(Error::TreeAccountTxInvalidData);
+        }
+
+        if node.sender != tx.sender.unwrap_or(tx.payer) {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
@@ -589,7 +596,7 @@ impl<'a> TransactionTree<'a> {
             return;
         }
 
-        let mut child = self.nodes_mut()[index as usize];
+        let mut child = self.node_mut(index);
         let new_parent_count = child.parent_count.checked_sub(1);
         child.parent_count = new_parent_count.unwrap(); // Parent count is calculated by us when tree is created. If code is correct, this should never panic
 

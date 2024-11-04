@@ -19,6 +19,8 @@ fn parse_instruction(signer: &Signer, instruction: &[u8]) -> TreeInitializer {
     const HEADER_LEN: usize = 72;
     const CHUNK_LEN: usize = 100;
 
+    let payer = Address::from_solana_address(signer.key);
+
     let header = arrayref::array_ref![instruction, 0, HEADER_LEN];
     let message = &instruction[HEADER_LEN..];
 
@@ -36,6 +38,7 @@ fn parse_instruction(signer: &Signer, instruction: &[u8]) -> TreeInitializer {
 
         nodes.push(NodeInitializer {
             transaction_hash: *hash,
+            sender: payer,
             child: u16::from_le_bytes(*child_index),
             success_execute_limit: u16::from_le_bytes(*success_limit),
             gas_limit: U256::from_be_bytes(*gas_limit),
@@ -44,7 +47,7 @@ fn parse_instruction(signer: &Signer, instruction: &[u8]) -> TreeInitializer {
     }
 
     TreeInitializer {
-        payer: Address::from_solana_address(signer.key),
+        payer,
         nonce: u64::from_be_bytes(*nonce),
         chain_id: SOL_CHAIN_ID,
         max_fee_per_gas: U256::from_be_bytes(*max_fee_per_gas),

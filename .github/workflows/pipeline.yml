@@ -40,6 +40,7 @@ jobs:
           fetch-depth: 0
       - name: Specify image tags
         run: |
+          apk add python3 && \
           python3 ./.github/workflows/deploy.py specify_image_tags \
           --git_ref=${{ github.ref }} \
           --git_head_ref=${{ github.head_ref }} \

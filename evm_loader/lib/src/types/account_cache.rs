@@ -67,14 +67,15 @@ async fn acc_hash_add(addr: Pubkey, slot: u64, acc: Account) {
         .insert(val, acc);
 }
 
-fn get_programdata_slot_from_account(acc: &Account) -> Option<u64> {
+fn get_programdata_slot_from_account(acc: &Account) -> u64 {
     //probably will not serrialize.
     match deserialize::<UpgradeableLoaderState>(&acc.data) {
-        Ok(UpgradeableLoaderState::ProgramData { slot, .. }) => Some(slot),
+        Ok(UpgradeableLoaderState::ProgramData { slot, .. }) => slot,
         Ok(_) => {
             panic!("Account is not of type `ProgramData`.");
         }
-        Err(_) => {
+        Err(e) => {
+            eprintln!("Error occurred: {e:?}");
             panic!("Failed to deserialize account data.");
         }
     }
@@ -96,9 +97,10 @@ pub async fn acc_hash_get_values_by_keys(
         //future_requests.push(rpc.get_account_slice(key, 0, 512));
     }
 
-    if programdata_keys.len() != future_requests.len() {
-        panic!("programdata_keys.size()!=future_requests.size()");
-    }
+    assert!(
+        programdata_keys.len() == future_requests.len(),
+        "programdata_keys.size()!=future_requests.size()"
+    );
     let results = join_all(future_requests).await;
 
     for (i, result) in results.iter().enumerate() {
@@ -106,28 +108,23 @@ pub async fn acc_hash_get_values_by_keys(
         match result {
             Ok(Some(account)) => {
                 // Extract the slot value from the account data
-                if let Some(slot_val) = get_programdata_slot_from_account(account) {
-                    // Assuming `acc_hash_get` is an async function that returns an `Option`
-                    if let Some(acc) = acc_hash_get(key, slot_val).await {
-                        answer.push(Some(acc));
-                    } else {
-                        if let Ok(Some(tmp_acc)) = rpc.get_account(&key).await {
-                            acc_hash_add(key, slot_val, tmp_acc.clone()).await;
-                            answer.push(Some(tmp_acc));
-                        } else {
-                            answer.push(None);
-                        }
-                    }
+                let slot_val = get_programdata_slot_from_account(account);
+                // Assuming `acc_hash_get` is an async function that returns an `Option`
+                if let Some(acc) = acc_hash_get(key, slot_val).await {
+                    answer.push(Some(acc));
+                } else if let Ok(Some(tmp_acc)) = rpc.get_account(&key).await {
+                    acc_hash_add(key, slot_val, tmp_acc.clone()).await;
+                    answer.push(Some(tmp_acc));
                 } else {
-                    panic!("slot is None.");
+                    answer.push(None);
                 }
             }
             Ok(None) => {
-                println!("Account for key {:?} is None.", key);
+                println!("Account for key {key:?} is None.");
                 // need return
             }
             Err(e) => {
-                println!("Error fetching account for key {:?}: {:?}", key, e);
+                println!("Error fetching account for key {key:?}: {e:?}");
             }
         }
     }

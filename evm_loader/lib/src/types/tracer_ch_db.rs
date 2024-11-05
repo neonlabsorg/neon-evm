@@ -534,27 +534,27 @@ impl ClickHouseDb {
 
         // = if bin_slice.is_some() {  format!(r"substring(data, {}, {})", ) } else{ r"data"};
 
-        let request_data = match bin_slice {
-            Some(slice_config) => {
+        let request_data = bin_slice.map_or_else(
+            || String::from(r"data"),
+            |slice_config| {
                 format!(
-                    r"substring(data, {}, {})",
+                    r"substring( data, {}, {})",
                     slice_config.offset, slice_config.length
                 )
-            }
-            None => String::from("data"),
-        };
+            },
+        );
+
         // will it works much faster if it is constant string?
         let query = format!(
             r"
-            SELECT pubkey, owner, lamports, executable, rent_epoch, {} , txn_signature
+            SELECT pubkey, owner, lamports, executable, rent_epoch, {request_data} , txn_signature
             FROM events.update_account_distributed
             WHERE pubkey = ?
               AND slot = ?
               AND write_version <= ?
             ORDER BY write_version DESC
             LIMIT 1
-        ",
-            request_data
+        "
         );
 
         let time_start = Instant::now();

@@ -26,6 +26,8 @@ concurrency:
 jobs:
   build-image:
     runs-on: ["self-hosted", "k8s-prod"]
+    container:
+      image: docker:27.3.1-alpine3.20
     outputs:
       evm_tag: ${{ steps.tags.outputs.evm_tag }}
       evm_sha_tag: ${{ steps.tags.outputs.evm_sha_tag }}
@@ -38,6 +40,7 @@ jobs:
           fetch-depth: 0
       - name: Specify image tags
         run: |
+          sudo apt update && sudo apt install docker docker.io -y 
           python3 ./.github/workflows/deploy.py specify_image_tags \
           --git_ref=${{ github.ref }} \
           --git_head_ref=${{ github.head_ref }} \

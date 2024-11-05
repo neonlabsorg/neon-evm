@@ -66,13 +66,16 @@ jobs:
     runs-on: ["self-hosted", "k8s-prod"]
     needs:
       - build-image
+    container:
+      image: docker:27.3.1-alpine3.20
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Run tests
         run: |
-          python3 ./.github/workflows/deploy.py run_tests \
+          apk add python3 py3-pip && python3 -m venv /venv && . /venv/bin/activate && pip3 install -r ./.github/workflows/requirements.txt && \
+          /venv/bin/python3 ./.github/workflows/deploy.py run_tests \
           --evm_sha_tag=${{ needs.build-image.outputs.evm_sha_tag }} \
           --neon_test_tag=${{ needs.build-image.outputs.neon_test_tag }} \
           --run_number=${{ github.run_number }} \
@@ -84,13 +87,16 @@ jobs:
     runs-on: ["self-hosted", "k8s-prod"]
     needs:
       - build-image
+    container:
+      image: docker:27.3.1-alpine3.20
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Trigger proxy build
         run: |
-          python3 ./.github/workflows/deploy.py trigger_proxy_action \
+          apk add python3 py3-pip && python3 -m venv /venv && . /venv/bin/activate && pip3 install -r ./.github/workflows/requirements.txt && \
+          /venv/bin/python3 ./.github/workflows/deploy.py trigger_proxy_action \
           --evm_pr_version_branch=${{ needs.build-image.outputs.evm_pr_version_branch }} \
           --is_evm_release=${{ needs.build-image.outputs.is_evm_release }} \
           --evm_sha_tag=${{ needs.build-image.outputs.evm_sha_tag }} \
@@ -104,6 +110,8 @@ jobs:
         uses: "andymckay/cancel-action@0.4"
   finalize-image:
     runs-on: ["self-hosted", "k8s-prod"]
+    container:
+      image: docker:27.3.1-alpine3.20
     needs:
       - build-image
       - trigger-proxy-tests
@@ -114,14 +122,15 @@ jobs:
           fetch-depth: 0
       - name: Finalize image
         run: |
-          python3 ./.github/workflows/deploy.py finalize_image \
+          apk add python3 py3-pip && python3 -m venv /venv && . /venv/bin/activate && pip3 install -r ./.github/workflows/requirements.txt && \
+          /venv/bin/python3 ./.github/workflows/deploy.py finalize_image \
           --evm_sha_tag=${{ needs.build-image.outputs.evm_sha_tag }} \
           --evm_tag=${{ needs.build-image.outputs.evm_tag }}
 
       - name: Send notification to slack
         if: failure()
         run: |
-          python3 ./.github/workflows/deploy.py send_notification \
+          /venv/bin/python3 ./.github/workflows/deploy.py send_notification \
           --evm_tag=${{ needs.build-image.outputs.evm_tag }} \
           --url=${{secrets.SLACK_EVM_CHANNEL_URL}} \
           --build_url=${BUILD_URL}

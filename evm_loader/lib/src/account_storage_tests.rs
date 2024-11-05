@@ -37,6 +37,18 @@ mod mock_rpc_client {
             let result = self.accounts.get(key).cloned();
             Ok(result)
         }
+        async fn get_account_slice(
+            &self,
+            key: &Pubkey,
+            offset: usize,
+            _data_size: usize,
+        ) -> ClientResult<Option<Account>> {
+            if offset != 0 {
+                panic!("");
+            };
+            let result = self.accounts.get(key).cloned();
+            Ok(result)
+        }
 
         async fn get_multiple_accounts(
             &self,

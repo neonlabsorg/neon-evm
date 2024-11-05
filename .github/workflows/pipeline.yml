@@ -55,11 +55,11 @@ jobs:
           echo "neon_test_tag=${{ env.NEON_TEST_TAG }}" >> "$GITHUB_OUTPUT"
       - name: build docker image
         run: |
-          python3 ./.github/workflows/deploy.py build_docker_image \
+          /venv/bin/python3 ./.github/workflows/deploy.py build_docker_image \
           --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }}
       - name: publish image
         run: |
-          python3 ./.github/workflows/deploy.py publish_image \
+          /venv/bin/python3 ./.github/workflows/deploy.py publish_image \
           --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }} \
           --evm_tag=${{ steps.tags.outputs.evm_tag }}
   run-evm-tests:

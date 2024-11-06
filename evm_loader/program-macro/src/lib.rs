@@ -266,7 +266,7 @@ pub fn derive_log_data(input: TokenStream) -> TokenStream {
     let implementation = crate::derive_log_data::gen_impl(input);
 
     quote! {
-        impl #ident {
+        impl LogData for #ident {
             fn log_data(&self) {
                 #implementation
             }

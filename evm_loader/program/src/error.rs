@@ -2,7 +2,7 @@
 #![allow(clippy::use_self)]
 
 use crate::allocator::acc_allocator;
-use crate::debug::log_data;
+// use crate::debug::log_data;
 use crate::types::{Address, Vector};
 use ethnum::U256;
 use solana_program::{
@@ -12,9 +12,11 @@ use solana_program::{
 };
 use std::{array::TryFromSliceError, num::TryFromIntError, str::Utf8Error};
 use thiserror::Error;
+use crate evm_loader_macro::LogData;
+
 
 /// Errors that may be returned by the EVM Loader program.
-#[derive(Error, Debug, strum::EnumDiscriminants)]
+#[derive(Error, Debug, strum::EnumDiscriminants, LogData)]
 pub enum Error {
     #[error("Error: {0}")]
     Custom(String),
@@ -298,82 +300,6 @@ impl Error {
         }
     }
 
-    // #[must_use]
-    // pub fn args(&self) -> Vec<String> {
-    //     match self {
-    //         Error::AccountInvalidTag(pubkey, arg1) => {
-    //             vec![pubkey.to_string(), arg1.to_string()]
-    //         }
-    //         Error::OutOfGas(limit, required) => {
-    //             vec![limit.to_string(), required.to_string()]
-    //         }
-    //         Error::InvalidTransactionNonce(origin, nonce, tx_nonce) => {
-    //             vec![origin.to_string(), nonce.to_string(), tx_nonce.to_string()]
-    //         }
-    //         _ => vec![],
-    //     }
-    // }
-
-    // #[must_use]
-    // pub fn args(&self) -> Vec<Vec<u8>> {
-    //     match self {
-    //         Error::AccountInvalidTag(pubkey, arg1) => {
-    //             vec![pubkey.to_bytes().into(), vec![*arg1]]
-    //         }
-    //         Error::OutOfGas(limit, required) => {
-    //             vec![limit.to_le_bytes().into(), required.to_le_bytes().into()]
-    //         }
-    //         Error::InvalidTransactionNonce(origin, nonce, tx_nonce) => {
-    //             vec![
-    //                 origin.to_string().into(),
-    //                 nonce.to_le_bytes().into(),
-    //                 tx_nonce.to_le_bytes().into(),
-    //             ]
-    //         }
-    //         _ => vec![],
-    //     }
-    // }
-
-    pub fn log_data(&self) {
-        match self {
-            Error::AccountInvalidTag(pubkey, arg1) => {
-                log_data(&[
-                    b"ERROR",
-                    &self.code().to_le_bytes(),
-                    &2_u8.to_le_bytes(),
-                    &pubkey.to_bytes(),
-                    &arg1.to_le_bytes(),
-                    &self.to_string().as_bytes(),
-                ]);
-            }
-            Error::OutOfGas(limit, required) => {
-                log_data(&[
-                    b"ERROR",
-                    &self.code().to_le_bytes(),
-                    &2_u8.to_le_bytes(),
-                    &limit.to_le_bytes(),
-                    &required.to_le_bytes(),
-                    &self.to_string().as_bytes(),
-                ]);
-            }
-            Error::InvalidTransactionNonce(origin, nonce, tx_nonce) => {
-                log_data(&[
-                    b"ERROR",
-                    &self.code().to_le_bytes(),
-                    &3_u8.to_le_bytes(),
-                    origin.as_bytes(),
-                    &nonce.to_le_bytes(),
-                    &tx_nonce.to_le_bytes(),
-                    &self.to_string().as_bytes(),
-                ]);
-            }
-            _ => log_data(&[
-                b"ERROR_UNKNOWN",
-                &self.code().to_le_bytes(),
-                &self.to_string().as_bytes(),
-            ]),
-        }
-    }
 }
 pub type Result<T> = std::result::Result<T, Error>;
 

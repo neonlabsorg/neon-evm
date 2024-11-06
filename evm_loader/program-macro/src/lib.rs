@@ -2,6 +2,7 @@
 #![deny(clippy::all, clippy::pedantic, clippy::nursery)]
 
 mod config_parser;
+mod derive_log_data;
 
 use std::collections::BTreeMap;
 
@@ -257,4 +258,21 @@ fn is_composite_vector_type(ty: &Type) -> bool {
         return false;
     }
     false
+}
+#[proc_macro_derive(LogData)]
+pub fn derive_log_data(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let ident = input.ident.clone();
+
+    let implementation = crate::derive_log_data::gen_impl(input);
+
+    quote! {
+        impl LogData for #ident {
+            fn log_data(&self) {
+                #implementation
+            }
+        }
+    }
+    .into()
 }

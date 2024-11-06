@@ -63,7 +63,7 @@ pub fn do_continue<'a>(
     step_count: u64,
     accounts: AccountsDB<'a>,
     mut storage: StateAccount<'a>,
-    gasometer: Gasometer,
+    mut gasometer: Gasometer,
     reset: bool,
 ) -> Result<()> {
     debug_print!("do_continue");
@@ -73,65 +73,16 @@ pub fn do_continue<'a>(
             "Step limit {step_count} below minimum {EVM_STEPS_MIN}"
         )));
     }
-
-    let mut account_storage = ProgramAccountStorage::new(accounts)?;
     if reset {
         log_data(&[b"RESET"]);
     }
+    let mut account_storage = ProgramAccountStorage::new(accounts)?;
+    allocate_or_reinit_state(&mut account_storage, &mut storage, reset)?;
+
     if storage.steps_interrupted() > 0 {
-        let chain_id = storage
-            .trx()
-            .chain_id()
-            .unwrap_or(crate::config::DEFAULT_CHAIN_ID);
-        let gas_limit = storage.trx().gas_limit();
-        let gas_price = storage.trx().gas_price();
-
-        storage
-            .trx()
-            .validate(storage.trx_origin(), &account_storage)?;
-        account_storage
-            .origin(storage.trx_origin(), &storage.trx())?
-            .increment_nonce()?;
-        let (exit_reason, steps_executed) = {
-            let mut backend = SyncedExecutorState::new(&mut account_storage);
-            let mut evm = Machine::new(
-                &storage.trx(),
-                storage.trx_origin(),
-                &mut backend,
-                None::<NoopEventListener>,
-            )?;
-            let (result, steps_executed, _) = evm.execute(u64::MAX, &mut backend)?;
-            (result, steps_executed)
-        };
-        log_data(&[
-            b"STEPS",
-            &steps_executed.to_le_bytes(), // Iteration steps
-            &steps_executed.to_le_bytes(), // Total steps is the same as iteration steps
-        ]);
-        account_storage.increment_revision_for_modified_contracts()?;
-        account_storage.transfer_treasury_payment()?;
-
-        //gasometer.record_operator_expenses(account_storage.operator());
-        let used_gas = gasometer.used_gas();
-        if used_gas > gas_limit {
-            return Err(Error::OutOfGas(gas_limit, used_gas));
-        }
-        log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
-
-        let gas_cost = used_gas.saturating_mul(gas_price);
-        let priority_fee =
-            priority_fee_txn_calculator::handle_priority_fee(&storage.trx(), used_gas)?;
-        account_storage.transfer_gas_payment(
-            storage.trx_origin(),
-            chain_id,
-            gas_cost + priority_fee,
-        )?;
-
-        log_return_value(&exit_reason);
-        return Ok(());
+        return finalize_interrupted(&mut account_storage, &mut storage, &mut gasometer);
     }
 
-    allocate_or_reinit_state(&mut account_storage, &mut storage, reset)?;
     let mut state_data = storage.read_executor_state();
     let mut evm = storage.read_evm::<EvmBackend, NoopEventListener>();
     let mut backend = ExecutorState::new(&mut account_storage, &mut state_data);
@@ -282,6 +233,62 @@ fn finalize<'a, 'b>(
     }
 
     Ok(())
+}
+
+fn finalize_interrupted(
+    account_storage: &mut ProgramAccountStorage<'_>,
+    storage: &mut StateAccount<'_>,
+    gasometer: &mut Gasometer,
+) -> Result<()> {
+    let chain_id = storage
+        .trx()
+        .chain_id()
+        .unwrap_or(crate::config::DEFAULT_CHAIN_ID);
+    let gas_limit = storage.trx().gas_limit();
+    let gas_price = storage.trx().gas_price();
+
+    storage
+        .trx()
+        .validate(storage.trx_origin(), account_storage)?;
+    account_storage
+        .origin(storage.trx_origin(), &storage.trx())?
+        .increment_nonce()?;
+    let (exit_reason, steps_executed) = {
+        let mut backend = SyncedExecutorState::new(account_storage);
+        let mut evm = Machine::new(
+            &storage.trx(),
+            storage.trx_origin(),
+            &mut backend,
+            None::<NoopEventListener>,
+        )?;
+        let (result, steps_executed, _) = evm.execute(u64::MAX, &mut backend)?;
+        (result, steps_executed)
+    };
+    log_data(&[
+        b"STEPS",
+        &steps_executed.to_le_bytes(), // Iteration steps
+        &steps_executed.to_le_bytes(), // Total steps is the same as iteration steps
+    ]);
+    account_storage.increment_revision_for_modified_contracts()?;
+    account_storage.transfer_treasury_payment()?;
+
+    gasometer.record_operator_expenses(account_storage.operator());
+    let used_gas = gasometer.used_gas();
+    if used_gas > gas_limit {
+        return Err(Error::OutOfGas(gas_limit, used_gas));
+    }
+    log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
+
+    let gas_cost = used_gas.saturating_mul(gas_price);
+    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(&storage.trx(), used_gas)?;
+    account_storage.transfer_gas_payment(
+        storage.trx_origin(),
+        chain_id,
+        gas_cost + priority_fee,
+    )?;
+
+    log_return_value(&exit_reason);
+    return Ok(());
 }
 
 pub fn log_return_value(status: &ExitStatus) {

@@ -8,7 +8,6 @@ use solana_program::{
 };
 
 use crate::{instruction, instruction::EvmInstruction};
-use evm_loader::error::Error;
 
 entrypoint!(process_instruction);
 

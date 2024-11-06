@@ -12,6 +12,7 @@ use solana_program::{
 };
 use std::{array::TryFromSliceError, num::TryFromIntError, str::Utf8Error};
 use thiserror::Error;
+use crate::debug::log_data;
 use crate evm_loader_macro::LogData;
 
 
@@ -282,6 +283,10 @@ pub enum Error {
 
     #[error("Scheduled Transaction has invalid index: inside transaction={0}, inside instruction data={1}")]
     ScheduledTxInvalidIndex(u16, u16),
+}
+
+pub fn get_bytes<T: Sized>(value: &T) -> &[u8]{
+    unsafe { std::slice::from_raw_parts((value as *const T) as *const u8, std::mem::size_of::<T>()) }
 }
 
 impl Error {

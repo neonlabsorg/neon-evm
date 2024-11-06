@@ -1,5 +1,6 @@
 use quote::quote;
 use syn::DeriveInput;
+
 pub fn gen_impl(input: DeriveInput) -> proc_macro2::TokenStream {
     let syn::Data::Enum(enum_data) = input.data else {
         panic!("Only enums supported");
@@ -22,27 +23,43 @@ pub fn gen_impl(input: DeriveInput) -> proc_macro2::TokenStream {
 fn gen_branch(n: usize, variant: syn::Variant) -> proc_macro2::TokenStream {
     let ident = variant.ident;
 
-    // let mut fields_count = 0;
-    let fields = match variant.fields {
+    let fields_count = match variant.fields {
         syn::Fields::Named(_) => panic!("Named variant fields are not supported"),
         syn::Fields::Unnamed(fields_unnamed) => {
-            let fields_count = fields_unnamed.unnamed.len();
-            (0..fields_count)
-                .map(|i| syn::parse_str(&format!("arg{i}")).unwrap())
-                .collect::<Vec<syn::Ident>>()
+            fields_unnamed.unnamed.len()
         }
-        syn::Fields::Unit => panic!("Unit variants are not supported"),
+        syn::Fields::Unit => 0,
     };
 
+    let fields = (0..fields_count)
+        .map(|i| format!("arg{i}"))
+        .map(|arg_string| syn::parse_str(&arg_string).unwrap())
+        .collect::<Vec<syn::Ident>>();
 
-    let mut f = format!("ERROR");
-    f.push_str(&format!(", {n}"));
-    for field in &fields {
-        f.push_str(&format!(", {{{field}}}"));
-    }
+    let fields_pattern = if fields_count > 0 {
+        quote! {(#(#fields),*)}
+    } else {
+        quote! {}
+    };
+
+    let fields_to_bytes = fields
+        .iter()
+        .map(|field| quote! {&get_bytes(#field)})
+        .collect::<Vec<_>>();
+
+    let comma = if fields_count > 0 {
+        quote! {,}
+    } else {
+        quote! {}
+    };
 
     quote! {
-        Self::#ident(#(#fields),*) => println!(#f)
+        Self::#ident #fields_pattern => debug::log_data(&[
+            b"ERROR",
+            &::log_data::ToBytes::to_bytes(&#n),
+            #(#fields_to_bytes),* #comma
+            &::log_data::ToBytes::to_bytes(&self.to_string()),
+        ])
     }
-
 }
+

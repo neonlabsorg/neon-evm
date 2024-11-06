@@ -20,7 +20,7 @@ pub async fn get_config(state: NeonApiState, request_id: RequestId) -> impl Resp
         Ok(rpc) => rpc,
         Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
     };
-
+    // Entry  GetConfigResponse
     process_result(
         &GetConfigCommand::execute(&rpc, state.config.evm_loader)
             .await

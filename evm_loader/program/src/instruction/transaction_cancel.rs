@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 use crate::account::{AccountsDB, BalanceAccount, Operator, OperatorBalanceAccount, StateAccount};
 use crate::config::DEFAULT_CHAIN_ID;
 use crate::debug::log_data;
@@ -53,8 +55,12 @@ fn execute<'a>(
 ) -> Result<()> {
     let trx_chain_id = storage.trx().chain_id().unwrap_or(DEFAULT_CHAIN_ID);
 
-    let used_gas = U256::from(CANCEL_TRX_COST + LAST_ITERATION_COST);
+    let used_gas = min(
+        storage.gas_available(),
+        U256::from(CANCEL_TRX_COST + LAST_ITERATION_COST),
+    );
     let total_used_gas = storage.gas_used() + used_gas;
+
     log_data(&[
         b"GAS",
         &used_gas.to_le_bytes(),

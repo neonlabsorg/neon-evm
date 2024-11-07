@@ -95,7 +95,7 @@ jobs:
           fetch-depth: 0
       - name: Trigger proxy build
         run: |
-          apk add python3 py3-pip && python3 -m venv /venv && . /venv/bin/activate && pip3 install -r ./.github/workflows/requirements.txt && \
+          apk add python3 py3-pip && python3 -m venv /venv && . /venv/bin/activate && pip3 install -r ./.github/workflows/requirements.txt && printenv && \
           /venv/bin/python3 ./.github/workflows/deploy.py trigger_proxy_action \
           --evm_pr_version_branch=${{ needs.build-image.outputs.evm_pr_version_branch }} \
           --is_evm_release=${{ needs.build-image.outputs.is_evm_release }} \

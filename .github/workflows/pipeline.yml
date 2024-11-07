@@ -27,7 +27,7 @@ jobs:
   build-image:
     runs-on: ["self-hosted", "k8s-prod"]
     container:
-      image: docker:27.3.1-alpine3.20
+      image: docker:dind
     outputs:
       evm_tag: ${{ steps.tags.outputs.evm_tag }}
       evm_sha_tag: ${{ steps.tags.outputs.evm_sha_tag }}
@@ -67,7 +67,7 @@ jobs:
     needs:
       - build-image
     container:
-      image: docker:27.3.1-alpine3.20
+      image: docker:dind
     steps:
       - uses: actions/checkout@v4
         with:
@@ -88,14 +88,14 @@ jobs:
     needs:
       - build-image
     container:
-      image: docker:27.3.1-alpine3.20
+      image: docker:dind
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Trigger proxy build
         run: |
-          apk add python3 py3-pip && python3 -m venv /venv && . /venv/bin/activate && pip3 install -r ./.github/workflows/requirements.txt && printenv && \
+          apk add python3 py3-pip && python3 -m venv /venv && . /venv/bin/activate && pip3 install -r ./.github/workflows/requirements.txt && \
           /venv/bin/python3 ./.github/workflows/deploy.py trigger_proxy_action \
           --evm_pr_version_branch=${{ needs.build-image.outputs.evm_pr_version_branch }} \
           --is_evm_release=${{ needs.build-image.outputs.is_evm_release }} \

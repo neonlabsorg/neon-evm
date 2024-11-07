@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::executor::OwnedAccountInfo;
-use borsh::BorshDeserialize;
+use borsh::de::BorshDeserialize;
 use solana_program::{
     entrypoint::ProgramResult, instruction::AccountMeta, program_error::ProgramError,
     program_pack::Pack, pubkey::Pubkey, rent::Rent,

@@ -165,7 +165,7 @@ pub enum RewardType {
     Block,
     /// Uncle
     Uncle,
-    /// EmptyStep (AuthorityRound)
+    /// `EmptyStep` (`AuthorityRound`)
     EmptyStep,
     /// External (attributed as part of an external protocol)
     External,

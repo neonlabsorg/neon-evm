@@ -48,7 +48,7 @@ pub enum NeonError {
     EvmError(#[from] evm_loader::error::Error),
     #[error("Can't load db config")]
     LoadingDBConfigError,
-    /// Need specify evm_loader
+    /// Need specify `evm_loader`
     #[error("EVM loader must be specified.")]
     EvmLoaderNotSpecified,
     /// Need specify fee payer

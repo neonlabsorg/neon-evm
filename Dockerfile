@@ -1,12 +1,12 @@
-ARG SOLANA_IMAGE
 ARG DOCKERHUB_ORG_NAME
 # Install BPF SDK
-FROM solanalabs/rust:1.75.0 AS builder
+FROM anzaxyz/ci:rust_1.78.0_nightly-2024-03-26 AS builder
 RUN cargo install rustfilt
 WORKDIR /opt
 ARG SOLANA_BPF_VERSION
-RUN sh -c "$(curl -sSfL https://release.solana.com/"${SOLANA_BPF_VERSION}"/install)" && \
+RUN sh -c "$(curl -sSfL https://release.anza.xyz/${SOLANA_BPF_VERSION}/install)" && \
     /root/.local/share/solana/install/active_release/bin/sdk/sbf/scripts/install.sh
+
 ENV PATH=${PATH}:/root/.local/share/solana/install/active_release/bin
 
 
@@ -17,9 +17,14 @@ COPY evm_loader /opt/neon-evm/evm_loader
 WORKDIR /opt/neon-evm/evm_loader
 ARG REVISION
 ENV NEON_REVISION=${REVISION}
+
 RUN cargo fmt --check && \
-    cargo clippy --release && \
-    cargo build --release && \
+    cargo clippy --release \
+      --config 'patch.crates-io.ethnum.git="https://github.com/neonlabsorg/ethnum.git"'\
+      --config 'patch.crates-io.ethnum.branch="NDEV-3414-u256-in-u64-4-implementation"' && \
+    cargo build --release \
+      --config 'patch.crates-io.ethnum.git="https://github.com/neonlabsorg/ethnum.git"'\
+      --config 'patch.crates-io.ethnum.branch="NDEV-3414-u256-in-u64-4-implementation"' && \
     cargo test --release && \
     cargo build-sbf --manifest-path program/Cargo.toml --features devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
     cargo build-sbf --manifest-path program/Cargo.toml --features testnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet.so && \

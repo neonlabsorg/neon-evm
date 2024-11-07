@@ -40,20 +40,21 @@ default = ["custom-heap"]
 linked_list_allocator = { version = "0.10", default-features = false }
 evm-loader-macro = { path = "../program-macro" }
 solana-program.workspace = true
-spl-token = { version = "~4.0", default-features = false, features = ["no-entrypoint"] }
-spl-associated-token-account = { version = "~2.3", default-features = false, features = ["no-entrypoint"] }
-mpl-token-metadata = { version = "~4.1", default-features = false }
+spl-token = { version = "~6.0", default-features = false, features = ["no-entrypoint"] }
+spl-associated-token-account.workspace = true
+mpl-token-metadata = { version = "5.1.0", default-features = false }
 thiserror = "1.0"
 arrayref = "0.3.8"
 hex = "0.4.3"
 ripemd = "0.1"
 rlp = "0.5"
 static_assertions = "1"
-borsh = "0.10"
+borsh = "1.5.2"
+borsh010 = { version = "0.10.4", package = "borsh" }
 bincode = "1"
 serde_bytes = "0.11.15"
 serde = { version = "1.0.204", default-features = false, features = ["derive", "rc"] }
-ethnum = { version = "1.5", default-features = false, features = ["serde"] }
+ethnum.workspace = true
 cfg-if = { version = "1.0" }
 log = { version = "0.4", default-features = false, optional = true }
 maybe-async = "0.2.10"
@@ -68,7 +69,6 @@ features = ["is_sync"]
 [dev-dependencies]
 tokio = { version = "1.39", features = ["full"] }
 solana-sdk.workspace = true
-
 
 [lib]
 crate-type = ["cdylib", "lib"]

@@ -918,11 +918,6 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             let new_lamports = new_acc.lamports;
             let new_size = new_acc.get_length();
 
-            if new_acc.is_busy() && new_lamports < self.rent.minimum_balance(new_acc.get_length()) {
-                info!("Account {pubkey} is not rent exempt");
-                return Err(ProgramError::AccountNotRentExempt.into());
-            }
-
             let old_lamports = lamports_after_upgrade.unwrap_or(original_lamports);
             old_lamports_sum += old_lamports;
             new_lamports_sum += new_lamports;

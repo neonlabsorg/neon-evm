@@ -6,8 +6,6 @@ use std::convert::{From, TryInto};
 use std::fmt::{Debug, Display};
 use std::str::FromStr;
 
-use log_data::ToBytes;
-
 use crate::account::{Operator, ACCOUNT_SEED_VERSION};
 use crate::error::Error;
 
@@ -88,12 +86,6 @@ impl Address {
     }
 }
 
-
-impl ToBytes for Address {
-fn to_bytes(&self) -> Vec<u8> {
-    self.as_bytes()
-}
-}
 
 impl FromStr for Address {
     type Err = Error;

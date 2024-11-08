@@ -2034,6 +2034,7 @@ dependencies = [
  "rlp",
  "serde",
  "serde_bytes",
+ "serde_with 3.9.0",
  "solana-program",
  "solana-sdk",
  "spl-associated-token-account",
@@ -3336,6 +3337,7 @@ version = "0.1.0"
 dependencies = [
  "ethnum",
  "log_data_derive",
+ "serde",
 ]
 
 [[package]]

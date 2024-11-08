@@ -5,5 +5,5 @@ edition = "2021"
 
 [dependencies]
 log_data_derive = { path = "derive" }
-
+serde = "*"
 ethnum = { version = "1.5", default-features = false, features = ["serde"] }

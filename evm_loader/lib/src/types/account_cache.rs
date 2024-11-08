@@ -1,18 +1,22 @@
 // use crate::tracing::tracers::state_diff::Account;
 use crate::rpc::Rpc;
+use async_trait::async_trait;
+// use async_trait::async_trait;
 use bincode::deserialize;
 use futures::future::join_all;
 use solana_client::client_error::Result as ClientResult;
 use solana_sdk::{
     account::Account,
-    // account_utils::StateMut,
     bpf_loader_upgradeable::UpgradeableLoaderState,
 
+    // account_utils::StateMut,
+    clock::{Slot, UnixTimestamp},
     pubkey::Pubkey,
 };
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::RwLock;
+
 use tokio::sync::OnceCell;
 
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -130,4 +134,108 @@ pub async fn acc_hash_get_values_by_keys(
     }
     // let mut answer_arr=Vec::new();
     Ok(answer)
+}
+
+struct FakeRpc {
+    accounts: HashMap<Pubkey, Account>,
+    my_pubkey: Pubkey,
+}
+#[allow(dead_code)]
+impl FakeRpc {
+    pub fn new() -> Self {
+        Self {
+            accounts: HashMap::new(),
+            my_pubkey: Pubkey::new_unique(),
+        }
+    }
+
+    fn has_account(&self, pubkey: &Pubkey) -> bool {
+        self.accounts.contains_key(pubkey)
+    }
+
+    fn make_account(&mut self, pubkey: Pubkey) -> Account {
+        let answer = Account::new(1, 4 * 1024 * 1024, &self.my_pubkey);
+
+        self.accounts.insert(pubkey, answer.clone());
+        answer
+    }
+}
+
+#[async_trait(?Send)]
+
+impl Rpc for FakeRpc {
+    async fn get_account(&self, pubkey: &Pubkey) -> ClientResult<Option<Account>> {
+        assert!(self.accounts.contains_key(pubkey), "  ");
+        Ok(Some(self.accounts.get(pubkey).unwrap().clone()))
+    }
+
+    async fn get_account_slice(
+        &self,
+        pubkey: &Pubkey,
+        offset: usize,
+        data_size: usize,
+    ) -> ClientResult<Option<Account>> {
+        assert!(self.accounts.contains_key(pubkey), "  ");
+        let mut answer = self.accounts.get(pubkey).unwrap().clone();
+        if offset != 0 {
+            answer
+                .data
+                .drain(..std::cmp::min(answer.data.len(), offset));
+        }
+        answer.data.truncate(data_size);
+
+        Ok(Some(answer))
+    }
+
+    async fn get_multiple_accounts(
+        &self,
+        pubkeys: &[Pubkey],
+    ) -> ClientResult<Vec<Option<Account>>> {
+        let mut futures = Vec::new();
+        for pubkey in pubkeys {
+            futures.push(self.get_account(pubkey).await?);
+        }
+
+        Ok(futures)
+    }
+
+    async fn get_block_time(&self, _slot: Slot) -> ClientResult<UnixTimestamp> {
+        Ok(9999)
+    }
+    async fn get_slot(&self) -> ClientResult<Slot> {
+        Ok(1212)
+    }
+
+    async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {
+        Ok(Vec::new())
+    }
+}
+use tokio;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_acc_is_exist() {
+        let mut rpc = FakeRpc::new();
+        let key1 = Pubkey::new_unique();
+
+        let test_acc = rpc.make_account(key1);
+        if test_acc.data.len() >= 4000000 {
+            println!("Account data len: {}", test_acc.data.len());
+        } else {
+            panic!("test stop");
+        }
+        if let Ok(test2_acc) = rpc.get_account(&key1).await {
+            assert_eq!(
+                test_acc.data.len(),
+                test2_acc.expect("test fail").data.len()
+            );
+        } else {
+            panic!("fake rpc returned error");
+        }
+
+        let test3_acc = rpc.get_account_slice(&key1, 0, 1024).await;
+        assert_eq!(1024, test3_acc.unwrap().expect("test fail").data.len());
+    }
 }

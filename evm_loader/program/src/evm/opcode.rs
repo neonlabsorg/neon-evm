@@ -1353,7 +1353,10 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         match result {
             Some(Ok(return_data)) => self.opcode_return_impl(return_data, backend).await,
-            Some(Err(Error::InterruptedCall)) => Ok(Action::Interrupted),
+            Some(Err(e)) => match e {
+                Error::InterruptedCall => Ok(Action::Interrupted),
+                _ => Err(e),
+            },
             _ => Ok(Action::Noop),
         }
     }

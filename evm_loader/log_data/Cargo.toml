@@ -1,0 +1,9 @@
+[package]
+name = "log_data"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+log_data_derive = { path = "derive" }
+
+ethnum = { version = "1.5", default-features = false, features = ["serde"] }

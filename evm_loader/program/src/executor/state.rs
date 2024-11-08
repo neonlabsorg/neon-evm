@@ -201,6 +201,9 @@ impl<B: AccountStorage> LogCollector for ExecutorState<'_, B> {
 
 #[maybe_async(?Send)]
 impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
+    fn is_synced_state(&self) -> bool {
+        false
+    }
     fn program_id(&self) -> &Pubkey {
         self.backend.program_id()
     }

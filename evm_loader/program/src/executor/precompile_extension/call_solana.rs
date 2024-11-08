@@ -317,7 +317,7 @@ async fn execute_external_instruction<State: Database>(
     #[cfg(not(target_os = "solana"))]
     log::info!("instruction: {:?}", instruction);
 
-    if context.interrupt_solana_call {
+    if !state.is_synced_state() && context.interrupt_solana_call {
         context.interrupt_solana_call = false;
         return Err(Error::InterruptedCall);
     }

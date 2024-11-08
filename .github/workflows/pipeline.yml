@@ -26,8 +26,6 @@ concurrency:
 jobs:
   build-image:
     runs-on: ["self-hosted", "k8s-prod"]
-    container:
-      image: docker:dind
     outputs:
       evm_tag: ${{ steps.tags.outputs.evm_tag }}
       evm_sha_tag: ${{ steps.tags.outputs.evm_sha_tag }}
@@ -35,13 +33,16 @@ jobs:
       is_evm_release: ${{ steps.tags.outputs.is_evm_release }}
       neon_test_tag: ${{ steps.tags.outputs.neon_test_tag }}
     steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - uses: actions/setup-python@v5
+      - run:  pip install -r ./.github/workflows/requirements.txt
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Specify image tags
         run: |
-          apk add python3 py3-pip && python3 -m venv /venv && . /venv/bin/activate && pip3 install -r ./.github/workflows/requirements.txt && \
-          /venv/bin/python3 ./.github/workflows/deploy.py specify_image_tags \
+          python3 ./.github/workflows/deploy.py specify_image_tags \
           --git_ref=${{ github.ref }} \
           --git_head_ref=${{ github.head_ref }} \
           --git_base_ref=${{ github.base_ref }}
@@ -55,11 +56,11 @@ jobs:
           echo "neon_test_tag=${{ env.NEON_TEST_TAG }}" >> "$GITHUB_OUTPUT"
       - name: build docker image
         run: |
-          /venv/bin/python3 ./.github/workflows/deploy.py build_docker_image \
+          python3 ./.github/workflows/deploy.py build_docker_image \
           --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }}
       - name: publish image
         run: |
-          /venv/bin/python3 ./.github/workflows/deploy.py publish_image \
+          python3 ./.github/workflows/deploy.py publish_image \
           --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }} \
           --evm_tag=${{ steps.tags.outputs.evm_tag }}
   run-evm-tests:

@@ -3,6 +3,7 @@ on:
   pull_request:
     types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review]
   repository_dispatch:
+  workflow_dispatch:
   push:
     branches:
       - master

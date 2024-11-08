@@ -36,10 +36,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - uses: actions/setup-python@v5
-      - run:  pip install -r ./.github/workflows/requirements.txt
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - run:  pip install -r ./.github/workflows/requirements.txt
       - name: Specify image tags
         run: |
           python3 ./.github/workflows/deploy.py specify_image_tags \

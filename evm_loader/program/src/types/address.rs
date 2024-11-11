@@ -96,7 +96,6 @@ impl Address {
     }
 }
 
-
 impl FromStr for Address {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {

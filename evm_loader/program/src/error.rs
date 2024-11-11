@@ -27,42 +27,81 @@ mod as_display_string {
     }
 }
 
-
 /// Errors that may be returned by the EVM Loader program.
-#[derive(Error, Debug, /*strum::EnumDiscriminantsm,*/ serde::Serialize)]
+#[derive(Error, Debug, strum::EnumDiscriminants, serde::Serialize)]
 pub enum Error {
     #[error("Error: {0}")]
     Custom(String),
 
     #[error("Solana Program Error: {0}")]
-    ProgramError(#[from] #[serde(with = "as_display_string")] ProgramError),
+    ProgramError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        ProgramError,
+    ),
 
     #[error("Solana Pubkey Error: {0}")]
-    PubkeyError(#[from] #[serde(with = "as_display_string")] PubkeyError),
+    PubkeyError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        PubkeyError,
+    ),
 
     #[error("RLP error: {0}")]
-    RlpError(#[from] #[serde(with = "as_display_string")] rlp::DecoderError),
+    RlpError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        rlp::DecoderError,
+    ),
 
     #[error("Secp256k1 error: {0}")]
-    Secp256k1Error(#[from] #[serde(with = "as_display_string")] Secp256k1RecoverError),
+    Secp256k1Error(
+        #[from]
+        #[serde(with = "as_display_string")]
+        Secp256k1RecoverError,
+    ),
 
     #[error("Bincode error: {0}")]
-    BincodeError(#[from] #[serde(with = "as_display_string")] bincode::Error),
+    BincodeError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        bincode::Error,
+    ),
 
     #[error("IO error: {0}")]
-    BorshError(#[from] #[serde(with = "as_display_string")] std::io::Error),
+    BorshError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        std::io::Error,
+    ),
 
     #[error("FromHexError error: {0}")]
-    FromHexError(#[from] #[serde(with = "as_display_string")] hex::FromHexError),
+    FromHexError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        hex::FromHexError,
+    ),
 
     #[error("TryFromIntError error: {0}")]
-    TryFromIntError(#[from] #[serde(with = "as_display_string")] TryFromIntError),
+    TryFromIntError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        TryFromIntError,
+    ),
 
     #[error("TryFromSliceError error: {0}")]
-    TryFromSliceError(#[from] #[serde(with = "as_display_string")] TryFromSliceError),
+    TryFromSliceError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        TryFromSliceError,
+    ),
 
     #[error("Utf8Error error: {0}")]
-    Utf8Error(#[from] #[serde(with = "as_display_string")] Utf8Error),
+    Utf8Error(
+        #[from]
+        #[serde(with = "as_display_string")]
+        Utf8Error,
+    ),
 
     #[error("Account {0} - not found")]
     AccountMissing(Pubkey),
@@ -234,15 +273,15 @@ pub enum Error {
 }
 
 impl Error {
-    // #[must_use]
-    // pub fn code(&self) -> u8 {
-    //     let discriminant = ErrorDiscriminants::from(self);
-    //     discriminant as u8
-    // }
+    #[must_use]
+    pub fn code(&self) -> u8 {
+        let discriminant = ErrorDiscriminants::from(self);
+        discriminant as u8
+    }
 
-    pub fn log(&self) {
+    pub fn log_data(&self) {
         let bytes = bincode::serialize(self).unwrap();
-        log_data(data: &[b"ERROR", &self.code().to_le_bytes(), &bytes]);
+        log_data(&[b"ERROR", &self.code().to_le_bytes(), &bytes]);
     }
 
     #[must_use]

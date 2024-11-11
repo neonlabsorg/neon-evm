@@ -281,7 +281,12 @@ impl Error {
 
     pub fn log_data(&self) {
         let bytes = bincode::serialize(self).unwrap();
-        log_data(&[b"ERROR", &self.code().to_le_bytes(), &bytes]);
+        log_data(&[
+            b"ERROR",
+            &self.code().to_le_bytes(),
+            &bytes,
+            &self.to_string().as_bytes(),
+        ]);
     }
 
     #[must_use]

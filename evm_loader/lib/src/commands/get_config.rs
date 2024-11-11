@@ -60,6 +60,7 @@ pub enum ConfigSimulator<'r> {
 pub trait BuildConfigSimulator {
     fn use_cache(&self) -> bool;
     async fn build_config_simulator(&self, program_id: Pubkey) -> NeonResult<ConfigSimulator>;
+    // get_last_deployed_slot():u64
 }
 
 #[async_trait(?Send)]
@@ -85,7 +86,6 @@ impl BuildConfigSimulator for CallDbClient {
     async fn build_config_simulator(&self, program_id: Pubkey) -> NeonResult<ConfigSimulator> {
         let mut simulator = SolanaSimulator::new_without_sync(self).await?;
         simulator.sync_accounts(self, &[program_id]).await?;
-
         Ok(ConfigSimulator::ProgramTestContext {
             program_id,
             simulator,

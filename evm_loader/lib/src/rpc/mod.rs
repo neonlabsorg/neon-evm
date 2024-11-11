@@ -30,12 +30,7 @@ pub trait Rpc {
         offset: usize,
         data_size: usize,
     ) -> ClientResult<Option<Account>>;
-    // {
-    //     if offset > 0 || data_size > 0 {
-    //         panic!("BAD VALUES");
-    //     }
-    //     self.get_account(key).await
-    // }
+
     async fn get_multiple_accounts(&self, pubkeys: &[Pubkey])
         -> ClientResult<Vec<Option<Account>>>;
     async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp>;

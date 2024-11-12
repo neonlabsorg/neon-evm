@@ -19,7 +19,7 @@ use std::sync::RwLock;
 
 use bincode::serialize;
 use tokio::sync::OnceCell;
-
+use tracing::info;
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct KeyAccountCache {
     addr: Pubkey,
@@ -90,34 +90,34 @@ pub async fn acc_hash_get_values_by_keys(
         //future_requests.push(rpc.get_account_slice(key, 0, 512));
     }
 
-    assert!(
-        programdata_keys.len() == future_requests.len(),
+    assert_eq!(
+        programdata_keys.len(),
+        future_requests.len(),
         "programdata_keys.size()!=future_requests.size()"
     );
     let results = join_all(future_requests).await;
 
-    for (i, result) in results.iter().enumerate() {
-        let key = programdata_keys[i];
+    for (result, key) in results.iter().zip(programdata_keys) {
         match result {
             Ok(Some(account)) => {
                 // Extract the slot value from the account data
                 let slot_val = get_programdata_slot_from_account(account);
                 // Assuming `acc_hash_get` is an async function that returns an `Option`
-                if let Some(acc) = acc_hash_get(key, slot_val).await {
+                if let Some(acc) = acc_hash_get(*key, slot_val).await {
                     answer.push(Some(acc));
-                } else if let Ok(Some(tmp_acc)) = rpc.get_account(&key).await {
-                    acc_hash_add(key, slot_val, tmp_acc.clone()).await;
+                } else if let Ok(Some(tmp_acc)) = rpc.get_account(key).await {
+                    acc_hash_add(*key, slot_val, tmp_acc.clone()).await;
                     answer.push(Some(tmp_acc));
                 } else {
                     answer.push(None);
                 }
             }
             Ok(None) => {
-                println!("Account for key {key:?} is None.");
+                info!("Account for key {key:?} is None.");
                 // need return
             }
             Err(e) => {
-                println!("Error fetching account for key {key:?}: {e:?}");
+                info!("Error fetching account for key {key:?}: {e:?}");
             }
         }
     }

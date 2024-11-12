@@ -136,12 +136,12 @@ impl Rpc for CloneRpcClient {
     async fn get_account_slice(
         &self,
         key: &Pubkey,
-        _offset: usize,
-        _data_size: usize,
+        offset: usize,
+        data_size: usize,
     ) -> ClientResult<Option<Account>> {
         let slice_shape = UiDataSliceConfig {
-            offset: _offset,
-            length: _data_size,
+            offset,
+            length: data_size,
         };
 
         let request = || {

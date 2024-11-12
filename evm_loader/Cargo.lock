@@ -2026,7 +2026,6 @@ dependencies = [
  "hex",
  "linked_list_allocator",
  "log",
- "log_data",
  "maybe-async",
  "memoffset 0.9.1",
  "mpl-token-metadata",
@@ -3330,24 +3329,6 @@ name = "log"
 version = "0.4.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
-
-[[package]]
-name = "log_data"
-version = "0.1.0"
-dependencies = [
- "ethnum",
- "log_data_derive",
- "serde",
-]
-
-[[package]]
-name = "log_data_derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.87",
-]
 
 [[package]]
 name = "lru"

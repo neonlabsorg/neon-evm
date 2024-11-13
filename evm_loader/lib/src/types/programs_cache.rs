@@ -2,6 +2,7 @@
 use crate::rpc::Rpc;
 use async_trait::async_trait;
 
+use crate::commands::get_config::GetConfigResponse;
 use bincode::deserialize;
 use futures::future::join_all;
 use solana_client::client_error::{ClientErrorKind, Result as ClientResult};
@@ -20,15 +21,18 @@ use tokio::sync::OnceCell;
 use tracing::info;
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct KeyAccountCache {
-    addr: Pubkey,
-    slot: u64,
+    pub addr: Pubkey,
+    pub slot: u64,
 }
-
 use crate::rpc::SliceConfig;
-type ProgramDataCache = HashMap<KeyAccountCache, Account>;
-type ThreadSaveProgramDataCache = RwLock<ProgramDataCache>;
+type ProgramDataCache<Value> = HashMap<KeyAccountCache, Value>;
+type ThreadSaveCache<Value> = RwLock<ProgramDataCache<Value>>;
 
-static LOCAL_CONFIG: OnceCell<ThreadSaveProgramDataCache> = OnceCell::const_new();
+type ThreadSaveProgramDataCache = ThreadSaveCache<Account>;
+type ThreadSaveConfigCache<'a> = ThreadSaveCache<GetConfigResponse>;
+
+static ACCOUNT_CACHE_TABLE: OnceCell<ThreadSaveProgramDataCache> = OnceCell::const_new();
+static CONFIG_CACHE_TABLE: OnceCell<ThreadSaveConfigCache> = OnceCell::const_new();
 
 pub async fn cut_programdata_from_acc(account: &mut Account, data_slice: SliceConfig) {
     if data_slice.offset != 0 {
@@ -38,9 +42,25 @@ pub async fn cut_programdata_from_acc(account: &mut Account, data_slice: SliceCo
     }
     account.data.truncate(data_slice.length);
 }
-
-async fn programdata_hash_get_instance() -> &'static ThreadSaveProgramDataCache {
-    LOCAL_CONFIG
+fn cache_get<Value: std::clone::Clone>(
+    key: &KeyAccountCache,
+    table: &ThreadSaveCache<Value>,
+) -> Option<Value> {
+    table
+        .read()
+        .expect("acc_hash_get_instance poisoned")
+        .get(key)
+        .cloned()
+}
+fn cache_add<Value: std::clone::Clone>(
+    key: KeyAccountCache,
+    value: Value,
+    table: &ThreadSaveCache<Value>,
+) {
+    table.write().expect("PANIC, no space ").insert(key, value);
+}
+async fn programdata_account_cache_get_instance() -> &'static ThreadSaveProgramDataCache {
+    ACCOUNT_CACHE_TABLE
         .get_or_init(|| async {
             let map = HashMap::new();
 
@@ -49,26 +69,17 @@ async fn programdata_hash_get_instance() -> &'static ThreadSaveProgramDataCache 
         .await
 }
 
-async fn programdata_hash_get(addr: Pubkey, slot: u64) -> Option<Account> {
+async fn programdata_account_cache_get(addr: Pubkey, slot: u64) -> Option<Account> {
     let val = KeyAccountCache { addr, slot };
-    programdata_hash_get_instance()
-        .await
-        .read()
-        .expect("acc_hash_get_instance poisoned")
-        .get(&val)
-        .cloned()
+    cache_get(&val, programdata_account_cache_get_instance().await)
 }
 
-async fn programdata_hash_add(addr: Pubkey, slot: u64, acc: Account) {
-    let val = KeyAccountCache { addr, slot };
-    programdata_hash_get_instance()
-        .await
-        .write()
-        .expect("PANIC, no nable")
-        .insert(val, acc);
+async fn programdata_account_cache_add(addr: Pubkey, slot: u64, acc: Account) {
+    let key = KeyAccountCache { addr, slot };
+    cache_add(key, acc, programdata_account_cache_get_instance().await);
 }
 
-fn get_programdata_slot_from_account(acc: &Account) -> ClientResult<u64> {
+pub fn get_programdata_slot_from_account(acc: &Account) -> ClientResult<u64> {
     if !bpf_loader_upgradeable::check_id(&acc.owner) {
         return Err(ClientErrorKind::Custom("Not upgradeable account".to_string()).into());
     }
@@ -112,11 +123,11 @@ pub async fn programdata_cache_get_values_by_keys(
         match result {
             Ok(Some(account)) => {
                 let slot_val = get_programdata_slot_from_account(account)?;
-                if let Some(acc) = programdata_hash_get(*key, slot_val).await {
+                if let Some(acc) = programdata_account_cache_get(*key, slot_val).await {
                     answer.push(Some(acc));
                 } else if let Ok(Some(tmp_acc)) = rpc.get_account(key).await {
                     let current_slot = get_programdata_slot_from_account(&tmp_acc)?;
-                    programdata_hash_add(*key, current_slot, tmp_acc.clone()).await;
+                    programdata_account_cache_add(*key, current_slot, tmp_acc.clone()).await;
 
                     answer.push(Some(tmp_acc));
                 } else {
@@ -167,6 +178,24 @@ impl FakeRpc {
         self.accounts.insert(pubkey, answer.clone());
         answer
     }
+}
+
+async fn program_config_cache_get_instance() -> &'static ThreadSaveConfigCache<'static> {
+    CONFIG_CACHE_TABLE
+        .get_or_init(|| async {
+            let map = HashMap::new();
+
+            RwLock::new(map)
+        })
+        .await
+}
+
+pub async fn program_config_cache_get(key: &KeyAccountCache) -> Option<GetConfigResponse> {
+    cache_get(key, program_config_cache_get_instance().await)
+}
+
+pub async fn program_config_cache_add(key: KeyAccountCache, val: GetConfigResponse) {
+    cache_add(key, val, program_config_cache_get_instance().await);
 }
 
 #[async_trait(?Send)]

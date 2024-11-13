@@ -2,12 +2,11 @@ mod db_call_client;
 mod emulator_client;
 mod validator_client;
 
-pub use db_call_client::CallDbClient;
-pub use validator_client::CloneRpcClient;
-
+use crate::commands::get_config::GetConfigResponse;
 use crate::commands::get_config::{BuildConfigSimulator, ConfigSimulator};
 use crate::{NeonError, NeonResult};
 use async_trait::async_trait;
+pub use db_call_client::CallDbClient;
 use enum_dispatch::enum_dispatch;
 pub use solana_account_decoder::UiDataSliceConfig as SliceConfig;
 use solana_cli::cli::CliError;
@@ -19,6 +18,7 @@ use solana_sdk::{
     native_token::lamports_to_sol,
     pubkey::Pubkey,
 };
+pub use validator_client::CloneRpcClient;
 
 #[async_trait(?Send)]
 #[enum_dispatch]

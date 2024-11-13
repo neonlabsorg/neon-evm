@@ -4,23 +4,25 @@ use crate::tracing::AccountOverride;
 use evm_loader::types::vector::VectorVecExt;
 use hex_literal::hex;
 use solana_account_decoder::UiDataSliceConfig;
+
 use std::collections::HashMap;
 use std::str::FromStr;
-
 const STORAGE_LENGTH: usize = 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 
 mod mock_rpc_client {
+    use crate::types::programs_cache::get_programdata_slot_from_account;
+    use solana_sdk::bpf_loader_upgradeable::UpgradeableLoaderState;
+
     use crate::commands::get_config::BuildConfigSimulator;
     use crate::NeonResult;
     use crate::{commands::get_config::ConfigSimulator, rpc::Rpc};
     use async_trait::async_trait;
+    use solana_account_decoder::UiDataSliceConfig;
     use solana_client::client_error::Result as ClientResult;
     use solana_sdk::account::Account;
     use solana_sdk::clock::{Slot, UnixTimestamp};
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
-
-    use solana_account_decoder::UiDataSliceConfig;
 
     pub struct MockRpcClient {
         accounts: HashMap<Pubkey, Account>,
@@ -91,8 +93,17 @@ mod mock_rpc_client {
 
     #[async_trait(?Send)]
     impl BuildConfigSimulator for MockRpcClient {
-        fn use_cache(&self) -> bool {
-            false
+        async fn get_last_deployed_slot(&self, program_id: &Pubkey) -> u64 {
+            let slice = UiDataSliceConfig {
+                offset: 0,
+                length: UpgradeableLoaderState::size_of_programdata_metadata(),
+            };
+            let result = self.get_account_slice(program_id, Some(slice)).await;
+            if let Ok(Some(acc)) = result {
+                get_programdata_slot_from_account(&acc).expect("NO slot value for acc")
+            } else {
+                panic!("get_account_slice return an Error ");
+            }
         }
         async fn build_config_simulator(&self, _program_id: Pubkey) -> NeonResult<ConfigSimulator> {
             unimplemented!();

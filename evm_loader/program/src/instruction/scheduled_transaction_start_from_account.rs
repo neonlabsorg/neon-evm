@@ -1,6 +1,6 @@
 use crate::account::legacy::{TAG_HOLDER_DEPRECATED, TAG_STATE_FINALIZED_DEPRECATED};
 use crate::account::{
-    AccountsDB, Operator, OperatorBalanceAccount, OperatorBalanceValidator, StateAccount,
+    program, AccountsDB, Operator, OperatorBalanceAccount, OperatorBalanceValidator, StateAccount,
     TransactionTree, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED,
     TAG_STATE, TAG_STATE_FINALIZED,
 };
@@ -26,14 +26,15 @@ pub fn process<'a>(
     let transaction_tree = TransactionTree::from_account(&program_id, accounts[1].clone())?;
     let operator = Operator::from_account(&accounts[2])?;
     let operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
+    let system = program::System::from_account(&accounts[4])?;
 
     operator_balance.validate_owner(&operator)?;
 
     let accounts_db = AccountsDB::new(
-        &accounts[4..],
+        &accounts[5..],
         operator.clone(),
         operator_balance.clone(),
-        None,
+        Some(system),
         None,
     );
 

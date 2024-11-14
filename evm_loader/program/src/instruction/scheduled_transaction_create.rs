@@ -152,7 +152,7 @@ pub fn process<'a>(
     let system = System::from_account(&accounts[5])?;
 
     // Validate Transaction
-    let tx = ScheduledTxShell::from_rlp(messsage).map_err(|_| Error::TreeAccountTxInvalidType)?;
+    let tx = ScheduledTxShell::from_rlp(messsage)?;
     let tx_hash = tx.hash;
 
     let payer = Address::from_solana_address(signer.key);

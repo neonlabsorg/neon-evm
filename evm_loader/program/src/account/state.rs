@@ -330,7 +330,13 @@ impl<'a> StateAccount<'a> {
     }
 
     pub fn finish_scheduled_tx(self, program_id: &Pubkey) -> Result<()> {
-        super::validate_tag(program_id, &self.account, TAG_SCHEDULED_STATE_FINALIZED)?;
+        let tag = super::tag(program_id, &self.account)?;
+        let is_finalized = tag == TAG_SCHEDULED_STATE_FINALIZED;
+        let is_canceled = tag == TAG_SCHEDULED_STATE_CANCELLED;
+        if !(is_finalized || is_canceled) {
+            return Err(Error::StorageAccountInvalidTag(*self.account.key, tag));
+        }
+
         debug_print!(
             "Finalize State {} for scheduled transaction",
             self.account.key

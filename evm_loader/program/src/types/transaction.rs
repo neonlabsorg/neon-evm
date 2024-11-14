@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use solana_program::instruction::{get_stack_height, TRANSACTION_LEVEL_STACK_HEIGHT};
 use std::convert::TryInto;
 
+use crate::account::TransactionTree;
 use crate::types::vector::VectorVecExt;
 use crate::{
     account_storage::AccountStorage, config::GAS_LIMIT_MULTIPLIER_NO_CHAINID, error::Error, vector,
@@ -1074,6 +1075,7 @@ impl Transaction {
         &self,
         origin: Address,
         backend: &impl AccountStorage,
+        tree: Option<&TransactionTree<'_>>,
     ) -> Result<(), crate::error::Error> {
         let chain_id = self
             .chain_id()
@@ -1083,6 +1085,10 @@ impl Transaction {
             return Err(Error::InvalidChainId(chain_id));
         }
 
+        if tree.is_some() != self.is_scheduled_tx() {
+            return Err(Error::TreeAccountTxInvalidType);
+        }
+
         // Nonce validation is slightly different for classic and scheduled transactions.
         //
         // Classic transactions:
@@ -1090,29 +1096,22 @@ impl Transaction {
         // the first iteration and then incremented.
         //
         // Scheduled transactions:
-        // payer's nonce (origin) can be greater than what's stored in the transaction because payer
-        // is the same for the whole scheduled execution tree. However, payer's nonce is also
-        // incremented only once - at the start of the first scheduled txn.
+        // payer's nonce (origin) validated only for the first transaction in the tree
         let origin_nonce = backend.nonce(origin, chain_id).await;
-        #[allow(clippy::collapsible_else_if)]
-        if self.is_scheduled_tx() {
-            if origin_nonce < self.nonce() {
-                let error = Error::InvalidTransactionNonce(origin, origin_nonce, self.nonce());
-                return Err(error);
-            }
-        } else {
-            if origin_nonce != self.nonce() {
-                let error = Error::InvalidTransactionNonce(origin, origin_nonce, self.nonce());
-                return Err(error);
-            }
+
+        let validate_nonce = tree.map_or(true, TransactionTree::is_not_started);
+        if validate_nonce && (origin_nonce != self.nonce()) {
+            let error = Error::InvalidTransactionNonce(origin, origin_nonce, self.nonce());
+            return Err(error);
         }
 
         // The reason to forbid the calls for DynamicFee transactions - priority fee calculation
         // uses get_processed_sibling_instruction syscall which doesn't work well for CPI.
-        if self.tx_type() == 2 && get_stack_height() != TRANSACTION_LEVEL_STACK_HEIGHT {
-            return Err(Error::Custom(
-                "CPI calls of Neon EVM are forbidden for DynamicFee transaction type.".to_owned(),
-            ));
+        let is_root_transaction = get_stack_height() == TRANSACTION_LEVEL_STACK_HEIGHT;
+        if matches!(self.tx_type(), 2 | 0x80) && !is_root_transaction {
+            return Err(
+                "CPI calls of Neon EVM are forbidden for DynamicFee transaction type.".into(),
+            );
         }
 
         Ok(())

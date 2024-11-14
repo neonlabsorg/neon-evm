@@ -19,7 +19,7 @@ pub fn execute(
     let mut account_storage = ProgramAccountStorage::new(accounts)?;
     let mut backend_data = ExecutorStateData::new(&account_storage);
 
-    trx.validate(origin, &account_storage)?;
+    trx.validate(origin, &account_storage, None)?;
 
     account_storage.origin(origin, &trx)?.increment_nonce()?;
 
@@ -62,7 +62,7 @@ pub fn execute_with_solana_call(
 ) -> Result<()> {
     let mut account_storage = ProgramAccountStorage::new(accounts)?;
 
-    trx.validate(origin, &account_storage)?;
+    trx.validate(origin, &account_storage, None)?;
 
     account_storage.origin(origin, &trx)?.increment_nonce()?;
 

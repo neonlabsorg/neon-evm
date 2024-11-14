@@ -69,6 +69,7 @@ fn validate<'a>(
     let trx_tree_account = state
         .tree_account()
         .expect("Unreachable code path: validation in the State Account contains a bug.");
+
     let actual_tree_pubkey = *tree.info().key;
     if trx_tree_account != actual_tree_pubkey {
         return Err(Error::ScheduledTxInvalidTreeAccount(

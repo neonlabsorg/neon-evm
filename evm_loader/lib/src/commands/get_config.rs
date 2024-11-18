@@ -60,7 +60,6 @@ pub enum ConfigSimulator<'r> {
 pub trait BuildConfigSimulator {
     fn use_cache(&self) -> bool;
     async fn build_config_simulator(&self, program_id: Pubkey) -> NeonResult<ConfigSimulator>;
-    // get_last_deployed_slot():u64
 }
 
 #[async_trait(?Send)]

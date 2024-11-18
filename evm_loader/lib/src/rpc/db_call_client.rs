@@ -1,4 +1,4 @@
-use super::{e, Rpc};
+use super::{e, Rpc, SliceConfig};
 use crate::types::{TracerDb, TracerDbTrait};
 use crate::NeonError;
 use crate::NeonError::RocksDb;
@@ -42,9 +42,13 @@ impl CallDbClient {
         })
     }
 
-    async fn get_account_at(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
+    async fn get_account_at(
+        &self,
+        key: &Pubkey,
+        slice: Option<SliceConfig>,
+    ) -> ClientResult<Option<Account>> {
         self.tracer_db
-            .get_account_at(key, self.slot, self.tx_index_in_block, None)
+            .get_account_at(key, self.slot, self.tx_index_in_block, slice)
             .await
             .map_err(|e| e!("load account error", key, e))
     }
@@ -52,24 +56,21 @@ impl CallDbClient {
 
 #[async_trait(?Send)]
 impl Rpc for CallDbClient {
-    async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
-        self.get_account_at(key).await
-    }
     async fn get_account_slice(
         &self,
         key: &Pubkey,
-        _offset: usize,
-        _data_size: usize,
+        slice: Option<SliceConfig>,
     ) -> ClientResult<Option<Account>> {
-        self.get_account(key).await
+        self.get_account_at(key, slice).await
     }
+
     async fn get_multiple_accounts(
         &self,
         pubkeys: &[Pubkey],
     ) -> ClientResult<Vec<Option<Account>>> {
         let mut result = Vec::new();
         for key in pubkeys {
-            result.push(self.get_account_at(key).await?);
+            result.push(self.get_account_at(key, None).await?);
         }
         debug!("get_multiple_accounts: pubkeys={pubkeys:?} result={result:?}");
         Ok(result)

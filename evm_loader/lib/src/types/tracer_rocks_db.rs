@@ -98,24 +98,12 @@ impl TracerDbTrait for RocksDb {
         maybe_bin_slice: Option<UiDataSliceConfig>,
     ) -> DbResult<Option<Account>> {
         info!("get_account_at {pubkey:?}, slot: {slot:?}, tx_index: {tx_index_in_block:?}, bin_slice: {maybe_bin_slice:?}");
-        let mut maby_bindata_offset = None;
-        let mut maby_bindata_length = None;
-        if let Some(bin_slice) = maybe_bin_slice {
-            maby_bindata_offset = Some(bin_slice.offset);
-            maby_bindata_length = Some(bin_slice.length);
-        }
 
         let response: String = self
             .client
             .request(
                 "get_account",
-                rpc_params![
-                    pubkey.to_string(),
-                    slot,
-                    tx_index_in_block,
-                    maby_bindata_offset,
-                    maby_bindata_length
-                ],
+                rpc_params![pubkey.to_string(), slot, tx_index_in_block, maybe_bin_slice],
             )
             .await?;
 

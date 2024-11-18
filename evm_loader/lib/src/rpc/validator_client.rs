@@ -1,8 +1,8 @@
 use crate::{config::APIOptions, Config};
 
-use super::Rpc;
+use super::{Rpc, SliceConfig};
 use async_trait::async_trait;
-use solana_account_decoder::{UiAccount, UiAccountEncoding, UiDataSliceConfig};
+use solana_account_decoder::{UiAccount, UiAccountEncoding};
 use solana_client::{
     client_error::{ClientError, ClientErrorKind, Result as ClientResult},
     nonblocking::rpc_client::RpcClient,
@@ -114,41 +114,16 @@ impl Deref for CloneRpcClient {
 
 #[async_trait(?Send)]
 impl Rpc for CloneRpcClient {
-    async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
-        let request = || {
-            let config = RpcAccountInfoConfig {
-                encoding: Some(UiAccountEncoding::Base64Zstd),
-                commitment: Some(self.commitment()),
-                data_slice: None,
-                min_context_slot: None,
-            };
-            let params = serde_json::json!([key.to_string(), config]);
-
-            self.send(RpcRequest::GetAccountInfo, params)
-        };
-
-        let response: serde_json::Value = with_retries(self.max_retries, request).await?;
-        let response: Response<Option<UiAccount>> = serde_json::from_value(response)?;
-
-        let account = response.value.and_then(|v| v.decode());
-        Ok(account)
-    }
     async fn get_account_slice(
         &self,
         key: &Pubkey,
-        offset: usize,
-        data_size: usize,
+        slice: Option<SliceConfig>,
     ) -> ClientResult<Option<Account>> {
-        let slice_shape = UiDataSliceConfig {
-            offset,
-            length: data_size,
-        };
-
         let request = || {
             let config = RpcAccountInfoConfig {
                 encoding: Some(UiAccountEncoding::Base64Zstd),
                 commitment: Some(self.commitment()),
-                data_slice: Some(slice_shape),
+                data_slice: slice,
                 min_context_slot: None,
             };
             let params = serde_json::json!([key.to_string(), config]);

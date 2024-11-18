@@ -52,7 +52,7 @@ use solana_sdk::{
 pub use utils::SyncState;
 
 use crate::rpc::Rpc;
-use crate::types::account_cache::acc_hash_get_values_by_keys;
+use crate::types::programs_cache::programdata_cache_get_values_by_keys;
 
 mod error;
 mod utils;
@@ -115,14 +115,12 @@ impl SolanaSimulator {
             let Some(account) = account else {
                 continue;
             };
-            //
             if account.executable && bpf_loader_upgradeable::check_id(&account.owner) {
                 let programdata_address = utils::program_data_address(account)?;
                 debug!(
                     "program_data_account: program={key} programdata=address{programdata_address}"
                 );
                 programdata_keys.push(programdata_address);
-                //
             }
 
             if account.owner == address_lookup_table::program::id() {
@@ -131,9 +129,9 @@ impl SolanaSimulator {
 
             storable_accounts.push((key, account));
         }
-        // PUTHASHHERE
 
-        let mut programdata_accounts = acc_hash_get_values_by_keys(&programdata_keys, rpc).await?;
+        let mut programdata_accounts =
+            programdata_cache_get_values_by_keys(&programdata_keys, rpc).await?;
 
         for (key, account) in programdata_keys.iter().zip(&mut programdata_accounts) {
             let Some(account) = account else {

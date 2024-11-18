@@ -10,29 +10,35 @@ use solana_sdk::{
 
 use crate::account_storage::{fake_operator, EmulatorAccountStorage};
 
-use super::Rpc;
+use super::{Rpc, SliceConfig};
 
 #[async_trait(?Send)]
 impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
-    async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
-        if *key == self.operator() {
-            return Ok(Some(fake_operator()));
-        }
-
-        if let Some(account_data) = self.accounts_get(key) {
-            return Ok(Some(Account::from(&*account_data)));
-        }
-
-        let account = self._get_account_from_rpc(*key).await?.cloned();
-        Ok(account)
-    }
     async fn get_account_slice(
         &self,
         key: &Pubkey,
-        _offset: usize,
-        _data_size: usize,
+        slice: Option<SliceConfig>,
     ) -> ClientResult<Option<Account>> {
-        self.get_account(key).await
+        let answer_account = if *key == self.operator() {
+            Some(fake_operator())
+        } else if let Some(account_data) = self.accounts_get(key) {
+            Some(Account::from(&*account_data))
+        } else {
+            self._get_account_from_rpc(*key).await?.cloned()
+        };
+
+        if let Some(data_slice) = slice {
+            // if only slice is necessary - cut data
+            if let Some(mut account) = answer_account {
+                if data_slice.offset != 0 {
+                    account.data.drain(0..data_slice.offset);
+                }
+                account.data.truncate(data_slice.length);
+                return Ok(Some(account));
+            }
+        }
+
+        Ok(answer_account)
     }
 
     async fn get_multiple_accounts(

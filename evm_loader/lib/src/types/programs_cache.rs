@@ -1,15 +1,13 @@
 // use crate::tracing::tracers::state_diff::Account;
 use crate::rpc::Rpc;
 use async_trait::async_trait;
-// use async_trait::async_trait;
+
 use bincode::deserialize;
 use futures::future::join_all;
-use solana_client::client_error::Result as ClientResult;
+use solana_client::client_error::{ClientErrorKind, Result as ClientResult};
 use solana_sdk::{
     account::Account,
     bpf_loader_upgradeable::UpgradeableLoaderState,
-
-    // account_utils::StateMut,
     clock::{Slot, UnixTimestamp},
     pubkey::Pubkey,
 };
@@ -26,12 +24,22 @@ pub struct KeyAccountCache {
     slot: u64,
 }
 
-type AccCache = HashMap<KeyAccountCache, Account>;
-type ProtectedAppCache = RwLock<AccCache>;
+use crate::rpc::SliceConfig;
+type ProgramDataCache = HashMap<KeyAccountCache, Account>;
+type ThreadSaveProgramDataCache = RwLock<ProgramDataCache>;
 
-static LOCAL_CONFIG: OnceCell<ProtectedAppCache> = OnceCell::const_new();
+static LOCAL_CONFIG: OnceCell<ThreadSaveProgramDataCache> = OnceCell::const_new();
 
-async fn acc_hash_get_instance() -> &'static ProtectedAppCache {
+pub async fn cut_programdata_from_acc(account: &mut Account, data_slice: SliceConfig) {
+    if data_slice.offset != 0 {
+        account
+            .data
+            .drain(..std::cmp::min(account.data.len(), data_slice.offset));
+    }
+    account.data.truncate(data_slice.length);
+}
+
+async fn programdata_hash_get_instance() -> &'static ThreadSaveProgramDataCache {
     LOCAL_CONFIG
         .get_or_init(|| async {
             let map = HashMap::new();
@@ -41,9 +49,9 @@ async fn acc_hash_get_instance() -> &'static ProtectedAppCache {
         .await
 }
 
-async fn acc_hash_get(addr: Pubkey, slot: u64) -> Option<Account> {
+async fn programdata_hash_get(addr: Pubkey, slot: u64) -> Option<Account> {
     let val = KeyAccountCache { addr, slot };
-    acc_hash_get_instance()
+    programdata_hash_get_instance()
         .await
         .read()
         .expect("acc_hash_get_instance poisoned")
@@ -51,19 +59,22 @@ async fn acc_hash_get(addr: Pubkey, slot: u64) -> Option<Account> {
         .cloned()
 }
 
-async fn acc_hash_add(addr: Pubkey, slot: u64, acc: Account) {
+async fn programdata_hash_add(addr: Pubkey, slot: u64, acc: Account) {
     let val = KeyAccountCache { addr, slot };
-    acc_hash_get_instance()
+    programdata_hash_get_instance()
         .await
         .write()
         .expect("PANIC, no nable")
         .insert(val, acc);
 }
 
-fn get_programdata_slot_from_account(acc: &Account) -> u64 {
-    //probably will not serrialize.
+fn get_programdata_slot_from_account(acc: &Account) -> ClientResult<u64> {
+    if !bpf_loader_upgradeable::check_id(&acc.owner) {
+        return Err(ClientErrorKind::Custom("Not upgradeable account".to_string()).into());
+    }
+
     match deserialize::<UpgradeableLoaderState>(&acc.data) {
-        Ok(UpgradeableLoaderState::ProgramData { slot, .. }) => slot,
+        Ok(UpgradeableLoaderState::ProgramData { slot, .. }) => Ok(slot),
         Ok(_) => {
             panic!("Account is not of type `ProgramData`.");
         }
@@ -74,7 +85,7 @@ fn get_programdata_slot_from_account(acc: &Account) -> u64 {
     }
 }
 
-pub async fn acc_hash_get_values_by_keys(
+pub async fn programdata_cache_get_values_by_keys(
     programdata_keys: &Vec<Pubkey>,
     rpc: &impl Rpc,
 ) -> ClientResult<Vec<Option<solana_sdk::account::Account>>> {
@@ -84,10 +95,11 @@ pub async fn acc_hash_get_values_by_keys(
     for key in programdata_keys {
         future_requests.push(rpc.get_account_slice(
             key,
-            0,
-            UpgradeableLoaderState::size_of_programdata_metadata(),
+            Some(SliceConfig {
+                offset: 0,
+                length: UpgradeableLoaderState::size_of_programdata_metadata(),
+            }),
         ));
-        //future_requests.push(rpc.get_account_slice(key, 0, 512));
     }
 
     assert_eq!(
@@ -96,17 +108,16 @@ pub async fn acc_hash_get_values_by_keys(
         "programdata_keys.size()!=future_requests.size()"
     );
     let results = join_all(future_requests).await;
-
     for (result, key) in results.iter().zip(programdata_keys) {
         match result {
             Ok(Some(account)) => {
-                // Extract the slot value from the account data
-                let slot_val = get_programdata_slot_from_account(account);
-                // Assuming `acc_hash_get` is an async function that returns an `Option`
-                if let Some(acc) = acc_hash_get(*key, slot_val).await {
+                let slot_val = get_programdata_slot_from_account(account)?;
+                if let Some(acc) = programdata_hash_get(*key, slot_val).await {
                     answer.push(Some(acc));
                 } else if let Ok(Some(tmp_acc)) = rpc.get_account(key).await {
-                    acc_hash_add(*key, slot_val, tmp_acc.clone()).await;
+                    let current_slot = get_programdata_slot_from_account(&tmp_acc)?;
+                    programdata_hash_add(*key, current_slot, tmp_acc.clone()).await;
+
                     answer.push(Some(tmp_acc));
                 } else {
                     answer.push(None);
@@ -114,27 +125,24 @@ pub async fn acc_hash_get_values_by_keys(
             }
             Ok(None) => {
                 info!("Account for key {key:?} is None.");
-                // need return
+                answer.push(None);
             }
             Err(e) => {
                 info!("Error fetching account for key {key:?}: {e:?}");
             }
         }
     }
-    // let mut answer_arr=Vec::new();
     Ok(answer)
 }
 
 struct FakeRpc {
     accounts: HashMap<Pubkey, Account>,
-    my_pubkey: Pubkey,
 }
 #[allow(dead_code)]
 impl FakeRpc {
     pub fn new() -> Self {
         Self {
             accounts: HashMap::new(),
-            my_pubkey: Pubkey::new_unique(),
         }
     }
 
@@ -153,7 +161,7 @@ impl FakeRpc {
         };
         let mut serialized_data = serialize(&program_data).unwrap();
         serialized_data.resize(4 * 1024 * 1024, 0);
-        let mut answer = Account::new(0, serialized_data.len(), &self.my_pubkey);
+        let mut answer = Account::new(0, serialized_data.len(), &bpf_loader_upgradeable::id());
         answer.data = serialized_data;
 
         self.accounts.insert(pubkey, answer.clone());
@@ -164,26 +172,22 @@ impl FakeRpc {
 #[async_trait(?Send)]
 
 impl Rpc for FakeRpc {
-    async fn get_account(&self, pubkey: &Pubkey) -> ClientResult<Option<Account>> {
-        assert!(self.accounts.contains_key(pubkey), "  ");
-        Ok(Some(self.accounts.get(pubkey).unwrap().clone()))
-    }
-
     async fn get_account_slice(
         &self,
         pubkey: &Pubkey,
-        offset: usize,
-        data_size: usize,
+        slice: Option<SliceConfig>,
     ) -> ClientResult<Option<Account>> {
         assert!(self.accounts.contains_key(pubkey), "  ");
-        let mut answer = self.accounts.get(pubkey).unwrap().clone();
 
-        if offset != 0 {
-            answer
-                .data
-                .drain(..std::cmp::min(answer.data.len(), offset));
+        let mut answer = self.accounts.get(pubkey).unwrap().clone();
+        if let Some(data_slice) = slice {
+            if data_slice.offset != 0 {
+                answer
+                    .data
+                    .drain(..std::cmp::min(answer.data.len(), data_slice.offset));
+            }
+            answer.data.truncate(data_slice.length);
         }
-        answer.data.truncate(data_size);
         Ok(Some(answer))
     }
 
@@ -210,7 +214,9 @@ impl Rpc for FakeRpc {
         Ok(Vec::new())
     }
 }
+use evm_loader::solana_program::bpf_loader_upgradeable;
 use tokio;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,7 +241,15 @@ mod tests {
             panic!("fake rpc returned error");
         }
 
-        let test3_acc = rpc.get_account_slice(&test_key, 0, 1024).await;
+        let test3_acc = rpc
+            .get_account_slice(
+                &test_key,
+                Some(SliceConfig {
+                    offset: 0,
+                    length: 1024,
+                }),
+            )
+            .await;
         assert_eq!(1024, test3_acc.unwrap().expect("test fail").data.len());
     }
     #[tokio::test]
@@ -255,7 +269,7 @@ mod tests {
             .await
             .expect("ERR DURING ACC REQUESTS");
 
-        let hashed_accounts = acc_hash_get_values_by_keys(&test_keys, &rpc)
+        let hashed_accounts = programdata_cache_get_values_by_keys(&test_keys, &rpc)
             .await
             .expect("ERR DURING ACC REQUESTS WITH HASH");
         assert_eq!(hashed_accounts.len(), multiple_accounts.len());

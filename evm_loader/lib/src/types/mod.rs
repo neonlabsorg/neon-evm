@@ -1,6 +1,6 @@
 pub mod tracer_ch_common;
 
-pub mod account_cache;
+pub mod programs_cache;
 pub(crate) mod tracer_ch_db;
 pub mod tracer_rocks_db;
 
@@ -27,8 +27,8 @@ use evm_loader::{
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
-use solana_account_decoder::UiDataSliceConfig;
 
+use crate::rpc::SliceConfig;
 use solana_sdk::signature::Signature;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::HashMap;
@@ -82,7 +82,7 @@ pub trait TracerDbTrait {
         pubkey: &Pubkey,
         slot: u64,
         tx_index_in_block: Option<u64>,
-        bin_slice: Option<UiDataSliceConfig>,
+        data_slice: Option<SliceConfig>,
     ) -> DbResult<Option<Account>>;
 
     async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64>;

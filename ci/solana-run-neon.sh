@@ -12,6 +12,8 @@ EVM_LOADER_PATH=${NEON_BIN}/evm_loader.so
 METAPLEX=metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s
 METAPLEX_PATH=${NEON_BIN}/metaplex.so
 
+VRF=VRFzZoJdhFWL8rkvu87LpKM3RbcVezpMEc6X5GVDr7y
+VRF_PATH=${NEON_BIN}/vrf.so
 
 VALIDATOR_ARGS=(
   --reset
@@ -20,6 +22,7 @@ VALIDATOR_ARGS=(
   --ticks-per-slot 16
   --upgradeable-program ${EVM_LOADER} ${EVM_LOADER_PATH} ${EVM_LOADER_AUTHORITY_KEYPAIR}
   --bpf-program ${METAPLEX} ${METAPLEX_PATH}
+  --bpf-program ${VRF} ${VRF_PATH}
   --limit-ledger-size 400000000
 )
 

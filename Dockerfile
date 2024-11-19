@@ -38,6 +38,7 @@ FROM ${DOCKERHUB_ORG_NAME}/neon_test_programs:latest AS neon_test_programs
 FROM builder AS base
 
 RUN solana program dump metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s /opt/metaplex.so --url mainnet-beta
+RUN solana program dump VRFzZoJdhFWL8rkvu87LpKM3RbcVezpMEc6X5GVDr7y /opt/vrf.so --url mainnet-beta
 
 COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader*.so /opt/
 COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader-dump.txt /opt/

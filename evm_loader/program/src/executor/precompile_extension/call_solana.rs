@@ -317,10 +317,19 @@ async fn execute_external_instruction<State: Database>(
     #[cfg(not(target_os = "solana"))]
     log::info!("instruction: {:?}", instruction);
 
-    if !state.is_synced_state() && context.interrupt_solana_call {
-        context.interrupt_solana_call = false;
+    if !state.is_synced_state() && !context.got_solana_call {
+        context.got_solana_call = true;
         return Err(Error::InterruptedCall);
     }
+
+    /*
+    if !context.got_solana_call {
+        context.got_solana_call = true;
+        if !state.is_synced_state() /*|| !state.is_on_emulator()*/ {
+            return Err(Error::InterruptedCall);
+        }
+    }
+    */
     let called_program = instruction.program_id;
     state.set_return_data(&[]);
 

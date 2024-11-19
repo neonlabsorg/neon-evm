@@ -170,7 +170,7 @@ pub struct Context {
     pub contract_chain_id: u64,
     pub value: U256,
     pub code_address: Option<Address>,
-    pub interrupt_solana_call: bool,
+    pub got_solana_call: bool,
 }
 
 #[repr(C)]
@@ -279,7 +279,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 contract_chain_id: backend.contract_chain_id(target).await.unwrap_or(chain_id),
                 value: trx.value(),
                 code_address: Some(target),
-                interrupt_solana_call: true,
+                got_solana_call: false,
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
@@ -332,7 +332,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 contract_chain_id: chain_id,
                 value: trx.value(),
                 code_address: None,
-                interrupt_solana_call: true,
+                got_solana_call: false,
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
@@ -356,8 +356,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         &mut self,
         step_limit: u64,
         backend: &mut B,
-    ) -> Result<(ExitStatus, u64, Option<T>)> {
+    ) -> Result<(ExitStatus, u64, Option<u64>, Option<T>)> {
         let mut step = 0_u64;
+        let mut step_call_solana: Option<u64> = None;
 
         begin_vm!(
             self,
@@ -401,6 +402,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                     }
                 };
 
+                if step_call_solana.is_none() && self.context.got_solana_call {
+                    step_call_solana = Some(step);
+                }
                 match opcode_result {
                     Action::Continue => self.pc += 1,
                     Action::Jump(target) => self.pc = target,
@@ -414,7 +418,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             }
         };
 
-        Ok((status, step, self.tracer.take()))
+        Ok((status, step, step_call_solana, self.tracer.take()))
     }
 
     fn fork(

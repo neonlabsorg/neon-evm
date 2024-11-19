@@ -89,7 +89,7 @@ pub fn do_continue<'a>(
 
     let mut steps_executed = 0;
     if backend.exit_status().is_none() {
-        let (exit_status, steps_returned, _) = evm.execute(step_count, &mut backend)?;
+        let (exit_status, steps_returned, _, _) = evm.execute(step_count, &mut backend)?;
         if exit_status != ExitStatus::StepLimit {
             backend.set_exit_status(exit_status)
         }
@@ -261,7 +261,7 @@ fn finalize_interrupted(
             &mut backend,
             None::<NoopEventListener>,
         )?;
-        let (result, steps_executed, _) = evm.execute(u64::MAX, &mut backend)?;
+        let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
         (result, steps_executed)
     };
     log_data(&[

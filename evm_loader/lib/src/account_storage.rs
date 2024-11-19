@@ -1053,6 +1053,10 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         .unwrap()
     }
 
+    fn is_on_emulator(&self) -> bool {
+        true
+    }
+
     fn is_valid_chain_id(&self, chain_id: u64) -> bool {
         for chain in &self.chains {
             if chain.id == chain_id {

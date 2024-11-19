@@ -1111,7 +1111,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             contract_chain_id: chain_id,
             value,
             code_address: None,
-            interrupt_solana_call: true,
+            got_solana_call: false,
         };
 
         begin_vm!(self, backend, context, chain_id, init_code);
@@ -1166,7 +1166,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             contract_chain_id: backend.contract_chain_id(address).await.unwrap_or(chain_id),
             value,
             code_address: Some(address),
-            interrupt_solana_call: true,
+            got_solana_call: false,
         };
 
         begin_vm!(self, backend, context, chain_id, call_data);
@@ -1307,7 +1307,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             contract_chain_id: backend.contract_chain_id(address).await.unwrap_or(chain_id),
             value: U256::ZERO,
             code_address: Some(address),
-            interrupt_solana_call: true,
+            got_solana_call: false,
         };
 
         begin_vm!(self, backend, context, chain_id, call_data);

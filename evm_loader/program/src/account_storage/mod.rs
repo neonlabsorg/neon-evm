@@ -65,6 +65,7 @@ pub trait AccountStorage: LogCollector {
     /// Get account balance
     async fn balance(&self, address: Address, chain_id: u64) -> U256;
 
+    fn is_on_emulator(&self) -> bool;
     fn is_valid_chain_id(&self, chain_id: u64) -> bool;
     fn chain_id_to_token(&self, chain_id: u64) -> Pubkey;
     fn default_chain_id(&self) -> u64;

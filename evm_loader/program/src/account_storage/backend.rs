@@ -94,6 +94,10 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
             .map_or(U256::ZERO, |a| a.balance())
     }
 
+    fn is_on_emulator(&self) -> bool {
+        false
+    }
+
     fn is_valid_chain_id(&self, chain_id: u64) -> bool {
         crate::config::CHAIN_ID_LIST
             .binary_search_by_key(&chain_id, |c| c.0)

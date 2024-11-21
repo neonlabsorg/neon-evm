@@ -22,6 +22,8 @@ RUN cargo fmt --check && \
     cargo test --release && \
     cargo build-bpf --manifest-path program/Cargo.toml --features devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
     cargo build-bpf --manifest-path program/Cargo.toml --features testnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet.so && \
+    cargo build-bpf --manifest-path program/Cargo.toml --features testnet-v2 && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet-v2.so && \
+    cargo build-bpf --manifest-path program/Cargo.toml --features testnet-v2,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet-v2-emergency.so && \
     cargo build-bpf --manifest-path program/Cargo.toml --features govertest && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest.so && \
     cargo build-bpf --manifest-path program/Cargo.toml --features govertest,emergency && cp target/deploy/evm_loader.so target/deploy/evm_loader-govertest-emergency.so && \
     cargo build-bpf --manifest-path program/Cargo.toml --features mainnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-mainnet.so && \

@@ -16,6 +16,8 @@ govertest = []
 mainnet = []
 ## Builds NeonEVM for testnet deployment
 testnet = []
+## Builds NeonEVM for testnet-v2 deployment
+testnet-v2 = []
 ## Builds NeonEVM for devnet deployment
 devnet = []
 ## Builds NeonEVM for CI environment

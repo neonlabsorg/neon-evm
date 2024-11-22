@@ -3,6 +3,9 @@
 use async_trait::async_trait;
 use jsonrpsee_core::{client::ClientT, rpc_params};
 use jsonrpsee_http_client::{HttpClient, HttpClientBuilder};
+use neon_lib::build_info_common::SlimBuildInfo;
+use neon_lib::commands::simulate_solana::SimulateSolanaResponse;
+use neon_lib::types::SimulateSolanaRequest;
 use neon_lib::LibMethod;
 use neon_lib::{
     commands::{
@@ -52,7 +55,7 @@ impl Default for NeonRpcHttpClientBuilder {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl NeonRpcClient for NeonRpcHttpClient {
     async fn emulate(&self, params: EmulateApiRequest) -> NeonRpcClientResult<EmulateResponse> {
         self.request(LibMethod::Emulate, params).await
@@ -90,6 +93,21 @@ impl NeonRpcClient for NeonRpcHttpClient {
     async fn trace(&self, params: EmulateApiRequest) -> NeonRpcClientResult<serde_json::Value> {
         self.request(LibMethod::Trace, params).await
     }
+
+    async fn simulate_solana(
+        &self,
+        params: SimulateSolanaRequest,
+    ) -> NeonRpcClientResult<SimulateSolanaResponse> {
+        self.request(LibMethod::SimulateSolana, params).await
+    }
+
+    async fn build_info(&self) -> NeonRpcClientResult<SlimBuildInfo> {
+        self.custom_request_without_params("build_info").await
+    }
+
+    async fn lib_build_info(&self) -> NeonRpcClientResult<SlimBuildInfo> {
+        self.custom_request_without_params("lib_build_info").await
+    }
 }
 
 impl NeonRpcHttpClient {
@@ -109,5 +127,12 @@ impl NeonRpcHttpClient {
         R: DeserializeOwned,
     {
         Ok(self.client.request(method.into(), rpc_params![]).await?)
+    }
+
+    async fn custom_request_without_params<R>(&self, method: &str) -> NeonRpcClientResult<R>
+    where
+        R: DeserializeOwned,
+    {
+        Ok(self.client.request(method, rpc_params![]).await?)
     }
 }

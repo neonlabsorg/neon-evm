@@ -90,7 +90,7 @@ pub fn do_continue<'a>(
     let mut steps_executed = 0;
     if backend.exit_status().is_none() {
         let (exit_status, steps_returned, _, _) = evm.execute(step_count, &mut backend)?;
-        if exit_status != ExitStatus::StepLimit {
+        if exit_status != ExitStatus::StepLimit && exit_status != ExitStatus::Interrupted {
             backend.set_exit_status(exit_status)
         }
 

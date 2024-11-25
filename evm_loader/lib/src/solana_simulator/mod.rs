@@ -5,6 +5,7 @@ use std::sync::Arc;
 pub use error::Error;
 use evm_loader::solana_program::bpf_loader_upgradeable::UpgradeableLoaderState;
 use evm_loader::solana_program::clock::Slot;
+
 use evm_loader::solana_program::loader_v4;
 use evm_loader::solana_program::loader_v4::{LoaderV4State, LoaderV4Status};
 use evm_loader::solana_program::message::SanitizedMessage;
@@ -51,6 +52,7 @@ use solana_sdk::{
 pub use utils::SyncState;
 
 use crate::rpc::Rpc;
+use crate::types::programs_cache::programdata_cache_get_values_by_keys;
 
 mod error;
 mod utils;
@@ -113,7 +115,6 @@ impl SolanaSimulator {
             let Some(account) = account else {
                 continue;
             };
-
             if account.executable && bpf_loader_upgradeable::check_id(&account.owner) {
                 let programdata_address = utils::program_data_address(account)?;
                 debug!(
@@ -129,7 +130,9 @@ impl SolanaSimulator {
             storable_accounts.push((key, account));
         }
 
-        let mut programdata_accounts = rpc.get_multiple_accounts(&programdata_keys).await?;
+        let mut programdata_accounts =
+            programdata_cache_get_values_by_keys(&programdata_keys, rpc).await?;
+
         for (key, account) in programdata_keys.iter().zip(&mut programdata_accounts) {
             let Some(account) = account else {
                 continue;

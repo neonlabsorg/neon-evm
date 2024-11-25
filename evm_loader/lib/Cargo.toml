@@ -52,6 +52,7 @@ clap = "2.34.0"
 lazy_static = "1.5.0"
 elsa = "1.10.0"
 arrayref = "0.3.8"
+futures = "0.3.30"
 
 [dev-dependencies]
 hex-literal = "0.4.1"

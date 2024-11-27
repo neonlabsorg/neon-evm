@@ -9,20 +9,29 @@ use crate::commands::get_config::{BuildConfigSimulator, ConfigSimulator};
 use crate::{NeonError, NeonResult};
 use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
+pub use solana_account_decoder::UiDataSliceConfig as SliceConfig;
 use solana_cli::cli::CliError;
 use solana_client::client_error::Result as ClientResult;
-use solana_sdk::message::Message;
-use solana_sdk::native_token::lamports_to_sol;
 use solana_sdk::{
     account::Account,
     clock::{Slot, UnixTimestamp},
+    message::Message,
+    native_token::lamports_to_sol,
     pubkey::Pubkey,
 };
 
 #[async_trait(?Send)]
 #[enum_dispatch]
 pub trait Rpc {
-    async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>>;
+    async fn get_account_slice(
+        &self,
+        key: &Pubkey,
+        slice: Option<SliceConfig>,
+    ) -> ClientResult<Option<Account>>;
+    async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
+        self.get_account_slice(key, None).await
+    }
+
     async fn get_multiple_accounts(&self, pubkeys: &[Pubkey])
         -> ClientResult<Vec<Option<Account>>>;
     async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp>;

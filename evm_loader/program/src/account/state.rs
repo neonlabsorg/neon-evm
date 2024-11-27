@@ -327,7 +327,7 @@ impl<'a> StateAccount<'a> {
     }
 
     #[must_use]
-    fn gas_available(&self) -> U256 {
+    pub fn gas_available(&self) -> U256 {
         self.trx().gas_limit().saturating_sub(self.gas_used())
     }
 

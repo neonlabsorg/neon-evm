@@ -84,7 +84,7 @@ pub async fn execute(
     accounts: &[Address],
 ) -> NeonResult<Vec<GetContractResponse>> {
     let legacy_chain_id = super::get_config::read_legacy_chain_id(rpc, *program_id).await?;
-
+    log::info!("get_contract execute: {}", legacy_chain_id);
     let pubkeys: Vec<_> = accounts
         .iter()
         .map(|a| a.find_solana_address(program_id).0)

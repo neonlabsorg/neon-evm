@@ -82,6 +82,11 @@ impl<'a> ExecutorStateData {
         &self.actions
     }
 
+    #[must_use]
+    pub fn into_stack(&'a self) -> &'a Vector<usize> {
+        &self.stack
+    }
+
     fn new_instance(block_params: BlockParams) -> Self {
         Self {
             cache: RefCell::new(Cache {

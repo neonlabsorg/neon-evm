@@ -43,10 +43,9 @@ impl<'a, B: SyncedAccountStorage> SyncedExecutorState<'a, B> {
     #[must_use]
     pub fn new_with_state_data(backend: &'a mut B, state_data: &'a ExecutorStateData) -> Self {
         let mut actions = Vector::with_capacity_in(64, acc_allocator());
-        let mut stack = Vector::with_capacity_in(16, acc_allocator());
-        let mut s_idx: usize = 0;
+        let mut stack = state_data.into_stack().clone();
 
-        for (a_idx, action) in state_data.into_actions().iter().enumerate() {
+        for (action_idx, action) in state_data.into_actions().iter().enumerate() {
             if let action::Action::EvmSetTransientStorage {
                 address,
                 index,
@@ -58,17 +57,12 @@ impl<'a, B: SyncedAccountStorage> SyncedExecutorState<'a, B> {
                     index: *index,
                     value: *value,
                 });
-            }
-            if (state_data.into_stack().len() > s_idx) && (state_data.into_stack()[s_idx] == a_idx)
-            {
-                if !stack.is_empty() && (stack[stack.len() - 1] == actions.len()) {
-                    continue;
+            } else {
+                for (frame_idx, frame) in stack.iter_mut().enumerate() {
+                    if state_data.into_stack()[frame_idx] >= action_idx {
+                        *frame -= 1;
+                    }
                 }
-                if actions.is_empty() {
-                    continue;
-                }
-                stack.push(actions.len());
-                s_idx += 1;
             }
         }
         Self {

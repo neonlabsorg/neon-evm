@@ -4,15 +4,17 @@ use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
 
+use super::precompile_extension::PrecompiledContracts;
+use super::OwnedAccountInfo;
+
 use crate::account_storage::{AccountStorage, LogCollector, SyncedAccountStorage};
 use crate::allocator::acc_allocator;
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
 use crate::evm::Context;
+use crate::executor::action;
+use crate::executor::ExecutorStateData;
 use crate::types::{Address, Vector};
-
-use super::precompile_extension::PrecompiledContracts;
-use super::OwnedAccountInfo;
 
 enum Action {
     SetTransientStorage {
@@ -35,6 +37,44 @@ impl<'a, B: SyncedAccountStorage> SyncedExecutorState<'a, B> {
             backend,
             actions: Vector::with_capacity_in(64, acc_allocator()),
             stack: Vector::with_capacity_in(16, acc_allocator()),
+        }
+    }
+
+    #[must_use]
+    pub fn new_with_state_data(backend: &'a mut B, state_data: &'a ExecutorStateData) -> Self {
+        let mut actions = Vector::with_capacity_in(64, acc_allocator());
+        let mut stack = Vector::with_capacity_in(16, acc_allocator());
+        let mut s_idx: usize = 0;
+
+        for (a_idx, action) in state_data.into_actions().iter().enumerate() {
+            if let action::Action::EvmSetTransientStorage {
+                address,
+                index,
+                value,
+            } = action
+            {
+                actions.push(Action::SetTransientStorage {
+                    address: *address,
+                    index: *index,
+                    value: *value,
+                });
+            }
+            if (state_data.into_stack().len() > s_idx) && (state_data.into_stack()[s_idx] == a_idx)
+            {
+                if !stack.is_empty() && (stack[stack.len() - 1] == actions.len()) {
+                    continue;
+                }
+                if actions.is_empty() {
+                    continue;
+                }
+                stack.push(actions.len());
+                s_idx += 1;
+            }
+        }
+        Self {
+            backend,
+            actions,
+            stack,
         }
     }
 

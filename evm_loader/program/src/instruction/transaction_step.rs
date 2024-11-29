@@ -14,6 +14,7 @@ use crate::types::boxx::boxx;
 use crate::types::TreeMap;
 use crate::types::Vector;
 
+type SyncedEvmBackend<'a, 'r> = SyncedExecutorState<'r, ProgramAccountStorage<'a>>;
 type EvmBackend<'a, 'r> = ExecutorState<'r, ProgramAccountStorage<'a>>;
 type Evm<'a, 'r> = Machine<EvmBackend<'a, 'r>, NoopEventListener>;
 
@@ -79,17 +80,25 @@ pub fn do_continue<'a>(
     let mut account_storage = ProgramAccountStorage::new(accounts)?;
     allocate_or_reinit_state(&mut account_storage, &mut storage, reset)?;
 
-    if storage.steps_interrupted() > 0 {
-        return finalize_interrupted(&mut account_storage, &mut storage, &mut gasometer);
-    }
-
     let mut state_data = storage.read_executor_state();
+    if storage.steps_interrupted() > 0 {
+        account_storage.apply_state_change(state_data.into_actions())?;
+        return finalize_interrupted(
+            &mut account_storage,
+            &mut storage,
+            &mut gasometer,
+            &state_data,
+        );
+    }
     let mut evm = storage.read_evm::<EvmBackend, NoopEventListener>();
     let mut backend = ExecutorState::new(&mut account_storage, &mut state_data);
-
     let mut steps_executed = 0;
+
     if backend.exit_status().is_none() {
         let (exit_status, steps_returned, _, _) = evm.execute(step_count, &mut backend)?;
+        if exit_status == ExitStatus::Interrupted {
+            storage.increment_steps_interrupted(1)?;
+        }
         if exit_status != ExitStatus::StepLimit && exit_status != ExitStatus::Interrupted {
             backend.set_exit_status(exit_status)
         }
@@ -186,11 +195,7 @@ fn finalize<'a, 'b>(
     }
 
     let status = if let Some((status, actions)) = results {
-        if *status == ExitStatus::Interrupted {
-            accounts.apply_state_change(actions)?;
-            storage.increment_steps_interrupted(1)?;
-            None
-        } else if accounts.allocate(actions)? == AllocateResult::Ready {
+        if accounts.allocate(actions)? == AllocateResult::Ready {
             accounts.apply_state_change(actions)?;
             Some(status)
         } else {
@@ -239,7 +244,10 @@ fn finalize_interrupted(
     account_storage: &mut ProgramAccountStorage<'_>,
     storage: &mut StateAccount<'_>,
     gasometer: &mut Gasometer,
+    state_data: &ExecutorStateData,
 ) -> Result<()> {
+    debug_print!("finalize_interrupted");
+
     let chain_id = storage
         .trx()
         .chain_id()
@@ -247,20 +255,9 @@ fn finalize_interrupted(
     let gas_limit = storage.trx().gas_limit();
     let gas_price = storage.trx().gas_price();
 
-    storage
-        .trx()
-        .validate(storage.trx_origin(), account_storage)?;
-    account_storage
-        .origin(storage.trx_origin(), &storage.trx())?
-        .increment_nonce()?;
     let (exit_reason, steps_executed) = {
-        let mut backend = SyncedExecutorState::new(account_storage);
-        let mut evm = Machine::new(
-            &storage.trx(),
-            storage.trx_origin(),
-            &mut backend,
-            None::<NoopEventListener>,
-        )?;
+        let mut backend = SyncedExecutorState::new_with_state_data(account_storage, state_data);
+        let mut evm = storage.read_evm::<SyncedEvmBackend, NoopEventListener>();
         let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
         (result, steps_executed)
     };

@@ -4,12 +4,11 @@ use std::collections::BTreeMap;
 
 use crate::rpc::{CallDbClient, CloneRpcClient, Rpc};
 use crate::solana_simulator::SolanaSimulator;
-use crate::types::programs_cache::{get_programdata_slot_from_account, KeyAccountCache};
+use crate::types::programs_cache::KeyAccountCache;
 use crate::types::programs_cache::{program_config_cache_add, program_config_cache_get};
 use async_trait::async_trait;
 use base64::Engine;
 use enum_dispatch::enum_dispatch;
-use evm_loader::solana_program::bpf_loader_upgradeable::UpgradeableLoaderState;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 pub use solana_account_decoder::UiDataSliceConfig as SliceConfig;
@@ -60,13 +59,14 @@ pub enum ConfigSimulator<'r> {
 
 #[async_trait(?Send)]
 #[enum_dispatch]
-pub trait BuildConfigSimulator {
-    async fn get_last_deployed_slot(&self, program_id: &Pubkey) -> u64;
+pub trait BuildConfigSimulator: Rpc {
+    async fn get_config(&self, program_id: Pubkey) -> NeonResult<GetConfigResponse> {
+        let maybe_slot = self.get_last_deployed_slot(&program_id).await?;
+        let slot = maybe_slot.expect("Account should have slot ");
 
-    async fn get_config_simulator(&self, program_id: Pubkey) -> NeonResult<GetConfigResponse> {
         let key = KeyAccountCache {
             addr: program_id,
-            slot: self.get_last_deployed_slot(&program_id).await,
+            slot,
         };
 
         let rz = program_config_cache_get(&key).await;
@@ -94,18 +94,6 @@ pub trait BuildConfigSimulator {
 
 #[async_trait(?Send)]
 impl BuildConfigSimulator for CloneRpcClient {
-    async fn get_last_deployed_slot(&self, program_id: &Pubkey) -> u64 {
-        let slice = SliceConfig {
-            offset: 0,
-            length: UpgradeableLoaderState::size_of_programdata_metadata(),
-        };
-        let result = self.get_account_slice(program_id, Some(slice)).await;
-        if let Ok(Some(acc)) = result {
-            get_programdata_slot_from_account(&acc).expect("NO slot value for acc")
-        } else {
-            panic!("get_account_slice return an Error ");
-        }
-    }
     async fn build_config_simulator(&self, program_id: Pubkey) -> NeonResult<ConfigSimulator> {
         Ok(ConfigSimulator::CloneRpcClient {
             program_id,
@@ -116,9 +104,6 @@ impl BuildConfigSimulator for CloneRpcClient {
 
 #[async_trait(?Send)]
 impl BuildConfigSimulator for CallDbClient {
-    async fn get_last_deployed_slot(&self, _program_id: &Pubkey) -> u64 {
-        0
-    }
     async fn build_config_simulator(&self, program_id: Pubkey) -> NeonResult<ConfigSimulator> {
         let mut simulator = SolanaSimulator::new_without_sync(self).await?;
         simulator.sync_accounts(self, &[program_id]).await?;
@@ -302,7 +287,7 @@ pub async fn execute(
     rpc: &impl BuildConfigSimulator,
     program_id: Pubkey,
 ) -> NeonResult<GetConfigResponse> {
-    rpc.get_config_simulator(program_id).await
+    rpc.get_config(program_id).await
 }
 
 // static CHAINS_CACHE: OnceCell<Vec<ChainInfo>> = OnceCell::const_new();
@@ -311,7 +296,7 @@ pub async fn read_chains(
     rpc: &impl BuildConfigSimulator,
     program_id: Pubkey,
 ) -> NeonResult<Vec<ChainInfo>> {
-    Ok(rpc.get_config_simulator(program_id).await?.chains)
+    Ok(rpc.get_config(program_id).await?.chains)
 }
 
 async fn read_chain_id(

@@ -10,8 +10,6 @@ use std::str::FromStr;
 const STORAGE_LENGTH: usize = 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 
 mod mock_rpc_client {
-    use crate::types::programs_cache::get_programdata_slot_from_account;
-    use solana_sdk::bpf_loader_upgradeable::UpgradeableLoaderState;
 
     use crate::commands::get_config::BuildConfigSimulator;
     use crate::NeonResult;
@@ -93,18 +91,6 @@ mod mock_rpc_client {
 
     #[async_trait(?Send)]
     impl BuildConfigSimulator for MockRpcClient {
-        async fn get_last_deployed_slot(&self, program_id: &Pubkey) -> u64 {
-            let slice = UiDataSliceConfig {
-                offset: 0,
-                length: UpgradeableLoaderState::size_of_programdata_metadata(),
-            };
-            let result = self.get_account_slice(program_id, Some(slice)).await;
-            if let Ok(Some(acc)) = result {
-                get_programdata_slot_from_account(&acc).expect("NO slot value for acc")
-            } else {
-                panic!("get_account_slice return an Error ");
-            }
-        }
         async fn build_config_simulator(&self, _program_id: Pubkey) -> NeonResult<ConfigSimulator> {
             unimplemented!();
         }

@@ -26,10 +26,40 @@ pub struct KeyAccountCache {
 }
 use crate::rpc::SliceConfig;
 type ProgramDataCache<Value> = HashMap<KeyAccountCache, Value>;
-type ThreadSaveCache<Value> = RwLock<ProgramDataCache<Value>>;
+
+struct ThreadSaveCache<Value>
+where
+    Value: Clone,
+{
+    table: RwLock<ProgramDataCache<Value>>,
+}
+impl<Value> ThreadSaveCache<Value>
+where
+    Value: Clone,
+{
+    pub fn new() -> Self {
+        Self {
+            table: RwLock::new(HashMap::new()),
+        }
+    }
+
+    fn get(&self, key: &KeyAccountCache) -> Option<Value> {
+        self.table
+            .read()
+            .expect("acc_hash_get_instance poisoned")
+            .get(key)
+            .cloned()
+    }
+    fn add(&self, key: KeyAccountCache, value: Value) {
+        self.table
+            .write()
+            .expect("PANIC, no space ")
+            .insert(key, value);
+    }
+}
 
 type ThreadSaveProgramDataCache = ThreadSaveCache<Account>;
-type ThreadSaveConfigCache<'a> = ThreadSaveCache<GetConfigResponse>;
+type ThreadSaveConfigCache = ThreadSaveCache<GetConfigResponse>;
 
 static ACCOUNT_CACHE_TABLE: OnceCell<ThreadSaveProgramDataCache> = OnceCell::const_new();
 static CONFIG_CACHE_TABLE: OnceCell<ThreadSaveConfigCache> = OnceCell::const_new();
@@ -42,41 +72,21 @@ pub async fn cut_programdata_from_acc(account: &mut Account, data_slice: SliceCo
     }
     account.data.truncate(data_slice.length);
 }
-fn cache_get<Value: std::clone::Clone>(
-    key: &KeyAccountCache,
-    table: &ThreadSaveCache<Value>,
-) -> Option<Value> {
-    table
-        .read()
-        .expect("acc_hash_get_instance poisoned")
-        .get(key)
-        .cloned()
-}
-fn cache_add<Value: std::clone::Clone>(
-    key: KeyAccountCache,
-    value: Value,
-    table: &ThreadSaveCache<Value>,
-) {
-    table.write().expect("PANIC, no space ").insert(key, value);
-}
+
 async fn programdata_account_cache_get_instance() -> &'static ThreadSaveProgramDataCache {
     ACCOUNT_CACHE_TABLE
-        .get_or_init(|| async {
-            let map = HashMap::new();
-
-            RwLock::new(map)
-        })
+        .get_or_init(|| async { ThreadSaveProgramDataCache::new() })
         .await
 }
 
 async fn programdata_account_cache_get(addr: Pubkey, slot: u64) -> Option<Account> {
-    let val = KeyAccountCache { addr, slot };
-    cache_get(&val, programdata_account_cache_get_instance().await)
+    let key = KeyAccountCache { addr, slot };
+    programdata_account_cache_get_instance().await.get(&key)
 }
 
 async fn programdata_account_cache_add(addr: Pubkey, slot: u64, acc: Account) {
     let key = KeyAccountCache { addr, slot };
-    cache_add(key, acc, programdata_account_cache_get_instance().await);
+    programdata_account_cache_get_instance().await.add(key, acc);
 }
 
 pub fn get_programdata_slot_from_account(acc: &Account) -> ClientResult<u64> {
@@ -180,22 +190,18 @@ impl FakeRpc {
     }
 }
 
-async fn program_config_cache_get_instance() -> &'static ThreadSaveConfigCache<'static> {
+async fn program_config_cache_get_instance() -> &'static ThreadSaveConfigCache {
     CONFIG_CACHE_TABLE
-        .get_or_init(|| async {
-            let map = HashMap::new();
-
-            RwLock::new(map)
-        })
+        .get_or_init(|| async { ThreadSaveConfigCache::new() })
         .await
 }
 
 pub async fn program_config_cache_get(key: &KeyAccountCache) -> Option<GetConfigResponse> {
-    cache_get(key, program_config_cache_get_instance().await)
+    program_config_cache_get_instance().await.get(key)
 }
 
 pub async fn program_config_cache_add(key: KeyAccountCache, val: GetConfigResponse) {
-    cache_add(key, val, program_config_cache_get_instance().await);
+    program_config_cache_get_instance().await.add(key, val);
 }
 
 #[async_trait(?Send)]

@@ -152,8 +152,10 @@ impl FromAddress {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TxParams {
     pub nonce: Option<u64>,
+    pub index: Option<u16>,
     #[serde_as(as = "DisplayFromStr")]
     pub from: FromAddress,
+    pub payer: Option<Address>,
     pub to: Option<Address>,
     #[serde_as(as = "Option<Hex>")]
     pub data: Option<Vec<u8>>,
@@ -245,8 +247,10 @@ impl TxParams {
     pub fn from_transaction(origin: Address, tx: &Transaction) -> Self {
         Self {
             from: FromAddress::Ethereum(origin),
+            payer: Some(tx.payer(origin)),
             to: tx.target(),
             nonce: Some(tx.nonce()),
+            index: tx.tree_account_index(),
             data: Some(tx.call_data().to_vec()),
             value: Some(tx.value()),
             gas_limit: Some(tx.gas_limit()),

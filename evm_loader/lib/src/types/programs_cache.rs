@@ -267,7 +267,7 @@ mod tests {
         let multiple_accounts = rpc
             .get_multiple_accounts(&test_keys)
             .await
-            .expect("ERR DURING ACC REQUESTS");
+            .expect("ERROR DURING ACCOUNT REQUESTS");
 
         let hashed_accounts = programdata_cache_get_values_by_keys(&test_keys, &rpc)
             .await

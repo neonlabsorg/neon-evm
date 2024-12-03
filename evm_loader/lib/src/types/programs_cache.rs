@@ -19,12 +19,14 @@ use std::sync::RwLock;
 use bincode::serialize;
 use tokio::sync::OnceCell;
 use tracing::info;
-#[derive(Debug, Eq, PartialEq, Hash)]
+
+use crate::rpc::SliceConfig;
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct KeyAccountCache {
     pub addr: Pubkey,
     pub slot: u64,
 }
-use crate::rpc::SliceConfig;
+
 type ProgramDataCache<Value> = HashMap<KeyAccountCache, Value>;
 
 struct ThreadSaveCache<Value>
@@ -312,5 +314,88 @@ mod tests {
             assert!(hashed_accounts[i].is_some(), "BAD ACC");
             assert!(multiple_accounts[i].is_some(), "BAD ACC");
         }
+    }
+
+    #[test]
+    fn test_create_new_cache() {
+        let cache: ThreadSaveCache<String> = ThreadSaveCache::new();
+        assert!(cache
+            .get(&KeyAccountCache {
+                slot: 0,
+                addr: Pubkey::new_unique(),
+            })
+            .is_none());
+    }
+
+    #[test]
+    fn test_add_and_get_value() {
+        let cache: ThreadSaveCache<String> = ThreadSaveCache::new();
+        let key = KeyAccountCache {
+            slot: 0,
+            addr: Pubkey::new_unique(),
+        };
+        let value = "test_value".to_string();
+
+        // Add the value to the cache
+        cache.add(key.clone(), value.clone());
+
+        // Retrieve the value from the cache
+        let result = cache.get(&key);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), value);
+    }
+
+    #[test]
+    fn test_get_nonexistent_key() {
+        let cache: ThreadSaveCache<String> = ThreadSaveCache::new();
+        let key = KeyAccountCache {
+            slot: 0,
+            addr: Pubkey::new_unique(),
+        };
+
+        // Attempt to get a value for a key that doesn't exist
+        assert!(cache.get(&key).is_none());
+    }
+
+    #[test]
+    fn test_overwrite_existing_key() {
+        let cache: ThreadSaveCache<String> = ThreadSaveCache::new();
+        let key = KeyAccountCache {
+            slot: 0,
+            addr: Pubkey::new_unique(),
+        };
+        let value1 = "value1".to_string();
+        let value2 = "value2".to_string();
+
+        // Add the first value
+        cache.add(key.clone(), value1.clone());
+        assert_eq!(cache.get(&key).unwrap(), value1);
+
+        // Overwrite with the second value
+        cache.add(key.clone(), value2.clone());
+        assert_eq!(cache.get(&key).unwrap(), value2);
+    }
+
+    #[test]
+    fn test_multiple_keys() {
+        let cache: ThreadSaveCache<String> = ThreadSaveCache::new();
+        let key1 = KeyAccountCache {
+            slot: 0,
+            addr: Pubkey::new_unique(),
+        };
+        let value1 = "value1".to_string();
+        let key2 = KeyAccountCache {
+            slot: 0,
+            addr: Pubkey::new_unique(),
+        };
+        let value2 = "value2".to_string();
+
+        // Add multiple key-value pairs
+        cache.add(key1.clone(), value1.clone());
+        cache.add(key2.clone(), value2.clone());
+
+        // Check values for both keys
+        assert_eq!(cache.get(&key1).unwrap(), value1);
+        assert_eq!(cache.get(&key2).unwrap(), value2);
     }
 }

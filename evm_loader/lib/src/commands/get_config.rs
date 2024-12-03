@@ -290,8 +290,6 @@ pub async fn execute(
     rpc.get_config(program_id).await
 }
 
-// static CHAINS_CACHE: OnceCell<Vec<ChainInfo>> = OnceCell::const_new();
-
 pub async fn read_chains(
     rpc: &impl BuildConfigSimulator,
     program_id: Pubkey,

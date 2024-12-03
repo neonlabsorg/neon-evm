@@ -2,12 +2,14 @@
 use crate::rpc::Rpc;
 use async_trait::async_trait;
 
+// use crate::commands::get_config::GetConfigResponse;
 use bincode::deserialize;
 use futures::future::join_all;
-use solana_client::client_error::{ClientErrorKind, Result as ClientResult};
+//use solana_client::client_error::{ClientErrorKind, Result as ClientResult};
+use solana_client::client_error::Result as ClientResult;
 use solana_sdk::{
     account::Account,
-    bpf_loader_upgradeable::UpgradeableLoaderState,
+    bpf_loader_upgradeable::{self, UpgradeableLoaderState},
     clock::{Slot, UnixTimestamp},
     pubkey::Pubkey,
 };
@@ -15,20 +17,55 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::RwLock;
 
+use crate::rpc::SliceConfig;
 use bincode::serialize;
+use tokio;
 use tokio::sync::OnceCell;
 use tracing::info;
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct KeyAccountCache {
-    addr: Pubkey,
-    slot: u64,
+    pub addr: Pubkey,
+    pub slot: u64,
 }
 
-use crate::rpc::SliceConfig;
-type ProgramDataCache = HashMap<KeyAccountCache, Account>;
-type ThreadSaveProgramDataCache = RwLock<ProgramDataCache>;
+type ProgramDataCache<Value> = HashMap<KeyAccountCache, Value>;
 
-static LOCAL_CONFIG: OnceCell<ThreadSaveProgramDataCache> = OnceCell::const_new();
+struct ThreadSaveCache<Value>
+where
+    Value: Clone,
+{
+    table: RwLock<ProgramDataCache<Value>>,
+}
+impl<Value> ThreadSaveCache<Value>
+where
+    Value: Clone,
+{
+    pub fn new() -> Self {
+        Self {
+            table: RwLock::new(HashMap::new()),
+        }
+    }
+
+    fn get(&self, key: &KeyAccountCache) -> Option<Value> {
+        self.table
+            .read()
+            .expect("acc_hash_get_instance poisoned")
+            .get(key)
+            .cloned()
+    }
+    fn add(&self, key: KeyAccountCache, value: Value) {
+        self.table
+            .write()
+            .expect("PANIC, no space ")
+            .insert(key, value);
+    }
+}
+
+type ThreadSaveProgramDataCache = ThreadSaveCache<Account>;
+// type ThreadSaveConfigCache = ThreadSaveCache<GetConfigResponse>;
+
+static ACCOUNT_CACHE_TABLE: OnceCell<ThreadSaveProgramDataCache> = OnceCell::const_new();
+// static CONFIG_CACHE_TABLE: OnceCell<ThreadSaveConfigCache> = OnceCell::const_new();
 
 pub async fn cut_programdata_from_acc(account: &mut Account, data_slice: SliceConfig) {
     if data_slice.offset != 0 {
@@ -39,39 +76,26 @@ pub async fn cut_programdata_from_acc(account: &mut Account, data_slice: SliceCo
     account.data.truncate(data_slice.length);
 }
 
-async fn programdata_hash_get_instance() -> &'static ThreadSaveProgramDataCache {
-    LOCAL_CONFIG
-        .get_or_init(|| async {
-            let map = HashMap::new();
-
-            RwLock::new(map)
-        })
+async fn programdata_account_cache_get_instance() -> &'static ThreadSaveProgramDataCache {
+    ACCOUNT_CACHE_TABLE
+        .get_or_init(|| async { ThreadSaveProgramDataCache::new() })
         .await
 }
 
-async fn programdata_hash_get(addr: Pubkey, slot: u64) -> Option<Account> {
-    let val = KeyAccountCache { addr, slot };
-    programdata_hash_get_instance()
-        .await
-        .read()
-        .expect("acc_hash_get_instance poisoned")
-        .get(&val)
-        .cloned()
+async fn programdata_account_cache_get(addr: Pubkey, slot: u64) -> Option<Account> {
+    let key = KeyAccountCache { addr, slot };
+    programdata_account_cache_get_instance().await.get(&key)
 }
 
-async fn programdata_hash_add(addr: Pubkey, slot: u64, acc: Account) {
-    let val = KeyAccountCache { addr, slot };
-    programdata_hash_get_instance()
-        .await
-        .write()
-        .expect("PANIC, no nable")
-        .insert(val, acc);
+async fn programdata_account_cache_add(addr: Pubkey, slot: u64, acc: Account) {
+    let key = KeyAccountCache { addr, slot };
+    programdata_account_cache_get_instance().await.add(key, acc);
 }
 
-fn get_programdata_slot_from_account(acc: &Account) -> ClientResult<u64> {
-    if !bpf_loader_upgradeable::check_id(&acc.owner) {
-        return Err(ClientErrorKind::Custom("Not upgradeable account".to_string()).into());
-    }
+pub fn get_programdata_slot_from_account(acc: &Account) -> ClientResult<u64> {
+    // if !bpf_loader_upgradeable::check_id(&acc.owner) {
+    //     return Err(ClientErrorKind::Custom("Not upgradeable account".to_string()).into());
+    // }
 
     match deserialize::<UpgradeableLoaderState>(&acc.data) {
         Ok(UpgradeableLoaderState::ProgramData { slot, .. }) => Ok(slot),
@@ -112,11 +136,11 @@ pub async fn programdata_cache_get_values_by_keys(
         match result {
             Ok(Some(account)) => {
                 let slot_val = get_programdata_slot_from_account(account)?;
-                if let Some(acc) = programdata_hash_get(*key, slot_val).await {
+                if let Some(acc) = programdata_account_cache_get(*key, slot_val).await {
                     answer.push(Some(acc));
                 } else if let Ok(Some(tmp_acc)) = rpc.get_account(key).await {
                     let current_slot = get_programdata_slot_from_account(&tmp_acc)?;
-                    programdata_hash_add(*key, current_slot, tmp_acc.clone()).await;
+                    programdata_account_cache_add(*key, current_slot, tmp_acc.clone()).await;
 
                     answer.push(Some(tmp_acc));
                 } else {
@@ -168,6 +192,20 @@ impl FakeRpc {
         answer
     }
 }
+//
+// async fn program_config_cache_get_instance() -> &'static ThreadSaveConfigCache {
+//     CONFIG_CACHE_TABLE
+//         .get_or_init(|| async { ThreadSaveConfigCache::new() })
+//         .await
+// }
+
+//pub async fn program_config_cache_get(key: &KeyAccountCache) -> Option<GetConfigResponse> {
+//     program_config_cache_get_instance().await.get(key)
+// }
+//
+// pub async fn program_config_cache_add(key: KeyAccountCache, val: GetConfigResponse) {
+//     program_config_cache_get_instance().await.add(key, val);
+// }
 
 #[async_trait(?Send)]
 
@@ -214,8 +252,6 @@ impl Rpc for FakeRpc {
         Ok(Vec::new())
     }
 }
-use evm_loader::solana_program::bpf_loader_upgradeable;
-use tokio;
 
 #[cfg(test)]
 mod tests {
@@ -267,7 +303,7 @@ mod tests {
         let multiple_accounts = rpc
             .get_multiple_accounts(&test_keys)
             .await
-            .expect("ERROR DURING ACCOUNT REQUESTS");
+            .expect("ERR DURING ACC REQUESTS");
 
         let hashed_accounts = programdata_cache_get_values_by_keys(&test_keys, &rpc)
             .await
@@ -277,5 +313,88 @@ mod tests {
             assert!(hashed_accounts[i].is_some(), "BAD ACC");
             assert!(multiple_accounts[i].is_some(), "BAD ACC");
         }
+    }
+
+    #[test]
+    fn test_create_new_cache() {
+        let cache: ThreadSaveCache<String> = ThreadSaveCache::new();
+        assert!(cache
+            .get(&KeyAccountCache {
+                slot: 0,
+                addr: Pubkey::new_unique(),
+            })
+            .is_none());
+    }
+
+    #[test]
+    fn test_add_and_get_value() {
+        let cache: ThreadSaveCache<String> = ThreadSaveCache::new();
+        let key = KeyAccountCache {
+            slot: 0,
+            addr: Pubkey::new_unique(),
+        };
+        let value = "test_value".to_string();
+
+        // Add the value to the cache
+        cache.add(key.clone(), value.clone());
+
+        // Retrieve the value from the cache
+        let result = cache.get(&key);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), value);
+    }
+
+    #[test]
+    fn test_get_nonexistent_key() {
+        let cache: ThreadSaveCache<String> = ThreadSaveCache::new();
+        let key = KeyAccountCache {
+            slot: 0,
+            addr: Pubkey::new_unique(),
+        };
+
+        // Attempt to get a value for a key that doesn't exist
+        assert!(cache.get(&key).is_none());
+    }
+
+    #[test]
+    fn test_overwrite_existing_key() {
+        let cache: ThreadSaveCache<String> = ThreadSaveCache::new();
+        let key = KeyAccountCache {
+            slot: 0,
+            addr: Pubkey::new_unique(),
+        };
+        let value1 = "value1".to_string();
+        let value2 = "value2".to_string();
+
+        // Add the first value
+        cache.add(key.clone(), value1.clone());
+        assert_eq!(cache.get(&key).unwrap(), value1);
+
+        // Overwrite with the second value
+        cache.add(key.clone(), value2.clone());
+        assert_eq!(cache.get(&key).unwrap(), value2);
+    }
+
+    #[test]
+    fn test_multiple_keys() {
+        let cache: ThreadSaveCache<String> = ThreadSaveCache::new();
+        let key1 = KeyAccountCache {
+            slot: 0,
+            addr: Pubkey::new_unique(),
+        };
+        let value1 = "value1".to_string();
+        let key2 = KeyAccountCache {
+            slot: 0,
+            addr: Pubkey::new_unique(),
+        };
+        let value2 = "value2".to_string();
+
+        // Add multiple key-value pairs
+        cache.add(key1.clone(), value1.clone());
+        cache.add(key2.clone(), value2.clone());
+
+        // Check values for both keys
+        assert_eq!(cache.get(&key1).unwrap(), value1);
+        assert_eq!(cache.get(&key2).unwrap(), value2);
     }
 }

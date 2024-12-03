@@ -24,7 +24,6 @@ pub fn process<'a>(
 
     let trx = Transaction::scheduled_from_rlp(message)?;
     let _ = validate_scheduled_tx(&trx, tree_index)?;
-    holder.validate_transaction(&trx)?;
 
     transaction_tree.skip_transaction(&trx)?;
 

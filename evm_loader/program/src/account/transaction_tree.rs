@@ -1,13 +1,12 @@
 use std::cell::{Ref, RefMut};
 use std::mem::size_of;
 
-use super::program::System;
 use super::treasury::Treasury;
 use super::{
-    AccountHeader, AccountsDB, BalanceAccount, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION,
+    AccountHeader, AccountsDB, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION,
     TAG_TRANSACTION_TREE,
 };
-use crate::config::TREE_ACCOUNT_TIMEOUT;
+use crate::config::{TREE_ACCOUNT_DESTROY_FEE, TREE_ACCOUNT_TIMEOUT};
 use crate::error::{Error, Result};
 use crate::evm::ExitStatus;
 use crate::types::{Address, Transaction, TransactionPayload};
@@ -128,8 +127,7 @@ impl<'a> TransactionTree<'a> {
     pub fn create(
         init: TreeInitializer,
         account: AccountInfo<'a>,
-        treasury: &Treasury<'a>,
-        system: &System<'a>,
+        db: &AccountsDB<'a>,
         rent: &Rent,
         clock: &Clock,
     ) -> Result<Self> {
@@ -140,27 +138,34 @@ impl<'a> TransactionTree<'a> {
         }
 
         if account.owner != &system_program::ID {
-            return Err(Error::AccountInvalidOwner(*account.key, system_program::ID));
+            return Err(Error::TreeAccountAlreadyExists);
         }
 
-        let seeds: &[&[u8]] = &[
-            &[ACCOUNT_SEED_VERSION],
-            b"TREE",
-            init.payer.as_bytes(),
-            &init.nonce.to_le_bytes(),
-            &[bump_seed],
-        ];
-
         // Validate init data
+        if init.max_fee_per_gas < 1_000_000_000 {
+            // Require at least 1 to 1 ratio to operator spending
+            // 1 Gwei in gas equals to 1 lamport
+            return Err(Error::TreeAccountInvalidMaxFeePerGas);
+        }
+
         let nodes = init.nodes;
         let mut parent_counts = vec![0_u16; nodes.len()];
 
-        for node in &nodes {
+        for (i, node) in nodes.iter().enumerate() {
+            if node.gas_limit < 25_000 {
+                // Require at least 25_000 gas limit to cover operator spending
+                return Err(Error::TreeAccountInvalidGasLimit);
+            }
+
             if node.child == NO_CHILD_TRANSACTION {
                 continue;
             }
 
             if node.child as usize >= nodes.len() {
+                return Err(Error::TreeAccountTxInvalidChildIndex);
+            }
+            if node.child as usize <= i {
+                // Child transaction should be after parent transaction
                 return Err(Error::TreeAccountTxInvalidChildIndex);
             }
 
@@ -174,7 +179,20 @@ impl<'a> TransactionTree<'a> {
         }
 
         // Create account
+        let seeds: &[&[u8]] = &[
+            &[ACCOUNT_SEED_VERSION],
+            b"TREE",
+            init.payer.as_bytes(),
+            &init.nonce.to_le_bytes(),
+            &[bump_seed],
+        ];
+
         let space = Self::required_account_size(nodes.len());
+
+        let system = db.system();
+        let treasury = db.treasury();
+        let destroy_fee_payer = db.operator();
+
         system.create_pda_account_with_treasury_payer(
             &crate::ID,
             treasury,
@@ -183,6 +201,7 @@ impl<'a> TransactionTree<'a> {
             space,
             rent,
         )?;
+        system.transfer(destroy_fee_payer, &account, TREE_ACCOUNT_DESTROY_FEE)?;
 
         // Init data
         super::set_tag(&crate::ID, &account, TAG_TRANSACTION_TREE, Header::VERSION)?;
@@ -253,12 +272,15 @@ impl<'a> TransactionTree<'a> {
         self.is_complete()
     }
 
-    pub fn destroy(self, treasury: &Treasury<'a>) -> Result<()> {
+    pub fn destroy(self, operator: &Operator, treasury: &Treasury<'a>) -> Result<()> {
         let clock = Clock::get()?;
 
         if !self.can_be_destroyed(&clock) {
             return Err(Error::TreeAccountNotReadyForDestruction);
         }
+
+        **operator.lamports.borrow_mut() += TREE_ACCOUNT_DESTROY_FEE;
+        **self.account.lamports.borrow_mut() -= TREE_ACCOUNT_DESTROY_FEE;
 
         unsafe { super::delete_with_treasury(&self.account, treasury) }
     }

@@ -1,7 +1,7 @@
 use crate::account::program::System;
 use crate::account::{
-    token, BalanceAccount, NodeInitializer, Signer, TransactionTree, Treasury, TreeInitializer,
-    NO_CHILD_TRANSACTION,
+    token, AccountsDB, BalanceAccount, NodeInitializer, Operator, TransactionTree, Treasury,
+    TreeInitializer, NO_CHILD_TRANSACTION,
 };
 use crate::config::SOL_CHAIN_ID;
 use crate::debug::log_data;
@@ -67,13 +67,13 @@ pub fn validate_pool(pool: &token::State) -> Result<()> {
     Ok(())
 }
 
-pub fn validate_balance(balance_account: &AccountInfo, payer: Address) -> Result<()> {
-    let (balance_pubkey, _) = payer.find_balance_address(&crate::ID, SOL_CHAIN_ID);
-    if balance_account.key != &balance_pubkey {
-        return Err(Error::AccountInvalidKey(
-            *balance_account.key,
-            balance_pubkey,
-        ));
+pub fn validate_nonce(balance: &BalanceAccount, tx_nonce: u64) -> Result<()> {
+    let account_nonce = balance.nonce();
+    let address = balance.address();
+
+    if account_nonce != tx_nonce {
+        let error = Error::InvalidTransactionNonce(address, account_nonce, tx_nonce);
+        return Err(error);
     }
 
     Ok(())
@@ -81,13 +81,9 @@ pub fn validate_balance(balance_account: &AccountInfo, payer: Address) -> Result
 
 pub fn payment_from_balance(
     tree: &mut TransactionTree,
-    balance_account: AccountInfo,
+    balance_account: &mut BalanceAccount,
     gas: U256,
 ) -> Result<U256> {
-    let Ok(mut balance_account) = BalanceAccount::from_account(&crate::ID, balance_account) else {
-        return Ok(gas); // We can't transfer from an empty account
-    };
-
     assert!(balance_account.chain_id() == tree.chain_id());
     assert!(balance_account.address() == tree.payer());
 
@@ -104,14 +100,16 @@ pub fn payment_from_balance(
 
 pub fn payment_from_signer<'a>(
     tree: &mut TransactionTree<'a>,
-    signer: &Signer<'a>,
+    db: &AccountsDB<'a>,
     pool: &token::State<'a>,
-    system: &System<'a>,
     gas: U256,
 ) -> Result<()> {
     if gas == U256::ZERO {
         return Ok(());
     }
+
+    let signer = db.operator();
+    let system = db.system();
 
     assert!(tree.payer() == Address::from_solana_address(signer.key));
     assert!(tree.chain_id() == SOL_CHAIN_ID);
@@ -125,7 +123,7 @@ pub fn payment_from_signer<'a>(
         lamports = lamports + 1;
     }
 
-    system.transfer_from_signer(signer, pool.info, lamports.try_into()?)?;
+    system.transfer(signer, pool.info, lamports.try_into()?)?;
     tree.mint(lamports * 1_000_000_000)?;
 
     Ok(())
@@ -144,7 +142,7 @@ pub fn process<'a>(
     let messsage = &instruction[4..];
 
     // Accounts
-    let signer = Signer::from_account(&accounts[0])?;
+    let signer = unsafe { Operator::from_account_not_whitelisted(&accounts[0])? };
     let balance = accounts[1].clone();
     let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
     let tree = accounts[3].clone();
@@ -155,18 +153,23 @@ pub fn process<'a>(
     let tx = ScheduledTxShell::from_rlp(messsage)?;
     let tx_hash = tx.hash;
 
-    let payer = Address::from_solana_address(signer.key);
-    let required_balance = validate_scheduled_tx(&tx, payer)?;
-
-    validate_balance(&balance, payer)?;
-    validate_pool(&pool)?;
-
     log_data(&[b"HASH", &tx_hash]);
 
-    // Create Tree Account
+    validate_pool(&pool)?;
+
+    let payer_pubkey = *signer.key;
+    let payer = Address::from_solana_address(&payer_pubkey);
+    let required_balance = validate_scheduled_tx(&tx, payer)?;
+
+    // Create Balance Account if not exists
     let rent = Rent::get()?;
     let clock = Clock::get()?;
 
+    let db = AccountsDB::new(&[balance], signer, None, Some(system), Some(treasury));
+    let mut user = BalanceAccount::create_for_solana_user(payer_pubkey, SOL_CHAIN_ID, &db, &rent)?;
+    validate_nonce(&user, tx.nonce)?;
+
+    // Create Tree Account
     let mut tree = TransactionTree::create(
         TreeInitializer {
             payer,
@@ -184,14 +187,13 @@ pub fn process<'a>(
             }],
         },
         tree,
-        &treasury,
-        &system,
+        &db,
         &rent,
         &clock,
     )?;
 
-    let required_balance = payment_from_balance(&mut tree, balance, required_balance)?;
-    payment_from_signer(&mut tree, &signer, &pool, &system, required_balance)?;
+    let required_balance = payment_from_balance(&mut tree, &mut user, required_balance)?;
+    payment_from_signer(&mut tree, &db, &pool, required_balance)?;
 
     Ok(())
 }

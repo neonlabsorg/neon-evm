@@ -21,6 +21,8 @@ pub fn do_scheduled_start<'a>(
         .trx()
         .validate(origin, &account_storage, Some(&transaction_tree))?;
 
+    transaction_tree.start_transaction(storage.trx())?;
+
     // Increment origin's nonce only once for the whole execution tree.
     let mut origin_account = account_storage.origin(origin, storage.trx())?;
     if origin_account.nonce() == storage.trx().nonce() {
@@ -34,8 +36,6 @@ pub fn do_scheduled_start<'a>(
     let gas_limit_in_tokens = storage.trx().gas_limit_in_tokens()?;
     let max_priority_fee_in_tokens = storage.trx().priority_fee_limit_in_tokens()?;
     transaction_tree.burn(gas_limit_in_tokens + max_priority_fee_in_tokens)?;
-
-    transaction_tree.start_transaction(storage.trx())?;
 
     allocate_evm(&mut account_storage, &mut storage)?;
     let mut state_data = storage.read_executor_state();

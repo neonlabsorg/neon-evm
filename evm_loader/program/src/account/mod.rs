@@ -13,7 +13,6 @@ pub use holder::{Header as HolderHeader, Holder};
 pub use incinerator::Incinerator;
 pub use operator::Operator;
 pub use operator_balance::{OperatorBalanceAccount, OperatorBalanceValidator};
-pub use signer::Signer;
 pub use state::{AccountsStatus, StateAccount};
 pub use state_finalized::{Header as StateFinalizedHeader, StateFinalizedAccount};
 pub use transaction_tree::{
@@ -33,7 +32,6 @@ pub mod legacy;
 mod operator;
 mod operator_balance;
 pub mod program;
-mod signer;
 mod state;
 mod state_finalized;
 pub mod token;

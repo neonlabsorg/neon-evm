@@ -254,6 +254,15 @@ pub enum Error {
     #[error("Transaction Tree - transaction invalid status")]
     TreeAccountTxInvalidStatus,
 
+    #[error("Transaction Tree - transaction requires at least 1 gwei for gas price")]
+    TreeAccountInvalidMaxFeePerGas,
+
+    #[error("Transaction Tree - transaction requires at least 25'000 gas limit")]
+    TreeAccountInvalidGasLimit,
+
+    #[error("Transaction Tree - transaction with the same nonce already exists")]
+    TreeAccountAlreadyExists,
+
     // TODO reconcile with the TreeAccountTxInvalidType - potential duplicate.
     #[error("Attempt to perform an operation with classic transaction, whereas scheduled transaction is expected")]
     NotScheduledTransaction,

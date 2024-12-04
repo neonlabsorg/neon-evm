@@ -86,7 +86,11 @@ impl<'a> BalanceAccount<'a> {
         let address = Address::from_solana_address(&pubkey);
 
         let balance = Self::create(address, chain_id, accounts, None, rent)?;
-        {
+        if let Some(solana_address) = balance.solana_address() {
+            assert_eq!(solana_address, pubkey);
+        } else {
+            assert_eq!(balance.nonce(), 0);
+
             let mut header = super::header_mut::<Header>(&balance.account);
             header.solana_address = pubkey;
         }

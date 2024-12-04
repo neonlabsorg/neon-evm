@@ -1,5 +1,5 @@
 use crate::{
-    account::{BalanceAccount, TransactionTree, Treasury},
+    account::{BalanceAccount, Operator, TransactionTree, Treasury},
     error::{Error, Result},
 };
 use arrayref::array_ref;
@@ -15,9 +15,10 @@ pub fn process<'a>(
 
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
 
-    let mut neon_account = BalanceAccount::from_account(program_id, accounts[0].clone())?;
-    let treasury = Treasury::from_account(program_id, treasury_index, &accounts[1])?;
-    let mut tree = TransactionTree::from_account(&crate::ID, accounts[2].clone())?;
+    let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[0])? };
+    let mut neon_account = BalanceAccount::from_account(program_id, accounts[1].clone())?;
+    let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
+    let mut tree = TransactionTree::from_account(&crate::ID, accounts[3].clone())?;
 
     if neon_account.address() != tree.payer() {
         return Err(Error::TreeAccountInvalidPayer);
@@ -28,5 +29,5 @@ pub fn process<'a>(
     }
 
     tree.withdraw(&mut neon_account)?;
-    tree.destroy(&treasury)
+    tree.destroy(&operator, &treasury)
 }

@@ -30,6 +30,10 @@ impl<K: Ord + Copy, V> TreeMap<K, V> {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()

@@ -404,6 +404,7 @@ impl<'a> TransactionTree<'a> {
             ExitStatus::Stop | ExitStatus::Suicide => (Status::Success, keccak256(&[])),
             ExitStatus::Return(result) => (Status::Success, keccak256(result)),
             ExitStatus::Revert(result) => (Status::Failed, keccak256(result)),
+            ExitStatus::Cancel => (Status::Failed, keccak256(&[])),
             ExitStatus::StepLimit => {
                 panic!("Tree Account transaction can't be ended with StepLimit")
             }

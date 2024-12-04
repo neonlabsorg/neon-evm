@@ -1,5 +1,6 @@
 pub mod tracer_ch_common;
 
+pub mod programs_cache;
 pub(crate) mod tracer_ch_db;
 pub mod tracer_rocks_db;
 
@@ -26,6 +27,8 @@ use evm_loader::{
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
+
+use crate::rpc::SliceConfig;
 use solana_sdk::signature::Signature;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::HashMap;
@@ -79,6 +82,7 @@ pub trait TracerDbTrait {
         pubkey: &Pubkey,
         slot: u64,
         tx_index_in_block: Option<u64>,
+        data_slice: Option<SliceConfig>,
     ) -> DbResult<Option<Account>>;
 
     async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64>;
@@ -176,45 +180,51 @@ impl TxParams {
         let from = self.from.address();
         let origin_nonce = backend.nonce(from, chain_id).await;
         let nonce = self.nonce.unwrap_or(origin_nonce);
+        let max_fee_per_gas = self.max_fee_per_gas.unwrap_or(U256::ZERO);
 
-        let payload = if let Some(access_list) = self.access_list {
+        let payload = if max_fee_per_gas != U256::ZERO {
+            let access_list: Vec<_> = self
+                .access_list
+                .unwrap_or_default()
+                .into_iter()
+                .map(|a| (a.address, a.storage_keys.into_vector()))
+                .collect();
+
+            let dynamic_fee_tx = DynamicFeeTx {
+                nonce,
+                max_fee_per_gas,
+                max_priority_fee_per_gas: self.max_priority_fee_per_gas.unwrap_or(U256::ZERO),
+                gas_limit: self.gas_limit.unwrap_or(U256::MAX),
+                target: self.to,
+                value: self.value.unwrap_or_default(),
+                call_data: self.data.unwrap_or_default().into_vector(),
+                chain_id: U256::from(chain_id),
+                access_list: access_list.elementwise_copy_into_vector(),
+                r: U256::ZERO,
+                s: U256::ZERO,
+                recovery_id: 0,
+            };
+            TransactionPayload::DynamicFee(dynamic_fee_tx)
+        } else if let Some(access_list) = self.access_list {
             let access_list: Vec<_> = access_list
                 .into_iter()
                 .map(|a| (a.address, a.storage_keys.into_vector()))
                 .collect();
 
-            if let Some(max_priority_fee_per_gas) = self.max_priority_fee_per_gas {
-                let dynamic_fee_tx = DynamicFeeTx {
-                    nonce,
-                    max_priority_fee_per_gas,
-                    max_fee_per_gas: self.max_fee_per_gas.unwrap_or(max_priority_fee_per_gas * 2),
-                    gas_limit: self.gas_limit.unwrap_or(U256::MAX),
-                    target: self.to,
-                    value: self.value.unwrap_or_default(),
-                    call_data: self.data.unwrap_or_default().into_vector(),
-                    chain_id: U256::from(chain_id),
-                    access_list: access_list.elementwise_copy_into_vector(),
-                    r: U256::ZERO,
-                    s: U256::ZERO,
-                    recovery_id: 0,
-                };
-                TransactionPayload::DynamicFee(dynamic_fee_tx)
-            } else {
-                let access_list_tx = AccessListTx {
-                    nonce,
-                    gas_price: self.gas_price.unwrap_or(U256::ZERO),
-                    gas_limit: self.gas_limit.unwrap_or(U256::MAX),
-                    target: self.to,
-                    value: self.value.unwrap_or_default(),
-                    call_data: self.data.unwrap_or_default().into_vector(),
-                    chain_id: U256::from(chain_id),
-                    access_list: access_list.elementwise_copy_into_vector(),
-                    r: U256::ZERO,
-                    s: U256::ZERO,
-                    recovery_id: 0,
-                };
-                TransactionPayload::AccessList(access_list_tx)
-            }
+            let access_list_tx = AccessListTx {
+                nonce,
+                gas_price: self.gas_price.unwrap_or(U256::ZERO),
+                gas_limit: self.gas_limit.unwrap_or(U256::MAX),
+                target: self.to,
+                value: self.value.unwrap_or_default(),
+                call_data: self.data.unwrap_or_default().into_vector(),
+                chain_id: U256::from(chain_id),
+                access_list: access_list.elementwise_copy_into_vector(),
+                r: U256::ZERO,
+                s: U256::ZERO,
+                recovery_id: 0,
+            };
+            TransactionPayload::AccessList(access_list_tx)
         } else {
             let legacy_tx = LegacyTx {
                 nonce,

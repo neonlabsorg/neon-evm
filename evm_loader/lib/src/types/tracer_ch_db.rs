@@ -5,14 +5,15 @@ use crate::{
 };
 
 use super::tracer_ch_common::{ChResult, EthSyncStatus, EthSyncing, RevisionMap, SlotParentRooted};
-
 use crate::account_data::AccountData;
 use crate::config::ChDbConfig;
+use crate::types::programs_cache::cut_programdata_from_acc;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use clickhouse::Client;
 use log::{debug, error, info};
 use rand::Rng;
+pub use solana_account_decoder::UiDataSliceConfig as SliceConfig;
 use solana_sdk::signature::Signature;
 use solana_sdk::{
     account::Account,
@@ -93,23 +94,19 @@ impl TracerDbTrait for ClickHouseDb {
         pubkey: &Pubkey,
         slot: u64,
         tx_index_in_block: Option<u64>,
+        data_slice: Option<SliceConfig>,
     ) -> DbResult<Option<Account>> {
-        if let Some(tx_index_in_block) = tx_index_in_block {
-            return if let Some(account) = self
-                .get_account_at_index_in_block(pubkey, slot, tx_index_in_block)
-                .await?
-            {
-                Ok(Some(account))
-            } else {
-                self.get_account_at_slot(pubkey, slot - 1)
-                    .await
-                    .map_err(|e| anyhow!("Failed to get NEON_REVISION, error: {e}"))
-            };
+        let result = self
+            .get_full_account_at(pubkey, slot, tx_index_in_block)
+            .await;
+        if let Ok(Some(mut account)) = result {
+            if let Some(slice) = data_slice {
+                cut_programdata_from_acc(&mut account, slice).await;
+            }
+            Ok(Some(account))
+        } else {
+            result
         }
-
-        self.get_account_at_slot(pubkey, slot)
-            .await
-            .map_err(|e| anyhow!("Failed to get NEON_REVISION, error: {e}"))
     }
 
     async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64> {
@@ -321,7 +318,29 @@ impl ClickHouseDb {
 
         Self { client }
     }
+    async fn get_full_account_at(
+        &self,
+        pubkey: &Pubkey,
+        slot: u64,
+        tx_index_in_block: Option<u64>,
+    ) -> DbResult<Option<Account>> {
+        if let Some(tx_index_in_block) = tx_index_in_block {
+            return if let Some(account) = self
+                .get_account_at_index_in_block(pubkey, slot, tx_index_in_block)
+                .await?
+            {
+                Ok(Some(account))
+            } else {
+                self.get_account_at_slot(pubkey, slot - 1)
+                    .await
+                    .map_err(|e| anyhow!("Failed to get NEON_REVISION, error: {e}"))
+            };
+        }
 
+        self.get_account_at_slot(pubkey, slot)
+            .await
+            .map_err(|e| anyhow!("Failed to get NEON_REVISION, error: {e}"))
+    }
     async fn get_branch_slots(&self, slot: Option<u64>) -> ChResult<(u64, Vec<u64>)> {
         fn branch_from(
             rows: Vec<SlotParent>,
@@ -653,6 +672,7 @@ impl ClickHouseDb {
         &self,
         pubkey: &Pubkey,
         sol_sig: &[u8; 64],
+        bin_slice: Option<SliceConfig>,
     ) -> DbResult<Option<Account>> {
         let sol_sig_str = bs58::encode(sol_sig).into_string();
         info!("get_account_by_sol_sig {{ pubkey: {pubkey}, sol_sig: {sol_sig_str} }}");
@@ -734,7 +754,7 @@ impl ClickHouseDb {
 
         // If not found, get closest account state in one of previous slots
         if let Some(parent) = slot.parent {
-            self.get_account_at(pubkey, parent, None).await
+            self.get_account_at(pubkey, parent, None, bin_slice).await
         } else {
             Ok(None)
         }

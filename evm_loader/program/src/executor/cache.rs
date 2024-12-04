@@ -1,10 +1,8 @@
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 use std::{cell::RefCell, rc::Rc};
 
-use ethnum::U256;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
-
 use crate::types::vector::VectorSliceExt;
-use crate::{types::Vector, vector};
+use crate::{types::TreeMap, types::Vector, vector};
 
 #[derive(Clone)]
 #[repr(C)]
@@ -57,7 +55,8 @@ impl<'a> solana_program::account_info::IntoAccountInfo<'a> for &'a mut OwnedAcco
 }
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct Cache {
-    pub block_number: U256,
-    pub block_timestamp: U256,
+    pub actions_offset: usize,
+    pub accounts: TreeMap<Pubkey, OwnedAccountInfo>,
 }

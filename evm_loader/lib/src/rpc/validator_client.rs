@@ -1,6 +1,6 @@
 use crate::{config::APIOptions, Config};
 
-use super::Rpc;
+use super::{Rpc, SliceConfig};
 use async_trait::async_trait;
 use solana_account_decoder::{UiAccount, UiAccountEncoding};
 use solana_client::{
@@ -15,6 +15,7 @@ use solana_sdk::{
     clock::{Slot, UnixTimestamp},
     pubkey::Pubkey,
 };
+
 use std::{error::Error, ops::Deref, time::Duration};
 use std::{future::Future, sync::Arc};
 use tracing::debug;
@@ -113,12 +114,16 @@ impl Deref for CloneRpcClient {
 
 #[async_trait(?Send)]
 impl Rpc for CloneRpcClient {
-    async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
+    async fn get_account_slice(
+        &self,
+        key: &Pubkey,
+        slice: Option<SliceConfig>,
+    ) -> ClientResult<Option<Account>> {
         let request = || {
             let config = RpcAccountInfoConfig {
                 encoding: Some(UiAccountEncoding::Base64Zstd),
                 commitment: Some(self.commitment()),
-                data_slice: None,
+                data_slice: slice,
                 min_context_slot: None,
             };
             let params = serde_json::json!([key.to_string(), config]);

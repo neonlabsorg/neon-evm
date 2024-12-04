@@ -17,7 +17,7 @@ use abi_stable::{
 
 #[repr(C)]
 #[derive(StableAbi)]
-#[sabi(kind(Prefix(prefix_ref = NeonEVMLib_Ref)))]
+#[sabi(kind(Prefix(prefix_ref = NeonEVMLibRef)))]
 #[sabi(missing_field(panic))]
 pub struct NeonEVMLib {
     pub hash: extern "C" fn() -> RString,
@@ -28,8 +28,8 @@ pub struct NeonEVMLib {
 }
 
 #[allow(clippy::use_self)]
-impl RootModule for NeonEVMLib_Ref {
-    abi_stable::declare_root_module_statics! {NeonEVMLib_Ref}
+impl RootModule for NeonEVMLibRef {
+    abi_stable::declare_root_module_statics! {NeonEVMLibRef}
 
     const BASE_NAME: &'static str = "neon-lib-interface";
     const NAME: &'static str = "neon-lib-interface";
@@ -46,14 +46,14 @@ pub enum NeonEVMLibLoadError {
 
 pub fn load_libraries<P>(
     directory: P,
-) -> Result<HashMap<String, NeonEVMLib_Ref>, NeonEVMLibLoadError>
+) -> Result<HashMap<String, NeonEVMLibRef>, NeonEVMLibLoadError>
 where
     P: AsRef<Path>,
 {
     let paths = std::fs::read_dir(directory)?;
     let mut result = HashMap::new();
     for path in paths {
-        let lib = NeonEVMLib_Ref::load_from_file(&path?.path())?;
+        let lib = NeonEVMLibRef::load_from_file(&path?.path())?;
         let hash = lib.hash()();
 
         result.insert(hash.into_string(), lib);

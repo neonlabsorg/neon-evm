@@ -6,6 +6,7 @@ use jsonrpsee::core::Serialize;
 use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use serde_json::from_str;
+use solana_account_decoder::UiDataSliceConfig;
 use solana_sdk::signature::Signature;
 use solana_sdk::{
     account::Account,
@@ -94,14 +95,15 @@ impl TracerDbTrait for RocksDb {
         pubkey: &Pubkey,
         slot: u64,
         tx_index_in_block: Option<u64>,
+        maybe_bin_slice: Option<UiDataSliceConfig>,
     ) -> DbResult<Option<Account>> {
-        info!("get_account_at {pubkey:?}, slot: {slot:?}, tx_index: {tx_index_in_block:?}");
+        info!("get_account_at {pubkey:?}, slot: {slot:?}, tx_index: {tx_index_in_block:?}, bin_slice: {maybe_bin_slice:?}");
 
         let response: String = self
             .client
             .request(
                 "get_account",
-                rpc_params![pubkey.to_string(), slot, tx_index_in_block],
+                rpc_params![pubkey.to_string(), slot, tx_index_in_block, maybe_bin_slice],
             )
             .await?;
 

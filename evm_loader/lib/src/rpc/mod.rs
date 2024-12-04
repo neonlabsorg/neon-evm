@@ -37,7 +37,7 @@ pub trait Rpc {
         let result = self.get_account_slice(program_id, Some(slice)).await;
         if let Ok(Some(acc)) = result {
             let slot = get_programdata_slot_from_account(&acc)?;
-            return Ok(Some(slot));
+            return Ok(slot);
         }
         Err(ClientErrorKind::Custom("Not account on slot ".to_string()).into())
     }

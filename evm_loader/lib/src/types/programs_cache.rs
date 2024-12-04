@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use crate::commands::get_config::GetConfigResponse;
 use bincode::deserialize;
 use futures::future::join_all;
-use solana_client::client_error::{ClientErrorKind, Result as ClientResult};
+use solana_client::client_error::Result as ClientResult;
 use solana_sdk::{
     account::Account,
     bpf_loader_upgradeable::UpgradeableLoaderState,
@@ -91,16 +91,15 @@ async fn programdata_account_cache_add(addr: Pubkey, slot: u64, acc: Account) {
     programdata_account_cache_get_instance().await.add(key, acc);
 }
 
-pub fn get_programdata_slot_from_account(acc: &Account) -> ClientResult<u64> {
+/// in case of Not upgradeable account - return option None  
+pub fn get_programdata_slot_from_account(acc: &Account) -> ClientResult<Option<u64>> {
     if !bpf_loader_upgradeable::check_id(&acc.owner) {
-        return Err(ClientErrorKind::Custom("Not upgradeable account".to_string()).into());
+        return Ok(None);
     }
 
     match deserialize::<UpgradeableLoaderState>(&acc.data) {
-        Ok(UpgradeableLoaderState::ProgramData { slot, .. }) => Ok(slot),
-        Ok(_) => {
-            panic!("Account is not of type `ProgramData`.");
-        }
+        Ok(UpgradeableLoaderState::ProgramData { slot, .. }) => Ok(Some(slot)),
+        Ok(_) => Ok(None),
         Err(e) => {
             eprintln!("Error occurred: {e:?}");
             panic!("Failed to deserialize account data.");
@@ -134,14 +133,18 @@ pub async fn programdata_cache_get_values_by_keys(
     for (result, key) in results.iter().zip(programdata_keys) {
         match result {
             Ok(Some(account)) => {
-                let slot_val = get_programdata_slot_from_account(account)?;
-                if let Some(acc) = programdata_account_cache_get(*key, slot_val).await {
-                    answer.push(Some(acc));
-                } else if let Ok(Some(tmp_acc)) = rpc.get_account(key).await {
-                    let current_slot = get_programdata_slot_from_account(&tmp_acc)?;
-                    programdata_account_cache_add(*key, current_slot, tmp_acc.clone()).await;
+                if let Some(slot_val) = get_programdata_slot_from_account(account)? {
+                    if let Some(acc) = programdata_account_cache_get(*key, slot_val).await {
+                        answer.push(Some(acc));
+                    } else if let Ok(Some(tmp_acc)) = rpc.get_account(key).await {
+                        let current_slot =
+                            get_programdata_slot_from_account(&tmp_acc)?.expect("No current slot ");
+                        programdata_account_cache_add(*key, current_slot, tmp_acc.clone()).await;
 
-                    answer.push(Some(tmp_acc));
+                        answer.push(Some(tmp_acc));
+                    } else {
+                        answer.push(None);
+                    }
                 } else {
                     answer.push(None);
                 }

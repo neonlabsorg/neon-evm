@@ -40,6 +40,10 @@ fn parse_instruction(signer: &Operator, instruction: &[u8]) -> TreeInitializer {
         let (gas_limit, value, child_index, success_limit, hash) =
             arrayref::array_refs![chunk, 32, 32, 2, 2, 32];
 
+        if nodes.len() == 0 {
+            log_data(&[b"HASH", hash]);
+        }
+
         nodes.push(NodeInitializer {
             transaction_hash: *hash,
             sender: payer,

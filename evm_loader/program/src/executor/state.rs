@@ -95,6 +95,18 @@ impl<'a> ExecutorStateData {
             touched_accounts: RefCell::new(TouchedAccounts::new()),
         }
     }
+
+    pub fn cancel(&mut self) {
+        self.exit_status = Some(ExitStatus::Cancel);
+        self.actions.clear();
+        self.stack.clear();
+
+        let mut cache = self.cache.borrow_mut();
+        cache.accounts.clear();
+        cache.actions_offset = 0;
+
+        self.touched_accounts.borrow_mut().clear();
+    }
 }
 
 impl<'a, B: AccountStorage> ExecutorState<'a, B> {

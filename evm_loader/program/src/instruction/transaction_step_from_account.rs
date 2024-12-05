@@ -1,7 +1,8 @@
 use crate::account::legacy::{TAG_HOLDER_DEPRECATED, TAG_STATE_FINALIZED_DEPRECATED};
 use crate::account::{
     program, AccountsDB, AccountsStatus, Operator, OperatorBalanceAccount,
-    OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
+    OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
+    TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::debug::log_data;
 use crate::error::{Error, Result};
@@ -106,6 +107,9 @@ pub fn process_inner<'a>(
 
             let reset = accounts_status != AccountsStatus::Ok;
             do_continue(step_count, accounts_db, storage, gasometer, reset)
+        }
+        TAG_SCHEDULED_STATE_CANCELLED | TAG_SCHEDULED_STATE_FINALIZED => {
+            Err(Error::ScheduledTxAlreadyComplete(*holder_or_storage.key))
         }
         TAG_STATE_FINALIZED | TAG_STATE_FINALIZED_DEPRECATED => Err(Error::StorageAccountFinalized),
         _ => Err(Error::AccountInvalidTag(*holder_or_storage.key, TAG_HOLDER)),

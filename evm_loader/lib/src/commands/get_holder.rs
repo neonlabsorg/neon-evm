@@ -26,6 +26,8 @@ pub enum Status {
     Holder,
     Active,
     Finalized,
+    ScheduledFinalized,
+    ScheduledCanceled,
 }
 
 #[serde_as]
@@ -143,7 +145,13 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 ..GetHolderResponse::default()
             })
         }
-        TAG_STATE | TAG_SCHEDULED_STATE_FINALIZED | TAG_SCHEDULED_STATE_CANCELLED => {
+        tag @ (TAG_STATE | TAG_SCHEDULED_STATE_FINALIZED | TAG_SCHEDULED_STATE_CANCELLED) => {
+            let status = match tag {
+                TAG_STATE => Status::Active,
+                TAG_SCHEDULED_STATE_FINALIZED => Status::ScheduledFinalized,
+                TAG_SCHEDULED_STATE_CANCELLED => Status::ScheduledCanceled,
+                _ => unreachable!(),
+            };
             // StateAccount::from_account doesn't work here because state contains heap
             // and transaction inside state account has been allocated via this heap.
             // Data should be read by pointers with offsets.
@@ -153,7 +161,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
             let tx_params = TxParams::from_transaction(origin, &transaction);
 
             Ok(GetHolderResponse {
-                status: Status::Active,
+                status,
                 len: Some(data_len),
                 owner: Some(owner),
                 tx: Some(transaction.hash()),

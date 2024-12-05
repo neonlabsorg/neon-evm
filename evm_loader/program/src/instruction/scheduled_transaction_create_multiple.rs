@@ -4,6 +4,7 @@ use crate::account::{
     TreeInitializer,
 };
 use crate::config::SOL_CHAIN_ID;
+use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::instruction::scheduled_transaction_create::validate_nonce;
 use crate::types::Address;

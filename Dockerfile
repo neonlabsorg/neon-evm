@@ -36,15 +36,8 @@ FROM ${DOCKERHUB_ORG_NAME}/neon_test_programs:latest AS neon_test_programs
 
 # Define solana-image that contains utility
 FROM builder AS base
-ARG DEVNET_SOLANA_URL
-RUN solana program dump metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s /opt/metaplex.so --url mainnet-beta
-RUN solana account 7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE --output-file pyth_sol.json --output json-compact --url ${DEVNET_SOLANA_URL}
-RUN solana account F2VfCymdNQiCa8Vyg5E7BwEv9UPwfm8cVN6eqQLqXiGo --output-file pyth_neon.json --output json-compact --url ${DEVNET_SOLANA_URL}
-RUN solana account 42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC --output-file pyth_eth.json --output json-compact --url ${DEVNET_SOLANA_URL}
-RUN solana account Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX --output-file pyth_usdc.json --output json-compact --url ${DEVNET_SOLANA_URL}
-RUN solana account HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM --output-file pyth_usdt.json --output json-compact --url ${DEVNET_SOLANA_URL}
-
-
+ARG MAINNET_SOLANA_URL
+RUN solana program dump metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s /opt/metaplex.so --url ${MAINNET_SOLANA_URL}
 
 COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader*.so /opt/
 COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader-dump.txt /opt/

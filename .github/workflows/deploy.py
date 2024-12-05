@@ -30,7 +30,7 @@ ERR_MSG_TPL = {
 
 DOCKER_USER = os.environ.get("DHUBU")
 DOCKER_PASSWORD = os.environ.get("DHUBP")
-DEVNET_SOLANA_URL = os.environ.get("DEVNET_SOLANA_URL")
+MAINNET_SOLANA_URL = os.environ.get("MAINNET_SOLANA_URL")
 IMAGE_NAME = os.environ.get("IMAGE_NAME", "evm_loader")
 RUN_LINK_REPO = os.environ.get("RUN_LINK_REPO")
 DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
@@ -128,7 +128,7 @@ def build_docker_image(evm_sha_tag):
                  "SOLANA_IMAGE": solana_image,
                  "SOLANA_BPF_VERSION": SOLANA_BPF_VERSION,
                  "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME,
-                 "DEVNET_SOLANA_URL": DEVNET_SOLANA_URL}
+                 "MAINNET_SOLANA_URL": MAINNET_SOLANA_URL}
 
     tag = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}:{evm_sha_tag}"
     click.echo("start build")

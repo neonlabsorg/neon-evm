@@ -14,7 +14,7 @@ on:
 env:
   DHUBU: ${{secrets.DHUBU}}
   DHUBP: ${{secrets.DHUBP}}
-  DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
+  MAINNET_SOLANA_URL: ${{secrets.MAINNET_SOLANA_URL}}
   PROXY_ENDPOINT: "https://api.github.com/repos/${{ github.repository_owner }}/neon-proxy.py"
   NEON_TESTS_ENDPOINT: ${{vars.NEON_TESTS_ENDPOINT}}
   DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}

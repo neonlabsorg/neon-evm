@@ -114,10 +114,6 @@ impl Deref for CloneRpcClient {
 
 #[async_trait(?Send)]
 impl Rpc for CloneRpcClient {
-    async fn get_last_deployed_slot(&self, _program_id: &Pubkey) -> ClientResult<Option<u64>> {
-        // Update event impossible during CloneRpcClient work. Returns always 0 for caching.
-        Ok(Some(0))
-    }
     async fn get_account_slice(
         &self,
         key: &Pubkey,

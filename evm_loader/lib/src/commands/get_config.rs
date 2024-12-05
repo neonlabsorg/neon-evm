@@ -17,7 +17,7 @@ use solana_sdk::signer::Signer;
 use solana_sdk::{instruction::Instruction, pubkey::Pubkey, transaction::Transaction};
 
 use crate::NeonResult;
-
+use tokio::sync::OnceCell;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Status {
     Ok,
@@ -60,6 +60,7 @@ pub enum ConfigSimulator<'r> {
 #[async_trait(?Send)]
 #[enum_dispatch]
 pub trait BuildConfigSimulator: Rpc {
+    fn use_cache_for_chains(&self) -> bool;
     async fn get_config(&self, program_id: Pubkey) -> NeonResult<GetConfigResponse> {
         let maybe_slot = self.get_last_deployed_slot(&program_id).await?;
         if let Some(slot) = maybe_slot {
@@ -101,6 +102,9 @@ pub trait BuildConfigSimulator: Rpc {
 
 #[async_trait(?Send)]
 impl BuildConfigSimulator for CloneRpcClient {
+    fn use_cache_for_chains(&self) -> bool {
+        true
+    }
     async fn build_config_simulator(&self, program_id: Pubkey) -> NeonResult<ConfigSimulator> {
         Ok(ConfigSimulator::CloneRpcClient {
             program_id,
@@ -111,6 +115,9 @@ impl BuildConfigSimulator for CloneRpcClient {
 
 #[async_trait(?Send)]
 impl BuildConfigSimulator for CallDbClient {
+    fn use_cache_for_chains(&self) -> bool {
+        false
+    }
     async fn build_config_simulator(&self, program_id: Pubkey) -> NeonResult<ConfigSimulator> {
         let mut simulator = SolanaSimulator::new_without_sync(self).await?;
         simulator.sync_accounts(self, &[program_id]).await?;
@@ -289,7 +296,7 @@ impl ConfigSimulator<'_> {
         Ok(result)
     }
 }
-
+static CHAINS_CACHE: OnceCell<Vec<ChainInfo>> = OnceCell::const_new();
 pub async fn execute(
     rpc: &impl BuildConfigSimulator,
     program_id: Pubkey,
@@ -301,6 +308,18 @@ pub async fn read_chains(
     rpc: &impl BuildConfigSimulator,
     program_id: Pubkey,
 ) -> NeonResult<Vec<ChainInfo>> {
+    if rpc.use_cache_for_chains() {
+        let result = CHAINS_CACHE
+            .get_or_init(|| async {
+                rpc.get_config(program_id)
+                    .await
+                    .expect(" get config error for chain info")
+                    .chains
+            })
+            .await
+            .clone();
+        return Ok(result);
+    }
     Ok(rpc.get_config(program_id).await?.chains)
 }
 

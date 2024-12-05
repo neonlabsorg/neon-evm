@@ -48,14 +48,14 @@ where
     fn get(&self, key: &KeyAccountCache) -> Option<Value> {
         self.table
             .read()
-            .expect("acc_hash_get_instance poisoned")
+            .expect("lock on read error ")
             .get(key)
             .cloned()
     }
     fn add(&self, key: KeyAccountCache, value: Value) {
         self.table
             .write()
-            .expect("PANIC, no space ")
+            .expect("lock on write error  ")
             .insert(key, value);
     }
 }

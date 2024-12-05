@@ -615,7 +615,7 @@ impl<'a> StateAccount<'a> {
         program_id: &Pubkey,
         account: &AccountInfo<'a>,
     ) -> Result<StateAccountCoreApiView> {
-        super::validate_tag(program_id, account, TAG_STATE)?;
+        Self::validate_tag(program_id, account)?;
 
         let account_data_ptr = account.data.borrow().as_ptr();
         let header = super::header::<Header>(account);

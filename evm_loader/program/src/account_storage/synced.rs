@@ -106,6 +106,7 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
         _fee: u64,
         _emulated_internally: bool,
     ) -> Result<()> {
+        log_msg!("synced.rs::execute_external_instruction: {:?}", instruction);
         let seeds = seeds
             .iter()
             .map(|s| s.iter().map(|s| s.as_slice()).collect::<Vec<_>>())
@@ -113,10 +114,10 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
         let seeds = seeds.iter().map(|s| s.as_slice()).collect::<Vec<_>>();
 
         let mut accounts_info = Vec::with_capacity(instruction.accounts.len() + 1);
-
+        log_msg!("synced.rs::execute_external_instruction 2");
         let program = self.accounts.get(&instruction.program_id).clone();
         accounts_info.push(program);
-
+        log_msg!("synced.rs::execute_external_instruction 3");
         for meta in &mut instruction.accounts {
             if meta.pubkey == FAKE_OPERATOR {
                 meta.pubkey = self.accounts.operator_key();
@@ -124,19 +125,19 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
             let account = self.accounts.get(&meta.pubkey).clone();
             accounts_info.push(account);
         }
-
+        log_msg!("synced.rs::execute_external_instruction 4");
         let instruction = Instruction {
             program_id: instruction.program_id,
             accounts: instruction.accounts,
             data: instruction.data,
         };
-
+        log_msg!("synced.rs::execute_external_instruction 5");
         if !seeds.is_empty() {
             invoke_signed_unchecked(&instruction, &accounts_info, &seeds)?;
         } else {
             invoke_unchecked(&instruction, &accounts_info)?;
         }
-
+        log_msg!("synced.rs::execute_external_instruction 6");
         Ok(())
     }
 

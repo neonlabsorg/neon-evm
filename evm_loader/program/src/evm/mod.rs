@@ -21,16 +21,21 @@ use crate::{
 use crate::{evm::tracing::EventListener, types::boxx::Boxx};
 
 use self::{database::Database, memory::Memory, stack::Stack};
+//use solana_program::instruction::Instruction;
 
 mod buffer;
 pub mod database;
 mod memory;
-mod opcode;
+pub mod opcode;
 pub mod opcode_table;
 mod precompile;
 mod stack;
 pub mod tracing;
 mod utils;
+use solana_program::{
+    instruction::{AccountMeta},
+    pubkey::Pubkey,
+};
 
 macro_rules! tracing_event {
     ($self:expr, $backend:expr, $event:expr) => {
@@ -162,7 +167,7 @@ pub enum Reason {
     Create,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 #[repr(C)]
 pub struct Context {
     pub caller: Address,
@@ -171,13 +176,20 @@ pub struct Context {
     pub value: U256,
     pub code_address: Option<Address>,
     pub got_solana_call: bool,
+
+    pub interrupted_instruction_program_id: Option<Pubkey>,
+    pub interrupted_instruction_accounts: Option<Vector<AccountMeta>>,
+    pub interrupted_instruction_data: Option<Vector<u8>>,
+
+    pub interrupted_signer_seeds: Option<Vector<Vector<u8>>>,
+    pub interrupted_lamports: Option<u64>,
 }
 
 #[repr(C)]
 pub struct Machine<B: Database, T: EventListener> {
     origin: Address,
     chain_id: u64,
-    context: Context,
+    pub context: Context,
 
     gas_price: U256,
     gas_limit: U256,
@@ -280,6 +292,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 value: trx.value(),
                 code_address: Some(target),
                 got_solana_call: false,
+                interrupted_instruction_program_id: None,
+                interrupted_instruction_accounts: None,
+                interrupted_instruction_data: None,
+                interrupted_signer_seeds: None,
+                interrupted_lamports: None,
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
@@ -333,6 +350,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 value: trx.value(),
                 code_address: None,
                 got_solana_call: false,
+                interrupted_instruction_program_id: None,
+                interrupted_instruction_accounts: None,
+                interrupted_instruction_data: None,
+                interrupted_signer_seeds: None,
+                interrupted_lamports: None,
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),

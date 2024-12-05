@@ -1112,6 +1112,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             value,
             code_address: None,
             got_solana_call: false,
+            interrupted_instruction_program_id: None,
+            interrupted_instruction_accounts: None,
+            interrupted_instruction_data: None,
+            interrupted_signer_seeds: None,
+            interrupted_lamports: None,
         };
 
         begin_vm!(self, backend, context, chain_id, init_code);
@@ -1167,6 +1172,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             value,
             code_address: Some(address),
             got_solana_call: false,
+            interrupted_instruction_program_id: None,
+            interrupted_instruction_accounts: None,
+            interrupted_instruction_data: None,
+            interrupted_signer_seeds: None,
+            interrupted_lamports: None,
         };
 
         begin_vm!(self, backend, context, chain_id, call_data);
@@ -1216,6 +1226,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             value,
             code_address: Some(address),
             caller: self.context.contract,
+            interrupted_instruction_program_id: None,
+            interrupted_instruction_accounts: None,
+            interrupted_instruction_data: None,
+            interrupted_signer_seeds: None,
+            interrupted_lamports: None,
             ..self.context
         };
 
@@ -1263,6 +1278,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         let context = Context {
             code_address: Some(address),
+            interrupted_instruction_program_id: None,
+            interrupted_instruction_accounts: None,
+            interrupted_instruction_data: None,
+            interrupted_signer_seeds: None,
+            interrupted_lamports: None,
             ..self.context
         };
 
@@ -1308,6 +1328,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             value: U256::ZERO,
             code_address: Some(address),
             got_solana_call: false,
+            interrupted_instruction_program_id: None,
+            interrupted_instruction_accounts: None,
+            interrupted_instruction_data: None,
+            interrupted_signer_seeds: None,
+            interrupted_lamports: None,
         };
 
         begin_vm!(self, backend, context, chain_id, call_data);

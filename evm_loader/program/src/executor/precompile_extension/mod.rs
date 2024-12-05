@@ -11,13 +11,14 @@ use solana_program::{pubkey::Pubkey, system_instruction};
 
 use super::OwnedAccountInfo;
 
-mod call_solana;
+pub mod call_solana;
 mod metaplex;
 mod neon_token;
 mod query_account;
 mod spl_token;
 
 pub struct PrecompiledContracts {}
+//pub use call_solana;
 
 impl PrecompiledContracts {
     #[deprecated]

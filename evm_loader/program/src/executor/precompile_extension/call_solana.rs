@@ -4,7 +4,7 @@ use crate::{
     config::ACCOUNT_SEED_VERSION,
     error::{Error, Result},
     evm::database::Database,
-    types::{vector::VectorSliceExt, Address, Vector},
+    types::{vector::VectorSliceExt, vector::VectorSliceSlowExt, Address, Vector},
     vector,
 };
 
@@ -307,18 +307,37 @@ pub async fn call_solana<State: Database>(
 }
 
 #[maybe_async]
-async fn execute_external_instruction<State: Database>(
+pub async fn execute_external_instruction<State: Database>(
     state: &mut State,
     context: &mut crate::evm::Context,
     instruction: Instruction,
     signer_seeds: Vector<Vector<u8>>,
     required_lamports: u64,
 ) -> Result<Vector<u8>> {
-    #[cfg(not(target_os = "solana"))]
-    log::info!("instruction: {:?}", instruction);
+    //#[cfg(not(target_os = "solana"))]
 
+
+    log_msg!("execute_external_instruction:: instruction: {:?}", instruction);
+    log_msg!("execute_external_instruction:: got_solana_call: {}", context.got_solana_call);
     if !state.is_synced_state() && !context.got_solana_call {
-        context.got_solana_call = true;
+        /*
+        let action = Action::ExternalInstruction {
+            program_id: instruction.program_id,
+            data: instruction.data.to_vector(),
+            accounts: instruction.accounts.elementwise_copy_to_vector(),
+            seeds,
+            fee,
+            emulated_internally,
+        };
+        */
+        context.interrupted_instruction_program_id = Some(instruction.program_id);
+        context.interrupted_instruction_accounts = Some(instruction.accounts.elementwise_copy_to_vector());
+        context.interrupted_instruction_data = Some(instruction.data.to_vector());
+
+        context.interrupted_signer_seeds = Some(signer_seeds);
+        context.interrupted_lamports = Some(required_lamports);
+
+        log_msg!("execute_external_instruction:: got_solana_call = true");
         return Err(Error::InterruptedCall);
     }
 
@@ -345,6 +364,7 @@ async fn execute_external_instruction<State: Database>(
             return Err(Error::InvalidAccountForCall(meta.pubkey));
         }
     }
+    log_msg!("execute_external_instruction:: 2");
 
     let payer_seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], b"PAYER", context.caller.as_bytes()];
     let (payer_pubkey, payer_bump_seed) =
@@ -354,7 +374,10 @@ async fn execute_external_instruction<State: Database>(
         .iter()
         .any(|meta| meta.pubkey == payer_pubkey);
 
+    log_msg!("execute_external_instruction:: 3");
+
     if required_payer {
+        log_msg!("execute_external_instruction:: 3.1");
         let payer_seeds = vector![
             vector![ACCOUNT_SEED_VERSION],
             b"PAYER".to_vector(),
@@ -395,6 +418,7 @@ async fn execute_external_instruction<State: Database>(
                 .await?;
         }
     } else {
+        log_msg!("execute_external_instruction:: 3.2");
         state
             .queue_external_instruction(
                 instruction,
@@ -404,7 +428,7 @@ async fn execute_external_instruction<State: Database>(
             )
             .await?;
     }
-
+    log_msg!("execute_external_instruction:: 4");
     let return_data = state
         .return_data()
         .and_then(|(program, data)| {

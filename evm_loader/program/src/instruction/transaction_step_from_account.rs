@@ -12,6 +12,13 @@ use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
+use crate::account_storage::{ProgramAccountStorage};
+use crate::evm::tracing::NoopEventListener;
+use crate::executor::{ExecutorState};
+
+type EvmBackend<'a, 'r> = ExecutorState<'r, ProgramAccountStorage<'a>>;
+
+
 pub fn process<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
@@ -118,7 +125,14 @@ pub fn process_inner<'a>(
             gasometer.record_solana_transaction_cost();
 
             let reset = accounts_status != AccountsStatus::Ok;
-            do_continue(step_count, accounts_db, storage, gasometer, reset)
+
+            let evm = storage.read_evm::<EvmBackend, NoopEventListener>();
+            log_msg!("do_continue before:: evm.context.got_solana_call: {}, storage.steps_interrupted(): {}",
+                evm.context.got_solana_call, storage.steps_interrupted());
+            let result = do_continue(step_count, accounts_db, storage, gasometer, reset);
+            log_msg!("do_continue after:: evm.context.got_solana_call: {}",
+                evm.context.got_solana_call);
+            result
         }
         TAG_STATE_FINALIZED | TAG_STATE_FINALIZED_DEPRECATED => Err(Error::StorageAccountFinalized),
         _ => Err(Error::AccountInvalidTag(*holder_or_storage.key, TAG_HOLDER)),

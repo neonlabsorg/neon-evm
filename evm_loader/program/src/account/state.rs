@@ -302,6 +302,10 @@ impl<'a> StateAccount<'a> {
     }
 
     pub fn cancel(self, program_id: &Pubkey) -> Result<()> {
+        // Clear an executor and set the result as canceled
+        let mut executor_state = self.read_executor_state();
+        executor_state.cancel();
+
         self.finalize_impl(program_id, TAG_SCHEDULED_STATE_CANCELLED)
     }
 
@@ -314,10 +318,6 @@ impl<'a> StateAccount<'a> {
                 self.account.key,
                 scheduled_transition_tag
             );
-            // Clear executor and set the result as canceled
-            let mut executor_state = self.read_executor_state();
-            executor_state.cancel();
-
             // Change the tag, leave all the data unchanged.
             super::set_tag(
                 program_id,

@@ -4,6 +4,7 @@ use crate::account::{
     TreeInitializer,
 };
 use crate::config::SOL_CHAIN_ID;
+use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::instruction::scheduled_transaction_create::validate_nonce;
 use crate::types::Address;
@@ -39,6 +40,10 @@ fn parse_instruction(signer: &Operator, instruction: &[u8]) -> TreeInitializer {
         let chunk = arrayref::array_ref![chunk, 0, CHUNK_LEN];
         let (gas_limit, value, child_index, success_limit, hash) =
             arrayref::array_refs![chunk, 32, 32, 2, 2, 32];
+
+        if nodes.len() == 0 {
+            log_data(&[b"HASH", hash]);
+        }
 
         nodes.push(NodeInitializer {
             transaction_hash: *hash,

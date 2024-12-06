@@ -378,7 +378,7 @@ pub struct GetBalanceWithPubkeyRequest {
 #[serde_as]
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct GetTransactionTreeRequest {
-    pub origin: Address,
+    pub origin: BalanceAddress,
     pub nonce: u64,
     pub slot: Option<u64>,
     pub id: Option<String>,

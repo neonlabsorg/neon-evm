@@ -4,7 +4,12 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::{account_info::AccountInfo, pubkey::Pubkey};
 use std::fmt::Display;
 
-use crate::{account_storage::account_info, rpc::Rpc, types::Address, NeonResult};
+use crate::{
+    account_storage::account_info,
+    rpc::Rpc,
+    types::{Address, BalanceAddress},
+    NeonResult,
+};
 
 use serde_with::{hex::Hex, serde_as, DisplayFromStr};
 
@@ -104,10 +109,11 @@ pub fn read_tree(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetTreeRe
 pub async fn execute(
     rpc: &impl Rpc,
     program_id: &Pubkey,
-    origin: Address,
+    origin: BalanceAddress,
     nonce: u64,
 ) -> NeonResult<GetTreeResponse> {
-    let (pubkey, _) = TransactionTree::find_address(program_id, origin, nonce);
+    let (pubkey, _) =
+        TransactionTree::find_address(program_id, origin.address, origin.chain_id, nonce);
 
     let response = rpc.get_account(&pubkey).await?;
     let Some(mut account) = response else {

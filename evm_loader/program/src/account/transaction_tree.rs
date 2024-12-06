@@ -113,11 +113,17 @@ impl<'a> TransactionTree<'a> {
     }
 
     #[must_use]
-    pub fn find_address(program_id: &Pubkey, payer: Address, nonce: u64) -> (Pubkey, u8) {
+    pub fn find_address(
+        program_id: &Pubkey,
+        payer: Address,
+        chain_id: u64,
+        nonce: u64,
+    ) -> (Pubkey, u8) {
         let seeds: &[&[u8]] = &[
             &[ACCOUNT_SEED_VERSION],
             b"TREE",
             payer.as_bytes(),
+            &chain_id.to_le_bytes(),
             &nonce.to_le_bytes(),
         ];
 
@@ -132,7 +138,7 @@ impl<'a> TransactionTree<'a> {
         clock: &Clock,
     ) -> Result<Self> {
         // Validate account
-        let (pubkey, bump_seed) = Self::find_address(&crate::ID, init.payer, init.nonce);
+        let (pubkey, bump) = Self::find_address(&crate::ID, init.payer, init.chain_id, init.nonce);
         if account.key != &pubkey {
             return Err(Error::AccountInvalidKey(*account.key, pubkey));
         }
@@ -183,8 +189,9 @@ impl<'a> TransactionTree<'a> {
             &[ACCOUNT_SEED_VERSION],
             b"TREE",
             init.payer.as_bytes(),
+            &init.chain_id.to_le_bytes(),
             &init.nonce.to_le_bytes(),
-            &[bump_seed],
+            &[bump],
         ];
 
         let space = Self::required_account_size(nodes.len());
@@ -292,8 +299,13 @@ impl<'a> TransactionTree<'a> {
             return Err(Error::TreeAccountTxInvalidType);
         };
 
-        let (pubkey, _) = Self::find_address(&crate::ID, tx.payer, tx.nonce);
+        let tx_chain_id: u64 = tx.chain_id.try_into()?;
+        let (pubkey, _) = Self::find_address(&crate::ID, tx.payer, tx_chain_id, tx.nonce);
         if &pubkey != self.account.key {
+            return Err(Error::TreeAccountTxInvalidData);
+        }
+
+        if tx_chain_id != self.chain_id() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
@@ -320,10 +332,6 @@ impl<'a> TransactionTree<'a> {
         }
 
         if tx.payer != self.payer() {
-            return Err(Error::TreeAccountTxInvalidData);
-        }
-
-        if tx.chain_id != U256::from(self.chain_id()) {
             return Err(Error::TreeAccountTxInvalidData);
         }
 

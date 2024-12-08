@@ -201,7 +201,7 @@ pub struct Machine<B: Database, T: EventListener> {
 
     stack: Stack,
     memory: Memory,
-    pc: usize,
+    pub pc: usize,
 
     is_static: bool,
     reason: Reason,
@@ -413,7 +413,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 step += 1;
 
                 let opcode = self.execution_code.get_or_default(self.pc);
-
+                log_msg!("evm execute opcode: {:#02x}", opcode);
                 begin_step!(self, backend);
 
                 let opcode_result = match self.execute_opcode(backend, opcode).await {

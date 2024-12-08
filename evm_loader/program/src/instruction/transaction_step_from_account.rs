@@ -127,11 +127,11 @@ pub fn process_inner<'a>(
             let reset = accounts_status != AccountsStatus::Ok;
 
             let evm = storage.read_evm::<EvmBackend, NoopEventListener>();
-            log_msg!("do_continue before:: evm.context.got_solana_call: {}, storage.steps_interrupted(): {}",
-                evm.context.got_solana_call, storage.steps_interrupted());
+            log_msg!("do_continue before:: evm.context.got_solana_call: {}, storage.steps_interrupted(): {}, pc: {}",
+                evm.context.got_solana_call, storage.steps_interrupted(), evm.pc);
             let result = do_continue(step_count, accounts_db, storage, gasometer, reset);
-            log_msg!("do_continue after:: evm.context.got_solana_call: {}",
-                evm.context.got_solana_call);
+            log_msg!("do_continue after:: evm.context.got_solana_call: {}, pc: {}",
+                evm.context.got_solana_call, evm.pc);
             result
         }
         TAG_STATE_FINALIZED | TAG_STATE_FINALIZED_DEPRECATED => Err(Error::StorageAccountFinalized),

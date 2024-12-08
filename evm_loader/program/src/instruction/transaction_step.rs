@@ -15,7 +15,6 @@ use crate::types::TreeMap;
 use crate::types::Vector;
 
 use crate::executor::precompile_extension::call_solana::execute_external_instruction;
-//use crate::evm::opcode;
 use solana_program::instruction::Instruction;
 
 
@@ -287,10 +286,14 @@ fn finalize_interrupted(
             let _ = evm.opcode_return_impl(return_data, &mut backend);
             log_msg!("finalize_interrupted:: opcode_return_impl after");
         }
+
+
         log_msg!("finalize_interrupted:: evm execute before");
+        //evm.pc += 1;
         let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
         log_msg!("finalize_interrupted:: evm execute after");
         (result, steps_executed)
+
     };
     log_data(&[
         b"STEPS",

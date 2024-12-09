@@ -32,10 +32,7 @@ mod precompile;
 mod stack;
 pub mod tracing;
 mod utils;
-use solana_program::{
-    instruction::{AccountMeta},
-    pubkey::Pubkey,
-};
+use solana_program::{instruction::AccountMeta, pubkey::Pubkey};
 
 macro_rules! tracing_event {
     ($self:expr, $backend:expr, $event:expr) => {
@@ -77,7 +74,18 @@ macro_rules! end_vm {
             $self,
             $backend,
             crate::evm::tracing::Event::EndVM {
-                context: $self.context,
+                context: Context {
+                    interrupted_instruction_accounts: $self
+                        .context
+                        .interrupted_instruction_accounts
+                        .clone(),
+                    interrupted_instruction_data: $self
+                        .context
+                        .interrupted_instruction_data
+                        .clone(),
+                    interrupted_signer_seeds: $self.context.interrupted_signer_seeds.clone(),
+                    ..$self.context
+                },
                 chain_id: $self.chain_id,
                 status: $status
             }
@@ -91,7 +99,18 @@ macro_rules! begin_step {
             $self,
             $backend,
             crate::evm::tracing::Event::BeginStep {
-                context: $self.context,
+                context: Context {
+                    interrupted_instruction_accounts: $self
+                        .context
+                        .interrupted_instruction_accounts
+                        .clone(),
+                    interrupted_instruction_data: $self
+                        .context
+                        .interrupted_instruction_data
+                        .clone(),
+                    interrupted_signer_seeds: $self.context.interrupted_signer_seeds.clone(),
+                    ..$self.context
+                },
                 chain_id: $self.chain_id,
                 opcode: $self.execution_code.get_or_default($self.pc).into(),
                 pc: $self.pc,
@@ -385,7 +404,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         begin_vm!(
             self,
             backend,
-            self.context,
+            self.context.clone(),
             self.chain_id,
             if self.reason == Reason::Call {
                 self.call_data.to_vec()

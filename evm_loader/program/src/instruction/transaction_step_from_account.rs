@@ -12,12 +12,11 @@ use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-use crate::account_storage::{ProgramAccountStorage};
+use crate::account_storage::ProgramAccountStorage;
 use crate::evm::tracing::NoopEventListener;
-use crate::executor::{ExecutorState};
+use crate::executor::ExecutorState;
 
 type EvmBackend<'a, 'r> = ExecutorState<'r, ProgramAccountStorage<'a>>;
-
 
 pub fn process<'a>(
     program_id: &'a Pubkey,
@@ -130,8 +129,11 @@ pub fn process_inner<'a>(
             log_msg!("do_continue before:: evm.context.got_solana_call: {}, storage.steps_interrupted(): {}, pc: {}",
                 evm.context.got_solana_call, storage.steps_interrupted(), evm.pc);
             let result = do_continue(step_count, accounts_db, storage, gasometer, reset);
-            log_msg!("do_continue after:: evm.context.got_solana_call: {}, pc: {}",
-                evm.context.got_solana_call, evm.pc);
+            log_msg!(
+                "do_continue after:: evm.context.got_solana_call: {}, pc: {}",
+                evm.context.got_solana_call,
+                evm.pc
+            );
             result
         }
         TAG_STATE_FINALIZED | TAG_STATE_FINALIZED_DEPRECATED => Err(Error::StorageAccountFinalized),

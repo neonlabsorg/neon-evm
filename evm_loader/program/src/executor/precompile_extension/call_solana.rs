@@ -315,24 +315,15 @@ pub async fn execute_external_instruction<State: Database>(
     required_lamports: u64,
 ) -> Result<Vector<u8>> {
     //#[cfg(not(target_os = "solana"))]
-
-
-    log_msg!("call_solana::execute_external_instruction:: instruction: {:?}", instruction);
-    log_msg!("call_solana::execute_external_instruction:: got_solana_call: {}", context.got_solana_call);
+    log_msg!(
+        "call_solana::execute_external_instruction:: instruction: {:?}",
+        instruction
+    );
     if !state.is_synced_state() && !context.got_solana_call {
-        /*
-        let action = Action::ExternalInstruction {
-            program_id: instruction.program_id,
-            data: instruction.data.to_vector(),
-            accounts: instruction.accounts.elementwise_copy_to_vector(),
-            seeds,
-            fee,
-            emulated_internally,
-        };
-        */
         context.interrupted_instruction_program_id = Some(instruction.program_id);
-        context.interrupted_instruction_accounts = Some(instruction.accounts.elementwise_copy_to_vector().clone());
-        context.interrupted_instruction_data = Some(instruction.data.to_vector().clone());
+        context.interrupted_instruction_accounts =
+            Some(instruction.accounts.elementwise_copy_to_vector());
+        context.interrupted_instruction_data = Some(instruction.data.to_vector());
 
         context.interrupted_signer_seeds = Some(signer_seeds.clone());
         context.interrupted_lamports = Some(required_lamports);
@@ -341,14 +332,6 @@ pub async fn execute_external_instruction<State: Database>(
         return Err(Error::InterruptedCall);
     }
 
-    /*
-    if !context.got_solana_call {
-        context.got_solana_call = true;
-        if !state.is_synced_state() /*|| !state.is_on_emulator()*/ {
-            return Err(Error::InterruptedCall);
-        }
-    }
-    */
     let called_program = instruction.program_id;
     state.set_return_data(&[]);
 

@@ -1119,7 +1119,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             interrupted_lamports: None,
         };
 
-        begin_vm!(self, backend, context, chain_id, init_code);
+        begin_vm!(self, backend, context.clone(), chain_id, init_code);
 
         self.fork(
             Reason::Create,
@@ -1179,7 +1179,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             interrupted_lamports: None,
         };
 
-        begin_vm!(self, backend, context, chain_id, call_data);
+        begin_vm!(self, backend, context.clone(), chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1234,7 +1234,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             ..self.context
         };
 
-        begin_vm!(self, backend, context, chain_id, call_data);
+        begin_vm!(self, backend, context.clone(), chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1286,7 +1286,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             ..self.context
         };
 
-        begin_vm!(self, backend, context, self.chain_id, call_data);
+        begin_vm!(self, backend, context.clone(), self.chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1335,7 +1335,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             interrupted_lamports: None,
         };
 
-        begin_vm!(self, backend, context, chain_id, call_data);
+        begin_vm!(self, backend, context.clone(), chain_id, call_data);
 
         self.fork(
             Reason::Call,

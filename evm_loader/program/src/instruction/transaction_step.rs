@@ -17,8 +17,6 @@ use crate::types::Vector;
 use crate::executor::precompile_extension::call_solana::execute_external_instruction;
 use solana_program::instruction::Instruction;
 
-
-
 type SyncedEvmBackend<'a, 'r> = SyncedExecutorState<'r, ProgramAccountStorage<'a>>;
 type EvmBackend<'a, 'r> = ExecutorState<'r, ProgramAccountStorage<'a>>;
 type Evm<'a, 'r> = Machine<EvmBackend<'a, 'r>, NoopEventListener>;
@@ -264,13 +262,37 @@ fn finalize_interrupted(
         let mut backend = SyncedExecutorState::new_with_state_data(account_storage, state_data);
         let mut evm = storage.read_evm::<SyncedEvmBackend, NoopEventListener>();
 
-        let instruction =  Instruction  {
-            program_id: evm.context.interrupted_instruction_program_id.clone().expect("program_id is Some"),
-            accounts: evm.context.interrupted_instruction_accounts.clone().expect("accounts is Some").to_vec().into(),
-            data: evm.context.interrupted_instruction_data.clone().expect("data is Some").to_vec().into(),
+        let instruction = Instruction {
+            program_id: evm
+                .context
+                .interrupted_instruction_program_id
+                .clone()
+                .expect("program_id is Some"),
+            accounts: evm
+                .context
+                .interrupted_instruction_accounts
+                .clone()
+                .expect("accounts is Some")
+                .to_vec()
+                .into(),
+            data: evm
+                .context
+                .interrupted_instruction_data
+                .clone()
+                .expect("data is Some")
+                .to_vec()
+                .into(),
         };
-        let signer_seeds = evm.context.interrupted_signer_seeds.clone().expect("interrupted_signer_seeds is Some");
-        let lamports = evm.context.interrupted_lamports.clone().expect("interrupted_lamports is Some");
+        let signer_seeds = evm
+            .context
+            .interrupted_signer_seeds
+            .clone()
+            .expect("interrupted_signer_seeds is Some");
+        let lamports = evm
+            .context
+            .interrupted_lamports
+            .clone()
+            .expect("interrupted_lamports is Some");
 
         log_msg!("finalize_interrupted:: execute_external_instruction before");
         let result = execute_external_instruction(
@@ -287,13 +309,11 @@ fn finalize_interrupted(
             log_msg!("finalize_interrupted:: opcode_return_impl after");
         }
 
-
         log_msg!("finalize_interrupted:: evm execute before");
-        //evm.pc += 1;
+        evm.pc += 1;
         let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
         log_msg!("finalize_interrupted:: evm execute after");
         (result, steps_executed)
-
     };
     log_data(&[
         b"STEPS",

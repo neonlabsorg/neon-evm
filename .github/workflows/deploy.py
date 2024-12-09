@@ -148,6 +148,8 @@ def publish_image(evm_sha_tag, evm_tag):
 @click.option('--evm_sha_tag')
 @click.option('--evm_tag')
 def finalize_image(evm_sha_tag, evm_tag):
+    image = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}"
+    docker_client.pull(f"{image}:{evm_sha_tag}")
     if re.match(RELEASE_TAG_TEMPLATE, evm_tag) is not None or evm_tag == "latest":
         push_image_with_tag(evm_sha_tag, evm_tag)
     else:

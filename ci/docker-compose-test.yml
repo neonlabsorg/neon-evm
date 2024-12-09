@@ -56,6 +56,7 @@ services:
       RUST_BACKTRACE: full
       RUST_LOG: neon=debug
       NEON_API_LISTENER_ADDR: 0.0.0.0:3100
+      SOLANA_KEY_FOR_CONFIG: BMp6gEnveANdvSvspESJUrNczuHz1GF5UQKjVLCkAZih
       SOLANA_URL: http://solana:8899
       EVM_LOADER: 53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io
       NEON_TOKEN_MINT: HPsV9Deocecw3GeZv1FkAPNCBRfuVyfw9MMwjwRe1xaU

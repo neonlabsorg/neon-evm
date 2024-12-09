@@ -6,6 +6,7 @@ use crate::{types::GetBalanceRequest, NeonApiState};
 use actix_request_identifier::RequestId;
 use actix_web::web::Json;
 use actix_web::{http::StatusCode, post, Responder};
+use neon_lib::types::GetBalanceWithPubkeyRequest;
 use std::convert::Into;
 use tracing::log::info;
 
@@ -29,5 +30,30 @@ pub async fn get_balance(
         &GetBalanceCommand::execute(&rpc, &state.config.evm_loader, &get_balance_request.account)
             .await
             .map_err(Into::into),
+    )
+}
+
+#[tracing::instrument(skip_all, fields(id = request_id.as_str()))]
+#[post("/balance_with_pubkey")]
+pub async fn get_balance_with_pubkey(
+    state: NeonApiState,
+    request_id: RequestId,
+    Json(get_balance_request): Json<GetBalanceWithPubkeyRequest>,
+) -> impl Responder {
+    info!("get_balance_with_pubkey_request={:?}", get_balance_request);
+
+    let rpc = match state.build_rpc(get_balance_request.slot, None).await {
+        Ok(rpc) => rpc,
+        Err(e) => return process_error(StatusCode::BAD_REQUEST, &e),
+    };
+
+    process_result(
+        &GetBalanceCommand::execute_with_pubkey(
+            &rpc,
+            &state.config.evm_loader,
+            &get_balance_request.account,
+        )
+        .await
+        .map_err(Into::into),
     )
 }

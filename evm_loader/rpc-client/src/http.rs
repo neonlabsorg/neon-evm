@@ -3,16 +3,20 @@
 use async_trait::async_trait;
 use jsonrpsee_core::{client::ClientT, rpc_params};
 use jsonrpsee_http_client::{HttpClient, HttpClientBuilder};
+use neon_lib::build_info_common::SlimBuildInfo;
+use neon_lib::commands::simulate_solana::SimulateSolanaResponse;
+use neon_lib::types::GetBalanceWithPubkeyRequest;
+use neon_lib::types::SimulateSolanaRequest;
 use neon_lib::LibMethod;
 use neon_lib::{
     commands::{
         emulate::EmulateResponse, get_balance::GetBalanceResponse, get_config::GetConfigResponse,
         get_contract::GetContractResponse, get_holder::GetHolderResponse,
-        get_storage_at::GetStorageAtReturn,
+        get_storage_at::GetStorageAtReturn, get_transaction_tree::GetTreeResponse,
     },
     types::{
         EmulateApiRequest, GetBalanceRequest, GetContractRequest, GetHolderRequest,
-        GetStorageAtRequest,
+        GetStorageAtRequest, GetTransactionTreeRequest,
     },
 };
 use serde::de::DeserializeOwned;
@@ -52,7 +56,7 @@ impl Default for NeonRpcHttpClientBuilder {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl NeonRpcClient for NeonRpcHttpClient {
     async fn emulate(&self, params: EmulateApiRequest) -> NeonRpcClientResult<EmulateResponse> {
         self.request(LibMethod::Emulate, params).await
@@ -63,6 +67,13 @@ impl NeonRpcClient for NeonRpcHttpClient {
         params: GetBalanceRequest,
     ) -> NeonRpcClientResult<Vec<GetBalanceResponse>> {
         self.request(LibMethod::GetBalance, params).await
+    }
+
+    async fn balance_with_pubkey(
+        &self,
+        params: GetBalanceWithPubkeyRequest,
+    ) -> NeonRpcClientResult<Vec<GetBalanceResponse>> {
+        self.request(LibMethod::GetBalanceWithPubkey, params).await
     }
 
     async fn get_contract(
@@ -87,8 +98,30 @@ impl NeonRpcClient for NeonRpcHttpClient {
         self.request(LibMethod::GetStorageAt, params).await
     }
 
+    async fn get_transaction_tree(
+        &self,
+        params: GetTransactionTreeRequest,
+    ) -> NeonRpcClientResult<GetTreeResponse> {
+        self.request(LibMethod::GetTransactionTree, params).await
+    }
+
     async fn trace(&self, params: EmulateApiRequest) -> NeonRpcClientResult<serde_json::Value> {
         self.request(LibMethod::Trace, params).await
+    }
+
+    async fn simulate_solana(
+        &self,
+        params: SimulateSolanaRequest,
+    ) -> NeonRpcClientResult<SimulateSolanaResponse> {
+        self.request(LibMethod::SimulateSolana, params).await
+    }
+
+    async fn build_info(&self) -> NeonRpcClientResult<SlimBuildInfo> {
+        self.custom_request_without_params("build_info").await
+    }
+
+    async fn lib_build_info(&self) -> NeonRpcClientResult<SlimBuildInfo> {
+        self.custom_request_without_params("lib_build_info").await
     }
 }
 
@@ -109,5 +142,12 @@ impl NeonRpcHttpClient {
         R: DeserializeOwned,
     {
         Ok(self.client.request(method.into(), rpc_params![]).await?)
+    }
+
+    async fn custom_request_without_params<R>(&self, method: &str) -> NeonRpcClientResult<R>
+    where
+        R: DeserializeOwned,
+    {
+        Ok(self.client.request(method, rpc_params![]).await?)
     }
 }

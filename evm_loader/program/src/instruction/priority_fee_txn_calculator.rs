@@ -1,8 +1,8 @@
 use crate::debug::log_data;
+use crate::error::Error;
 use crate::gasometer::LAMPORTS_PER_SIGNATURE;
 use crate::types::Transaction;
 use crate::types::TransactionPayload;
-use crate::{error::Error, types::DynamicFeeTx};
 use ethnum::U256;
 use solana_program::{instruction::get_processed_sibling_instruction, pubkey, pubkey::Pubkey};
 use std::convert::From;
@@ -22,22 +22,30 @@ const DEFAULT_COMPUTE_UNIT_LIMIT: u32 = 200_000;
 const CONVERSION_MULTIPLIER: u64 = 1_000_000 / LAMPORTS_PER_SIGNATURE;
 
 /// Handles priority fee:
-/// - No-op for anything but DynamicFee transactions,
-/// - Calculates and logs the priority fee in tokens for DynamicFee transactions.
+/// - No-op for anything but DynamicFee or Scheduled transactions,
+/// - Calculates and logs the priority fee in tokens.
 pub fn handle_priority_fee(txn: &Transaction, gas_amount: U256) -> Result<U256, Error> {
-    if let TransactionPayload::DynamicFee(ref dynamic_fee_payload) = txn.transaction {
-        let priority_fee_in_tokens = get_priority_fee_in_tokens(dynamic_fee_payload, gas_amount)?;
-        log_data(&[b"PRIORITYFEE", &priority_fee_in_tokens.to_le_bytes()]);
-        return Ok(priority_fee_in_tokens);
-    }
-    Ok(U256::ZERO)
+    let (max_fee, max_priority_fee) = match txn.transaction {
+        TransactionPayload::DynamicFee(ref payload) => {
+            (payload.max_fee_per_gas, payload.max_priority_fee_per_gas)
+        }
+        TransactionPayload::Scheduled(ref payload) => {
+            (payload.max_fee_per_gas, payload.max_priority_fee_per_gas)
+        }
+        _ => return Ok(U256::ZERO),
+    };
+
+    let priority_fee_in_tokens = get_priority_fee_in_tokens(max_fee, max_priority_fee, gas_amount)?;
+    log_data(&[b"PRIORITYFEE", &priority_fee_in_tokens.to_le_bytes()]);
+    return Ok(priority_fee_in_tokens);
 }
 
 /// Returns the amount of "priority fee in tokens" that User have to pay to the Operator.
-pub fn get_priority_fee_in_tokens(txn: &DynamicFeeTx, gas_amount: U256) -> Result<U256, Error> {
-    let max_fee = txn.max_fee_per_gas;
-    let max_priority_fee = txn.max_priority_fee_per_gas;
-
+pub fn get_priority_fee_in_tokens(
+    max_fee: U256,
+    max_priority_fee: U256,
+    gas_amount: U256,
+) -> Result<U256, Error> {
     if max_priority_fee > max_fee {
         return Err(Error::PriorityFeeError(
             "max_priority_fee_per_gas > max_fee_per_gas".to_string(),

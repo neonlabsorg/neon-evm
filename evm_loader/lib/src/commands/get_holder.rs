@@ -5,7 +5,8 @@ use evm_loader::{
             LegacyFinalizedData, LegacyHolderData, TAG_HOLDER_DEPRECATED,
             TAG_STATE_FINALIZED_DEPRECATED,
         },
-        Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_STATE, TAG_STATE_FINALIZED,
+        Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
+        TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
     },
     types::Address,
 };
@@ -25,6 +26,8 @@ pub enum Status {
     Holder,
     Active,
     Finalized,
+    ScheduledFinalized,
+    ScheduledCanceled,
 }
 
 #[serde_as]
@@ -52,6 +55,7 @@ pub struct GetHolderResponse {
     pub max_priority_fee_per_gas: Option<U256>,
     pub chain_id: Option<u64>,
     pub origin: Option<Address>,
+    pub tree_account: Option<Pubkey>,
 
     // (block_timestamp, block_number)
     pub block_params: Option<(U256, U256)>,
@@ -141,17 +145,23 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 ..GetHolderResponse::default()
             })
         }
-        TAG_STATE => {
+        tag @ (TAG_STATE | TAG_SCHEDULED_STATE_FINALIZED | TAG_SCHEDULED_STATE_CANCELLED) => {
+            let status = match tag {
+                TAG_STATE => Status::Active,
+                TAG_SCHEDULED_STATE_FINALIZED => Status::ScheduledFinalized,
+                TAG_SCHEDULED_STATE_CANCELLED => Status::ScheduledCanceled,
+                _ => unreachable!(),
+            };
             // StateAccount::from_account doesn't work here because state contains heap
             // and transaction inside state account has been allocated via this heap.
             // Data should be read by pointers with offsets.
-            let (transaction, owner, origin, accounts, steps, block_params) =
+            let (transaction, owner, tree_account, origin, accounts, steps, block_params) =
                 StateAccount::get_state_account_view(program_id, &info)?;
 
             let tx_params = TxParams::from_transaction(origin, &transaction);
 
             Ok(GetHolderResponse {
-                status: Status::Active,
+                status,
                 len: Some(data_len),
                 owner: Some(owner),
                 tx: Some(transaction.hash()),
@@ -161,6 +171,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 max_priority_fee_per_gas: transaction.max_priority_fee_per_gas(),
                 chain_id: transaction.chain_id(),
                 origin: Some(origin),
+                tree_account,
                 block_params: Some(block_params),
                 accounts: Some(accounts),
                 steps_executed: steps,

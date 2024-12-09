@@ -98,6 +98,11 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         false
     }
 
+    fn solana_user_address(&self, address: Address) -> Option<Pubkey> {
+        self.balance_account(address, crate::config::SOL_CHAIN_ID)
+            .map_or(None, |a| a.solana_address())
+    }
+
     fn is_valid_chain_id(&self, chain_id: u64) -> bool {
         crate::config::CHAIN_ID_LIST
             .binary_search_by_key(&chain_id, |c| c.0)

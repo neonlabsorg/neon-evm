@@ -209,8 +209,9 @@ impl EventListener for StateDiffTracer {
 
 impl StateDiffTracer {
     pub fn new(tx: &TxParams) -> Self {
+        let from_address = tx.from.address();
         Self {
-            from: tx.from,
+            from: from_address,
             gas_price: tx.gas_price.map(to_web3_u256).unwrap_or_default(),
             tx_fee: to_web3_u256(
                 tx.actual_gas_used

@@ -85,7 +85,6 @@ impl BuildConfigSimulator for CallDbClient {
     async fn build_config_simulator(&self, program_id: Pubkey) -> NeonResult<ConfigSimulator> {
         let mut simulator = SolanaSimulator::new_without_sync(self).await?;
         simulator.sync_accounts(self, &[program_id]).await?;
-
         Ok(ConfigSimulator::ProgramTestContext {
             program_id,
             simulator,
@@ -305,17 +304,32 @@ async fn get_chains(
         .await
 }
 
-pub async fn read_legacy_chain_id(
+async fn read_chain_id(
     rpc: &impl BuildConfigSimulator,
     program_id: Pubkey,
+    chain: &str,
 ) -> NeonResult<u64> {
-    for chain in read_chains(rpc, program_id).await? {
-        if chain.name == "neon" {
-            return Ok(chain.id);
+    for c in read_chains(rpc, program_id).await? {
+        if c.name == chain {
+            return Ok(c.id);
         }
     }
 
     unreachable!()
+}
+
+pub async fn read_legacy_chain_id(
+    rpc: &impl BuildConfigSimulator,
+    program_id: Pubkey,
+) -> NeonResult<u64> {
+    read_chain_id(rpc, program_id, "neon").await
+}
+
+pub async fn read_sol_chain_id(
+    rpc: &impl BuildConfigSimulator,
+    program_id: Pubkey,
+) -> NeonResult<u64> {
+    read_chain_id(rpc, program_id, "sol").await
 }
 
 #[cfg(test)]

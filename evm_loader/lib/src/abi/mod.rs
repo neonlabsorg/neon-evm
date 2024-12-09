@@ -4,6 +4,7 @@ mod get_config;
 mod get_contract;
 mod get_holder;
 mod get_storage_at;
+mod get_transaction_tree;
 mod simulate_solana;
 pub mod state;
 mod trace;
@@ -109,6 +110,11 @@ async fn dispatch(method_str: &str, params_str: &str) -> Result<String, NeonErro
         LibMethod::GetBalance => get_balance::execute(&rpc, config, params_str)
             .await
             .map(|v| serde_json::to_string(&v).unwrap()),
+        LibMethod::GetBalanceWithPubkey => {
+            get_balance::execute_with_pubkey(&rpc, config, params_str)
+                .await
+                .map(|v| serde_json::to_string(&v).unwrap())
+        }
         LibMethod::GetConfig => get_config::execute(&rpc, config, params_str)
             .await
             .map(|v| serde_json::to_string(&v).unwrap()),
@@ -122,6 +128,9 @@ async fn dispatch(method_str: &str, params_str: &str) -> Result<String, NeonErro
             .await
             .map(|v| serde_json::to_string(&v).unwrap()),
         LibMethod::SimulateSolana => simulate_solana::execute(&rpc, config, params_str)
+            .await
+            .map(|v| serde_json::to_string(&v).unwrap()),
+        LibMethod::GetTransactionTree => get_transaction_tree::execute(&rpc, config, params_str)
             .await
             .map(|v| serde_json::to_string(&v).unwrap()),
         // _ => Err(NeonError::IncorrectLibMethod),

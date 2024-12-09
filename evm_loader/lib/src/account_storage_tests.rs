@@ -3,6 +3,7 @@ use crate::rpc;
 use crate::tracing::AccountOverride;
 use evm_loader::types::vector::VectorVecExt;
 use hex_literal::hex;
+use solana_account_decoder::UiDataSliceConfig;
 use std::collections::HashMap;
 use std::str::FromStr;
 
@@ -19,6 +20,8 @@ mod mock_rpc_client {
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
 
+    use solana_account_decoder::UiDataSliceConfig;
+
     pub struct MockRpcClient {
         accounts: HashMap<Pubkey, Account>,
     }
@@ -33,7 +36,31 @@ mod mock_rpc_client {
 
     #[async_trait(?Send)]
     impl Rpc for MockRpcClient {
-        async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
+        async fn get_account_slice(
+            &self,
+            key: &Pubkey,
+            slice: Option<UiDataSliceConfig>,
+        ) -> ClientResult<Option<Account>> {
+            if let Some(data_slice) = slice {
+                if let Some(orig_acc) = self.accounts.get(key) {
+                    let cut_to =
+                        usize::min(data_slice.offset + data_slice.length, orig_acc.data.len());
+                    let sliced_data = if data_slice.offset < orig_acc.data.len() {
+                        orig_acc.data[data_slice.offset..cut_to].to_vec()
+                    } else {
+                        vec![]
+                    };
+
+                    return Ok(Some(Account {
+                        lamports: orig_acc.lamports,
+                        data: sliced_data,
+                        owner: orig_acc.owner,
+                        executable: orig_acc.executable,
+                        rent_epoch: orig_acc.rent_epoch,
+                    }));
+                }
+            }
+
             let result = self.accounts.get(key).cloned();
             Ok(result)
         }
@@ -1789,4 +1816,36 @@ async fn test_storage_new_from_other_and_override() {
             .expect("Failed to read balance"),
         expected_balance
     );
+}
+
+#[tokio::test]
+async fn test_storage_get_account_slice() {
+    let slice_from = 2;
+    let slice_size = 20;
+    let test_key = Pubkey::new_unique();
+    let acc = Account::new(10, 1 * 1024 * 1024, &solana_sdk::sysvar::rent::id());
+
+    let account_tuple = (test_key, acc);
+    let accounts_for_rpc = vec![
+        (solana_sdk::sysvar::rent::id(), account_tuple.1.clone()),
+        account_tuple.clone(),
+    ];
+    let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
+    let acc_no_slice = rpc_client
+        .get_account(&test_key)
+        .await
+        .expect("Failed to get account slice");
+
+    let slice_cfg = UiDataSliceConfig {
+        offset: slice_from,
+        length: slice_size,
+    };
+    let sliced_acc = rpc_client
+        .get_account_slice(&test_key, Some(slice_cfg))
+        .await
+        .expect("Failed to get account slice");
+    assert!(acc_no_slice.is_some());
+    assert!(sliced_acc.is_some());
+    assert!(acc_no_slice.unwrap().data.len() > 2000);
+    assert_eq!(sliced_acc.unwrap().data.len(), slice_size);
 }

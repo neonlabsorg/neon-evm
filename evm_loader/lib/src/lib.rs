@@ -26,15 +26,15 @@ use abi::_MODULE_WM_;
 use abi_stable::export_root_module;
 pub use config::Config;
 pub use errors::NeonError;
-use neon_lib_interface::NeonEVMLib_Ref;
+use neon_lib_interface::NeonEVMLibRef;
 
 pub type NeonResult<T> = Result<T, NeonError>;
 
-const MODULE: NeonEVMLib_Ref = NeonEVMLib_Ref(_MODULE_WM_.static_as_prefix());
+const MODULE: NeonEVMLibRef = NeonEVMLibRef(_MODULE_WM_.static_as_prefix());
 
 #[export_root_module]
 #[must_use]
-pub const fn get_root_module() -> NeonEVMLib_Ref {
+pub const fn get_root_module() -> NeonEVMLibRef {
     MODULE
 }
 
@@ -58,4 +58,8 @@ pub enum LibMethod {
     Trace,
     #[strum(serialize = "simulate_solana")]
     SimulateSolana,
+    #[strum(serialize = "balance_with_pubkey")]
+    GetBalanceWithPubkey,
+    #[strum(serialize = "transaction_tree")]
+    GetTransactionTree,
 }

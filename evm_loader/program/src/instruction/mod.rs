@@ -197,6 +197,87 @@ pub enum EvmInstruction {
     ///  0..4 - treasury index in little-endian
     TransactionExecuteFromAccountWithSolanaCall,
 
+    /// Create the Tree Account from Scheduled Transaction
+    ///
+    /// Accounts:
+    ///  `[SIGNER]` Solana user
+    ///  `[WRITE]` Balance Account of the user
+    ///  `[WRITE]` Treasury Account
+    ///  `[WRITE]` Tree Account
+    ///  `[WRITE]` wSOL token pool
+    ///  `[]` System program
+    ScheduledTransactionCreate,
+
+    /// Create the Tree Account from multiple transaction hashes
+    ///  `[SIGNER]` Solana user
+    ///  `[WRITE]` Balance Account of the user
+    ///  `[WRITE]` Treasury Account
+    ///  `[WRITE]` Tree Account
+    ///  `[WRITE]` wSOL token pool
+    ///  `[]` System program
+    ScheduledTransactionCreateMultiple,
+
+    /// Destroy the Tree Account
+    ///  `[WRITE]` Balance Account of the user
+    ///  `[WRITE]` Treasury Account
+    ///  `[WRITE]` Tree Account
+    ScheduledTransactionDestroy,
+
+    /// Start the Scheduled Transaction from Instruction
+    ///
+    /// Accounts:
+    ///  `[WRITE]` Holder/State
+    ///  `[WRITE]` Tree Account
+    ///  `[WRITE,SIGNER]` Operator
+    ///  `[WRITE]` Operator Balance
+    ///  `[WRITE]`  Other accounts
+    /// Instruction data:
+    ///  0..4 - index of scheduled transaction in the Tree Account in little-endian
+    ///  4..  - transaction data
+    ScheduledTransactionStartFromInstruction,
+
+    /// Start the Scheduled Transaction from Account
+    ///
+    /// Accounts:
+    ///  `[WRITE]` Holder/State
+    ///  `[WRITE]` Tree Account
+    ///  `[WRITE,SIGNER]` Operator
+    ///  `[WRITE]` Operator Balance
+    ///  `[WRITE]`  Other accounts
+    /// Instruction data:
+    ///  0..4 - index of scheduled transaction in the Tree Account in little-endian
+    ScheduledTransactionStartFromAccount,
+
+    /// Skip the scheduled transaction.
+    ///
+    /// Accounts:
+    ///  `[WRITE]` Holder
+    ///  `[WRITE]` Tree Account
+    ///  `[WRITE,SIGNER]` Operator
+    /// Instruction data:
+    ///  0..4 - index of scheduled transaction in the Tree Account in little-endian
+    ScheduledTransactionSkipFromAccount,
+
+    /// Skip the scheduled transaction.
+    ///
+    /// Accounts:
+    ///  `[WRITE]` Holder
+    ///  `[WRITE]` Tree Account
+    ///  `[WRITE,SIGNER]` Operator
+    /// Instruction data:
+    ///  0..4 - index of scheduled transaction in the Tree Account in little-endian
+    ///  4..  - transaction data
+    ScheduledTransactionSkipFromInstruction,
+
+    /// Finalize Scheduled Transaction
+    ///
+    /// Accounts:
+    ///  `[WRITE]` State
+    ///  `[WRITE]` Tree Account
+    ///  `[WRITE,SIGNER]` Operator
+    ///  `[WRITE]` Operator Balance
+    ScheduledTransactionFinish,
+
     ConfigGetChainCount,
     ConfigGetChainInfo,
     ConfigGetEnvironment,
@@ -239,6 +320,15 @@ impl EvmInstruction {
             0x3B => Self::OperatorBalanceDelete,   // 59
             0x3C => Self::OperatorBalanceWithdraw, // 60
 
+            0x46 => Self::ScheduledTransactionStartFromAccount, // 70
+            0x47 => Self::ScheduledTransactionStartFromInstruction, // 71
+            0x49 => Self::ScheduledTransactionFinish,           // 73
+            0x4A => Self::ScheduledTransactionCreate,           // 74
+            0x4B => Self::ScheduledTransactionCreateMultiple,   // 75
+            0x4C => Self::ScheduledTransactionDestroy,          // 76
+            0x4D => Self::ScheduledTransactionSkipFromAccount,  // 72
+            0x4E => Self::ScheduledTransactionSkipFromInstruction, // 73
+
             0xA0 => Self::ConfigGetChainCount, // 160
             0xA1 => Self::ConfigGetChainInfo,
             0xA2 => Self::ConfigGetEnvironment,
@@ -267,11 +357,21 @@ pub mod config_get_property_count;
 pub mod config_get_status;
 pub mod config_get_version;
 pub mod create_main_treasury;
+pub mod instruction_internals;
 pub mod neon_tokens_deposit;
 pub mod operator_create_balance;
 pub mod operator_delete_balance;
 pub mod operator_withdraw_balance;
 pub mod priority_fee_txn_calculator;
+pub mod scheduled_transaction_create;
+pub mod scheduled_transaction_create_multiple;
+pub mod scheduled_transaction_destroy;
+pub mod scheduled_transaction_finish;
+pub mod scheduled_transaction_skip_from_account;
+pub mod scheduled_transaction_skip_from_instruction;
+pub mod scheduled_transaction_start;
+pub mod scheduled_transaction_start_from_account;
+pub mod scheduled_transaction_start_from_instruction;
 pub mod transaction_cancel;
 pub mod transaction_execute;
 pub mod transaction_execute_from_account;

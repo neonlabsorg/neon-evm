@@ -15,18 +15,6 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
-    volumes:
-      - /home/artem/devel/com/neon/core/neon-evm/evm_loader/target/deploy/evm_loader.so:/opt/evm_loader.so
-      - /home/artem/devel/com/neon/core/neon-evm/evm_loader/target/deploy/evm_loader-testnet.so:/opt/evm_loader-testnet.so
-      - /home/artem/devel/com/neon/core/neon-evm/evm_loader/target/deploy/evm_loader-rollup.so:/opt/evm_loader-rollup.so
-      - /home/artem/devel/com/neon/core/neon-evm/evm_loader/target/deploy/evm_loader-mainnet.so:/opt/evm_loader-mainnet.so
-      - /home/artem/devel/com/neon/core/neon-evm/evm_loader/target/deploy/evm_loader-govertest.so:/opt/evm_loader-govertest.so
-      - /home/artem/devel/com/neon/core/neon-evm/evm_loader/target/deploy/evm_loader-devnet.so:/opt/evm_loader-devnet.so
-      - /home/artem/devel/com/neon/core/neon-evm/evm_loader/target/release/neon-cli:/opt/neon-cli
-      - /home/artem/devel/com/neon/core/neon-evm/evm_loader/target/release/neon-api:/opt/neon-api
-      - /home/artem/devel/com/neon/core/neon-evm/evm_loader/target/release/neon-rpc:/opt/neon-rpc
-      - /home/artem/devel/com/neon/core/neon-evm/evm_loader/target/release/libneon_lib.so:/opt/libs/current/libneon_lib.so
-#      - /home/artem/devel/com/neon/core/neon-evm/evm_loader/target/deploy:/opt
     entrypoint:
       /opt/solana-run-neon.sh
     networks:
@@ -98,12 +86,6 @@ services:
     command: sleep infinity
     networks:
       - net
-    ports:
-      - "35956:35956"
-#    volumes:
-#      - /home/artem/devel/com/neon/core/neon-tests/contracts/precompiled/CallSolanaCaller.sol:/opt/neon-tests/contracts/precompiled/CallSolanaCaller.sol
-#      - /home/artem/devel/com/neon/core/neon-tests/integration/tests/neon_evm/utils/call_solana.py:/opt/neon-tests/integration/tests/neon_evm/utils/call_solana.py
-#      - /home/artem/devel/com/neon/core/neon-tests/integration/tests/neon_evm/test_interoperability.py:/opt/neon-tests/integration/tests/neon_evm/test_interoperability.py
 
 networks:
   net:

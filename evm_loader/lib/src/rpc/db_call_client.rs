@@ -112,7 +112,19 @@ impl Rpc for CallDbClient {
             .copied()
             .collect();
 
-        let features = Rpc::get_multiple_accounts(self, &feature_keys).await?;
+        let tracer_db = self.tracer_db.clone();
+        let slot = tracer_db
+            .get_latest_block()
+            .await
+            .map_err(|e| e!("get_latest_block error", e))?;
+
+        let self_rpc: Self = Self {
+            tracer_db,
+            slot,
+            tx_index_in_block: None,
+        };
+
+        let features = Rpc::get_multiple_accounts(&self_rpc, &feature_keys).await?;
 
         let mut result = HashMap::<Pubkey, Option<u64>>::new();
         for (pubkey, feature) in feature_keys.iter().zip(features) {

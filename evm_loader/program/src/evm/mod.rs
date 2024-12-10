@@ -86,6 +86,7 @@ macro_rules! end_vm {
                     interrupted_signer_seeds: $self.context.interrupted_signer_seeds.clone(),
                     ..$self.context
                 },
+                //context: $self.context.clone(),
                 chain_id: $self.chain_id,
                 status: $status
             }
@@ -111,6 +112,7 @@ macro_rules! begin_step {
                     interrupted_signer_seeds: $self.context.interrupted_signer_seeds.clone(),
                     ..$self.context
                 },
+                //context: $self.context.clone(),
                 chain_id: $self.chain_id,
                 opcode: $self.execution_code.get_or_default($self.pc).into(),
                 pc: $self.pc,
@@ -195,7 +197,6 @@ pub struct Context {
     pub value: U256,
     pub code_address: Option<Address>,
     pub got_solana_call: bool,
-
     pub interrupted_instruction_program_id: Option<Pubkey>,
     pub interrupted_instruction_accounts: Option<Vector<AccountMeta>>,
     pub interrupted_instruction_data: Option<Vector<u8>>,
@@ -432,7 +433,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 step += 1;
 
                 let opcode = self.execution_code.get_or_default(self.pc);
-                log_msg!("evm execute opcode: {:#02x}", opcode);
+                //log_msg!("evm execute opcode: {:#02x}", opcode);
                 begin_step!(self, backend);
 
                 let opcode_result = match self.execute_opcode(backend, opcode).await {

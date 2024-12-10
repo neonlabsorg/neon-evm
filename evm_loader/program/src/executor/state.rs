@@ -665,10 +665,10 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         fee: u64,
         emulated_internally: bool,
     ) -> Result<()> {
-        //#[cfg(target_os = "solana")]
-        //if !emulated_internally {
-        //    return Err(Error::UnavalableExternalSolanaCall);
-        //}
+        #[cfg(target_os = "solana")]
+        if !emulated_internally {
+            return Err(Error::UnavalableExternalSolanaCall);
+        }
 
         let action = Action::ExternalInstruction {
             program_id: instruction.program_id,

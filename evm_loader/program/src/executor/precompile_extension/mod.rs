@@ -19,7 +19,6 @@ mod query_account;
 mod spl_token;
 
 pub struct PrecompiledContracts {}
-//pub use call_solana;
 
 impl PrecompiledContracts {
     #[deprecated]

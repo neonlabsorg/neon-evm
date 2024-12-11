@@ -206,7 +206,6 @@ pub fn finalize_interrupted(
             program_id: evm
                 .context
                 .interrupted_instruction_program_id
-                .clone()
                 .expect("program_id is Some"),
             accounts: evm
                 .context
@@ -231,10 +230,8 @@ pub fn finalize_interrupted(
         let lamports = evm
             .context
             .interrupted_lamports
-            .clone()
             .expect("interrupted_lamports is Some");
 
-        log_msg!("finalize_interrupted:: execute_external_instruction before");
         let result = execute_external_instruction(
             &mut backend,
             &mut evm.context,
@@ -242,17 +239,11 @@ pub fn finalize_interrupted(
             signer_seeds,
             lamports,
         );
-        log_msg!("finalize_interrupted:: execute_external_instruction after");
         if let Ok(return_data) = result {
-            log_msg!("finalize_interrupted:: opcode_return_impl before");
             let _ = evm.opcode_return_impl(return_data, &mut backend);
-            log_msg!("finalize_interrupted:: opcode_return_impl after");
         }
-
-        log_msg!("finalize_interrupted:: evm execute before");
         evm.pc += 1;
         let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
-        log_msg!("finalize_interrupted:: evm execute after");
         (result, steps_executed)
     };
     log_data(&[

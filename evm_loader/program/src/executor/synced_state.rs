@@ -349,7 +349,6 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
         fee: u64,
         emulated_internally: bool,
     ) -> Result<()> {
-        //log_msg!("synced_state::queue_external_instruction");
         self.backend
             .execute_external_instruction(instruction, seeds, fee, emulated_internally)
             .await?;

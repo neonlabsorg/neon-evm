@@ -317,15 +317,16 @@ pub async fn execute_external_instruction<State: Database>(
     #[cfg(not(target_os = "solana"))]
     log::info!("instruction: {:?}", instruction);
 
-    if !state.is_synced_state() && !context.got_solana_call {
-        context.interrupted_instruction_program_id = Some(instruction.program_id);
-        context.interrupted_instruction_accounts =
-            Some(instruction.accounts.elementwise_copy_to_vector());
-        context.interrupted_instruction_data = Some(instruction.data.to_vector());
-
-        context.interrupted_signer_seeds = Some(signer_seeds.clone());
-        context.interrupted_lamports = Some(required_lamports);
-        context.got_solana_call = true;
+    if !state.is_synced_state() && context.interrupted_state.is_none() {
+        context.interrupted_state = Some(crate::evm::InterruptedState {
+            instruction: crate::evm::InterruptedInstruction {
+                program_id: instruction.program_id,
+                accounts: instruction.accounts.elementwise_copy_to_vector(),
+                data: instruction.data.to_vector(),
+            },
+            signer_seeds: signer_seeds.clone(),
+            lamports: required_lamports,
+        });
         return Err(Error::InterruptedCall);
     }
 

@@ -74,15 +74,7 @@ macro_rules! end_vm {
             $backend,
             crate::evm::tracing::Event::EndVM {
                 context: Context {
-                    interrupted_instruction_accounts: $self
-                        .context
-                        .interrupted_instruction_accounts
-                        .clone(),
-                    interrupted_instruction_data: $self
-                        .context
-                        .interrupted_instruction_data
-                        .clone(),
-                    interrupted_signer_seeds: $self.context.interrupted_signer_seeds.clone(),
+                    interrupted_state: $self.context.interrupted_state.clone(),
                     ..$self.context
                 },
                 chain_id: $self.chain_id,
@@ -99,15 +91,7 @@ macro_rules! begin_step {
             $backend,
             crate::evm::tracing::Event::BeginStep {
                 context: Context {
-                    interrupted_instruction_accounts: $self
-                        .context
-                        .interrupted_instruction_accounts
-                        .clone(),
-                    interrupted_instruction_data: $self
-                        .context
-                        .interrupted_instruction_data
-                        .clone(),
-                    interrupted_signer_seeds: $self.context.interrupted_signer_seeds.clone(),
+                    interrupted_state: $self.context.interrupted_state.clone(),
                     ..$self.context
                 },
                 chain_id: $self.chain_id,
@@ -187,19 +171,29 @@ pub enum Reason {
 
 #[derive(Debug, Clone)]
 #[repr(C)]
+pub struct InterruptedInstruction {
+    pub program_id: Pubkey,
+    pub accounts: Vector<AccountMeta>,
+    pub data: Vector<u8>,
+}
+
+#[derive(Debug, Clone)]
+#[repr(C)]
+pub struct InterruptedState {
+    pub instruction: InterruptedInstruction,
+    pub signer_seeds: Vector<Vector<u8>>,
+    pub lamports: u64,
+}
+
+#[derive(Debug, Clone)]
+#[repr(C)]
 pub struct Context {
     pub caller: Address,
     pub contract: Address,
     pub contract_chain_id: u64,
     pub value: U256,
     pub code_address: Option<Address>,
-    pub got_solana_call: bool,
-    pub interrupted_instruction_program_id: Option<Pubkey>,
-    pub interrupted_instruction_accounts: Option<Vector<AccountMeta>>,
-    pub interrupted_instruction_data: Option<Vector<u8>>,
-
-    pub interrupted_signer_seeds: Option<Vector<Vector<u8>>>,
-    pub interrupted_lamports: Option<u64>,
+    pub interrupted_state: Option<InterruptedState>,
 }
 
 #[repr(C)]
@@ -308,12 +302,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 contract_chain_id: backend.contract_chain_id(target).await.unwrap_or(chain_id),
                 value: trx.value(),
                 code_address: Some(target),
-                got_solana_call: false,
-                interrupted_instruction_program_id: None,
-                interrupted_instruction_accounts: None,
-                interrupted_instruction_data: None,
-                interrupted_signer_seeds: None,
-                interrupted_lamports: None,
+                interrupted_state: None,
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
@@ -366,12 +355,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 contract_chain_id: chain_id,
                 value: trx.value(),
                 code_address: None,
-                got_solana_call: false,
-                interrupted_instruction_program_id: None,
-                interrupted_instruction_accounts: None,
-                interrupted_instruction_data: None,
-                interrupted_signer_seeds: None,
-                interrupted_lamports: None,
+                interrupted_state: None,
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
@@ -440,7 +424,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                     }
                 };
 
-                if step_call_solana.is_none() && self.context.got_solana_call {
+                if step_call_solana.is_none() && self.context.interrupted_state.is_some() {
                     step_call_solana = Some(step);
                 }
                 match opcode_result {

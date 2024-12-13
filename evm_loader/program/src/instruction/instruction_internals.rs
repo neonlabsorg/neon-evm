@@ -201,43 +201,21 @@ pub fn finalize_interrupted(
     let (exit_reason, steps_executed) = {
         let mut backend = SyncedExecutorState::new_with_state_data(account_storage, state_data);
         let mut evm = storage.read_evm::<SyncedEvmBackend, NoopEventListener>();
-
+        let interrupted_state = evm.context.interrupted_state.clone().expect(
+            "evm.context.interrupted_state should be Some within finalize_interrupted context",
+        );
         let instruction = Instruction {
-            program_id: evm
-                .context
-                .interrupted_instruction_program_id
-                .expect("program_id is Some"),
-            accounts: evm
-                .context
-                .interrupted_instruction_accounts
-                .clone()
-                .expect("accounts is Some")
-                .to_vec()
-                .into(),
-            data: evm
-                .context
-                .interrupted_instruction_data
-                .clone()
-                .expect("data is Some")
-                .to_vec()
-                .into(),
+            program_id: interrupted_state.instruction.program_id,
+            accounts: interrupted_state.instruction.accounts.to_vec(),
+            data: interrupted_state.instruction.data.to_vec(),
         };
-        let signer_seeds = evm
-            .context
-            .interrupted_signer_seeds
-            .clone()
-            .expect("interrupted_signer_seeds is Some");
-        let lamports = evm
-            .context
-            .interrupted_lamports
-            .expect("interrupted_lamports is Some");
 
         let result = execute_external_instruction(
             &mut backend,
             &mut evm.context,
             instruction,
-            signer_seeds,
-            lamports,
+            interrupted_state.signer_seeds,
+            interrupted_state.lamports,
         );
         if let Ok(return_data) = result {
             let _ = evm.opcode_return_impl(return_data, &mut backend);

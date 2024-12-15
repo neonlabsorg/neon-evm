@@ -77,7 +77,7 @@ pub fn do_continue<'a>(
     let mut state_data = storage.read_executor_state();
     if storage.steps_interrupted() > 0 {
         account_storage.apply_state_change(state_data.into_actions())?;
-        let fir =  finalize_interrupted(
+        let fir = finalize_interrupted(
             &mut account_storage,
             &mut storage,
             &mut gasometer,

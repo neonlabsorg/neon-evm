@@ -21,10 +21,10 @@ ENV NEON_REVISION=${REVISION}
 RUN cargo fmt --check && \
     cargo clippy --release \
       --config 'patch.crates-io.ethnum.git="https://github.com/neonlabsorg/ethnum.git"'\
-      --config 'patch.crates-io.ethnum.branch="NDEV-3414-u256-in-u64-4-implementation"' && \
+      --config 'patch.crates-io.ethnum.branch="main"' && \
     cargo build --release \
       --config 'patch.crates-io.ethnum.git="https://github.com/neonlabsorg/ethnum.git"'\
-      --config 'patch.crates-io.ethnum.branch="NDEV-3414-u256-in-u64-4-implementation"' && \
+      --config 'patch.crates-io.ethnum.branch="main"' && \
     cargo test --release && \
     cargo build-sbf --manifest-path program/Cargo.toml --features devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
     cargo build-sbf --manifest-path program/Cargo.toml --features testnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-testnet.so && \

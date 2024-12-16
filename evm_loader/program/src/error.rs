@@ -202,6 +202,9 @@ pub enum Error {
 
     #[error("Operator Balance - invalid address")]
     OperatorBalanceInvalidAddress,
+
+    #[error("Maintenance mode")]
+    MaintenanceMode,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

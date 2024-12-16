@@ -16,47 +16,48 @@ type EvmBackend<'a, 'r> = ExecutorState<'r, ProgramAccountStorage<'a>>;
 type Evm<'a, 'r> = Machine<EvmBackend<'a, 'r>, NoopEventListener>;
 
 pub fn do_begin<'a>(
-    accounts: AccountsDB<'a>,
-    mut storage: StateAccount<'a>,
-    gasometer: Gasometer,
+    _accounts: AccountsDB<'a>,
+    mut _storage: StateAccount<'a>,
+    _gasometer: Gasometer,
 ) -> Result<()> {
     debug_print!("do_begin");
+    return Err(Error::MaintenanceMode);
 
-    let account_storage = ProgramAccountStorage::new(accounts)?;
+    // let account_storage = ProgramAccountStorage::new(accounts)?;
 
-    let origin = storage.trx_origin();
+    // let origin = storage.trx_origin();
 
-    storage.trx().validate(origin, &account_storage)?;
+    // storage.trx().validate(origin, &account_storage)?;
 
-    // Increment origin nonce in the first iteration
-    // This allows us to run multiple iterative transactions from the same sender in parallel
-    // These transactions are guaranteed to start in a correct sequence
-    // BUT they finalize in an undefined order
-    let mut origin_account = account_storage.origin(origin, storage.trx())?;
-    origin_account.increment_revision(account_storage.rent(), account_storage.db())?;
-    origin_account.increment_nonce()?;
+    // // Increment origin nonce in the first iteration
+    // // This allows us to run multiple iterative transactions from the same sender in parallel
+    // // These transactions are guaranteed to start in a correct sequence
+    // // BUT they finalize in an undefined order
+    // let mut origin_account = account_storage.origin(origin, storage.trx())?;
+    // origin_account.increment_revision(account_storage.rent(), account_storage.db())?;
+    // origin_account.increment_nonce()?;
 
-    // Burn `gas_limit` tokens from the origin account
-    // Later we will mint them to the operator
-    // Remaining tokens are returned to the origin in the last iteration
-    let gas_limit_in_tokens = storage.trx().gas_limit_in_tokens()?;
-    origin_account.burn(gas_limit_in_tokens)?;
+    // // Burn `gas_limit` tokens from the origin account
+    // // Later we will mint them to the operator
+    // // Remaining tokens are returned to the origin in the last iteration
+    // let gas_limit_in_tokens = storage.trx().gas_limit_in_tokens()?;
+    // origin_account.burn(gas_limit_in_tokens)?;
 
-    // Initialize EVM and serialize it to the Holder
-    let mut backend = ExecutorState::new(&account_storage);
-    let evm = Machine::new(storage.trx(), origin, &mut backend, None)?;
+    // // Initialize EVM and serialize it to the Holder
+    // let mut backend = ExecutorState::new(&account_storage);
+    // let evm = Machine::new(storage.trx(), origin, &mut backend, None)?;
 
-    serialize_evm_state(&mut storage, &backend, &evm)?;
+    // serialize_evm_state(&mut storage, &backend, &evm)?;
 
-    let (_, touched_accounts) = backend.deconstruct();
-    finalize(
-        0,
-        storage,
-        account_storage,
-        None,
-        gasometer,
-        touched_accounts,
-    )
+    // let (_, touched_accounts) = backend.deconstruct();
+    // finalize(
+    //     0,
+    //     storage,
+    //     account_storage,
+    //     None,
+    //     gasometer,
+    //     touched_accounts,
+    // )
 }
 
 pub fn do_continue<'a>(

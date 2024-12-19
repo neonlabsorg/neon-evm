@@ -11,6 +11,7 @@ use crate::executor::{Action, ExecutorState, ExecutorStateData, SyncedExecutorSt
 use crate::gasometer::{Gasometer, LAMPORTS_PER_SIGNATURE};
 use crate::instruction::priority_fee_txn_calculator;
 use crate::types::boxx::boxx;
+use crate::types::Address;
 use crate::types::Vector;
 use crate::types::{Transaction, TreeMap};
 
@@ -190,14 +191,14 @@ pub fn finalize_interrupted(
     state_data: &ExecutorStateData,
 ) -> Result<()> {
     debug_print!("finalize_interrupted");
-
+    /*
     let chain_id = storage
         .trx()
         .chain_id()
         .unwrap_or(crate::config::DEFAULT_CHAIN_ID);
     let gas_limit = storage.trx().gas_limit();
     let gas_price = storage.trx().gas_price();
-
+    */
     let (exit_reason, steps_executed) = {
         let mut backend = SyncedExecutorState::new_with_state_data(account_storage, state_data);
         let mut evm = storage.read_evm::<SyncedEvmBackend, NoopEventListener>();
@@ -232,23 +233,59 @@ pub fn finalize_interrupted(
     account_storage.increment_revision_for_modified_contracts()?;
     account_storage.transfer_treasury_payment()?;
 
+    handle_gas(
+        account_storage,
+        &storage.trx(),
+        gasometer,
+        storage.trx_origin(),
+    )?;
+
+    /*
+        account_storage.increment_revision_for_modified_contracts()?;
+        account_storage.transfer_treasury_payment()?;
+
+        gasometer.record_operator_expenses(account_storage.operator());
+        let used_gas = gasometer.used_gas();
+        if used_gas > gas_limit {
+            return Err(Error::OutOfGas(gas_limit, used_gas));
+        }
+        log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
+
+        let gas_cost = used_gas.saturating_mul(gas_price);
+        let priority_fee = priority_fee_txn_calculator::handle_priority_fee(&storage.trx(), used_gas)?;
+        account_storage.transfer_gas_payment(
+            storage.trx_origin(),
+            chain_id,
+            gas_cost + priority_fee,
+        )?;
+    */
+    log_return_value(&exit_reason);
+    return Ok(());
+}
+
+fn handle_gas(
+    account_storage: &mut ProgramAccountStorage<'_>,
+    trx: &Transaction,
+    gasometer: &mut Gasometer,
+    origin: Address,
+) -> Result<()> {
+    let gas_limit = trx.gas_limit();
+    let gas_price = trx.gas_price();
+    let chain_id = trx.chain_id().unwrap_or(crate::config::DEFAULT_CHAIN_ID);
+
     gasometer.record_operator_expenses(account_storage.operator());
     let used_gas = gasometer.used_gas();
     if used_gas > gas_limit {
         return Err(Error::OutOfGas(gas_limit, used_gas));
     }
+
     log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
     let gas_cost = used_gas.saturating_mul(gas_price);
-    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(&storage.trx(), used_gas)?;
-    account_storage.transfer_gas_payment(
-        storage.trx_origin(),
-        chain_id,
-        gas_cost + priority_fee,
-    )?;
+    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(&trx, used_gas)?;
+    account_storage.transfer_gas_payment(origin, chain_id, gas_cost + priority_fee)?;
 
-    log_return_value(&exit_reason);
-    return Ok(());
+    Ok(())
 }
 
 pub fn log_return_value(status: &ExitStatus) {

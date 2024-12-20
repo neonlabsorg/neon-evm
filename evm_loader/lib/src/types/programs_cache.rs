@@ -26,6 +26,13 @@ pub struct KeyAccountCache {
     pub addr: Pubkey,
     pub slot: u64,
 }
+impl KeyAccountCache {
+    #[must_use]
+
+    pub const fn new(addr: &Pubkey, slot: u64) -> Self {
+        Self { addr: *addr, slot }
+    }
+}
 
 type ProgramDataCache<Value> = HashMap<KeyAccountCache, Value>;
 
@@ -62,9 +69,26 @@ where
 
 type ThreadSaveProgramDataCache = ThreadSaveCache<Account>;
 type ThreadSaveConfigCache = ThreadSaveCache<GetConfigResponse>;
+type ThreadSaveTestCache = ThreadSaveCache<String>;
 
 static ACCOUNT_CACHE_TABLE: OnceCell<ThreadSaveProgramDataCache> = OnceCell::const_new();
 static CONFIG_CACHE_TABLE: OnceCell<ThreadSaveConfigCache> = OnceCell::const_new();
+#[allow(dead_code)]
+static TEST_CACHE_TABLE: OnceCell<ThreadSaveTestCache> = OnceCell::const_new();
+#[allow(dead_code)]
+async fn programdata_test_cache_get_instance() -> &'static ThreadSaveTestCache {
+    TEST_CACHE_TABLE
+        .get_or_init(|| async { ThreadSaveTestCache::new() })
+        .await
+}
+#[allow(dead_code)]
+async fn programdata_test_cache_get(key: &KeyAccountCache) -> Option<String> {
+    programdata_test_cache_get_instance().await.get(key)
+}
+#[allow(dead_code)]
+async fn programdata_test_cache_add(key: KeyAccountCache, acc: String) {
+    programdata_test_cache_get_instance().await.add(key, acc);
+}
 
 pub async fn cut_programdata_from_acc(account: &mut Account, data_slice: SliceConfig) {
     if data_slice.offset != 0 {
@@ -81,13 +105,11 @@ async fn programdata_account_cache_get_instance() -> &'static ThreadSaveProgramD
         .await
 }
 
-async fn programdata_account_cache_get(addr: Pubkey, slot: u64) -> Option<Account> {
-    let key = KeyAccountCache { addr, slot };
-    programdata_account_cache_get_instance().await.get(&key)
+async fn programdata_account_cache_get(key: &KeyAccountCache) -> Option<Account> {
+    programdata_account_cache_get_instance().await.get(key)
 }
 
-async fn programdata_account_cache_add(addr: Pubkey, slot: u64, acc: Account) {
-    let key = KeyAccountCache { addr, slot };
+async fn programdata_account_cache_add(key: KeyAccountCache, acc: Account) {
     programdata_account_cache_get_instance().await.add(key, acc);
 }
 
@@ -130,16 +152,18 @@ pub async fn programdata_cache_get_values_by_keys(
         "programdata_keys.size()!=future_requests.size()"
     );
     let results = join_all(future_requests).await;
-    for (result, key) in results.iter().zip(programdata_keys) {
+    for (result, addr) in results.iter().zip(programdata_keys) {
         match result {
             Ok(Some(account)) => {
                 if let Some(slot_val) = get_programdata_slot_from_account(account)? {
-                    if let Some(acc) = programdata_account_cache_get(*key, slot_val).await {
+                    let key = KeyAccountCache::new(addr, slot_val);
+                    if let Some(acc) = programdata_account_cache_get(&key).await {
                         answer.push(Some(acc));
-                    } else if let Ok(Some(tmp_acc)) = rpc.get_account(key).await {
+                    } else if let Ok(Some(tmp_acc)) = rpc.get_account(&key.addr).await {
                         let current_slot =
                             get_programdata_slot_from_account(&tmp_acc)?.expect("No current slot ");
-                        programdata_account_cache_add(*key, current_slot, tmp_acc.clone()).await;
+                        let key = KeyAccountCache::new(addr, current_slot);
+                        programdata_account_cache_add(key, tmp_acc.clone()).await;
 
                         answer.push(Some(tmp_acc));
                     } else {
@@ -150,11 +174,11 @@ pub async fn programdata_cache_get_values_by_keys(
                 }
             }
             Ok(None) => {
-                info!("Account for key {key:?} is None.");
+                info!("Account for key {addr:?} is None.");
                 answer.push(None);
             }
             Err(e) => {
-                info!("Error fetching account for key {key:?}: {e:?}");
+                info!("Error fetching account for key {addr:?}: {e:?}");
             }
         }
     }
@@ -330,9 +354,8 @@ mod tests {
             .is_none());
     }
 
-    #[test]
-    fn test_add_and_get_value() {
-        let cache: ThreadSaveCache<String> = ThreadSaveCache::new();
+    #[tokio::test]
+    async fn test_add_and_get_value() {
         let key = KeyAccountCache {
             slot: 0,
             addr: Pubkey::new_unique(),
@@ -340,10 +363,10 @@ mod tests {
         let value = "test_value".to_string();
 
         // Add the value to the cache
-        cache.add(key.clone(), value.clone());
+        programdata_test_cache_add(key.clone(), value.clone()).await;
 
         // Retrieve the value from the cache
-        let result = cache.get(&key);
+        let result = programdata_test_cache_get(&key).await;
         assert!(result.is_some());
         assert_eq!(result.unwrap(), value);
     }

@@ -23,7 +23,7 @@ pub fn calculate_gas_for_skip(trx: &Transaction, gasometer: &Gasometer) -> Resul
     log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
     let gas_cost = used_gas.saturating_mul(gas_price);
-    let priority_fee = handle_priority_fee(&trx, used_gas)?;
+    let priority_fee = handle_priority_fee(&trx)?;
 
     let gas = gas_cost.saturating_add(priority_fee);
     Ok(gas)

@@ -7,7 +7,7 @@ use crate::error::Result;
 use crate::evm::tracing::NoopEventListener;
 use crate::evm::{ExitStatus, Machine};
 use crate::executor::{Action, ExecutorState, ExecutorStateData};
-use crate::gasometer::{Gasometer, LAMPORTS_PER_SIGNATURE};
+use crate::gasometer::Gasometer;
 use crate::instruction::priority_fee_txn_calculator;
 use crate::types::boxx::boxx;
 use crate::types::Vector;
@@ -150,10 +150,7 @@ pub fn finalize<'a, 'b>(
     ]);
 
     // Calculate priority fee for the current iteration.
-    let priority_fee_in_tokens = priority_fee_txn_calculator::handle_priority_fee(
-        storage.trx(),
-        LAMPORTS_PER_SIGNATURE.into(),
-    )?;
+    let priority_fee_in_tokens = priority_fee_txn_calculator::handle_priority_fee(storage.trx())?;
 
     storage.consume_gas(
         used_gas,

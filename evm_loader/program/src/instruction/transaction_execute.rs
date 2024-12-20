@@ -109,7 +109,7 @@ fn handle_gas(
     log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
     let gas_cost = used_gas.saturating_mul(gas_price);
-    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(&trx, used_gas)?;
+    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(&trx)?;
     account_storage.transfer_gas_payment(origin, chain_id, gas_cost + priority_fee)?;
 
     Ok(())

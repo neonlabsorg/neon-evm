@@ -18,13 +18,13 @@ const COMPUTE_UNIT_PRICE_TAG: u8 = 0x3;
 // The default compute units limit for Solana transactions.
 const DEFAULT_COMPUTE_UNIT_LIMIT: u32 = 200_000;
 
-// Conversion from "total micro lamports" to lamports per gas unit.
-const CONVERSION_MULTIPLIER: u64 = 1_000_000 / LAMPORTS_PER_SIGNATURE;
+// Conversion from "total micro lamports" to lamports.
+const MICRO_LAMPORTS: u64 = 1_000_000;
 
 /// Handles priority fee:
 /// - No-op for anything but DynamicFee or Scheduled transactions,
 /// - Calculates and logs the priority fee in tokens.
-pub fn handle_priority_fee(txn: &Transaction, gas_amount: U256) -> Result<U256, Error> {
+pub fn handle_priority_fee(txn: &Transaction) -> Result<U256, Error> {
     let (max_fee, max_priority_fee) = match txn.transaction {
         TransactionPayload::DynamicFee(ref payload) => {
             (payload.max_fee_per_gas, payload.max_priority_fee_per_gas)
@@ -35,17 +35,13 @@ pub fn handle_priority_fee(txn: &Transaction, gas_amount: U256) -> Result<U256, 
         _ => return Ok(U256::ZERO),
     };
 
-    let priority_fee_in_tokens = get_priority_fee_in_tokens(max_fee, max_priority_fee, gas_amount)?;
+    let priority_fee_in_tokens = get_priority_fee_in_tokens(max_fee, max_priority_fee)?;
     log_data(&[b"PRIORITYFEE", &priority_fee_in_tokens.to_le_bytes()]);
     return Ok(priority_fee_in_tokens);
 }
 
 /// Returns the amount of "priority fee in tokens" that User have to pay to the Operator.
-pub fn get_priority_fee_in_tokens(
-    max_fee: U256,
-    max_priority_fee: U256,
-    gas_amount: U256,
-) -> Result<U256, Error> {
+pub fn get_priority_fee_in_tokens(max_fee: U256, max_priority_fee: U256) -> Result<U256, Error> {
     if max_priority_fee > max_fee {
         return Err(Error::PriorityFeeError(
             "max_priority_fee_per_gas > max_fee_per_gas".to_string(),
@@ -66,19 +62,20 @@ pub fn get_priority_fee_in_tokens(
 
     let (cu_limit, cu_price) = get_compute_budget_priority_fee()?;
 
-    let priority_fee_per_gas_in_lamports: u64 = cu_price
-        .checked_mul(CONVERSION_MULTIPLIER * cu_limit as u64)
-        .ok_or(Error::PriorityFeeError(
-            "cu_limit * cu_price overflow".to_string(),
-        ))?;
+    let priority_fee_per_gas_in_microlamports: u64 =
+        cu_price
+            .checked_mul(cu_limit as u64)
+            .ok_or(Error::PriorityFeeError(
+                "cu_limit * cu_price overflow".to_string(),
+            ))?;
     let base_fee_per_gas = max_fee - max_priority_fee;
+    let priority_fee_per_gas_in_tokens = base_fee_per_gas
+        * U256::from(priority_fee_per_gas_in_microlamports)
+        / U256::from(MICRO_LAMPORTS);
 
     // Get minimum value of priority_fee_per_gas from what the User sets as max_priority_fee_per_gas
     // and what the operator paid as Compute Budget (as converted to gas tokens).
-    Ok(
-        max_priority_fee.min(base_fee_per_gas * U256::from(priority_fee_per_gas_in_lamports))
-            * gas_amount,
-    )
+    Ok(priority_fee_per_gas_in_tokens.min(max_priority_fee * U256::from(LAMPORTS_PER_SIGNATURE)))
 }
 
 /// Extracts the data about compute units from instructions within the current transaction.

@@ -41,7 +41,7 @@ pub fn process<'a>(
 
     // Handle gas, transaction costs to operator, refund into tree account.
     let gas = U256::from(SCHEDULED_FINISH_COST);
-    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(state.trx(), gas)?;
+    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(state.trx())?;
     let _ = state.consume_gas(gas, priority_fee, accounts_db.try_operator_balance()); // ignore error
 
     let refund = state.materialize_unused_gas()?;

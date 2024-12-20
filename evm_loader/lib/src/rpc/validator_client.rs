@@ -1,4 +1,6 @@
-use crate::{config::APIOptions, types::deactivated_features::get_deactivated_features, Config};
+use crate::{
+    config::APIOptions, types::deactivated_features::get_deactivated_features_at_slot, Config,
+};
 
 use super::{Rpc, SliceConfig};
 use async_trait::async_trait;
@@ -167,6 +169,6 @@ impl Rpc for CloneRpcClient {
     }
 
     async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {
-        get_deactivated_features(self, None).await
+        get_deactivated_features_at_slot(None).await
     }
 }

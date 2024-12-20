@@ -58,7 +58,7 @@ pub fn do_continue<'a>(
     step_count: u64,
     accounts: AccountsDB<'a>,
     mut storage: StateAccount<'a>,
-    mut gasometer: Gasometer,
+    gasometer: Gasometer,
     reset: bool,
 ) -> Result<()> {
     debug_print!("do_continue");
@@ -77,14 +77,7 @@ pub fn do_continue<'a>(
     let mut state_data = storage.read_executor_state();
     if storage.steps_interrupted() > 0 {
         account_storage.apply_state_change(state_data.into_actions())?;
-        let fir = finalize_interrupted(
-            &mut account_storage,
-            &mut storage,
-            &mut gasometer,
-            &state_data,
-        );
-        storage.finalize(account_storage.program_id())?;
-        return fir;
+        return finalize_interrupted(account_storage, storage, gasometer, &state_data);
     }
     let mut evm = storage.read_evm::<EvmBackend, NoopEventListener>();
     let mut backend = ExecutorState::new(&mut account_storage, &mut state_data);

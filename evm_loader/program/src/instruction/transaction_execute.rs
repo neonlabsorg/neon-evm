@@ -6,8 +6,7 @@ use crate::evm::tracing::NoopEventListener;
 use crate::evm::Machine;
 use crate::executor::{ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
-use crate::instruction::instruction_internals::log_return_value;
-use crate::instruction::priority_fee_txn_calculator;
+use crate::instruction::instruction_internals::{handle_gas, log_return_value};
 use crate::types::{boxx::Boxx, Address, Transaction};
 
 pub fn execute(
@@ -48,7 +47,7 @@ pub fn execute(
     account_storage.apply_state_change(apply_state)?;
     account_storage.transfer_treasury_payment()?;
 
-    handle_gas(account_storage, &trx, gasometer, origin)?;
+    handle_gas(&mut account_storage, &trx, gasometer, origin)?;
 
     log_return_value(&exit_reason);
     Ok(())
@@ -84,33 +83,8 @@ pub fn execute_with_solana_call(
     account_storage.increment_revision_for_modified_contracts()?;
     account_storage.transfer_treasury_payment()?;
 
-    handle_gas(account_storage, &trx, gasometer, origin)?;
+    handle_gas(&mut account_storage, &trx, gasometer, origin)?;
 
     log_return_value(&exit_reason);
-    Ok(())
-}
-
-fn handle_gas(
-    mut account_storage: ProgramAccountStorage,
-    trx: &Transaction,
-    mut gasometer: Gasometer,
-    origin: Address,
-) -> Result<()> {
-    let gas_limit = trx.gas_limit();
-    let gas_price = trx.gas_price();
-    let chain_id = trx.chain_id().unwrap_or(crate::config::DEFAULT_CHAIN_ID);
-
-    gasometer.record_operator_expenses(account_storage.operator());
-    let used_gas = gasometer.used_gas();
-    if used_gas > gas_limit {
-        return Err(Error::OutOfGas(gas_limit, used_gas));
-    }
-
-    log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
-
-    let gas_cost = used_gas.saturating_mul(gas_price);
-    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(&trx, used_gas)?;
-    account_storage.transfer_gas_payment(origin, chain_id, gas_cost + priority_fee)?;
-
     Ok(())
 }

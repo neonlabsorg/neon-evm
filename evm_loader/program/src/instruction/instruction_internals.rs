@@ -184,23 +184,17 @@ pub fn finalize<'a, 'b>(
     Ok(())
 }
 
-pub fn finalize_interrupted(
-    account_storage: &mut ProgramAccountStorage<'_>,
-    storage: &mut StateAccount<'_>,
-    gasometer: &mut Gasometer,
+pub fn finalize_interrupted<'a>(
+    mut account_storage: ProgramAccountStorage<'a>,
+    storage: StateAccount<'a>,
+    gasometer: Gasometer,
     state_data: &ExecutorStateData,
 ) -> Result<()> {
     debug_print!("finalize_interrupted");
-    /*
-    let chain_id = storage
-        .trx()
-        .chain_id()
-        .unwrap_or(crate::config::DEFAULT_CHAIN_ID);
-    let gas_limit = storage.trx().gas_limit();
-    let gas_price = storage.trx().gas_price();
-    */
+
     let (exit_reason, steps_executed) = {
-        let mut backend = SyncedExecutorState::new_with_state_data(account_storage, state_data);
+        let mut backend =
+            SyncedExecutorState::new_with_state_data(&mut account_storage, state_data);
         let mut evm = storage.read_evm::<SyncedEvmBackend, NoopEventListener>();
         let interrupted_state = evm.context.interrupted_state.clone().expect(
             "evm.context.interrupted_state should be Some within finalize_interrupted context",
@@ -234,39 +228,21 @@ pub fn finalize_interrupted(
     account_storage.transfer_treasury_payment()?;
 
     handle_gas(
-        account_storage,
+        &mut account_storage,
         &storage.trx(),
         gasometer,
         storage.trx_origin(),
     )?;
 
-    /*
-        account_storage.increment_revision_for_modified_contracts()?;
-        account_storage.transfer_treasury_payment()?;
-
-        gasometer.record_operator_expenses(account_storage.operator());
-        let used_gas = gasometer.used_gas();
-        if used_gas > gas_limit {
-            return Err(Error::OutOfGas(gas_limit, used_gas));
-        }
-        log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
-
-        let gas_cost = used_gas.saturating_mul(gas_price);
-        let priority_fee = priority_fee_txn_calculator::handle_priority_fee(&storage.trx(), used_gas)?;
-        account_storage.transfer_gas_payment(
-            storage.trx_origin(),
-            chain_id,
-            gas_cost + priority_fee,
-        )?;
-    */
+    storage.finalize(account_storage.program_id())?;
     log_return_value(&exit_reason);
     return Ok(());
 }
 
-fn handle_gas(
-    account_storage: &mut ProgramAccountStorage<'_>,
+pub fn handle_gas<'a>(
+    account_storage: &mut ProgramAccountStorage<'a>,
     trx: &Transaction,
-    gasometer: &mut Gasometer,
+    mut gasometer: Gasometer,
     origin: Address,
 ) -> Result<()> {
     let gas_limit = trx.gas_limit();

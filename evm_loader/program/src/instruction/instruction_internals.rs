@@ -185,10 +185,10 @@ pub fn finalize<'a, 'b>(
 }
 
 pub fn finalize_interrupted<'a>(
-    storage: StateAccount<'a>,
+    mut storage: StateAccount<'a>,
     mut accounts: ProgramAccountStorage<'a>,
     gasometer: Gasometer,
-    state_data: &ExecutorStateData,
+    state_data: &mut ExecutorStateData,
 ) -> Result<()> {
     debug_print!("finalize_interrupted");
 
@@ -215,6 +215,7 @@ pub fn finalize_interrupted<'a>(
         if let Ok(return_data) = result {
             let _ = evm.opcode_return_impl(return_data, &mut backend);
             evm.pc += 1;
+            //storage.increment_steps_executed(1)?;
         }
         let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
         (result, steps_executed)
@@ -224,6 +225,11 @@ pub fn finalize_interrupted<'a>(
         &steps_executed.to_le_bytes(), // Iteration steps
         &steps_executed.to_le_bytes(), // Total steps is the same as iteration steps
     ]);
+
+    let (_results, touched_accounts) = state_data.deconstruct();
+    storage.update_touched_accounts(&touched_accounts)?;
+    storage.increment_steps_executed(steps_executed)?;
+
     accounts.increment_revision_for_modified_contracts()?;
     accounts.transfer_treasury_payment()?;
 

@@ -214,8 +214,8 @@ pub fn finalize_interrupted<'a>(
         );
         if let Ok(return_data) = result {
             let _ = evm.opcode_return_impl(return_data, &mut backend);
+            evm.pc += 1;
         }
-        evm.pc += 1;
         let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
         (result, steps_executed)
     };

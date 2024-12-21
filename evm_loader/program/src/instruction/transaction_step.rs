@@ -76,8 +76,7 @@ pub fn do_continue<'a>(
 
     let mut state_data = storage.read_executor_state();
     if storage.steps_interrupted() > 0 {
-        account_storage.apply_state_change(state_data.into_actions())?;
-        return finalize_interrupted(account_storage, storage, gasometer, &state_data);
+        return finalize_interrupted(storage, account_storage, gasometer, &state_data);
     }
     let mut evm = storage.read_evm::<EvmBackend, NoopEventListener>();
     let mut backend = ExecutorState::new(&mut account_storage, &mut state_data);

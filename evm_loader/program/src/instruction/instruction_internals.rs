@@ -185,16 +185,16 @@ pub fn finalize<'a, 'b>(
 }
 
 pub fn finalize_interrupted<'a>(
-    mut account_storage: ProgramAccountStorage<'a>,
     storage: StateAccount<'a>,
+    mut accounts: ProgramAccountStorage<'a>,
     gasometer: Gasometer,
     state_data: &ExecutorStateData,
 ) -> Result<()> {
     debug_print!("finalize_interrupted");
 
+    accounts.apply_state_change(state_data.into_actions())?;
     let (exit_reason, steps_executed) = {
-        let mut backend =
-            SyncedExecutorState::new_with_state_data(&mut account_storage, state_data);
+        let mut backend = SyncedExecutorState::new_with_state_data(&mut accounts, state_data);
         let mut evm = storage.read_evm::<SyncedEvmBackend, NoopEventListener>();
         let interrupted_state = evm.context.interrupted_state.clone().expect(
             "evm.context.interrupted_state should be Some within finalize_interrupted context",
@@ -224,17 +224,17 @@ pub fn finalize_interrupted<'a>(
         &steps_executed.to_le_bytes(), // Iteration steps
         &steps_executed.to_le_bytes(), // Total steps is the same as iteration steps
     ]);
-    account_storage.increment_revision_for_modified_contracts()?;
-    account_storage.transfer_treasury_payment()?;
+    accounts.increment_revision_for_modified_contracts()?;
+    accounts.transfer_treasury_payment()?;
 
     handle_gas(
-        &mut account_storage,
+        &mut accounts,
         &storage.trx(),
         gasometer,
         storage.trx_origin(),
     )?;
 
-    storage.finalize(account_storage.program_id())?;
+    storage.finalize(accounts.program_id())?;
     log_return_value(&exit_reason);
     return Ok(());
 }

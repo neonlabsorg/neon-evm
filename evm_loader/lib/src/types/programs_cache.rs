@@ -133,6 +133,14 @@ pub fn get_programdata_slot_from_account(acc: &Account) -> ClientResult<Option<u
     assert!(bpf_loader_upgradeable::check_id(&acc.owner), "NOT AN ACC");
     match deserialize::<UpgradeableLoaderState>(&acc.data) {
         Ok(UpgradeableLoaderState::ProgramData { slot, .. }) => Ok(Some(slot)),
+        Ok(UpgradeableLoaderState::Program {
+            programdata_address,
+            ..
+        }) => {
+            info!(" programdata_address:{programdata_address}");
+            Ok(Some(0))
+        }
+
         Ok(_) => {
             panic!("Unexpected account type! Only ProgramData type is acceptable   ");
         }

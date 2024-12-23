@@ -6,7 +6,7 @@ use evm_loader::{account::legacy::LegacyEtherData, types::Address};
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account::Account, pubkey::Pubkey};
 
-use crate::{account_storage::account_info, rpc::Rpc, types::BalanceAddress, NeonResult};
+use crate::{account_storage::account_info, types::BalanceAddress, NeonResult};
 
 use serde_with::{serde_as, DisplayFromStr};
 
@@ -88,7 +88,7 @@ fn read_legacy_account(
 }
 
 pub async fn execute(
-    rpc: &(impl Rpc + BuildConfigSimulator),
+    rpc: &impl BuildConfigSimulator,
     program_id: &Pubkey,
     address: &[BalanceAddress],
 ) -> NeonResult<Vec<GetBalanceResponse>> {
@@ -152,7 +152,7 @@ pub async fn execute(
 }
 
 pub async fn execute_with_pubkey(
-    rpc: &(impl Rpc + BuildConfigSimulator),
+    rpc: &impl BuildConfigSimulator,
     program_id: &Pubkey,
     pubkeys: &[Pubkey],
 ) -> NeonResult<Vec<GetBalanceResponse>> {

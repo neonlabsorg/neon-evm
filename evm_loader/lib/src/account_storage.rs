@@ -118,7 +118,7 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     logs_stack: Vec<usize>,
 }
 
-impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
+impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
     pub async fn new(
         rpc: &'rpc T,
         program_id: Pubkey,

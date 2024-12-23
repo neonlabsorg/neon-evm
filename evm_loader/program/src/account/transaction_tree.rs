@@ -6,9 +6,12 @@ use super::{
     AccountHeader, AccountsDB, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION,
     TAG_TRANSACTION_TREE,
 };
-use crate::config::{TREE_ACCOUNT_DESTROY_FEE, TREE_ACCOUNT_TIMEOUT};
+use crate::config::{
+    TREE_ACCOUNT_DESTROY_FEE, TREE_ACCOUNT_FINISH_TRANSACTION_GAS, TREE_ACCOUNT_TIMEOUT,
+};
 use crate::error::{Error, Result};
 use crate::evm::ExitStatus;
+use crate::gasometer::BASE_ITERATIVE_TRANSACTION_COST;
 use crate::types::{Address, Transaction, TransactionPayload};
 use ethnum::U256;
 use solana_program::{
@@ -137,6 +140,11 @@ impl<'a> TransactionTree<'a> {
         rent: &Rent,
         clock: &Clock,
     ) -> Result<Self> {
+        const MIN_BASE_FEE_PER_GAS: U256 = U256::new(1_100_000_000);
+        const MIN_GAS_LIMIT: U256 = U256::new(
+            BASE_ITERATIVE_TRANSACTION_COST as u128 + TREE_ACCOUNT_FINISH_TRANSACTION_GAS as u128,
+        );
+
         // Validate account
         let (pubkey, bump) = Self::find_address(&crate::ID, init.payer, init.chain_id, init.nonce);
         if account.key != &pubkey {
@@ -147,19 +155,18 @@ impl<'a> TransactionTree<'a> {
             return Err(Error::TreeAccountAlreadyExists);
         }
 
-        // Validate init data
-        if init.max_fee_per_gas < 1_000_000_000 {
-            // Require at least 1 to 1 ratio to operator spending
-            // 1 Gwei in gas equals to 1 lamport
-            return Err(Error::TreeAccountInvalidMaxFeePerGas);
+        if (init.max_fee_per_gas - init.max_priority_fee_per_gas) < MIN_BASE_FEE_PER_GAS {
+            // Require at least 1.1 to 1.1 ratio to operator spending
+            // 1.1 GAlan in gas equals to 1.1 lamport
+            return Err(Error::TreeAccountInvalidBaseFeePerGas);
         }
 
         let nodes = init.nodes;
         let mut parent_counts = vec![0_u16; nodes.len()];
 
         for (i, node) in nodes.iter().enumerate() {
-            if node.gas_limit < 25_000 {
-                // Require at least 25_000 gas limit to cover operator spending
+            if node.gas_limit < MIN_GAS_LIMIT {
+                // Require at least 35_000 gas limit to cover operator spending
                 return Err(Error::TreeAccountInvalidGasLimit);
             }
 

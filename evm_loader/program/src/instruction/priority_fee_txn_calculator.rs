@@ -1,3 +1,4 @@
+use crate::config::PAYMENT_TO_TREASURE;
 use crate::debug::log_data;
 use crate::error::Error;
 use crate::gasometer::LAMPORTS_PER_SIGNATURE;
@@ -22,9 +23,53 @@ const DEFAULT_COMPUTE_UNIT_LIMIT: u32 = 200_000;
 const MICRO_LAMPORTS: u64 = 1_000_000;
 
 /// Handles priority fee:
-/// - No-op for anything but DynamicFee or Scheduled transactions,
 /// - Calculates and logs the priority fee in tokens.
 pub fn handle_priority_fee(txn: &Transaction) -> Result<U256, Error> {
+    let priority_fee_in_tokens = calc_priority_fee(txn)?;
+    if priority_fee_in_tokens != U256::ZERO {
+        log_data(&[b"PRIORITYFEE", &priority_fee_in_tokens.to_le_bytes()]);
+    }
+
+    return Ok(priority_fee_in_tokens);
+}
+
+/// Handles priority fee:
+/// - Calculates the priority fee in tokens for iteration
+/// - If there is some module from dividing of total priority fee on total gas used
+/// --- than add this remain, because Ethereum API have two separate values:
+/// ----- effective-gas-price,
+/// ----- gas-used
+/// --- and without rounding, Ethereum clients fail on gas usage calculations
+pub fn finalize_priority_fee(
+    txn: &Transaction,
+    total_gas_used: U256,
+    total_priority_fee_used: U256,
+) -> Result<U256, Error> {
+    let mut priority_fee_in_tokens = calc_priority_fee(txn)?;
+    let total_priority_fee_used = total_priority_fee_used.saturating_add(priority_fee_in_tokens);
+    if total_priority_fee_used == U256::ZERO {
+        return Ok(U256::ZERO);
+    }
+
+    let max_priority_fee_per_gas = txn.max_priority_fee_per_gas().unwrap_or_default();
+    let max_priority_fee = max_priority_fee_per_gas.saturating_mul(total_gas_used);
+
+    let total_priority_fee_rest = max_priority_fee.saturating_sub(total_priority_fee_used);
+    let rem_tokens = total_priority_fee_rest.wrapping_rem(total_gas_used);
+    if rem_tokens != U256::ZERO {
+        priority_fee_in_tokens = priority_fee_in_tokens.saturating_add(rem_tokens);
+    }
+
+    if priority_fee_in_tokens != U256::ZERO {
+        log_data(&[b"PRIORITYFEE", &priority_fee_in_tokens.to_le_bytes()]);
+    }
+
+    return Ok(priority_fee_in_tokens);
+}
+
+/// Returns the amount of "priority fee in tokens" that User have to pay to the Operator.
+/// - No-op for anything but DynamicFee or Scheduled transactions,
+pub fn calc_priority_fee(txn: &Transaction) -> Result<U256, Error> {
     let (max_fee, max_priority_fee) = match txn.transaction {
         TransactionPayload::DynamicFee(ref payload) => {
             (payload.max_fee_per_gas, payload.max_priority_fee_per_gas)
@@ -35,13 +80,6 @@ pub fn handle_priority_fee(txn: &Transaction) -> Result<U256, Error> {
         _ => return Ok(U256::ZERO),
     };
 
-    let priority_fee_in_tokens = get_priority_fee_in_tokens(max_fee, max_priority_fee)?;
-    log_data(&[b"PRIORITYFEE", &priority_fee_in_tokens.to_le_bytes()]);
-    return Ok(priority_fee_in_tokens);
-}
-
-/// Returns the amount of "priority fee in tokens" that User have to pay to the Operator.
-pub fn get_priority_fee_in_tokens(max_fee: U256, max_priority_fee: U256) -> Result<U256, Error> {
     if max_priority_fee > max_fee {
         return Err(Error::PriorityFeeError(
             "max_priority_fee_per_gas > max_fee_per_gas".to_string(),
@@ -62,20 +100,24 @@ pub fn get_priority_fee_in_tokens(max_fee: U256, max_priority_fee: U256) -> Resu
 
     let (cu_limit, cu_price) = get_compute_budget_priority_fee()?;
 
-    let priority_fee_per_gas_in_microlamports: u64 =
+    let priority_gas_in_microlamports: u64 =
         cu_price
             .checked_mul(cu_limit as u64)
             .ok_or(Error::PriorityFeeError(
                 "cu_limit * cu_price overflow".to_string(),
             ))?;
     let base_fee_per_gas = max_fee - max_priority_fee;
-    let priority_fee_per_gas_in_tokens = base_fee_per_gas
-        * U256::from(priority_fee_per_gas_in_microlamports)
-        / U256::from(MICRO_LAMPORTS);
+    let priority_fee_in_tokens = base_fee_per_gas
+        .checked_mul(U256::from(priority_gas_in_microlamports))
+        .and_then(|r| r.checked_div(U256::from(MICRO_LAMPORTS)))
+        .ok_or(Error::PriorityFeeError(
+            "base_fee_per_gas * priority_gas_in_microlamports overflow".to_string(),
+        ))?;
 
     // Get minimum value of priority_fee_per_gas from what the User sets as max_priority_fee_per_gas
     // and what the operator paid as Compute Budget (as converted to gas tokens).
-    Ok(priority_fee_per_gas_in_tokens.min(max_priority_fee * U256::from(LAMPORTS_PER_SIGNATURE)))
+    const MAX_GAS: U256 = U256::new(LAMPORTS_PER_SIGNATURE as u128 + PAYMENT_TO_TREASURE as u128);
+    Ok(priority_fee_in_tokens.min(max_priority_fee.saturating_mul(MAX_GAS)))
 }
 
 /// Extracts the data about compute units from instructions within the current transaction.

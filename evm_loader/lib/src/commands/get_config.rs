@@ -63,6 +63,7 @@ pub trait BuildConfigSimulator: Rpc {
     fn use_cache_for_chains(&self) -> bool;
     async fn get_config(&self, program_id: Pubkey) -> NeonResult<GetConfigResponse> {
         let maybe_slot = self.get_last_deployed_slot(&program_id).await?;
+
         if let Some(slot) = maybe_slot {
             let key = KeyAccountCache {
                 addr: program_id,

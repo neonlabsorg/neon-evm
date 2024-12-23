@@ -110,15 +110,32 @@ async fn programdata_account_cache_add(key: KeyAccountCache, acc: Account) {
     programdata_account_cache_get_instance().await.add(key, acc);
 }
 
-/// in case of Not upgradeable account - return option None  
-pub fn get_programdata_slot_from_account(acc: &Account) -> ClientResult<Option<u64>> {
-    if !bpf_loader_upgradeable::check_id(&acc.owner) {
-        return Ok(None);
-    }
+/// in case of Not upgradeable account - return option None
+pub fn get_program_programdata_address(acc: &Account) -> ClientResult<Option<Pubkey>> {
+    assert!(!bpf_loader_upgradeable::check_id(&acc.owner), "NOT AN ACC");
 
     match deserialize::<UpgradeableLoaderState>(&acc.data) {
+        Ok(UpgradeableLoaderState::Program {
+            programdata_address,
+            ..
+        }) => Ok(Some(programdata_address)),
+        Ok(_) => {
+            panic!("Unexpected account type! Only Program type is acceptable  ");
+        }
+        Err(e) => {
+            eprintln!("Error occurred: {e:?}");
+            panic!("Failed to deserialize account data.");
+        }
+    }
+}
+
+pub fn get_programdata_slot_from_account(acc: &Account) -> ClientResult<Option<u64>> {
+    assert!(bpf_loader_upgradeable::check_id(&acc.owner), "NOT AN ACC");
+    match deserialize::<UpgradeableLoaderState>(&acc.data) {
         Ok(UpgradeableLoaderState::ProgramData { slot, .. }) => Ok(Some(slot)),
-        Ok(_) => Ok(None),
+        Ok(_) => {
+            panic!("Unexpected account type! Only ProgramData type is acceptable   ");
+        }
         Err(e) => {
             eprintln!("Error occurred: {e:?}");
             panic!("Failed to deserialize account data.");

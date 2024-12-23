@@ -10,6 +10,10 @@ pub use validator_client::CloneRpcClient;
 use crate::commands::get_config::{BuildConfigSimulator, ConfigSimulator};
 use crate::{NeonError, NeonResult};
 use async_trait::async_trait;
+
+use crate::types::programs_cache::get_program_programdata_address;
+use crate::types::programs_cache::get_programdata_slot_from_account;
+pub use db_call_client::CallDbClient;
 use enum_dispatch::enum_dispatch;
 use evm_loader::solana_program::bpf_loader_upgradeable::UpgradeableLoaderState;
 pub use solana_account_decoder::UiDataSliceConfig as SliceConfig;
@@ -18,6 +22,7 @@ use solana_client::client_error::{ClientErrorKind, Result as ClientResult};
 use solana_sdk::{
     account::Account, message::Message, native_token::lamports_to_sol, pubkey::Pubkey,
 };
+pub use validator_client::CloneRpcClient;
 
 #[async_trait(?Send)]
 #[enum_dispatch]
@@ -29,14 +34,33 @@ pub trait Rpc {
     ) -> ClientResult<Option<Account>>;
 
     async fn get_last_deployed_slot(&self, program_id: &Pubkey) -> ClientResult<Option<u64>> {
+        let mut slice_len = std::mem::size_of::<UpgradeableLoaderState>();
+        if slice_len < UpgradeableLoaderState::size_of_programdata_metadata() {
+            slice_len = UpgradeableLoaderState::size_of_programdata_metadata();
+        }
+
         let slice = SliceConfig {
             offset: 0,
-            length: UpgradeableLoaderState::size_of_programdata_metadata(),
+            length: slice_len,
         };
+
         let result = self.get_account_slice(program_id, Some(slice)).await;
+        // bpfv2 and request account from link
+
         if let Ok(Some(acc)) = result {
-            let slot = get_programdata_slot_from_account(&acc)?;
-            return Ok(slot);
+            let slot = if acc.executable {
+                get_programdata_slot_from_account(&acc)
+                    .expect("error")
+                    .expect("No slot info")
+            } else {
+                let pd_addr = get_program_programdata_address(&acc)?.expect("no program info");
+                let rz = self
+                    .get_account_slice(&pd_addr, Some(slice))
+                    .await?
+                    .expect("No account ");
+                get_programdata_slot_from_account(&rz)?.expect("No slice ")
+            };
+            return Ok(Some(slot));
         }
         Err(ClientErrorKind::Custom("Not account on slot ".to_string()).into())
     }

@@ -420,7 +420,7 @@ impl<'a> StateAccount<'a> {
         self.trx().gas_limit().saturating_sub(self.gas_used())
     }
 
-    fn priority_fee_in_tokens_available(&self) -> Result<U256> {
+    pub fn priority_fee_in_tokens_available(&self) -> Result<U256> {
         Ok(self
             .trx()
             .priority_fee_limit_in_tokens()?

@@ -67,7 +67,13 @@ fn execute<'a>(
         &total_used_gas.to_le_bytes(),
     ]);
 
-    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(storage.trx())?;
+    let trx = storage.trx();
+    let priority_fee = if !trx.is_scheduled_tx() {
+        let priority_fee_rest = storage.priority_fee_in_tokens_available()?;
+        priority_fee_txn_calculator::finalize_priority_fee(trx, total_used_gas, priority_fee_rest)?
+    } else {
+        priority_fee_txn_calculator::handle_priority_fee(trx)?
+    };
     let _ = storage.consume_gas(used_gas, priority_fee, accounts.try_operator_balance()); // ignore error
 
     let origin = storage.trx_origin();

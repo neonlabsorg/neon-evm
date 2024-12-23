@@ -150,7 +150,13 @@ pub fn finalize<'a, 'b>(
     ]);
 
     // Calculate priority fee for the current iteration.
-    let priority_fee_in_tokens = priority_fee_txn_calculator::handle_priority_fee(storage.trx())?;
+    let trx = storage.trx();
+    let priority_fee_in_tokens = if status.is_some() && !trx.is_scheduled_tx() {
+        let priority_fee_rest = storage.priority_fee_in_tokens_available()?;
+        priority_fee_txn_calculator::finalize_priority_fee(trx, total_used_gas, priority_fee_rest)?
+    } else {
+        priority_fee_txn_calculator::handle_priority_fee(trx)?
+    };
 
     storage.consume_gas(
         used_gas,
@@ -159,15 +165,18 @@ pub fn finalize<'a, 'b>(
     )?;
 
     if let Some(status) = status {
-        log_return_value(&status);
-
         let trx = storage.trx();
         // refund gas for scheduled transaction is happening in transaction_finish.
         if !trx.is_scheduled_tx() {
+            log_return_value(&status);
+
             let mut origin = accounts.origin(storage.trx_origin(), trx)?;
             origin.increment_revision(accounts.rent(), accounts.db())?;
 
             storage.refund_unused_gas(&mut origin)?;
+        } else {
+            let code = get_and_log_return_code(&status);
+            log_data(&[b"SKDRETURN", &[code]]);
         }
 
         storage.finalize(accounts.program_id())?;
@@ -177,18 +186,28 @@ pub fn finalize<'a, 'b>(
 }
 
 pub fn log_return_value(status: &ExitStatus) {
-    let code: u8 = match status {
+    let code = get_and_log_return_code(status);
+    log_data(&[b"RETURN", &[code]]);
+}
+
+pub fn get_return_code(status: &ExitStatus) -> u8 {
+    match status {
         ExitStatus::Stop => 0x11,
         ExitStatus::Return(_) => 0x12,
         ExitStatus::Suicide => 0x13,
         ExitStatus::Revert(_) => 0xd0,
-        ExitStatus::StepLimit | ExitStatus::Cancel => unreachable!(),
-    };
+        ExitStatus::Cancel => 0xff,
+        ExitStatus::StepLimit => unreachable!(),
+    }
+}
+
+pub fn get_and_log_return_code(status: &ExitStatus) -> u8 {
+    let code = get_return_code(status);
 
     log_msg!("exit_status={:#04X}", code); // Tests compatibility
     if let ExitStatus::Revert(msg) = status {
         crate::error::print_revert_message(msg);
     }
 
-    log_data(&[b"RETURN", &[code]]);
+    return code;
 }

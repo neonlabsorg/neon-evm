@@ -7,6 +7,7 @@ use crate::error::{Error, Result};
 use crate::evm::ExitStatus;
 use crate::executor::ExecutorStateData;
 use crate::gasometer::SCHEDULED_FINISH_COST;
+use crate::instruction::instruction_internals::get_return_code;
 use crate::instruction::priority_fee_txn_calculator;
 use crate::types::Transaction;
 use ethnum::U256;
@@ -40,9 +41,19 @@ pub fn process<'a>(
     let (index, exit_status) = validate(&mut executor_state, &state, trx, &transaction_tree)?;
 
     // Handle gas, transaction costs to operator, refund into tree account.
-    let gas = U256::from(SCHEDULED_FINISH_COST);
-    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(state.trx())?;
-    let _ = state.consume_gas(gas, priority_fee, accounts_db.try_operator_balance()); // ignore error
+    let used_gas = U256::from(SCHEDULED_FINISH_COST);
+    let total_used_gas = state.gas_used();
+    log_data(&[
+        b"GAS",
+        &used_gas.to_le_bytes(),
+        &total_used_gas.to_le_bytes(),
+    ]);
+
+    let priority_fee_rest = state.priority_fee_in_tokens_available()?;
+    let priority_fee =
+        priority_fee_txn_calculator::finalize_priority_fee(trx, total_used_gas, priority_fee_rest)?;
+
+    let _ = state.consume_gas(used_gas, priority_fee, accounts_db.try_operator_balance()); // ignore error
 
     let refund = state.materialize_unused_gas()?;
     transaction_tree.mint(refund)?;
@@ -50,6 +61,9 @@ pub fn process<'a>(
     // Finalize.
     transaction_tree.end_transaction(index, exit_status)?;
     state.finish_scheduled_tx(program_id)?;
+
+    let code = get_return_code(exit_status);
+    log_data(&[b"RETURN", &[code]]);
 
     Ok(())
 }

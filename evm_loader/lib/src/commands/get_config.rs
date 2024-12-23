@@ -62,6 +62,16 @@ pub enum ConfigSimulator<'r> {
 pub trait BuildConfigSimulator: Rpc {
     fn use_cache_for_chains(&self) -> bool;
     async fn get_config(&self, program_id: Pubkey) -> NeonResult<GetConfigResponse> {
+        let key_default = KeyAccountCache {
+            addr: program_id,
+            slot: 0,
+        };
+
+        let maybe_account = program_config_cache_get(&key_default).await;
+        if let Some(account) = maybe_account {
+            return Ok(account);
+        }
+
         let maybe_slot = self.get_last_deployed_slot(&program_id).await?;
 
         if let Some(slot) = maybe_slot {
@@ -75,6 +85,7 @@ pub trait BuildConfigSimulator: Rpc {
                 return Ok(rz.unwrap());
             };
         }
+
         let mut simulator = self.build_config_simulator(program_id).await?;
 
         let (version, revision) = simulator.get_version().await?;

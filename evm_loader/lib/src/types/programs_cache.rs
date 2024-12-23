@@ -28,7 +28,6 @@ pub struct KeyAccountCache {
 }
 impl KeyAccountCache {
     #[must_use]
-
     pub const fn new(addr: &Pubkey, slot: u64) -> Self {
         Self { addr: *addr, slot }
     }
@@ -145,7 +144,7 @@ pub fn get_programdata_slot_from_account(acc: &Account) -> ClientResult<Option<u
         }
 
         Ok(_) => {
-            panic!("Unexpected account type! Only ProgramData type is acceptable   ");
+            panic!("Unexpected account type!  ProgramData and data type is acceptable   ");
         }
         Err(e) => {
             eprintln!("Error occurred: {e:?}");

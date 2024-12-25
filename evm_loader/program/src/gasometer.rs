@@ -1,7 +1,8 @@
 use std::convert::TryInto;
 
 use crate::account::Operator;
-use crate::{config::HOLDER_MSG_SIZE, types::Transaction};
+use crate::config::{HOLDER_MSG_SIZE, TREE_ACCOUNT_FINISH_TRANSACTION_GAS};
+use crate::types::Transaction;
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
 use solana_program::program_error::ProgramError;
@@ -11,7 +12,7 @@ pub const LAMPORTS_PER_SIGNATURE: u64 = 5000;
 const WRITE_TO_HOLDER_TRX_COST: u64 = LAMPORTS_PER_SIGNATURE;
 pub const CANCEL_TRX_COST: u64 = LAMPORTS_PER_SIGNATURE;
 pub const LAST_ITERATION_COST: u64 = LAMPORTS_PER_SIGNATURE;
-pub const SCHEDULED_FINISH_COST: u64 = LAMPORTS_PER_SIGNATURE;
+pub const BASE_ITERATIVE_TRANSACTION_COST: u64 = 25_000; // 10'000 (start) + 10'000 (exec) + 5000 (finalization)
 
 pub struct Gasometer {
     paid_gas: U256,
@@ -76,5 +77,12 @@ impl Gasometer {
         let cost = (extend_count + 3) as u64 * LAMPORTS_PER_SIGNATURE;
 
         self.gas = self.gas.saturating_add(cost);
+    }
+
+    pub fn record_scheduled_transaction_finish(&mut self) {
+        // real gas usage happens in finish instruction
+        //  here we just reserve the gas for finish instruction
+        self.gas = self.gas.saturating_add(TREE_ACCOUNT_FINISH_TRANSACTION_GAS);
+        self.refund_lamports(TREE_ACCOUNT_FINISH_TRANSACTION_GAS);
     }
 }

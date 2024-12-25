@@ -9,7 +9,7 @@ pub fn do_scheduled_start<'a>(
     accounts: AccountsDB<'a>,
     mut storage: StateAccount<'a>,
     mut transaction_tree: TransactionTree<'a>,
-    gasometer: Gasometer,
+    mut gasometer: Gasometer,
 ) -> Result<()> {
     debug_print!("do_scheduled_start");
 
@@ -36,6 +36,9 @@ pub fn do_scheduled_start<'a>(
     let gas_limit_in_tokens = storage.trx().gas_limit_in_tokens()?;
     let max_priority_fee_in_tokens = storage.trx().priority_fee_limit_in_tokens()?;
     transaction_tree.burn(gas_limit_in_tokens + max_priority_fee_in_tokens)?;
+
+    // record gas for the future finish
+    gasometer.record_scheduled_transaction_finish();
 
     allocate_evm(&mut account_storage, &mut storage)?;
     let mut state_data = storage.read_executor_state();

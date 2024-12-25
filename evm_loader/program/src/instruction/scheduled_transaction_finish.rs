@@ -2,12 +2,11 @@ use crate::account::{
     AccountsDB, Operator, OperatorBalanceAccount, OperatorBalanceValidator, StateAccount,
     TransactionTree,
 };
+use crate::config::TREE_ACCOUNT_FINISH_TRANSACTION_GAS;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::evm::ExitStatus;
 use crate::executor::ExecutorStateData;
-use crate::gasometer::SCHEDULED_FINISH_COST;
-use crate::instruction::priority_fee_txn_calculator;
 use crate::types::Transaction;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
@@ -22,7 +21,7 @@ pub fn process<'a>(
     let storage_info = accounts[0].clone();
     let mut transaction_tree = TransactionTree::from_account(&program_id, accounts[1].clone())?;
     let operator = Operator::from_account(&accounts[2])?;
-    let operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
+    let mut operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
 
     let accounts_db = AccountsDB::new(&[], operator, operator_balance.clone(), None, None);
 
@@ -40,9 +39,11 @@ pub fn process<'a>(
     let (index, exit_status) = validate(&mut executor_state, &state, trx, &transaction_tree)?;
 
     // Handle gas, transaction costs to operator, refund into tree account.
-    let gas = U256::from(SCHEDULED_FINISH_COST);
-    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(state.trx())?;
-    let _ = state.consume_gas(gas, priority_fee, accounts_db.try_operator_balance()); // ignore error
+    const GAS: U256 = U256::new(TREE_ACCOUNT_FINISH_TRANSACTION_GAS as u128);
+    if let Some(operator_balance) = &mut operator_balance {
+        // don't burn tokens in tree, because it was already reserved at the start
+        operator_balance.mint(GAS)?;
+    }
 
     let refund = state.materialize_unused_gas()?;
     transaction_tree.mint(refund)?;

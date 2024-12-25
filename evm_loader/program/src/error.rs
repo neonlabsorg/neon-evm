@@ -254,8 +254,8 @@ pub enum Error {
     #[error("Transaction Tree - transaction invalid status")]
     TreeAccountTxInvalidStatus,
 
-    #[error("Transaction Tree - transaction requires at least 1 gwei for gas price")]
-    TreeAccountInvalidMaxFeePerGas,
+    #[error("Transaction Tree - transaction requires at least 1.1 GAlan for gas price")]
+    TreeAccountInvalidBaseFeePerGas,
 
     #[error("Transaction Tree - transaction requires at least 25'000 gas limit")]
     TreeAccountInvalidGasLimit,

@@ -150,7 +150,17 @@ pub fn finalize<'a, 'b>(
     ]);
 
     // Calculate priority fee for the current iteration.
-    let priority_fee_in_tokens = priority_fee_txn_calculator::handle_priority_fee(storage.trx())?;
+    let trx = storage.trx();
+    let priority_fee_in_tokens = if status.is_some() {
+        let total_priority_fee_used = storage.priority_fee_in_tokens_used();
+        priority_fee_txn_calculator::finalize_priority_fee(
+            trx,
+            total_used_gas,
+            total_priority_fee_used,
+        )?
+    } else {
+        priority_fee_txn_calculator::handle_priority_fee(trx)?
+    };
 
     storage.consume_gas(
         used_gas,

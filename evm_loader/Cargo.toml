@@ -12,19 +12,23 @@ members = [
 ]
 
 [workspace.dependencies]
-solana-clap-utils = "=1.18.18"
-solana-cli = "=1.18.18"
-solana-cli-config = "=1.18.18"
-solana-client = "=1.18.18"
-solana-account-decoder = "=1.18.18"
-solana-program = { version = "=1.18.18", default-features = false }
-solana-sdk = "=1.18.18"
-solana-program-runtime = "=1.18.18"
-solana-runtime = { version = "=1.18.18", features = ["dev-context-only-utils"] }
-solana-accounts-db = "=1.18.18"
-solana-bpf-loader-program = "=1.18.18"
-solana-loader-v4-program = "=1.18.18"
-solana-transaction-status = "=1.18.18"
+solana-clap-utils = "=2.0.15"
+solana-cli = "=2.0.15"
+solana-cli-config = "=2.0.15"
+solana-client = "=2.0.15"
+solana-account-decoder = "=2.0.15"
+solana-program = { version = "=2.0.15", default-features = false }
+solana-sdk = "=2.0.15"
+solana-program-runtime = "=2.0.15"
+solana-runtime = { version = "=2.0.15", features = ["dev-context-only-utils"] }
+solana-accounts-db = { version = "=2.0.15", default-features = false }
+solana-bpf-loader-program = "=2.0.15"
+solana-loader-v4-program = "=2.0.15"
+solana-transaction-status = "=2.0.15"
+solana-compute-budget = "=2.0.15"
+solana-svm = "=2.0.15"
+spl-associated-token-account = { version = "5.0.1", default-features = false, features = ["no-entrypoint"] }
+ethnum = { version = "1.5.0", default-features = false, features = ["serde"] }
 
 [profile.test]
 debug = true

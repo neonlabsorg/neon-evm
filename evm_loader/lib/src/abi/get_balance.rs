@@ -2,12 +2,11 @@ use super::params_to_neon_error;
 use crate::commands::get_balance::{self, GetBalanceResponse};
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::config::APIOptions;
-use crate::rpc::Rpc;
 use crate::types::GetBalanceWithPubkeyRequest;
 use crate::{types::GetBalanceRequest, NeonResult};
 
 pub async fn execute(
-    rpc: &(impl Rpc + BuildConfigSimulator),
+    rpc: &impl BuildConfigSimulator,
     config: &APIOptions,
     params: &str,
 ) -> NeonResult<Vec<GetBalanceResponse>> {
@@ -18,7 +17,7 @@ pub async fn execute(
 }
 
 pub async fn execute_with_pubkey(
-    rpc: &(impl Rpc + BuildConfigSimulator),
+    rpc: &impl BuildConfigSimulator,
     config: &APIOptions,
     params: &str,
 ) -> NeonResult<Vec<GetBalanceResponse>> {

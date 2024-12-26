@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -10,20 +10,18 @@ use evm_loader::solana_program::loader_v4;
 use evm_loader::solana_program::loader_v4::{LoaderV4State, LoaderV4Status};
 use evm_loader::solana_program::message::SanitizedMessage;
 use log::debug;
-use solana_accounts_db::transaction_results::inner_instructions_list_from_instruction_trace;
 use solana_bpf_loader_program::syscalls::create_program_runtime_environment_v1;
+use solana_compute_budget::compute_budget::ComputeBudget;
 use solana_loader_v4_program::create_program_runtime_environment_v2;
-use solana_program_runtime::compute_budget::ComputeBudget;
+use solana_program_runtime::invoke_context::{EnvironmentConfig, InvokeContext};
+use solana_program_runtime::loaded_programs::{LoadProgramMetrics, ProgramRuntimeEnvironments};
 use solana_program_runtime::loaded_programs::{
-    LoadProgramMetrics, LoadedProgram, LoadedProgramType, LoadedProgramsForTxBatch,
-    ProgramRuntimeEnvironments,
+    ProgramCacheEntry, ProgramCacheEntryOwner, ProgramCacheEntryType, ProgramCacheForTxBatch,
 };
 use solana_program_runtime::log_collector::LogCollector;
-use solana_program_runtime::message_processor::MessageProcessor;
 use solana_program_runtime::sysvar_cache::SysvarCache;
 use solana_program_runtime::timings::ExecuteTimings;
-use solana_runtime::accounts::construct_instructions_account;
-use solana_runtime::builtins::BUILTINS;
+use solana_runtime::bank::builtins::BUILTINS;
 use solana_runtime::{bank::TransactionSimulationResult, runtime_config::RuntimeConfig};
 use solana_sdk::account::{
     create_account_shared_data_with_fields, AccountSharedData, ReadableAccount,
@@ -35,8 +33,14 @@ use solana_sdk::address_lookup_table::state::AddressLookupTable;
 use solana_sdk::clock::Clock;
 use solana_sdk::feature_set::FeatureSet;
 use solana_sdk::fee_calculator::DEFAULT_TARGET_LAMPORTS_PER_SIGNATURE;
+use solana_sdk::inner_instruction::{InnerInstruction, InnerInstructionsList};
+use solana_sdk::instruction::{CompiledInstruction, TRANSACTION_LEVEL_STACK_HEIGHT};
 use solana_sdk::message::v0::{LoadedAddresses, MessageAddressTableLookup};
 use solana_sdk::message::{AddressLoader, AddressLoaderError};
+use solana_sdk::sysvar;
+use solana_sdk::sysvar::instructions::construct_instructions_data;
+use solana_svm::message_processor::MessageProcessor;
+
 use solana_sdk::rent::Rent;
 use solana_sdk::transaction::TransactionError;
 use solana_sdk::transaction_context::{ExecutionRecord, IndexOfAccount, TransactionContext};
@@ -89,8 +93,19 @@ impl SolanaSimulator {
 
         let mut sysvar_cache = SysvarCache::default();
 
-        sysvar_cache.set_rent(Rent::default());
-        sysvar_cache.set_clock(Clock::default());
+        sysvar_cache.fill_missing_entries(|pubkey, setter| match *pubkey {
+            sysvar::clock::ID => {
+                if let Ok(mut data) = bincode::serialize(&Clock::default()) {
+                    setter(data.as_mut());
+                }
+            }
+            sysvar::rent::ID => {
+                if let Ok(mut data) = bincode::serialize(&Rent::default()) {
+                    setter(data.as_mut());
+                }
+            }
+            _ => {}
+        });
 
         if sync_state == SyncState::Yes {
             utils::sync_sysvar_accounts(rpc, &mut sysvar_cache).await?;
@@ -176,9 +191,15 @@ impl SolanaSimulator {
         self.accounts_db.insert(S::id(), account);
     }
 
-    pub fn set_clock(&mut self, clock: Clock) {
-        self.replace_sysvar_account(&clock);
-        self.sysvar_cache.set_clock(clock);
+    pub fn set_clock(&mut self, clock: &Clock) {
+        self.replace_sysvar_account(clock);
+        self.sysvar_cache.fill_missing_entries(|pubkey, setter| {
+            if *pubkey == sysvar::clock::ID {
+                if let Ok(mut data) = bincode::serialize(clock) {
+                    setter(data.as_mut());
+                }
+            }
+        });
     }
 
     pub fn set_multiple_accounts(&mut self, accounts: &[(&Pubkey, &Account)]) {
@@ -210,7 +231,7 @@ impl SolanaSimulator {
                 tx.message.hash()
             };
 
-            SanitizedTransaction::try_create(tx, message_hash, None, self)
+            SanitizedTransaction::try_create(tx, message_hash, None, self, &HashSet::default())
         }?;
 
         if verify {
@@ -246,42 +267,44 @@ impl SolanaSimulator {
 
         let mut transaction_context = TransactionContext::new(
             transaction_accounts,
-            *rent,
-            compute_budget.max_invoke_stack_height,
+            (*rent).clone(),
+            compute_budget.max_instruction_stack_depth,
             compute_budget.max_instruction_trace_length,
         );
 
-        let loaded_programs = self.load_programs(tx, &compute_budget, &clock);
-
-        let mut modified_programs = LoadedProgramsForTxBatch::new(
-            clock.slot,
-            loaded_programs.environments.clone(),
-            loaded_programs.upcoming_environments.clone(),
-            loaded_programs.latest_root_epoch,
-        );
+        let mut loaded_programs = self.load_programs(tx, &compute_budget, &clock);
 
         let log_collector =
             LogCollector::new_ref_with_limit(self.runtime_config.log_messages_bytes_limit);
 
         let mut units_consumed = 0u64;
 
+        let environment_config = EnvironmentConfig::new(
+            blockhash,
+            None, // looks like not used
+            None, // looks like not used
+            Arc::clone(&self.feature_set),
+            DEFAULT_TARGET_LAMPORTS_PER_SIGNATURE / 2,
+            &self.sysvar_cache,
+        );
+
+        let mut invoke_context = InvokeContext::new(
+            &mut transaction_context,
+            &mut loaded_programs,
+            environment_config,
+            Some(Rc::clone(&log_collector)),
+            compute_budget,
+        );
+
         let mut status = MessageProcessor::process_message(
             tx.message(),
             &program_indices,
-            &mut transaction_context,
-            Some(Rc::clone(&log_collector)),
-            &loaded_programs,
-            &mut modified_programs,
-            Arc::clone(&self.feature_set),
-            compute_budget,
+            &mut invoke_context,
             &mut ExecuteTimings::default(),
-            &self.sysvar_cache,
-            blockhash,
-            DEFAULT_TARGET_LAMPORTS_PER_SIGNATURE / 2,
             &mut units_consumed,
         );
 
-        let inner_instructions = Some(inner_instructions_list_from_instruction_trace(
+        let inner_instructions = Some(Self::inner_instructions_list_from_instruction_trace(
             &transaction_context,
         ));
 
@@ -300,10 +323,7 @@ impl SolanaSimulator {
             status = Err(TransactionError::UnbalancedTransaction);
         }
 
-        let logs = Rc::try_unwrap(log_collector)
-            .map(|log_collector| log_collector.into_inner().into_messages())
-            .ok()
-            .unwrap();
+        let logs = log_collector.borrow().messages.clone();
 
         let return_data = if return_data.data.is_empty() {
             None
@@ -329,6 +349,64 @@ impl SolanaSimulator {
             return_data,
             inner_instructions,
         })
+    }
+
+    /// Extract the `InnerInstructionsList` from a `TransactionContext`
+    fn inner_instructions_list_from_instruction_trace(
+        transaction_context: &TransactionContext,
+    ) -> InnerInstructionsList {
+        debug_assert!(transaction_context
+            .get_instruction_context_at_index_in_trace(0)
+            .map(|instruction_context| instruction_context.get_stack_height()
+                == TRANSACTION_LEVEL_STACK_HEIGHT)
+            .unwrap_or(true));
+        let mut outer_instructions = Vec::new();
+        for index_in_trace in 0..transaction_context.get_instruction_trace_length() {
+            if let Ok(instruction_context) =
+                transaction_context.get_instruction_context_at_index_in_trace(index_in_trace)
+            {
+                let stack_height = instruction_context.get_stack_height();
+                if stack_height == TRANSACTION_LEVEL_STACK_HEIGHT {
+                    outer_instructions.push(Vec::new());
+                } else if let Some(inner_instructions) = outer_instructions.last_mut() {
+                    let stack_height = u8::try_from(stack_height).unwrap_or(u8::MAX);
+                    let instruction = CompiledInstruction::new_from_raw_parts(
+                        u8::try_from(
+                            instruction_context
+                                .get_index_of_program_account_in_transaction(
+                                    instruction_context
+                                        .get_number_of_program_accounts()
+                                        .saturating_sub(1),
+                                )
+                                .unwrap_or_default(),
+                        )
+                        .unwrap_or(u8::MAX),
+                        instruction_context.get_instruction_data().to_vec(),
+                        (0..instruction_context.get_number_of_instruction_accounts())
+                            .map(|instruction_account_index| {
+                                u8::try_from(
+                                    instruction_context
+                                        .get_index_of_instruction_account_in_transaction(
+                                            instruction_account_index,
+                                        )
+                                        .unwrap_or_default(),
+                                )
+                                .unwrap_or(u8::MAX)
+                            })
+                            .collect(),
+                    );
+                    inner_instructions.push(InnerInstruction {
+                        instruction,
+                        stack_height,
+                    });
+                } else {
+                    debug_assert!(false);
+                }
+            } else {
+                debug_assert!(false);
+            }
+        }
+        outer_instructions
     }
 
     #[allow(clippy::cast_possible_truncation)]
@@ -387,7 +465,7 @@ impl SolanaSimulator {
         tx: &SanitizedTransaction,
         compute_budget: &ComputeBudget,
         clock: &Arc<Clock>,
-    ) -> LoadedProgramsForTxBatch {
+    ) -> ProgramCacheForTxBatch {
         let program_runtime_environments = ProgramRuntimeEnvironments {
             program_runtime_v1: Arc::new(
                 create_program_runtime_environment_v1(
@@ -404,7 +482,7 @@ impl SolanaSimulator {
             )),
         };
 
-        let mut loaded_programs = LoadedProgramsForTxBatch::new(
+        let mut loaded_programs = ProgramCacheForTxBatch::new(
             clock.slot,
             program_runtime_environments.clone(),
             None,
@@ -421,16 +499,19 @@ impl SolanaSimulator {
                     };
                     let loaded_program = match self.load_program_accounts(account) {
                         ProgramAccountLoadResult::InvalidAccountData => {
-                            LoadedProgram::new_tombstone(0, LoadedProgramType::Closed)
+                            ProgramCacheEntry::new_tombstone(
+                                0,
+                                ProgramCacheEntryOwner::NativeLoader,
+                                ProgramCacheEntryType::Closed,
+                            )
                         }
 
                         ProgramAccountLoadResult::ProgramOfLoaderV1orV2(program_account) => {
-                            LoadedProgram::new(
+                            ProgramCacheEntry::new(
                                 program_account.owner(),
                                 program_runtime_environments.program_runtime_v1.clone(),
                                 0,
                                 0,
-                                None,
                                 program_account.data(),
                                 program_account.data().len(),
                                 &mut load_program_metrics,
@@ -447,12 +528,11 @@ impl SolanaSimulator {
                                 .data()
                                 .get(UpgradeableLoaderState::size_of_programdata_metadata()..)
                                 .unwrap();
-                            LoadedProgram::new(
+                            ProgramCacheEntry::new(
                                 program_account.owner(),
                                 program_runtime_environments.program_runtime_v1.clone(),
                                 0,
                                 0,
-                                None,
                                 programdata,
                                 program_account
                                     .data()
@@ -468,12 +548,11 @@ impl SolanaSimulator {
                                 .data()
                                 .get(LoaderV4State::program_data_offset()..)
                                 .unwrap();
-                            LoadedProgram::new(
+                            ProgramCacheEntry::new(
                                 program_account.owner(),
                                 program_runtime_environments.program_runtime_v2.clone(),
                                 0,
                                 0,
-                                None,
                                 elf_bytes,
                                 program_account.data().len(),
                                 &mut load_program_metrics,
@@ -488,7 +567,7 @@ impl SolanaSimulator {
 
         for builtin in BUILTINS {
             // create_loadable_account_with_fields
-            let program = LoadedProgram::new_builtin(0, builtin.name.len(), builtin.entrypoint);
+            let program = ProgramCacheEntry::new_builtin(0, builtin.name.len(), builtin.entrypoint);
             loaded_programs.replenish(builtin.program_id, Arc::new(program));
         }
 
@@ -575,46 +654,67 @@ impl AddressLoader for &SolanaSimulator {
         self,
         lookups: &[MessageAddressTableLookup],
     ) -> Result<LoadedAddresses, AddressLoaderError> {
-        let loaded_addresses = lookups
+        lookups
             .iter()
             .map(|address_table_lookup| {
                 let table_account = self
                     .get_shared_account(&address_table_lookup.account_key)
-                    .ok_or(AddressLookupError::LookupTableAccountNotFound)?;
+                    .ok_or(AddressLoaderError::LookupTableAccountNotFound)?;
 
                 if table_account.owner() != &address_lookup_table::program::id() {
-                    return Err(AddressLookupError::InvalidAccountOwner);
+                    return Err(AddressLoaderError::InvalidAccountOwner);
                 }
 
                 let current_slot = self
                     .slot()
-                    .map_err(|_| AddressLookupError::LookupTableAccountNotFound)?;
+                    .map_err(|_| AddressLoaderError::LookupTableAccountNotFound)?;
 
                 let slot_hashes = self
                     .sysvar_cache
                     .get_slot_hashes()
-                    .map_err(|_| AddressLookupError::LookupTableAccountNotFound)?;
+                    .map_err(|_| AddressLoaderError::LookupTableAccountNotFound)?;
 
                 let lookup_table = AddressLookupTable::deserialize(table_account.data())
-                    .map_err(|_| AddressLookupError::InvalidAccountData)?;
+                    .map_err(|_| AddressLoaderError::InvalidAccountData)?;
 
                 Ok(LoadedAddresses {
-                    writable: lookup_table.lookup(
-                        current_slot,
-                        &address_table_lookup.writable_indexes,
-                        &slot_hashes,
-                    )?,
-                    readonly: lookup_table.lookup(
-                        current_slot,
-                        &address_table_lookup.readonly_indexes,
-                        &slot_hashes,
-                    )?,
+                    writable: lookup_table
+                        .lookup(
+                            current_slot,
+                            &address_table_lookup.writable_indexes,
+                            &slot_hashes,
+                        )
+                        .map_err(|err| map_address_lookup_to_loader_error(&err))?,
+                    readonly: lookup_table
+                        .lookup(
+                            current_slot,
+                            &address_table_lookup.readonly_indexes,
+                            &slot_hashes,
+                        )
+                        .map_err(|err| map_address_lookup_to_loader_error(&err))?,
                 })
             })
-            .collect::<Result<_, AddressLookupError>>()?;
-
-        Ok(loaded_addresses)
+            .collect::<Result<_, AddressLoaderError>>()
     }
+}
+
+const fn map_address_lookup_to_loader_error(err: &AddressLookupError) -> AddressLoaderError {
+    match err {
+        AddressLookupError::LookupTableAccountNotFound => {
+            AddressLoaderError::LookupTableAccountNotFound
+        }
+        AddressLookupError::InvalidAccountOwner => AddressLoaderError::InvalidAccountOwner,
+        AddressLookupError::InvalidAccountData => AddressLoaderError::InvalidAccountData,
+        AddressLookupError::InvalidLookupIndex => AddressLoaderError::InvalidLookupIndex,
+    }
+}
+
+fn construct_instructions_account(message: &SanitizedMessage) -> AccountSharedData {
+    AccountSharedData::from(Account {
+        data: construct_instructions_data(&message.decompile_instructions()),
+        owner: sysvar::id(),
+        ..Account::default()
+    })
 }
 
 #[cfg(test)]

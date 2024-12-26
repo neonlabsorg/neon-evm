@@ -66,26 +66,9 @@ where
 
 type ThreadSaveProgramDataCache = ThreadSaveCache<Account>;
 type ThreadSaveConfigCache = ThreadSaveCache<GetConfigResponse>;
-type ThreadSaveTestCache = ThreadSaveCache<String>;
 
 static ACCOUNT_CACHE_TABLE: OnceCell<ThreadSaveProgramDataCache> = OnceCell::const_new();
 static CONFIG_CACHE_TABLE: OnceCell<ThreadSaveConfigCache> = OnceCell::const_new();
-#[allow(dead_code)]
-static TEST_CACHE_TABLE: OnceCell<ThreadSaveTestCache> = OnceCell::const_new();
-#[allow(dead_code)]
-async fn programdata_test_cache_get_instance() -> &'static ThreadSaveTestCache {
-    TEST_CACHE_TABLE
-        .get_or_init(|| async { ThreadSaveTestCache::new() })
-        .await
-}
-#[allow(dead_code)]
-async fn programdata_test_cache_get(key: &KeyAccountCache) -> Option<String> {
-    programdata_test_cache_get_instance().await.get(key)
-}
-#[allow(dead_code)]
-async fn programdata_test_cache_add(key: KeyAccountCache, acc: String) {
-    programdata_test_cache_get_instance().await.add(key, acc);
-}
 
 pub async fn cut_programdata_from_acc(account: &mut Account, data_slice: SliceConfig) {
     if data_slice.offset != 0 {
@@ -367,23 +350,6 @@ mod tests {
                 addr: Pubkey::new_unique(),
             })
             .is_none());
-    }
-
-    #[tokio::test]
-    async fn test_add_and_get_value() {
-        let key = KeyAccountCache {
-            slot: 0,
-            addr: Pubkey::new_unique(),
-        };
-        let value = "test_value".to_string();
-
-        // Add the value to the cache
-        programdata_test_cache_add(key.clone(), value.clone()).await;
-
-        // Retrieve the value from the cache
-        let result = programdata_test_cache_get(&key).await;
-        assert!(result.is_some());
-        assert_eq!(result.unwrap(), value);
     }
 
     #[test]

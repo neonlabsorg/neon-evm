@@ -293,6 +293,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             tracer,
         })
     }
+    pub fn take_tracer(&mut self) -> Option<T> {
+        self.tracer.take()
+    }
 
     #[maybe_async]
     async fn new_create(

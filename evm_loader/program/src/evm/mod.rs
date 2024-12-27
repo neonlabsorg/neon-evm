@@ -356,23 +356,24 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend: &mut B,
     ) -> Result<(ExitStatus, u64, Option<T>)> {
         let mut step = 0_u64;
-
-        begin_vm!(
-            self,
-            backend,
-            self.context,
-            self.chain_id,
-            if self.reason == Reason::Call {
-                self.call_data.to_vec()
-            } else {
-                self.execution_code.to_vec()
-            },
-            if self.reason == Reason::Call {
-                opcode_table::CALL
-            } else {
-                opcode_table::CREATE
-            }
-        );
+        if self.pc == 0 {
+            begin_vm!(
+                self,
+                backend,
+                self.context,
+                self.chain_id,
+                if self.reason == Reason::Call {
+                    self.call_data.to_vec()
+                } else {
+                    self.execution_code.to_vec()
+                },
+                if self.reason == Reason::Call {
+                    opcode_table::CALL
+                } else {
+                    opcode_table::CREATE
+                }
+            );
+        };
 
         let status = if is_precompile_address(&self.context.contract) {
             let value = Self::precompile(&self.context.contract, &self.call_data).unwrap();

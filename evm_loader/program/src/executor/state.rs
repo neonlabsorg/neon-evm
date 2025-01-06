@@ -14,6 +14,7 @@ use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
 
 use crate::allocator::acc_allocator;
+use crate::debug::log_data;
 use crate::types::tree_map::TreeMap;
 use crate::types::vector::{Vector, VectorSliceExt, VectorSliceSlowExt};
 
@@ -618,6 +619,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         data: &[u8],
         is_static: bool,
     ) -> Option<Result<Vector<u8>>> {
+        log_data(&[b"AAT", b"precompile_extension state.rs", address.as_bytes()]);
         PrecompiledContracts::call_precompile_extension(self, context, address, data, is_static)
             .await
     }

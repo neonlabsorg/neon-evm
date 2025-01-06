@@ -7,6 +7,7 @@ use elsa::FrozenMap;
 use ethnum::U256;
 use evm_loader::account_storage::LogCollector;
 pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
+use evm_loader::debug::log_data;
 use evm_loader::{
     account::{
         legacy::{LegacyEtherData, LegacyStorageData},
@@ -1441,6 +1442,8 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             accounts.push(meta.pubkey);
         }
 
+        log_data(&[b"AAT", b"&accounts"]);
+        info!("{:#?}", &accounts);
         solana_simulator
             .sync_accounts(self, &accounts)
             .await

@@ -12,6 +12,7 @@ use mpl_token_metadata::{
 };
 use solana_program::pubkey::Pubkey;
 
+use crate::debug::log_data;
 use crate::types::vector::VectorSliceExt;
 use crate::types::Vector;
 use crate::vector;
@@ -94,6 +95,11 @@ pub async fn metaplex<State: Database>(
             let name = read_string(input, 32, 256)?;
             let symbol = read_string(input, 64, 256)?;
             let uri = read_string(input, 96, 1024)?;
+
+            log_data(&[b"AAT", b"metaplex", b"mint = ", &mint.to_bytes()]);
+            log_data(&[b"AAT", b"metaplex", b"name = ", name.as_bytes()]);
+            log_data(&[b"AAT", b"metaplex", b"symbol = ", symbol.as_bytes()]);
+            log_data(&[b"AAT", b"metaplex", b"uri = ", uri.as_bytes()]);
 
             create_metadata(context, state, mint, name, symbol, uri).await
         }
@@ -200,6 +206,10 @@ async fn create_metadata<State: Database>(
 
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);
 
+    log_data(&[b"AAT", b"create_metadata", &mint.to_bytes()]);
+
+    log_data(&[b"AAT", b"metadata_pubkey", &metadata_pubkey.to_bytes()]);
+    log_data(&[b"AAT", b"signer_pubkey", &signer_pubkey.to_bytes()]);
     let instruction = CreateMetadataAccountV3Builder::new()
         .metadata(metadata_pubkey)
         .mint(mint)

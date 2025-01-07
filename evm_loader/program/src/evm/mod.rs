@@ -212,7 +212,7 @@ pub struct Machine<B: Database, T: EventListener> {
 
     stack: Stack,
     memory: Memory,
-    pub pc: usize,
+    pc: usize,
 
     is_static: bool,
     reason: Reason,
@@ -496,5 +496,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     pub fn set_tracer(&mut self, tracer: Option<T>) {
         self.tracer = tracer;
+    }
+
+    pub fn increment_pc(&mut self) {
+        self.pc += 1;
     }
 }

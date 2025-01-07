@@ -193,7 +193,7 @@ pub fn finalize_interrupted<'a>(
     debug_print!("finalize_interrupted");
 
     accounts.apply_state_change(state_data.into_actions())?;
-    let (exit_reason, steps_executed) = {
+    let (exit_reason, steps_executed, _, _) = {
         let mut backend = SyncedExecutorState::new_with_state_data(&mut accounts, state_data);
         let mut evm = storage.read_evm::<SyncedEvmBackend, NoopEventListener>();
         let interrupted_state = evm.context.interrupted_state.clone().expect(
@@ -213,12 +213,10 @@ pub fn finalize_interrupted<'a>(
             interrupted_state.lamports,
         );
         if let Ok(return_data) = result {
-            let _ = evm.opcode_return_impl(return_data, &mut backend);
-            evm.pc += 1;
-            //storage.increment_steps_executed(1)?;
+            evm.opcode_return_impl(return_data, &mut backend)?;
+            evm.increment_pc();
         }
-        let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
-        (result, steps_executed)
+        evm.execute(u64::MAX, &mut backend)?
     };
     log_data(&[
         b"STEPS",
@@ -226,7 +224,7 @@ pub fn finalize_interrupted<'a>(
         &steps_executed.to_le_bytes(), // Total steps is the same as iteration steps
     ]);
 
-    let (_results, touched_accounts) = state_data.deconstruct();
+    let (_, touched_accounts) = state_data.deconstruct();
     storage.update_touched_accounts(&touched_accounts)?;
     storage.increment_steps_executed(steps_executed)?;
 

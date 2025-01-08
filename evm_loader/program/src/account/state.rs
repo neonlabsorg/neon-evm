@@ -472,8 +472,8 @@ impl<'a> StateAccount<'a> {
         priority_fee_tokens: U256,
         receiver: Option<OperatorBalanceAccount>,
     ) -> Result<()> {
-        self.use_priority_fee_tokens(priority_fee_tokens)?;
         let gas_fee_tokens = self.use_gas(amount)?;
+        self.use_priority_fee_tokens(priority_fee_tokens)?;
 
         let tokens = gas_fee_tokens + priority_fee_tokens;
         if tokens == U256::ZERO {

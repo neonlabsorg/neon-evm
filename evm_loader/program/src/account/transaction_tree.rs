@@ -140,7 +140,7 @@ impl<'a> TransactionTree<'a> {
         rent: &Rent,
         clock: &Clock,
     ) -> Result<Self> {
-        const MIN_BASE_FEE_PER_GAS: U256 = U256::new(1_100_000_000);
+        const MIN_PRIORITY_FEE_PER_GAS: U256 = U256::new(1_100_000_000);
         const MIN_GAS_LIMIT: U256 = U256::new(
             BASE_ITERATIVE_TRANSACTION_COST as u128 + TREE_ACCOUNT_FINISH_TRANSACTION_GAS as u128,
         );
@@ -155,10 +155,10 @@ impl<'a> TransactionTree<'a> {
             return Err(Error::TreeAccountAlreadyExists);
         }
 
-        if (init.max_fee_per_gas - init.max_priority_fee_per_gas) < MIN_BASE_FEE_PER_GAS {
+        if init.max_priority_fee_per_gas < MIN_PRIORITY_FEE_PER_GAS {
             // Require at least 1.1 to 1.1 ratio to operator spending
             // 1.1 GAlan in gas equals to 1.1 lamport
-            return Err(Error::TreeAccountInvalidBaseFeePerGas);
+            return Err(Error::TreeAccountInvalidPriorityFeePerGas);
         }
 
         let nodes = init.nodes;

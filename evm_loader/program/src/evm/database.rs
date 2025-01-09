@@ -19,6 +19,8 @@ pub trait Database: LogCollector {
     fn is_valid_chain_id(&self, chain_id: u64) -> bool;
     async fn contract_chain_id(&self, address: Address) -> Result<u64>;
 
+    async fn solana_user_address(&self, address: Address) -> Result<Option<Pubkey>>;
+
     async fn nonce(&self, address: Address, chain_id: u64) -> Result<u64>;
     async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()>;
 

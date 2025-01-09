@@ -4,6 +4,7 @@ use solana_program::pubkey::Pubkey;
 use static_assertions::const_assert;
 use std::cell::{Ref, RefMut};
 use std::mem::{align_of, size_of};
+use std::ptr::write_unaligned;
 
 use crate::account::TAG_STATE_FINALIZED;
 use crate::allocator::STATE_ACCOUNT_DATA_ADDRESS;
@@ -18,7 +19,6 @@ pub struct Header {
     pub owner: Pubkey,
     pub transaction_hash: [u8; 32],
     pub transaction_len: usize,
-    pub heap_offset: usize,
 }
 
 impl AccountHeader for Header {
@@ -29,19 +29,19 @@ pub struct Holder<'a> {
     account: AccountInfo<'a>,
 }
 
+// Offset of the memory cell that denotes pointer to the heap from the start of the header.
+const HEAP_PTR_OFFSET: usize = 72;
 const HEADER_OFFSET: usize = ACCOUNT_PREFIX_LEN;
-pub const BUFFER_OFFSET: usize = HEADER_OFFSET + size_of::<Header>();
+pub const BUFFER_OFFSET: usize = HEADER_OFFSET + HEAP_PTR_OFFSET + size_of::<usize>();
 
-// Offset of the Header.heap_offset from the start of account data.
-// TODO: get rid of memoffset in favor of core::mem::offset_of! when rust version >= 1.77.
-pub const HEAP_OFFSET_OFFSET: usize = HEADER_OFFSET + memoffset::offset_of!(Header, heap_offset);
-// State Account Header and Holder Account Header should have a shared and fixed memory cell that denotes
-// the offset of the persistent heap (heap_offset field).
-// The following asert checks that State Account Header does not overlap with `heap_offset` memory cell,
-// so writes to State Account Header do not override it.
-const_assert!(
-    memoffset::offset_of!(Header, heap_offset) >= size_of::<crate::account::state::Header>()
-);
+pub const HEAP_OFFSET_OFFSET: usize = HEADER_OFFSET + HEAP_PTR_OFFSET;
+// State Account Header, State Finalized Header and Holder Account Header should have a shared
+// and fixed memory cell that denotes the offset of the persistent heap.
+// The following aserts checks that State Account Header and State Finalized Header does not overlap
+// with `heap_offset` memory cell, so writes to State Account Header do not override it.
+const_assert!(HEAP_PTR_OFFSET >= size_of::<Header>());
+const_assert!(HEAP_PTR_OFFSET >= size_of::<crate::account::state::Header>());
+const_assert!(HEAP_PTR_OFFSET >= size_of::<crate::account::state_finalized::Header>());
 
 impl<'a> Holder<'a> {
     pub fn from_account(program_id: &Pubkey, account: AccountInfo<'a>) -> Result<Self> {
@@ -115,8 +115,9 @@ impl<'a> Holder<'a> {
             let mut header = self.header_mut();
             header.transaction_hash.fill(0);
             header.transaction_len = 0;
-            header.heap_offset = 0;
         }
+        // Clear the heap ptr.
+        Self::write_heap_offset(&self.account, 0);
         {
             let mut buffer = self.buffer_mut();
             buffer.fill(0);
@@ -261,9 +262,24 @@ impl<'a> Holder<'a> {
         };
 
         // Write the actual heap offset into the header. This memory cell is used by the allocator.
-        super::section_mut::<Header>(account, HEADER_OFFSET).heap_offset = heap_object_offset;
+        Self::write_heap_offset(account, heap_object_offset);
 
         Ok(())
+    }
+
+    /// # Safety
+    /// Writes the offset of the heap object to a special memory cell.
+    fn write_heap_offset(account: &AccountInfo<'_>, offset: usize) {
+        #[allow(clippy::cast_ptr_alignment)]
+        let heap_offset_memcell = account
+            .data
+            .borrow_mut()
+            .as_mut_ptr()
+            .wrapping_add(HEAP_OFFSET_OFFSET)
+            .cast::<usize>();
+        unsafe {
+            write_unaligned(heap_offset_memcell, offset);
+        }
     }
 
     /// # Safety

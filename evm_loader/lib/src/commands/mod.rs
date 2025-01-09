@@ -19,6 +19,7 @@ pub mod get_contract;
 pub mod get_holder;
 pub mod get_neon_elf;
 pub mod get_storage_at;
+pub mod get_transaction_tree;
 pub mod init_environment;
 pub mod simulate_solana;
 pub mod trace;

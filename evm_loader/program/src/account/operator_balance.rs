@@ -226,6 +226,13 @@ impl OperatorBalanceValidator for Option<OperatorBalanceAccount<'_>> {
             return Err(Error::OperatorBalanceMissing);
         }
 
+        if let Some(balance) = self {
+            let chain_id = trx.chain_id().unwrap_or(crate::config::DEFAULT_CHAIN_ID);
+            if balance.chain_id() != chain_id {
+                return Err(Error::OperatorBalanceInvalidChainId);
+            }
+        }
+
         Ok(())
     }
 

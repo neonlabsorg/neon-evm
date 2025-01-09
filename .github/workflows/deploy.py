@@ -34,8 +34,8 @@ DEVNET_SOLANA_URL = os.environ.get("DEVNET_SOLANA_URL")
 IMAGE_NAME = os.environ.get("IMAGE_NAME", "evm_loader")
 RUN_LINK_REPO = os.environ.get("RUN_LINK_REPO")
 DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
-SOLANA_NODE_VERSION = 'v1.18.18'
-SOLANA_BPF_VERSION = 'v1.18.18'
+SOLANA_NODE_VERSION = 'v2.0.15'
+SOLANA_BPF_VERSION = 'v2.0.15'
 
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 RELEASE_TAG_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.\d{1,2}"
@@ -121,11 +121,8 @@ def specify_image_tags(git_ref,
 @cli.command(name="build_docker_image")
 @click.option('--evm_sha_tag')
 def build_docker_image(evm_sha_tag):
-    solana_image = f'solanalabs/solana:{SOLANA_NODE_VERSION}'
-    docker_client.pull(solana_image)
     docker_client.pull(f"{DOCKERHUB_ORG_NAME}/neon_test_programs:latest")
     buildargs = {"REVISION": evm_sha_tag,
-                 "SOLANA_IMAGE": solana_image,
                  "SOLANA_BPF_VERSION": SOLANA_BPF_VERSION,
                  "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME,
                  "DEVNET_SOLANA_URL": DEVNET_SOLANA_URL}
@@ -150,6 +147,8 @@ def publish_image(evm_sha_tag, evm_tag):
 @click.option('--evm_sha_tag')
 @click.option('--evm_tag')
 def finalize_image(evm_sha_tag, evm_tag):
+    image = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}"
+    docker_client.pull(f"{image}:{evm_sha_tag}")
     if re.match(RELEASE_TAG_TEMPLATE, evm_tag) is not None or evm_tag == "latest":
         push_image_with_tag(evm_sha_tag, evm_tag)
     else:

@@ -5,14 +5,13 @@ use solana_sdk::pubkey::Pubkey;
 use evm_loader::{account_storage::AccountStorage, types::Address};
 
 use crate::commands::get_config::BuildConfigSimulator;
-use crate::rpc::Rpc;
 use crate::{account_storage::EmulatorAccountStorage, NeonResult};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct GetStorageAtReturn(pub [u8; 32]);
 
 pub async fn execute(
-    rpc: &(impl Rpc + BuildConfigSimulator),
+    rpc: &impl BuildConfigSimulator,
     program_id: &Pubkey,
     address: Address,
     index: U256,

@@ -2,21 +2,23 @@
 
 use std::collections::BTreeMap;
 
+use crate::rpc::{CallDbClient, CloneRpcClient, Rpc};
+use crate::solana_simulator::SolanaSimulator;
+use crate::types::programs_cache::KeyAccountCache;
+use crate::types::programs_cache::{program_config_cache_add, program_config_cache_get};
 use async_trait::async_trait;
 use base64::Engine;
 use enum_dispatch::enum_dispatch;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
+pub use solana_account_decoder::UiDataSliceConfig as SliceConfig;
 use solana_client::rpc_config::RpcSimulateTransactionConfig;
 use solana_sdk::signer::Signer;
 use solana_sdk::{instruction::Instruction, pubkey::Pubkey, transaction::Transaction};
-use tokio::sync::OnceCell;
 
-use crate::rpc::{CallDbClient, CloneRpcClient};
-use crate::solana_simulator::SolanaSimulator;
 use crate::NeonResult;
-
-#[derive(Debug, Serialize, Deserialize)]
+use tokio::sync::OnceCell;
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Status {
     Ok,
     Emergency,
@@ -33,7 +35,7 @@ pub struct ChainInfo {
 }
 
 #[serde_as]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetConfigResponse {
     pub version: String,
     pub revision: String,
@@ -57,17 +59,52 @@ pub enum ConfigSimulator<'r> {
 
 #[async_trait(?Send)]
 #[enum_dispatch]
-pub trait BuildConfigSimulator {
-    fn use_cache(&self) -> bool;
+pub trait BuildConfigSimulator: Rpc {
+    fn use_cache_for_chains(&self) -> bool;
+    async fn get_config(&self, program_id: Pubkey) -> NeonResult<GetConfigResponse> {
+        let maybe_slot = self.get_last_deployed_slot(&program_id).await?;
+        if let Some(slot) = maybe_slot {
+            let key = KeyAccountCache {
+                addr: program_id,
+                slot,
+            };
+
+            let rz = program_config_cache_get(&key).await;
+            if rz.is_some() {
+                return Ok(rz.unwrap());
+            };
+        }
+        let mut simulator = self.build_config_simulator(program_id).await?;
+
+        let (version, revision) = simulator.get_version().await?;
+
+        let result = GetConfigResponse {
+            version,
+            revision,
+            status: simulator.get_status().await?,
+            environment: simulator.get_environment().await?,
+            chains: simulator.get_chains().await?,
+            config: simulator.get_properties().await?,
+        };
+        if let Some(slot) = maybe_slot {
+            let key = KeyAccountCache {
+                addr: program_id,
+                slot,
+            };
+            program_config_cache_add(key, result.clone()).await;
+        }
+
+        Ok(result)
+    }
+
     async fn build_config_simulator(&self, program_id: Pubkey) -> NeonResult<ConfigSimulator>;
 }
 
 #[async_trait(?Send)]
 impl BuildConfigSimulator for CloneRpcClient {
-    fn use_cache(&self) -> bool {
+    fn use_cache_for_chains(&self) -> bool {
         true
     }
-
     async fn build_config_simulator(&self, program_id: Pubkey) -> NeonResult<ConfigSimulator> {
         Ok(ConfigSimulator::CloneRpcClient {
             program_id,
@@ -78,10 +115,9 @@ impl BuildConfigSimulator for CloneRpcClient {
 
 #[async_trait(?Send)]
 impl BuildConfigSimulator for CallDbClient {
-    fn use_cache(&self) -> bool {
+    fn use_cache_for_chains(&self) -> bool {
         false
     }
-
     async fn build_config_simulator(&self, program_id: Pubkey) -> NeonResult<ConfigSimulator> {
         let mut simulator = SolanaSimulator::new_without_sync(self).await?;
         simulator.sync_accounts(self, &[program_id]).await?;
@@ -260,62 +296,59 @@ impl ConfigSimulator<'_> {
         Ok(result)
     }
 }
-
+static CHAINS_CACHE: OnceCell<Vec<ChainInfo>> = OnceCell::const_new();
 pub async fn execute(
     rpc: &impl BuildConfigSimulator,
     program_id: Pubkey,
 ) -> NeonResult<GetConfigResponse> {
-    let mut simulator = rpc.build_config_simulator(program_id).await?;
-
-    let (version, revision) = simulator.get_version().await?;
-
-    Ok(GetConfigResponse {
-        version,
-        revision,
-        status: simulator.get_status().await?,
-        environment: simulator.get_environment().await?,
-        chains: simulator.get_chains().await?,
-        config: simulator.get_properties().await?,
-    })
+    rpc.get_config(program_id).await
 }
-
-static CHAINS_CACHE: OnceCell<Vec<ChainInfo>> = OnceCell::const_new();
 
 pub async fn read_chains(
     rpc: &impl BuildConfigSimulator,
     program_id: Pubkey,
 ) -> NeonResult<Vec<ChainInfo>> {
-    if rpc.use_cache() {
-        return CHAINS_CACHE
-            .get_or_try_init(|| get_chains(rpc, program_id))
+    if rpc.use_cache_for_chains() {
+        let result = CHAINS_CACHE
+            .get_or_init(|| async {
+                rpc.get_config(program_id)
+                    .await
+                    .expect(" get config error for chain info")
+                    .chains
+            })
             .await
-            .cloned();
+            .clone();
+        return Ok(result);
     }
-
-    get_chains(rpc, program_id).await
+    Ok(rpc.get_config(program_id).await?.chains)
 }
 
-async fn get_chains(
-    rpc: &(impl BuildConfigSimulator + Sized),
+async fn read_chain_id(
+    rpc: &impl BuildConfigSimulator,
     program_id: Pubkey,
-) -> NeonResult<Vec<ChainInfo>> {
-    rpc.build_config_simulator(program_id)
-        .await?
-        .get_chains()
-        .await
+    chain: &str,
+) -> NeonResult<u64> {
+    for c in read_chains(rpc, program_id).await? {
+        if c.name == chain {
+            return Ok(c.id);
+        }
+    }
+
+    unreachable!()
 }
 
 pub async fn read_legacy_chain_id(
     rpc: &impl BuildConfigSimulator,
     program_id: Pubkey,
 ) -> NeonResult<u64> {
-    for chain in read_chains(rpc, program_id).await? {
-        if chain.name == "neon" {
-            return Ok(chain.id);
-        }
-    }
+    read_chain_id(rpc, program_id, "neon").await
+}
 
-    unreachable!()
+pub async fn read_sol_chain_id(
+    rpc: &impl BuildConfigSimulator,
+    program_id: Pubkey,
+) -> NeonResult<u64> {
+    read_chain_id(rpc, program_id, "sol").await
 }
 
 #[cfg(test)]

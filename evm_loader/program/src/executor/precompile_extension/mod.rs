@@ -13,6 +13,7 @@ use super::OwnedAccountInfo;
 
 mod call_solana;
 mod metaplex;
+mod neon_account;
 mod neon_token;
 mod query_account;
 mod spl_token;
@@ -39,6 +40,9 @@ impl PrecompiledContracts {
     const SYSTEM_ACCOUNT_CALL_SOLANA: Address = Address([
         0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x06,
     ]);
+    const SYSTEM_ACCOUNT_NEON_ACCOUNT: Address = Address([
+        0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x07,
+    ]);
 
     #[must_use]
     pub fn is_precompile_extension(address: &Address) -> bool {
@@ -47,6 +51,7 @@ impl PrecompiledContracts {
             || *address == Self::SYSTEM_ACCOUNT_SPL_TOKEN
             || *address == Self::SYSTEM_ACCOUNT_METAPLEX
             || *address == Self::SYSTEM_ACCOUNT_CALL_SOLANA
+            || *address == Self::SYSTEM_ACCOUNT_NEON_ACCOUNT
     }
 
     #[maybe_async]
@@ -72,6 +77,9 @@ impl PrecompiledContracts {
             }
             Self::SYSTEM_ACCOUNT_CALL_SOLANA => {
                 Some(call_solana::call_solana(state, address, input, context, is_static).await)
+            }
+            Self::SYSTEM_ACCOUNT_NEON_ACCOUNT => {
+                Some(neon_account::neon_account(state, address, input, context, is_static).await)
             }
             _ => None,
         }

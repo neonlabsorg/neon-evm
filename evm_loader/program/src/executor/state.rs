@@ -95,6 +95,18 @@ impl<'a> ExecutorStateData {
             touched_accounts: RefCell::new(TouchedAccounts::new()),
         }
     }
+
+    pub fn cancel(&mut self) {
+        self.exit_status = Some(ExitStatus::Cancel);
+        self.actions.clear();
+        self.stack.clear();
+
+        let mut cache = self.cache.borrow_mut();
+        cache.accounts.clear();
+        cache.actions_offset = 0;
+
+        self.touched_accounts.borrow_mut().clear();
+    }
 }
 
 impl<'a, B: AccountStorage> ExecutorState<'a, B> {
@@ -212,6 +224,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
     fn contract_pubkey(&self, address: Address) -> (Pubkey, u8) {
         self.backend.contract_pubkey(address)
+    }
+
+    async fn solana_user_address(&self, address: Address) -> Result<Option<Pubkey>> {
+        let pubkey = self.backend.solana_user_address(address).await;
+        Ok(pubkey)
     }
 
     async fn nonce(&self, from_address: Address, from_chain_id: u64) -> Result<u64> {

@@ -70,6 +70,11 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
         self.backend.contract_pubkey(address)
     }
 
+    async fn solana_user_address(&self, address: Address) -> Result<Option<Pubkey>> {
+        let pubkey = self.backend.solana_user_address(address).await;
+        Ok(pubkey)
+    }
+
     async fn nonce(&self, from_address: Address, from_chain_id: u64) -> Result<u64> {
         let nonce = self.backend.nonce(from_address, from_chain_id).await;
         Ok(nonce)

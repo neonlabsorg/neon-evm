@@ -7,8 +7,10 @@ use crate::rpc::Rpc;
 use crate::rpc::{CallDbClient, RpcEnum};
 use crate::tracing::tracers::Tracer;
 use crate::tracing::{AccountOverride, BlockOverrides};
+use crate::types::FromAddress;
 use crate::types::TracerDb;
 use crate::types::{AccountInfoLevel, EmulateRequest};
+
 use crate::{
     account_storage::{EmulatorAccountStorage, SyncedAccountStorage},
     errors::NeonError,
@@ -114,7 +116,7 @@ fn init_overrides(emulate_request: &EmulateRequest) -> Overrides {
 }
 
 pub async fn execute<T: Tracer>(
-    rpc: &(impl Rpc + BuildConfigSimulator),
+    rpc: &impl BuildConfigSimulator,
     db_config: &Option<DbConfig>,
     program_id: &Pubkey,
     emulate_request: EmulateRequest,
@@ -160,7 +162,7 @@ async fn initialize_storage<'rpc, T: Rpc + BuildConfigSimulator>(
 ) -> NeonResult<EmulatorAccountStorage<'rpc, T>> {
     let overrides: Overrides = init_overrides(emulate_request);
 
-    EmulatorAccountStorage::with_accounts(
+    let storage = EmulatorAccountStorage::with_accounts(
         rpc,
         *program_id,
         &emulate_request.accounts,
@@ -170,7 +172,16 @@ async fn initialize_storage<'rpc, T: Rpc + BuildConfigSimulator>(
         overrides.solana_accounts,
         emulate_request.tx.chain_id,
     )
-    .await
+    .await?;
+
+    // Store the from pubkey in the storage to correctly initialize the BalanceAccount.
+    let from = &emulate_request.tx.from;
+    if let FromAddress::Solana(pubkey) = from {
+        storage.add_balance_pubkey(from.address(), *pubkey);
+        info!("from is solana address: {:?}", pubkey);
+    }
+
+    Ok(storage)
 }
 
 async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>(
@@ -290,7 +301,7 @@ async fn emulate_trx<'rpc, T: Tracer>(
     program_id: &Pubkey,
     step_limit: u64,
     tracer: Option<T>,
-    rpc: &(impl Rpc + BuildConfigSimulator),
+    rpc: &impl BuildConfigSimulator,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     info!("tx_params: {:?}", emulate_request.tx);
 
@@ -302,7 +313,9 @@ async fn emulate_trx<'rpc, T: Tracer>(
             .tx
             .chain_id
             .unwrap_or_else(|| storage.default_chain_id());
-        increment_nonce(&mut storage, &emulate_request.tx.from, chain_id).await?;
+        let from = emulate_request.tx.from.address();
+
+        increment_nonce(&mut storage, &from, chain_id).await?;
 
         let result =
             emulate_trx_single_step(&mut storage, &tx, tracer, emulate_request, step_limit).await?;
@@ -314,13 +327,13 @@ async fn emulate_trx<'rpc, T: Tracer>(
 }
 
 async fn emulate_trx_single_step<'rpc, T: Tracer>(
-    storage: &mut EmulatorAccountStorage<'rpc, impl Rpc + BuildConfigSimulator>,
+    storage: &mut EmulatorAccountStorage<'rpc, impl BuildConfigSimulator>,
     tx: &Transaction,
     tracer: Option<T>,
     emulate_request: &EmulateRequest,
     step_limit: u64,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
-    let origin = emulate_request.tx.from;
+    let origin = emulate_request.tx.from.address();
 
     let (exit_status, steps_executed, tracer) = {
         let mut backend = SyncedExecutorState::new(storage);
@@ -367,7 +380,7 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
         .expect("execution map must be not empty")
         .steps;
 
-    let origin = emulate_request.tx.from;
+    let origin = emulate_request.tx.from.address();
     let (block, index) = {
         let step = execution_map
             .first()

@@ -20,7 +20,7 @@ struct Accounts<'a> {
     system_program: program::System<'a>,
 }
 
-const AUTHORITY_SEED: &[u8] = b"Deposit";
+pub const AUTHORITY_SEED: &[u8] = b"Deposit";
 
 impl<'a> Accounts<'a> {
     pub fn from_slice(accounts: &'a [AccountInfo<'a>]) -> Result<Accounts<'a>> {

@@ -1,12 +1,12 @@
 #![allow(clippy::future_not_send)]
 
 use ethnum::U256;
-use evm_loader::account::legacy::LegacyEtherData;
 use evm_loader::account::BalanceAccount;
+use evm_loader::{account::legacy::LegacyEtherData, types::Address};
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account::Account, pubkey::Pubkey};
 
-use crate::{account_storage::account_info, rpc::Rpc, types::BalanceAddress, NeonResult};
+use crate::{account_storage::account_info, types::BalanceAddress, NeonResult};
 
 use serde_with::{serde_as, DisplayFromStr};
 
@@ -29,6 +29,7 @@ pub struct GetBalanceResponse {
     pub trx_count: u64,
     pub balance: U256,
     pub status: BalanceStatus,
+    pub user_pubkey: Option<Pubkey>,
 }
 
 impl GetBalanceResponse {
@@ -40,6 +41,7 @@ impl GetBalanceResponse {
             trx_count: 0,
             balance: U256::ZERO,
             status: BalanceStatus::Empty,
+            user_pubkey: None,
         }
     }
 }
@@ -60,6 +62,7 @@ fn read_account(
         trx_count: balance_account.nonce(),
         balance: balance_account.balance(),
         status: BalanceStatus::Ok,
+        user_pubkey: balance_account.solana_address(),
     })
 }
 
@@ -80,11 +83,12 @@ fn read_legacy_account(
         trx_count: balance_account.trx_count,
         balance: balance_account.balance,
         status: BalanceStatus::Legacy,
+        user_pubkey: None,
     })
 }
 
 pub async fn execute(
-    rpc: &(impl Rpc + BuildConfigSimulator),
+    rpc: &impl BuildConfigSimulator,
     program_id: &Pubkey,
     address: &[BalanceAddress],
 ) -> NeonResult<Vec<GetBalanceResponse>> {
@@ -145,4 +149,20 @@ pub async fn execute(
     }
 
     Ok(result)
+}
+
+pub async fn execute_with_pubkey(
+    rpc: &impl BuildConfigSimulator,
+    program_id: &Pubkey,
+    pubkeys: &[Pubkey],
+) -> NeonResult<Vec<GetBalanceResponse>> {
+    let chain_id = super::get_config::read_sol_chain_id(rpc, *program_id).await?;
+
+    let addresses = pubkeys
+        .iter()
+        .map(Address::from_solana_address)
+        .map(|address| BalanceAddress { address, chain_id })
+        .collect::<Vec<_>>();
+
+    execute(rpc, program_id, &addresses).await
 }

@@ -1,5 +1,5 @@
 use crate::error::Result;
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh010::{BorshDeserialize, BorshSerialize};
 use mpl_token_metadata::{
     accounts::{MasterEdition, Metadata},
     instructions::{CreateMasterEditionV3InstructionArgs, CreateMetadataAccountV3InstructionArgs},

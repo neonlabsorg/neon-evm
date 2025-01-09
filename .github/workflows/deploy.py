@@ -166,47 +166,6 @@ def run_subprocess(command):
     subprocess.run(command, shell=True)
 
 
-@cli.command(name="run_tests")
-@click.option('--evm_sha_tag')
-@click.option('--neon_test_tag')
-@click.option('--run_number', default=1)
-@click.option('--run_attempt', default=1)
-def run_tests(evm_sha_tag, neon_test_tag, run_number, run_attempt):
-    os.environ["EVM_LOADER_IMAGE"] = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}:{evm_sha_tag}"
-    os.environ["NEON_TESTS_IMAGE"] = f"{DOCKERHUB_ORG_NAME}/{NEON_TEST_IMAGE_NAME}:{neon_test_tag}"
-    project_name = f"neon-evm-{evm_sha_tag}-{run_number}-{run_attempt}"
-    stop_containers(project_name)
-
-    run_subprocess(f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml pull")
-    run_subprocess(f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml up -d")
-    test_container_name = get_container_name(project_name, "tests")
-
-    click.echo("Start tests")
-    print(test_container_name)
-    exec_id = docker_client.exec_create(
-        container=test_container_name, cmd="python3 clickfile.py run evm --numprocesses 8 --network docker_net")
-    logs = docker_client.exec_start(exec_id['Id'], stream=True)
-
-    tests_are_failed = False
-    all_logs = ""
-    for line in logs:
-        current_line = line.decode('utf-8')
-        all_logs += current_line
-        click.echo(current_line)
-        if 'ERROR ' in current_line or 'FAILED ' in current_line or 'Error: ' in current_line:
-            tests_are_failed = True
-            print("Tests are failed")
-
-    exec_status = docker_client.exec_inspect(exec_id['Id'])["ExitCode"]
-
-    run_subprocess(f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml logs neon-core-api")
-
-    stop_containers(project_name)
-
-    if tests_are_failed or exec_status == 1:
-        sys.exit(1)
-
-
 def get_container_name(project_name, service_name):
     data = subprocess.run(
         f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml ps",

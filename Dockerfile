@@ -12,6 +12,7 @@ ENV PATH=${PATH}:/root/.local/share/solana/install/active_release/bin
 
 # Build evm_loader
 FROM builder AS evm-loader-builder
+
 COPY .git /opt/neon-evm/.git
 COPY evm_loader /opt/neon-evm/evm_loader
 WORKDIR /opt/neon-evm/evm_loader

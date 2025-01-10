@@ -198,8 +198,8 @@ impl Tracer for StructLogger {
     fn into_traces(self, emulator_gas_used: u64) -> Value {
         let call_stack_len = self.depth;
         assert!(
-            call_stack_len == 1,
-            "incorrect number of top-level calls {call_stack_len} "
+            call_stack_len == 0,
+            "incorrect number of top-level calls {call_stack_len} - StructLogger depth should be 0  "
         );
         let exit_status = self.exit_status.expect("Exit status should be set");
         let result = StructLoggerResult {

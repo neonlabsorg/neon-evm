@@ -2,6 +2,7 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use crate::account::{AllocateResult, Holder, Operator, StateAccount};
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
+use crate::allocator::acc_allocator;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::evm::tracing::NoopEventListener;
@@ -185,7 +186,7 @@ pub fn finalize<'a, 'b>(
 }
 
 pub fn finalize_interrupted<'a>(
-    mut storage: StateAccount<'a>,
+    storage: StateAccount<'a>,
     mut accounts: ProgramAccountStorage<'a>,
     gasometer: Gasometer,
     state_data: &mut ExecutorStateData,
@@ -218,29 +219,16 @@ pub fn finalize_interrupted<'a>(
         }
         evm.execute(u64::MAX, &mut backend)?
     };
-    log_data(&[
-        b"STEPS",
-        &steps_executed.to_le_bytes(), // Iteration steps
-        &steps_executed.to_le_bytes(), // Total steps is the same as iteration steps
-    ]);
-
     let (_, touched_accounts) = state_data.deconstruct();
-    storage.update_touched_accounts(&touched_accounts)?;
-    storage.increment_steps_executed(steps_executed)?;
-
-    accounts.increment_revision_for_modified_contracts()?;
-    accounts.transfer_treasury_payment()?;
-
-    handle_gas(
-        &mut accounts,
-        &storage.trx(),
+    let no_actions = Vector::new_in(acc_allocator());
+    finalize(
+        steps_executed,
+        storage,
+        accounts,
+        Some((&exit_reason, &no_actions)),
         gasometer,
-        storage.trx_origin(),
-    )?;
-
-    storage.finalize(accounts.program_id())?;
-    log_return_value(&exit_reason);
-    return Ok(());
+        touched_accounts,
+    )
 }
 
 pub fn handle_gas<'a>(

@@ -1,5 +1,3 @@
-use super::OwnedAccountInfo;
-use crate::debug::log_data;
 use crate::types::Vector;
 use crate::vector;
 use crate::{
@@ -10,6 +8,8 @@ use crate::{
 };
 use maybe_async::maybe_async;
 use solana_program::{pubkey::Pubkey, system_instruction};
+
+use super::OwnedAccountInfo;
 
 mod call_solana;
 mod metaplex;
@@ -62,7 +62,6 @@ impl PrecompiledContracts {
         input: &[u8],
         is_static: bool,
     ) -> Option<Result<Vector<u8>>> {
-        log_data(&[b"AAT", b"call_precompile_extension", address.as_bytes()]);
         match *address {
             Self::SYSTEM_ACCOUNT_QUERY => {
                 Some(query_account::query_account(state, address, input, context, is_static).await)

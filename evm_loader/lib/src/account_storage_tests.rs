@@ -4,23 +4,23 @@ use crate::tracing::AccountOverride;
 use evm_loader::types::vector::VectorVecExt;
 use hex_literal::hex;
 use solana_account_decoder::UiDataSliceConfig;
+
 use std::collections::HashMap;
 use std::str::FromStr;
-
 const STORAGE_LENGTH: usize = 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 
 mod mock_rpc_client {
+
     use crate::commands::get_config::BuildConfigSimulator;
     use crate::NeonResult;
     use crate::{commands::get_config::ConfigSimulator, rpc::Rpc};
     use async_trait::async_trait;
+    use solana_account_decoder::UiDataSliceConfig;
     use solana_client::client_error::Result as ClientResult;
     use solana_sdk::account::Account;
     use solana_sdk::clock::{Slot, UnixTimestamp};
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
-
-    use solana_account_decoder::UiDataSliceConfig;
 
     pub struct MockRpcClient {
         accounts: HashMap<Pubkey, Account>,
@@ -91,7 +91,7 @@ mod mock_rpc_client {
 
     #[async_trait(?Send)]
     impl BuildConfigSimulator for MockRpcClient {
-        fn use_cache(&self) -> bool {
+        fn use_cache_for_chains(&self) -> bool {
             false
         }
         async fn build_config_simulator(&self, _program_id: Pubkey) -> NeonResult<ConfigSimulator> {

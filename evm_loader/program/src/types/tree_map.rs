@@ -3,7 +3,6 @@ use std::{
     fmt::{self, Debug, Display},
     hash::Hash,
     ops::Index,
-    usize,
 };
 
 use super::Vector;

@@ -37,6 +37,7 @@ use DbConfig::{ChDbConfig, RocksDbConfig};
 pub type DbResult<T> = Result<T, anyhow::Error>;
 
 #[enum_dispatch]
+#[allow(clippy::large_enum_variant)]
 pub enum TracerDb {
     ClickHouseDb,
     RocksDb,

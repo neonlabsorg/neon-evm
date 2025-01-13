@@ -118,7 +118,7 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     logs_stack: Vec<usize>,
 }
 
-impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
+impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
     pub async fn new(
         rpc: &'rpc T,
         program_id: Pubkey,
@@ -209,7 +209,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             block_number_used: RefCell::new(false),
             block_timestamp: other.block_timestamp.saturating_add(timestamp_shift),
             block_timestamp_used: RefCell::new(false),
-            rent: other.rent,
+            rent: other.rent.clone(),
             state_overrides: other.state_overrides.clone(),
             accounts_cache: other.accounts_cache.clone(),
             used_accounts: other.used_accounts.clone(),
@@ -1407,7 +1407,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             .await
             .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
 
-        solana_simulator.set_clock(Clock {
+        solana_simulator.set_clock(&Clock {
             slot: self.block_number,
             epoch_start_timestamp: self.block_timestamp,
             epoch: 0,

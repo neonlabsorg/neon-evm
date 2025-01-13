@@ -5,7 +5,7 @@ use evm_loader::{
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account::Account, pubkey::Pubkey};
 
-use crate::{account_storage::account_info, rpc::Rpc, NeonResult};
+use crate::{account_storage::account_info, NeonResult};
 
 use serde_with::{hex::Hex, serde_as, DisplayFromStr};
 
@@ -79,7 +79,7 @@ fn read_account(
 }
 
 pub async fn execute(
-    rpc: &(impl Rpc + BuildConfigSimulator),
+    rpc: &impl BuildConfigSimulator,
     program_id: &Pubkey,
     accounts: &[Address],
 ) -> NeonResult<Vec<GetContractResponse>> {

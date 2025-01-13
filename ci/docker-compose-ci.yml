@@ -6,6 +6,7 @@ services:
     environment:
       - SOLANA_URL=http://127.0.0.1:8899
       - CI=true
+      - DEVNET_SOLANA_URL=${DEVNET_SOLANA_URL}
     hostname: solana
     ports:
       - "8899"

@@ -420,6 +420,11 @@ impl<'a> StateAccount<'a> {
         self.trx().gas_limit().saturating_sub(self.gas_used())
     }
 
+    #[must_use]
+    pub fn priority_fee_in_tokens_used(&self) -> U256 {
+        self.data.priority_fee_used
+    }
+
     fn priority_fee_in_tokens_available(&self) -> Result<U256> {
         Ok(self
             .trx()
@@ -467,8 +472,8 @@ impl<'a> StateAccount<'a> {
         priority_fee_tokens: U256,
         receiver: Option<OperatorBalanceAccount>,
     ) -> Result<()> {
-        self.use_priority_fee_tokens(priority_fee_tokens)?;
         let gas_fee_tokens = self.use_gas(amount)?;
+        self.use_priority_fee_tokens(priority_fee_tokens)?;
 
         let tokens = gas_fee_tokens + priority_fee_tokens;
         if tokens == U256::ZERO {

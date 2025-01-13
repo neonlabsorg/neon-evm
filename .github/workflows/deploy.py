@@ -123,7 +123,8 @@ def build_docker_image(evm_sha_tag):
     docker_client.pull(f"{DOCKERHUB_ORG_NAME}/neon_test_programs:latest")
     buildargs = {"REVISION": evm_sha_tag,
                  "SOLANA_BPF_VERSION": SOLANA_BPF_VERSION,
-                 "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME}
+                 "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME
+                 }
 
     tag = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}:{evm_sha_tag}"
     click.echo("start build")

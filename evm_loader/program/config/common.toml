@@ -9,3 +9,4 @@ treasury_pool_count = 128
 treasury_pool_seed = "treasury_pool"
 tree_account_timeout = 750
 tree_account_destroy_fee = 10000
+tree_account_finish_transaction_gas = 10000

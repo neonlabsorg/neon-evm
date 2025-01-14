@@ -58,35 +58,31 @@ pub type SolanaOverrides = HashMap<Pubkey, Option<Account>>;
 
 trait UpdateLamports<'a> {
     fn update_lamports(&mut self, rent: &Rent) {
-        let required_lamports = rent.minimum_balance(self.required_lamports());
-        if self.info().lamports() < required_lamports {
-            let mut lamports = self.info().lamports.borrow_mut();
+        let info = self.info();
+        let required_lamports = rent.minimum_balance(info.data_len());
+        if info.lamports() < required_lamports {
+            info!(
+                "Update lamports for {} from {} to {required_lamports}",
+                info.key,
+                info.lamports.borrow()
+            );
+            let mut lamports = info.lamports.borrow_mut();
             **lamports = required_lamports;
         }
     }
-    fn required_lamports(&self) -> usize;
     fn info(&self) -> &AccountInfo<'a>;
 }
 impl<'a> UpdateLamports<'a> for BalanceAccount<'a> {
-    fn required_lamports(&self) -> usize {
-        BalanceAccount::required_account_size()
-    }
     fn info(&self) -> &AccountInfo<'a> {
         self.info()
     }
 }
 impl<'a> UpdateLamports<'a> for ContractAccount<'a> {
-    fn required_lamports(&self) -> usize {
-        ContractAccount::required_account_size(self.code().as_ref())
-    }
     fn info(&self) -> &AccountInfo<'a> {
         self.info()
     }
 }
 impl<'a> UpdateLamports<'a> for StorageCell<'a> {
-    fn required_lamports(&self) -> usize {
-        StorageCell::required_account_size(self.cells().len())
-    }
     fn info(&self) -> &AccountInfo<'a> {
         self.info()
     }

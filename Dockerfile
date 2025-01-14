@@ -42,7 +42,9 @@ FROM ${DOCKERHUB_ORG_NAME}/neon_test_programs:latest AS neon_test_programs
 
 # Define solana-image that contains utility
 FROM builder AS base
-RUN solana program dump metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s /opt/metaplex.so --url mainnet-beta
+
+ARG MAINNET_SOLANA_URL
+RUN solana program dump metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s /opt/metaplex.so --url ${MAINNET_SOLANA_URL}
 
 COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader*.so /opt/
 COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader-dump.txt /opt/

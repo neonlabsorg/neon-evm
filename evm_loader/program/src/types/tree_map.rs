@@ -56,21 +56,24 @@ impl<K: Ord + Copy, V> TreeMap<K, V> {
             .map_or(Option::None, |idx| Option::Some(&mut self.entries[idx].1))
     }
 
-    pub fn insert(&mut self, key: K, value: V) -> Option<V>
-    where
-        V: Clone,
-    {
+    pub fn insert(&mut self, key: K, value: V) {
         match self.entries.binary_search_by_key(&key, |(k, _)| *k) {
             Ok(idx) => {
-                // Clone is better in performance than potential vec realloc.
-                let old = self.entries[idx].1.clone();
                 self.entries[idx] = (key, value);
-                Some(old)
             }
             Err(idx) => {
                 self.entries.insert(idx, (key, value));
-                None
             }
+        }
+    }
+
+    pub fn insert_with_if_not_exists<F>(&mut self, key: K, f: F)
+    where
+        F: FnOnce() -> V,
+    {
+        if let Err(idx) = self.entries.binary_search_by_key(&key, |(k, _)| *k) {
+            let value = f();
+            self.entries.insert(idx, (key, value));
         }
     }
 
@@ -127,6 +130,14 @@ impl<K: Ord + Copy, V> Index<K> for TreeMap<K, V> {
     }
 }
 
+impl<K: Ord + Copy, V> Index<&K> for TreeMap<K, V> {
+    type Output = V;
+
+    fn index(&self, index: &K) -> &Self::Output {
+        self.get(index).expect("no entry found for key")
+    }
+}
+
 impl<K: Ord + Copy, V> FromIterator<(K, V)> for TreeMap<K, V> {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
         let mut last_key: Option<K> = None;
@@ -158,6 +169,24 @@ impl<'a, K: 'a, V: 'a> TreeMap<K, V> {
 
     pub fn iter_mut(&'a mut self) -> std::slice::IterMut<'a, (K, V)> {
         self.entries.iter_mut()
+    }
+}
+
+impl<'a, K, V> IntoIterator for &'a TreeMap<K, V> {
+    type Item = &'a (K, V);
+    type IntoIter = std::slice::Iter<'a, (K, V)>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, K, V> IntoIterator for &'a mut TreeMap<K, V> {
+    type Item = &'a mut (K, V);
+    type IntoIter = std::slice::IterMut<'a, (K, V)>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
     }
 }
 

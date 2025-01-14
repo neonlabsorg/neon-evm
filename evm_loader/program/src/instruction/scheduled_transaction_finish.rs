@@ -1,6 +1,5 @@
 use crate::account::{
-    AccountsDB, Operator, OperatorBalanceAccount, OperatorBalanceValidator, StateAccount,
-    TransactionTree,
+    Operator, OperatorBalanceAccount, OperatorBalanceValidator, StateAccount, TransactionTree,
 };
 use crate::config::TREE_ACCOUNT_FINISH_TRANSACTION_GAS;
 use crate::debug::log_data;
@@ -23,12 +22,11 @@ pub fn process<'a>(
     let operator = Operator::from_account(&accounts[2])?;
     let mut operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
 
-    let accounts_db = AccountsDB::new(&[], operator, operator_balance.clone(), None, None);
-
-    let (mut state, _) = StateAccount::restore(program_id, &storage_info, &accounts_db)?;
+    let mut state = StateAccount::restore_without_revision_check(program_id, &storage_info)?;
     let mut executor_state = state.read_executor_state();
     let trx = state.trx();
 
+    operator_balance.validate_owner(&operator)?;
     operator_balance.validate_transaction(&trx)?;
     let miner_address = operator_balance.miner(state.trx_origin());
 

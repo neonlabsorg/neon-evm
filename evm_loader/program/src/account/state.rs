@@ -202,15 +202,6 @@ impl<'a> StateAccount<'a> {
             tag => return Err(Error::StorageAccountInvalidTag(*info.key, tag)),
         };
 
-        // accounts.into_iter returns sorted accounts, so it's safe.
-        let revisions = accounts
-            .into_iter()
-            .map(|account| {
-                let revision = AccountRevision::new(program_id, account);
-                (*account.key, revision)
-            })
-            .collect::<TreeMap<Pubkey, AccountRevision>>();
-
         assert!(
             !(transaction.is_scheduled_tx() ^ tree_account.is_some()),
             "Tree account should be present iff it's a scheduled transaction."
@@ -220,7 +211,7 @@ impl<'a> StateAccount<'a> {
             owner,
             transaction,
             origin,
-            revisions,
+            revisions: TreeMap::new(),
             touched_accounts: TreeMap::new(),
             gas_used: U256::ZERO,
             priority_fee_used: U256::ZERO,
@@ -252,6 +243,13 @@ impl<'a> StateAccount<'a> {
         })
     }
 
+    pub fn restore_without_revision_check(
+        program_id: &Pubkey,
+        info: &AccountInfo<'a>,
+    ) -> Result<Self> {
+        Self::from_account(program_id, info)
+    }
+
     pub fn restore(
         program_id: &Pubkey,
         info: &AccountInfo<'a>,
@@ -260,21 +258,19 @@ impl<'a> StateAccount<'a> {
         let mut status = AccountsStatus::Ok;
         let mut state = Self::from_account(program_id, info)?;
 
-        let is_touched_account = |key: &Pubkey| -> bool {
-            state
-                .data
-                .touched_accounts
-                .get(key)
-                .map(|counter| counter > &1)
-                .is_some()
-        };
+        let touched_accounts = state
+            .data
+            .touched_accounts
+            .iter()
+            .filter_map(|(key, counter)| if counter >= &2 { Some(key) } else { None });
 
-        let touched_accounts = accounts.into_iter().filter(|a| is_touched_account(a.key));
-        for account in touched_accounts {
+        for key in touched_accounts {
+            let account = accounts.get(key);
+
             let account_revision = AccountRevision::new(program_id, account);
-            let revision_entry = &state.data.revisions[*account.key];
+            let stored_revision = &state.data.revisions[key];
 
-            if revision_entry != &account_revision {
+            if stored_revision != &account_revision {
                 log_data(&[b"INVALID_REVISION", account.key.as_ref()]);
                 status = AccountsStatus::NeedRestart;
                 break;
@@ -282,11 +278,9 @@ impl<'a> StateAccount<'a> {
         }
 
         if status == AccountsStatus::NeedRestart {
-            // update all accounts revisions
-            for account in accounts {
-                let account_revision = AccountRevision::new(program_id, account);
-                state.data.revisions.insert(*account.key, account_revision);
-            }
+            // reset all accounts revisions
+            state.data.revisions.clear();
+            state.data.touched_accounts.clear();
         }
 
         Ok((state, status))
@@ -350,13 +344,27 @@ impl<'a> StateAccount<'a> {
         Ok(())
     }
 
-    pub fn update_touched_accounts(&mut self, touched: &TreeMap<Pubkey, u64>) -> Result<()> {
-        for (key, counter) in touched.iter() {
+    pub fn update_touched_accounts(
+        &mut self,
+        program_id: &Pubkey,
+        accounts: &AccountsDB,
+        touched: &TreeMap<Pubkey, u64>,
+    ) -> Result<()> {
+        for (key, counter) in touched {
             self.data
                 .touched_accounts
                 .update_or_insert(*key, counter, |v| {
                     v.checked_add(*counter).ok_or(Error::IntegerOverflow)
                 })?;
+        }
+
+        let data: &mut Data = &mut self.data; // Explaining Borrow Checker that this is safe
+        let touched_accounts = &data.touched_accounts;
+        let revisions = &mut data.revisions;
+
+        for (key, _) in touched_accounts {
+            let account = accounts.get(key);
+            revisions.insert_with_if_not_exists(*key, || AccountRevision::new(program_id, account));
         }
 
         Ok(())

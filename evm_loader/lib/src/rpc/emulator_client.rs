@@ -2,11 +2,7 @@ use async_trait::async_trait;
 use evm_loader::account_storage::AccountStorage;
 use log::debug;
 use solana_client::client_error::Result as ClientResult;
-use solana_sdk::{
-    account::Account,
-    clock::{Slot, UnixTimestamp},
-    pubkey::Pubkey,
-};
+use solana_sdk::{account::Account, pubkey::Pubkey};
 
 use crate::account_storage::{fake_operator, EmulatorAccountStorage};
 
@@ -88,14 +84,6 @@ impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
         }
 
         Ok(accounts)
-    }
-
-    async fn get_block_time(&self, _slot: Slot) -> ClientResult<UnixTimestamp> {
-        Ok(self.block_timestamp().as_i64())
-    }
-
-    async fn get_slot(&self) -> ClientResult<Slot> {
-        Ok(self.block_number().as_u64())
     }
 
     async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {

@@ -8,11 +8,7 @@ use solana_client::{
     client_error::Result as ClientResult,
     client_error::{ClientError, ClientErrorKind},
 };
-use solana_sdk::{
-    account::Account,
-    clock::{Slot, UnixTimestamp},
-    pubkey::Pubkey,
-};
+use solana_sdk::{account::Account, pubkey::Pubkey};
 
 pub struct CallDbClient {
     tracer_db: TracerDb,
@@ -74,17 +70,6 @@ impl Rpc for CallDbClient {
         }
         debug!("get_multiple_accounts: pubkeys={pubkeys:?} result={result:?}");
         Ok(result)
-    }
-
-    async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp> {
-        self.tracer_db
-            .get_block_time(slot)
-            .await
-            .map_err(|e| e!("get_block_time error", slot, e))
-    }
-
-    async fn get_slot(&self) -> ClientResult<Slot> {
-        Ok(self.slot)
     }
 
     async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {

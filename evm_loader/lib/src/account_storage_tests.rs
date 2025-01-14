@@ -16,7 +16,6 @@ mod mock_rpc_client {
     use async_trait::async_trait;
     use solana_client::client_error::Result as ClientResult;
     use solana_sdk::account::Account;
-    use solana_sdk::clock::{Slot, UnixTimestamp};
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
 
@@ -27,7 +26,35 @@ mod mock_rpc_client {
     }
 
     impl MockRpcClient {
-        pub fn new(accounts: &[(Pubkey, Account)]) -> Self {
+        pub fn new(neon_accounts: &[(Pubkey, Account)]) -> Self {
+            let clock = solana_sdk::clock::Clock::default();
+            let rent = solana_sdk::rent::Rent::default();
+
+            let mut accounts: Vec<(Pubkey, Account)> = vec![
+                (
+                    solana_sdk::sysvar::clock::ID,
+                    Account {
+                        lamports: 1_009_200,
+                        data: bincode::serialize(&clock).unwrap(),
+                        owner: solana_sdk::sysvar::ID,
+                        executable: false,
+                        rent_epoch: 0,
+                    },
+                ),
+                (
+                    solana_sdk::sysvar::rent::ID,
+                    Account {
+                        lamports: 1_009_200,
+                        data: bincode::serialize(&rent).unwrap(),
+                        owner: solana_sdk::sysvar::ID,
+                        executable: false,
+                        rent_epoch: 0,
+                    },
+                ),
+            ];
+
+            accounts.extend_from_slice(neon_accounts);
+
             Self {
                 accounts: accounts.iter().cloned().collect(),
             }
@@ -74,14 +101,6 @@ mod mock_rpc_client {
                 .map(|key| self.accounts.get(key).cloned())
                 .collect::<Vec<_>>();
             Ok(result)
-        }
-
-        async fn get_block_time(&self, _slot: Slot) -> ClientResult<UnixTimestamp> {
-            Ok(UnixTimestamp::default())
-        }
-
-        async fn get_slot(&self) -> ClientResult<Slot> {
-            Ok(Slot::default())
         }
 
         async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {
@@ -625,16 +644,6 @@ impl Fixture {
         let rent = Rent::default();
         let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
         let accounts = vec![
-            (
-                Pubkey::from_str("SysvarRent111111111111111111111111111111111").unwrap(),
-                Account {
-                    lamports: 1_009_200,
-                    data: bincode::serialize(&rent).unwrap(),
-                    owner: Pubkey::from_str("Sysvar1111111111111111111111111111111111111").unwrap(),
-                    executable: false,
-                    rent_epoch: 0,
-                },
-            ),
             ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent),
             ACTUAL_BALANCE2.account_with_pubkey(&program_id, &rent),
             LEGACY_ACCOUNT.account_with_pubkey(&program_id, &rent),
@@ -1717,10 +1726,7 @@ async fn test_storage_with_accounts_and_override() {
     let rent = Rent::default();
     let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
     let account_tuple = ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent);
-    let accounts_for_rpc = vec![
-        (solana_sdk::sysvar::rent::id(), account_tuple.1.clone()),
-        account_tuple.clone(),
-    ];
+    let accounts_for_rpc = vec![account_tuple.clone()];
     let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
     let accounts_for_storage: Vec<Pubkey> = vec![account_tuple.0];
     let storage = EmulatorAccountStorage::with_accounts(
@@ -1769,10 +1775,7 @@ async fn test_storage_new_from_other_and_override() {
     let rent = Rent::default();
     let program_id = Pubkey::from_str("53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io").unwrap();
     let account_tuple = ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent);
-    let accounts_for_rpc = vec![
-        (solana_sdk::sysvar::rent::id(), account_tuple.1.clone()),
-        account_tuple.clone(),
-    ];
+    let accounts_for_rpc = vec![account_tuple.clone()];
     let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
     let accounts_for_storage: Vec<Pubkey> = vec![account_tuple.0];
     let storage = EmulatorAccountStorage::with_accounts(
@@ -1826,10 +1829,7 @@ async fn test_storage_get_account_slice() {
     let acc = Account::new(10, 1 * 1024 * 1024, &solana_sdk::sysvar::rent::id());
 
     let account_tuple = (test_key, acc);
-    let accounts_for_rpc = vec![
-        (solana_sdk::sysvar::rent::id(), account_tuple.1.clone()),
-        account_tuple.clone(),
-    ];
+    let accounts_for_rpc = vec![account_tuple.clone()];
     let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts_for_rpc);
     let acc_no_slice = rpc_client
         .get_account(&test_key)

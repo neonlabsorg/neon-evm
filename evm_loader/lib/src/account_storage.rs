@@ -130,28 +130,20 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
     ) -> Result<EmulatorAccountStorage<T>, NeonError> {
         trace!("backend::new");
 
-        let block_number = match block_overrides.as_ref().and_then(|o| o.number) {
-            None => rpc.get_slot().await?,
-            Some(number) => number,
-        };
+        let clock: Clock = rpc.get_sysvar().await?;
+        let rent: Rent = rpc.get_sysvar().await?;
 
-        let block_timestamp = match block_overrides.as_ref().and_then(|o| o.time) {
-            None => rpc.get_block_time(block_number).await?,
-            Some(time) => time,
-        };
+        let (block_number, block_timestamp) = block_overrides
+            .map(|o| (o.number, o.time))
+            .unwrap_or_default();
+
+        let block_number = block_number.unwrap_or(clock.slot);
+        let block_timestamp = block_timestamp.unwrap_or(clock.unix_timestamp);
 
         let chains = match chains {
             None => crate::commands::get_config::read_chains(rpc, program_id).await?,
             Some(chains) => chains,
         };
-
-        let rent_account = rpc
-            .get_account(&solana_sdk::sysvar::rent::id())
-            .await?
-            .ok_or(NeonError::AccountNotFound(solana_sdk::sysvar::rent::id()))?;
-
-        let rent = bincode::deserialize::<Rent>(&rent_account.data)?;
-        info!("Rent: {rent:?}");
 
         let accounts_cache = FrozenMap::new();
         if let Some(overrides) = solana_overrides {

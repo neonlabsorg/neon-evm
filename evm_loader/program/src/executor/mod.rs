@@ -1,9 +1,10 @@
 mod action;
 mod block_params;
 mod cache;
-mod precompile_extension;
 mod state;
 mod synced_state;
+
+pub mod precompile_extension;
 
 pub use action::Action;
 pub use cache::OwnedAccountInfo;

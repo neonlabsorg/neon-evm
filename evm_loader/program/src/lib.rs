@@ -15,7 +15,7 @@ solana_program::declare_id!(crate::config::PROGRAM_ID);
 
 mod allocator;
 #[macro_use]
-mod debug;
+pub mod debug;
 #[macro_use]
 pub mod error;
 pub mod account;

@@ -12,6 +12,7 @@ pub use buffer::Buffer;
 
 #[cfg(target_os = "solana")]
 use crate::evm::tracing::NoopEventListener;
+use crate::executor::precompile_extension::PrecompiledContracts;
 use crate::{
     debug::log_data,
     error::{build_revert_message, Error, Result},
@@ -372,8 +373,23 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         let status = if is_precompile_address(&self.context.contract) {
             let value = Self::precompile(&self.context.contract, &self.call_data).unwrap();
+
             backend.commit_snapshot();
 
+            end_vm!(self, backend, ExitStatus::Return(value.clone()));
+            ExitStatus::Return(value)
+        } else if PrecompiledContracts::is_precompile_extension(&self.context.contract) {
+            let value = PrecompiledContracts::call_precompile_extension(
+                backend,
+                &self.context,
+                &self.context.contract,
+                &self.call_data,
+                self.is_static,
+            )
+            .await
+            .unwrap()?;
+
+            backend.commit_snapshot();
             end_vm!(self, backend, ExitStatus::Return(value.clone()));
             ExitStatus::Return(value)
         } else {

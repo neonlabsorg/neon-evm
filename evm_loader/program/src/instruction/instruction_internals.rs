@@ -116,7 +116,7 @@ pub fn finalize<'a, 'b>(
 ) -> Result<()> {
     debug_print!("finalize");
 
-    storage.update_touched_accounts(&touched_accounts)?;
+    storage.update_touched_accounts(accounts.program_id(), accounts.db(), &touched_accounts)?;
     storage.increment_steps_executed(steps_executed)?;
     log_data(&[
         b"STEPS",

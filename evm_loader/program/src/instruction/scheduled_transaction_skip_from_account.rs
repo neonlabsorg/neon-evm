@@ -26,6 +26,7 @@ pub fn process<'a>(
     let trx = holder_parse_trx(holder, &operator, program_id, true)?;
     let _ = validate_scheduled_tx(&trx, tree_index)?;
 
+    operator_balance.validate_owner(&operator)?;
     operator_balance.validate_transaction(&trx)?;
     let miner_address = operator_balance.miner(transaction_tree.payer());
 

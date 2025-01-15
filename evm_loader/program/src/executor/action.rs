@@ -13,7 +13,6 @@ pub enum Action {
         accounts: Vector<AccountMeta>,
         data: Vector<u8>,
         seeds: Vector<Vector<Vector<u8>>>,
-        fee: u64,
         emulated_internally: bool,
     },
     Transfer {

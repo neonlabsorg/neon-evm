@@ -115,7 +115,6 @@ pub trait SyncedAccountStorage: AccountStorage {
         &mut self,
         instruction: Instruction,
         seeds: Vector<Vector<Vector<u8>>>,
-        fee: u64,
         emulated_internally: bool,
     ) -> Result<()>;
 

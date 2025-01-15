@@ -357,7 +357,7 @@ async fn execute_external_instruction<State: Database>(
                 required_lamports - payer.lamports,
             );
             state
-                .queue_external_instruction(transfer_instruction, vector![], 0, false)
+                .queue_external_instruction(transfer_instruction, vector![], false)
                 .await?;
         }
 
@@ -365,7 +365,6 @@ async fn execute_external_instruction<State: Database>(
             .queue_external_instruction(
                 instruction,
                 vector![signer_seeds, payer_seeds.clone()],
-                required_lamports,
                 false,
             )
             .await?;
@@ -378,17 +377,12 @@ async fn execute_external_instruction<State: Database>(
                 payer.lamports,
             );
             state
-                .queue_external_instruction(transfer_instruction, vector![payer_seeds], 0, false)
+                .queue_external_instruction(transfer_instruction, vector![payer_seeds], false)
                 .await?;
         }
     } else {
         state
-            .queue_external_instruction(
-                instruction,
-                vector![signer_seeds],
-                required_lamports,
-                false,
-            )
+            .queue_external_instruction(instruction, vector![signer_seeds], false)
             .await?;
     }
 

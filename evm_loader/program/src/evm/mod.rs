@@ -409,10 +409,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             end_vm!(self, backend, ExitStatus::Return(value.clone()));
             ExitStatus::Return(value)
         } else if PrecompiledContracts::is_precompile_extension(&self.context.contract) {
+            let address = self.context.contract;
             let value = PrecompiledContracts::call_precompile_extension(
                 backend,
-                &self.context,
-                &self.context.contract,
+                &mut self.context,
+                &address,
                 &self.call_data,
                 self.is_static,
             )

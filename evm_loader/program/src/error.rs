@@ -349,7 +349,7 @@ impl Error {
             b"ERROR",
             &self.code().to_le_bytes(),
             &bytes,
-            &self.to_string().as_bytes(),
+            (self.to_string().as_bytes()),
         ]);
     }
 }

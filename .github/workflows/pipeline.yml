@@ -14,11 +14,15 @@ on:
 env:
   DHUBU: ${{secrets.DHUBU}}
   DHUBP: ${{secrets.DHUBP}}
+  DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
+  MAINNET_SOLANA_URL: ${{secrets.MAINNET_SOLANA_URL}}
   PROXY_ENDPOINT: "https://api.github.com/repos/${{ github.repository_owner }}/neon-proxy.py"
   NEON_TESTS_ENDPOINT: ${{vars.NEON_TESTS_ENDPOINT}}
   DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
   RUN_LINK_REPO: "${{ github.repository_owner }}/neon-proxy.py"
   BUILD_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+  AWS_ACCESS_KEY_ID: ${{secrets.AWS_ACCESS_KEY_ID}}
+  AWS_SECRET_ACCESS_KEY: ${{secrets.AWS_SECRET_ACCESS_KEY}}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -68,23 +72,61 @@ jobs:
     needs:
       - build-image
     steps:
+      - name: Set environment variables
+        run: |
+          echo "EVM_LOADER_IMAGE=${{ env.DOCKERHUB_ORG_NAME }}/evm_loader:${{ needs.build-image.outputs.evm_sha_tag }}" >> $GITHUB_ENV
+          echo "NEON_TESTS_IMAGE=${{ env.DOCKERHUB_ORG_NAME }}/neon_tests:${{ needs.build-image.outputs.neon_test_tag }}" >> $GITHUB_ENV
+          echo "PROJECT_NAME=neon-evm-${{ needs.build-image.outputs.evm_sha_tag }}-${{ github.run_number }}-${{ github.run_attempt }}" >> $GITHUB_ENV
+          echo "NETWORK=docker_net" >> $GITHUB_ENV
+          env
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
       - uses: actions/setup-python@v5
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - run:  pip install -r ./.github/workflows/requirements.txt
+
+      - name: Stop containers (cleanup from previous runs)
+        run: |
+          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down || true
+
+      - name: Docker compose pull
+        run: |
+          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml pull
+
+      - name: Docker compose up
+        run: |
+          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml up -d
+
+      - name: Get test container name
+        id: get_container_name
+        run: |
+          docker ps -a
+          TEST_CONTAINER_NAME=$(docker ps --format "{{.Names}}" | grep ${{ env.PROJECT_NAME }} | grep test)
+          echo "TEST_CONTAINER_NAME=$TEST_CONTAINER_NAME" | tee -a $GITHUB_ENV
+
       - name: Run tests
         run: |
-          python3 ./.github/workflows/deploy.py run_tests \
-          --evm_sha_tag=${{ needs.build-image.outputs.evm_sha_tag }} \
-          --neon_test_tag=${{ needs.build-image.outputs.neon_test_tag }} \
-          --run_number=${{ github.run_number }} \
-          --run_attempt=${{ github.run_attempt }}
-      - name: Cancel the build if job failed
-        if: "failure()"
-        uses: "andymckay/cancel-action@0.4"
+          docker exec ${{ env.TEST_CONTAINER_NAME }} python3 clickfile.py run evm --numprocesses 8 --network "${{ env.NETWORK }}"
+
+      - name: "Generate allure report"
+        if: always()
+        uses: neonlabsorg/neon-tests/.github/actions/generate-allure-report@develop
+        with:
+          container: ${{ env.TEST_CONTAINER_NAME }}
+          network: ${{ env.NETWORK }}
+          aws_access_key_id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          tests_name: evm
+
+      - name: Stop containers
+        if: always()
+        run: |
+          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down
+
   trigger-proxy-tests:
     runs-on: ["self-hosted", "k8s-prod"]
     needs:

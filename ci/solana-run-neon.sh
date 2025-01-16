@@ -12,6 +12,30 @@ EVM_LOADER_PATH=${NEON_BIN}/evm_loader.so
 METAPLEX=metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s
 METAPLEX_PATH=${NEON_BIN}/metaplex.so
 
+PYTH_SOL_ID=7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE
+PYTH_NEON_ID=F2VfCymdNQiCa8Vyg5E7BwEv9UPwfm8cVN6eqQLqXiGo
+PYTH_ETH_ID=42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC
+PUTH_USDC_ID=Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX
+PUTH_USDT_ID=HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM
+PYTH_SOL_PATH=${NEON_BIN}/pyth_sol.json
+PYTH_NEON_PATH=${NEON_BIN}/pyth_neon.json
+PYTH_ETH_PATH=${NEON_BIN}/pyth_eth.json
+PUTH_USDC_PATH=${NEON_BIN}/pyth_usdc.json
+PUTH_USDT_PATH=${NEON_BIN}/pyth_usdt.json
+
+if [ -n "$DEVNET_SOLANA_URL" ]; then
+    url=$DEVNET_SOLANA_URL
+    echo "DEVNET_SOLANA_URL variable found."
+else
+    url=mainnet-beta
+    echo "DEVNET_SOLANA_URL variable not found. Pyth accounts will be fetched from mainnet."
+fi
+
+solana account 7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE --output-file pyth_sol.json --output json-compact --url ${url}
+solana account F2VfCymdNQiCa8Vyg5E7BwEv9UPwfm8cVN6eqQLqXiGo --output-file pyth_neon.json --output json-compact --url ${url}
+solana account 42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC --output-file pyth_eth.json --output json-compact --url ${url}
+solana account Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX --output-file pyth_usdc.json --output json-compact --url ${url}
+solana account HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM --output-file pyth_usdt.json --output json-compact --url ${url}
 
 VALIDATOR_ARGS=(
   --reset
@@ -20,6 +44,11 @@ VALIDATOR_ARGS=(
   --ticks-per-slot 16
   --upgradeable-program ${EVM_LOADER} ${EVM_LOADER_PATH} ${EVM_LOADER_AUTHORITY_KEYPAIR}
   --bpf-program ${METAPLEX} ${METAPLEX_PATH}
+  --account ${PYTH_SOL_ID} ${PYTH_SOL_PATH}
+  --account ${PYTH_NEON_ID} ${PYTH_NEON_PATH}
+  --account ${PYTH_ETH_ID} ${PYTH_ETH_PATH}
+  --account ${PUTH_USDC_ID} ${PUTH_USDC_PATH}
+  --account ${PUTH_USDT_ID} ${PUTH_USDT_PATH}
   --limit-ledger-size 400000000
 )
 

@@ -7,10 +7,7 @@ use bincode::deserialize;
 use futures::future::join_all;
 use solana_client::client_error::Result as ClientResult;
 use solana_sdk::{
-    account::Account,
-    bpf_loader_upgradeable::UpgradeableLoaderState,
-    clock::{Slot, UnixTimestamp},
-    pubkey::Pubkey,
+    account::Account, bpf_loader_upgradeable::UpgradeableLoaderState, pubkey::Pubkey,
 };
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -241,13 +238,6 @@ impl Rpc for FakeRpc {
         }
 
         Ok(futures)
-    }
-
-    async fn get_block_time(&self, _slot: Slot) -> ClientResult<UnixTimestamp> {
-        Ok(9999)
-    }
-    async fn get_slot(&self) -> ClientResult<Slot> {
-        Ok(1212)
     }
 
     async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {

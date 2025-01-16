@@ -8,12 +8,11 @@ use solana_sdk::pubkey::Pubkey;
 
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::errors::NeonError;
-use crate::rpc::Rpc;
 use crate::tracing::tracers::new_tracer;
 use crate::types::EmulateRequest;
 
 pub async fn trace_transaction(
-    rpc: &(impl Rpc + BuildConfigSimulator),
+    rpc: &impl BuildConfigSimulator,
     db_config: &Option<DbConfig>,
     program_id: &Pubkey,
     emulate_request: EmulateRequest,

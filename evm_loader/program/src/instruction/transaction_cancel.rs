@@ -31,7 +31,7 @@ pub fn process<'a>(
     log_data(&[b"MINER", operator_balance.address().as_bytes()]);
 
     let accounts_db = AccountsDB::new(&accounts[3..], operator, Some(operator_balance), None, None);
-    let (storage, _) = StateAccount::restore(program_id, &storage_info, &accounts_db)?;
+    let storage = StateAccount::restore_without_revision_check(program_id, &storage_info)?;
 
     validate(&storage, transaction_hash)?;
     execute(program_id, accounts_db, storage)
@@ -67,7 +67,13 @@ fn execute<'a>(
         &total_used_gas.to_le_bytes(),
     ]);
 
-    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(storage.trx(), used_gas)?;
+    let trx = storage.trx();
+    let total_priority_fee_used = storage.priority_fee_in_tokens_used();
+    let priority_fee = priority_fee_txn_calculator::finalize_priority_fee(
+        trx,
+        total_used_gas,
+        total_priority_fee_used,
+    )?;
     let _ = storage.consume_gas(used_gas, priority_fee, accounts.try_operator_balance()); // ignore error
 
     let origin = storage.trx_origin();

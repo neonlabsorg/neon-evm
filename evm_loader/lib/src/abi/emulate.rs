@@ -2,12 +2,11 @@ use super::params_to_neon_error;
 use crate::commands::emulate::{self, EmulateResponse};
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::config::APIOptions;
-use crate::rpc::Rpc;
 use crate::tracing::tracers::TracerTypeEnum;
 use crate::{types::EmulateApiRequest, NeonResult};
 
 pub async fn execute(
-    rpc: &(impl Rpc + BuildConfigSimulator),
+    rpc: &impl BuildConfigSimulator,
     config: &APIOptions,
     params: &str,
 ) -> NeonResult<EmulateResponse> {

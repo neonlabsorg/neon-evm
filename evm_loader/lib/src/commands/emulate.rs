@@ -116,7 +116,7 @@ fn init_overrides(emulate_request: &EmulateRequest) -> Overrides {
 }
 
 pub async fn execute<T: Tracer>(
-    rpc: &(impl Rpc + BuildConfigSimulator),
+    rpc: &impl BuildConfigSimulator,
     db_config: &Option<DbConfig>,
     program_id: &Pubkey,
     emulate_request: EmulateRequest,
@@ -305,7 +305,7 @@ async fn emulate_trx<'rpc, T: Tracer>(
     program_id: &Pubkey,
     step_limit: u64,
     tracer: Option<T>,
-    rpc: &(impl Rpc + BuildConfigSimulator),
+    rpc: &impl BuildConfigSimulator,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     info!("tx_params: {:?}", emulate_request.tx);
 
@@ -331,7 +331,7 @@ async fn emulate_trx<'rpc, T: Tracer>(
 }
 
 async fn emulate_trx_single_step<'rpc, T: Tracer>(
-    storage: &mut EmulatorAccountStorage<'rpc, impl Rpc + BuildConfigSimulator>,
+    storage: &mut EmulatorAccountStorage<'rpc, impl BuildConfigSimulator>,
     tx: &Transaction,
     tracer: Option<T>,
     emulate_request: &EmulateRequest,

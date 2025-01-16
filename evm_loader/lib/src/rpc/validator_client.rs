@@ -10,11 +10,7 @@ use solana_client::{
     rpc_request::RpcRequest,
     rpc_response::Response,
 };
-use solana_sdk::{
-    account::Account,
-    clock::{Slot, UnixTimestamp},
-    pubkey::Pubkey,
-};
+use solana_sdk::{account::Account, pubkey::Pubkey};
 
 use std::{error::Error, ops::Deref, time::Duration};
 use std::{future::Future, sync::Arc};
@@ -168,14 +164,6 @@ impl Rpc for CloneRpcClient {
         }
 
         Ok(result)
-    }
-
-    async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp> {
-        with_retries(self.max_retries, || self.rpc.get_block_time(slot)).await
-    }
-
-    async fn get_slot(&self) -> ClientResult<Slot> {
-        with_retries(self.max_retries, || self.rpc.get_slot()).await
     }
 
     async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {

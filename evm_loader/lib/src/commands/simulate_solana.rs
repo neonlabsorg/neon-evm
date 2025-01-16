@@ -10,7 +10,7 @@ use bincode::Options;
 use log::info;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use solana_program_runtime::compute_budget::ComputeBudget;
+use solana_compute_budget::compute_budget::ComputeBudget;
 use solana_runtime::runtime_config::RuntimeConfig;
 use solana_sdk::{
     pubkey::Pubkey,

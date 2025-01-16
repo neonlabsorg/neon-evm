@@ -58,35 +58,31 @@ pub type SolanaOverrides = HashMap<Pubkey, Option<Account>>;
 
 trait UpdateLamports<'a> {
     fn update_lamports(&mut self, rent: &Rent) {
-        let required_lamports = rent.minimum_balance(self.required_lamports());
-        if self.info().lamports() < required_lamports {
-            let mut lamports = self.info().lamports.borrow_mut();
+        let info = self.info();
+        let required_lamports = rent.minimum_balance(info.data_len());
+        if info.lamports() < required_lamports {
+            info!(
+                "Update lamports for {} from {} to {required_lamports}",
+                info.key,
+                info.lamports.borrow()
+            );
+            let mut lamports = info.lamports.borrow_mut();
             **lamports = required_lamports;
         }
     }
-    fn required_lamports(&self) -> usize;
     fn info(&self) -> &AccountInfo<'a>;
 }
 impl<'a> UpdateLamports<'a> for BalanceAccount<'a> {
-    fn required_lamports(&self) -> usize {
-        BalanceAccount::required_account_size()
-    }
     fn info(&self) -> &AccountInfo<'a> {
         self.info()
     }
 }
 impl<'a> UpdateLamports<'a> for ContractAccount<'a> {
-    fn required_lamports(&self) -> usize {
-        ContractAccount::required_account_size(self.code().as_ref())
-    }
     fn info(&self) -> &AccountInfo<'a> {
         self.info()
     }
 }
 impl<'a> UpdateLamports<'a> for StorageCell<'a> {
-    fn required_lamports(&self) -> usize {
-        StorageCell::required_account_size(self.cells().len())
-    }
     fn info(&self) -> &AccountInfo<'a> {
         self.info()
     }
@@ -118,7 +114,7 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     logs_stack: Vec<usize>,
 }
 
-impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
+impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
     pub async fn new(
         rpc: &'rpc T,
         program_id: Pubkey,
@@ -130,28 +126,20 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
     ) -> Result<EmulatorAccountStorage<T>, NeonError> {
         trace!("backend::new");
 
-        let block_number = match block_overrides.as_ref().and_then(|o| o.number) {
-            None => rpc.get_slot().await?,
-            Some(number) => number,
-        };
+        let clock: Clock = rpc.get_sysvar().await?;
+        let rent: Rent = rpc.get_sysvar().await?;
 
-        let block_timestamp = match block_overrides.as_ref().and_then(|o| o.time) {
-            None => rpc.get_block_time(block_number).await?,
-            Some(time) => time,
-        };
+        let (block_number, block_timestamp) = block_overrides
+            .map(|o| (o.number, o.time))
+            .unwrap_or_default();
+
+        let block_number = block_number.unwrap_or(clock.slot);
+        let block_timestamp = block_timestamp.unwrap_or(clock.unix_timestamp);
 
         let chains = match chains {
             None => crate::commands::get_config::read_chains(rpc, program_id).await?,
             Some(chains) => chains,
         };
-
-        let rent_account = rpc
-            .get_account(&solana_sdk::sysvar::rent::id())
-            .await?
-            .ok_or(NeonError::AccountNotFound(solana_sdk::sysvar::rent::id()))?;
-
-        let rent = bincode::deserialize::<Rent>(&rent_account.data)?;
-        info!("Rent: {rent:?}");
 
         let accounts_cache = FrozenMap::new();
         if let Some(overrides) = solana_overrides {
@@ -209,7 +197,7 @@ impl<'rpc, T: Rpc + BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             block_number_used: RefCell::new(false),
             block_timestamp: other.block_timestamp.saturating_add(timestamp_shift),
             block_timestamp_used: RefCell::new(false),
-            rent: other.rent,
+            rent: other.rent.clone(),
             state_overrides: other.state_overrides.clone(),
             accounts_cache: other.accounts_cache.clone(),
             used_accounts: other.used_accounts.clone(),
@@ -1411,7 +1399,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             .await
             .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
 
-        solana_simulator.set_clock(Clock {
+        solana_simulator.set_clock(&Clock {
             slot: self.block_number,
             epoch_start_timestamp: self.block_timestamp,
             epoch: 0,

@@ -2,23 +2,22 @@ mod db_call_client;
 mod emulator_client;
 mod validator_client;
 use crate::commands::get_config::GetConfigResponse;
+
+pub use db_call_client::CallDbClient;
+use solana_sdk::sysvar::{Sysvar, SysvarId};
+pub use validator_client::CloneRpcClient;
+
 use crate::commands::get_config::{BuildConfigSimulator, ConfigSimulator};
 use crate::{NeonError, NeonResult};
 use async_trait::async_trait;
-pub use db_call_client::CallDbClient;
 use enum_dispatch::enum_dispatch;
 use evm_loader::solana_program::bpf_loader_upgradeable::UpgradeableLoaderState;
 pub use solana_account_decoder::UiDataSliceConfig as SliceConfig;
 use solana_cli::cli::CliError;
 use solana_client::client_error::{ClientErrorKind, Result as ClientResult};
 use solana_sdk::{
-    account::Account,
-    clock::{Slot, UnixTimestamp},
-    message::Message,
-    native_token::lamports_to_sol,
-    pubkey::Pubkey,
+    account::Account, message::Message, native_token::lamports_to_sol, pubkey::Pubkey,
 };
-pub use validator_client::CloneRpcClient;
 
 #[async_trait(?Send)]
 #[enum_dispatch]
@@ -48,8 +47,19 @@ pub trait Rpc {
 
     async fn get_multiple_accounts(&self, pubkeys: &[Pubkey])
         -> ClientResult<Vec<Option<Account>>>;
-    async fn get_block_time(&self, slot: Slot) -> ClientResult<UnixTimestamp>;
-    async fn get_slot(&self) -> ClientResult<Slot>;
+
+    async fn get_sysvar<T>(&self) -> NeonResult<T>
+    where
+        T: Sysvar + SysvarId,
+    {
+        let account = self
+            .get_account(&T::id())
+            .await?
+            .ok_or(NeonError::AccountNotFound(T::id()))?;
+
+        let sysvar = bincode::deserialize::<T>(&account.data)?;
+        Ok(sysvar)
+    }
 
     async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>>;
 }

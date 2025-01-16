@@ -4,15 +4,14 @@ use crate::account::{AllocateResult, Holder, Operator, StateAccount};
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::allocator::acc_allocator;
 use crate::debug::log_data;
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::evm::tracing::NoopEventListener;
 use crate::evm::{ExitStatus, Machine};
 use crate::executor::precompile_extension::call_solana::execute_external_instruction;
 use crate::executor::{Action, ExecutorState, ExecutorStateData, SyncedExecutorState};
-use crate::gasometer::{Gasometer, LAMPORTS_PER_SIGNATURE};
+use crate::gasometer::Gasometer;
 use crate::instruction::priority_fee_txn_calculator;
 use crate::types::boxx::boxx;
-use crate::types::Address;
 use crate::types::Vector;
 use crate::types::{Transaction, TreeMap};
 
@@ -122,7 +121,7 @@ pub fn finalize<'a, 'b>(
 ) -> Result<()> {
     debug_print!("finalize");
 
-    storage.update_touched_accounts(&touched_accounts)?;
+    storage.update_touched_accounts(accounts.program_id(), accounts.db(), &touched_accounts)?;
     storage.increment_steps_executed(steps_executed)?;
     log_data(&[
         b"STEPS",
@@ -156,10 +155,17 @@ pub fn finalize<'a, 'b>(
     ]);
 
     // Calculate priority fee for the current iteration.
-    let priority_fee_in_tokens = priority_fee_txn_calculator::handle_priority_fee(
-        storage.trx(),
-        LAMPORTS_PER_SIGNATURE.into(),
-    )?;
+    let trx = storage.trx();
+    let priority_fee_in_tokens = if status.is_some() {
+        let total_priority_fee_used = storage.priority_fee_in_tokens_used();
+        priority_fee_txn_calculator::finalize_priority_fee(
+            trx,
+            total_used_gas,
+            total_priority_fee_used,
+        )?
+    } else {
+        priority_fee_txn_calculator::handle_priority_fee(trx)?
+    };
 
     storage.consume_gas(
         used_gas,
@@ -229,31 +235,6 @@ pub fn finalize_interrupted<'a>(
         gasometer,
         touched_accounts,
     )
-}
-
-pub fn handle_gas<'a>(
-    account_storage: &mut ProgramAccountStorage<'a>,
-    trx: &Transaction,
-    mut gasometer: Gasometer,
-    origin: Address,
-) -> Result<()> {
-    let gas_limit = trx.gas_limit();
-    let gas_price = trx.gas_price();
-    let chain_id = trx.chain_id().unwrap_or(crate::config::DEFAULT_CHAIN_ID);
-
-    gasometer.record_operator_expenses(account_storage.operator());
-    let used_gas = gasometer.used_gas();
-    if used_gas > gas_limit {
-        return Err(Error::OutOfGas(gas_limit, used_gas));
-    }
-
-    log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
-
-    let gas_cost = used_gas.saturating_mul(gas_price);
-    let priority_fee = priority_fee_txn_calculator::handle_priority_fee(&trx, used_gas)?;
-    account_storage.transfer_gas_payment(origin, chain_id, gas_cost + priority_fee)?;
-
-    Ok(())
 }
 
 pub fn log_return_value(status: &ExitStatus) {

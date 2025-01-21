@@ -19,6 +19,7 @@ use evm_loader::{
     types::{vector::VectorVecExt, Address, Vector},
 };
 use log::{debug, info, trace};
+use solana_sdk::sysvar::{Sysvar, SysvarId};
 use solana_sdk::{
     account::Account,
     account_info::{AccountInfo, IntoAccountInfo},
@@ -114,6 +115,19 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     logs_stack: Vec<usize>,
 }
 
+async fn get_sysvar<T>(rpc: &dyn Rpc) -> NeonResult<T>
+where
+    T: Sysvar + SysvarId,
+{
+    let account = rpc
+        .get_account(&T::id())
+        .await?
+        .ok_or(NeonError::AccountNotFound(T::id()))?;
+
+    let sysvar = bincode::deserialize::<T>(&account.data)?;
+    Ok(sysvar)
+}
+
 impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
     pub async fn new(
         rpc: &'rpc T,
@@ -126,8 +140,8 @@ impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
     ) -> Result<EmulatorAccountStorage<T>, NeonError> {
         trace!("backend::new");
 
-        let clock: Clock = rpc.get_sysvar().await?;
-        let rent: Rent = rpc.get_sysvar().await?;
+        let clock = get_sysvar::<Clock>(rpc).await?;
+        let rent = get_sysvar::<Rent>(rpc).await?;
 
         let (block_number, block_timestamp) = block_overrides
             .map(|o| (o.number, o.time))

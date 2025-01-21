@@ -4,7 +4,6 @@ mod validator_client;
 use crate::commands::get_config::GetConfigResponse;
 
 pub use db_call_client::CallDbClient;
-use solana_sdk::sysvar::{Sysvar, SysvarId};
 pub use validator_client::CloneRpcClient;
 
 use crate::commands::get_config::{BuildConfigSimulator, ConfigSimulator};
@@ -47,19 +46,6 @@ pub trait Rpc {
 
     async fn get_multiple_accounts(&self, pubkeys: &[Pubkey])
         -> ClientResult<Vec<Option<Account>>>;
-
-    async fn get_sysvar<T>(&self) -> NeonResult<T>
-    where
-        T: Sysvar + SysvarId,
-    {
-        let account = self
-            .get_account(&T::id())
-            .await?
-            .ok_or(NeonError::AccountNotFound(T::id()))?;
-
-        let sysvar = bincode::deserialize::<T>(&account.data)?;
-        Ok(sysvar)
-    }
 
     async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>>;
 }

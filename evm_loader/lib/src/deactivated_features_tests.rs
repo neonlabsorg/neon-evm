@@ -6,7 +6,6 @@ mod deactivated_features_tests {
     use solana_client::client_error::Result as ClientResult;
     use solana_sdk::{
         account::{Account, AccountSharedData},
-        clock::{Slot, UnixTimestamp},
         feature::Feature,
         feature_set,
         pubkey::Pubkey,
@@ -80,14 +79,6 @@ mod deactivated_features_tests {
             }
 
             Ok(result)
-        }
-
-        async fn get_block_time(&self, _slot: Slot) -> ClientResult<UnixTimestamp> {
-            todo!()
-        }
-
-        async fn get_slot(&self) -> ClientResult<Slot> {
-            todo!()
         }
 
         async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {

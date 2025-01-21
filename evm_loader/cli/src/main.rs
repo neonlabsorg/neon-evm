@@ -14,7 +14,7 @@ use neon_lib::{
         get_storage_at, init_environment, trace,
     },
     rpc::CloneRpcClient,
-    types::{deactivated_features::set_deactivated_features_rpc, BalanceAddress, EmulateRequest},
+    types::{BalanceAddress, EmulateRequest},
     Config,
 };
 
@@ -42,15 +42,10 @@ type NeonCliResult = Result<serde_json::Value, NeonError>;
 async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
     let config = &config::create(options)?;
 
-    let rpc = build_rpc(options, config).await?;
-
-    set_deactivated_features_rpc(RpcEnum::CloneRpcClient(CloneRpcClient::new_from_config(
-        config,
-    )))
-    .await;
-
     match options.subcommand() {
         ("emulate", Some(_)) => {
+            let rpc = build_rpc(options, config).await?;
+
             let request = read_tx_from_stdin()?;
             emulate::execute(
                 &rpc,
@@ -63,12 +58,16 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
             .map(|(result, _)| json!(result))
         }
         ("trace", Some(_)) => {
+            let rpc = build_rpc(options, config).await?;
+
             let request = read_tx_from_stdin()?;
             trace::trace_transaction(&rpc, &config.db_config, &config.evm_loader, request)
                 .await
                 .map(|trace| json!(trace))
         }
         ("get-ether-account-data", Some(params)) => {
+            let rpc = build_rpc(options, config).await?;
+
             let address = address_of(params, "ether").unwrap();
             let chain_id = value_of(params, "chain_id").unwrap();
 
@@ -80,6 +79,8 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
                 .map(|result| json!(result))
         }
         ("get-contract-account-data", Some(params)) => {
+            let rpc = build_rpc(options, config).await?;
+
             let account = address_of(params, "address").unwrap();
             let accounts = std::slice::from_ref(&account);
 
@@ -88,6 +89,8 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
                 .map(|result| json!(result))
         }
         ("get-holder-account-data", Some(params)) => {
+            let rpc = build_rpc(options, config).await?;
+
             let account = pubkey_of(params, "account").unwrap();
 
             get_holder::execute(&rpc, &config.evm_loader, account)
@@ -95,6 +98,8 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
                 .map(|result| json!(result))
         }
         ("neon-elf-params", Some(params)) => {
+            let rpc = build_rpc(options, config).await?;
+
             let program_location = params.value_of("program_location");
             get_neon_elf::execute(config, &rpc, program_location)
                 .await
@@ -130,6 +135,8 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
             .map(|result| json!(result))
         }
         ("get-storage-at", Some(params)) => {
+            let rpc = build_rpc(options, config).await?;
+
             let contract_id = address_of(params, "contract_id").expect("contract_it parse error");
             let index = u256_of(params, "index").expect("index parse error");
 
@@ -137,9 +144,13 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
                 .await
                 .map(|hash| json!(hex::encode(hash.0)))
         }
-        ("config", Some(_)) => get_config::execute(&rpc, config.evm_loader)
-            .await
-            .map(|result| json!(result)),
+        ("config", Some(_)) => {
+            let rpc = build_rpc(options, config).await?;
+
+            get_config::execute(&rpc, config.evm_loader)
+                .await
+                .map(|result| json!(result))
+        }
         _ => unreachable!(),
     }
 }

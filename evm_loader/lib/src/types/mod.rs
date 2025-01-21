@@ -1,6 +1,6 @@
-pub mod deactivated_features;
-pub mod programs_cache;
 pub mod tracer_ch_common;
+
+pub mod programs_cache;
 pub(crate) mod tracer_ch_db;
 pub mod tracer_rocks_db;
 

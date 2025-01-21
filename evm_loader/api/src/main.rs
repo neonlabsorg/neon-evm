@@ -14,7 +14,6 @@ pub use neon_lib::commands;
 pub use neon_lib::config;
 pub use neon_lib::errors;
 pub use neon_lib::types;
-pub use neon_lib::types::deactivated_features::set_deactivated_features_rpc;
 use tracing_appender::non_blocking::NonBlockingBuilder;
 
 use actix_request_identifier::RequestIdentifier;
@@ -58,8 +57,6 @@ async fn main() -> NeonApiResult<()> {
 
     let api_config = config::load_api_config_from_environment();
     let state: NeonApiState = Data::new(State::new(api_config).await);
-
-    set_deactivated_features_rpc(state.rpc_client.clone()).await;
 
     let listener_addr = options
         .value_of("host")

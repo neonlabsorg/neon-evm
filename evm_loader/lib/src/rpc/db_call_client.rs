@@ -1,5 +1,4 @@
 use super::{e, Rpc, SliceConfig};
-use crate::types::deactivated_features::get_deactivated_features_at_slot;
 use crate::types::{TracerDb, TracerDbTrait};
 use crate::NeonError;
 use crate::NeonError::RocksDb;
@@ -74,6 +73,6 @@ impl Rpc for CallDbClient {
     }
 
     async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {
-        get_deactivated_features_at_slot(Some(self.slot)).await
+        Ok(vec![]) // TODO
     }
 }

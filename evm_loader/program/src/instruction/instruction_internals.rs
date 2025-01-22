@@ -28,21 +28,11 @@ pub fn allocate_evm(
     }
 
     // Dealloc executor state that was potentially alloced in previous iterations before the reset.
-    // Also, copy the block params for use into the new ExecutorStateData.
-    let mut block_params = None;
     if storage.is_executor_state_alloced() {
-        block_params = Some(storage.read_executor_state().get_block_params());
         storage.dealloc_executor_state();
     }
 
-    let mut state_data = {
-        // Preserve the previous block params.
-        if let Some(block_params) = block_params {
-            boxx(ExecutorStateData::new_with_block_params(block_params))
-        } else {
-            boxx(ExecutorStateData::new(account_storage))
-        }
-    };
+    let mut state_data = boxx(ExecutorStateData::new(account_storage));
     let mut evm_backend = ExecutorState::new(account_storage, &mut state_data);
     let evm = boxx(Evm::new(
         storage.trx(),

@@ -297,7 +297,7 @@ impl Tracer for CallTracer {
         let call_stack_len = self.call_stack.len();
         assert!(
             call_stack_len == 1,
-            "incorrect number of top-level calls {call_stack_len}. and gas {emulator_gas_used}"
+            "incorrect number of top-level calls, call_stack_len== {call_stack_len}, and it must be 1 . (emulator_gas_used:   {emulator_gas_used})"
         );
 
         let call_frame = &mut self.call_stack[0];

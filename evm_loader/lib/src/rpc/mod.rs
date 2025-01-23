@@ -22,7 +22,7 @@ use solana_client::client_error::{ClientErrorKind, Result as ClientResult};
 use solana_sdk::{
     account::Account, message::Message, native_token::lamports_to_sol, pubkey::Pubkey,
 };
-
+use std::cmp::max;
 #[async_trait(?Send)]
 #[enum_dispatch]
 pub trait Rpc {
@@ -33,10 +33,10 @@ pub trait Rpc {
     ) -> ClientResult<Option<Account>>;
 
     async fn get_last_deployed_slot(&self, program_id: &Pubkey) -> ClientResult<Option<u64>> {
-        let mut slice_len = std::mem::size_of::<UpgradeableLoaderState>();
-        if slice_len < UpgradeableLoaderState::size_of_programdata_metadata() {
-            slice_len = UpgradeableLoaderState::size_of_programdata_metadata();
-        }
+        let slice_len = max(
+            std::mem::size_of::<UpgradeableLoaderState>(),
+            UpgradeableLoaderState::size_of_programdata_metadata(),
+        );
 
         let slice = SliceConfig {
             offset: 0,

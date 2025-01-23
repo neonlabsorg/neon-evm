@@ -13,7 +13,7 @@ use async_trait::async_trait;
 
 use crate::types::programs_cache::get_program_programdata_address;
 use crate::types::programs_cache::get_programdata_slot_from_account;
-pub use db_call_client::CallDbClient;
+
 use enum_dispatch::enum_dispatch;
 use evm_loader::solana_program::bpf_loader_upgradeable::UpgradeableLoaderState;
 pub use solana_account_decoder::UiDataSliceConfig as SliceConfig;
@@ -22,7 +22,6 @@ use solana_client::client_error::{ClientErrorKind, Result as ClientResult};
 use solana_sdk::{
     account::Account, message::Message, native_token::lamports_to_sol, pubkey::Pubkey,
 };
-pub use validator_client::CloneRpcClient;
 
 #[async_trait(?Send)]
 #[enum_dispatch]
@@ -109,7 +108,6 @@ macro_rules! e {
     };
 }
 
-use crate::types::programs_cache::get_programdata_slot_from_account;
 pub(crate) use e;
 
 pub(crate) async fn check_account_for_fee(

@@ -266,8 +266,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             .await?;
 
         let execution_code = backend.code(target).await?;
-
-        Ok(Self {
+        let mut answer = Self {
             origin,
             chain_id,
             context: Context {
@@ -291,7 +290,17 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             parent: None,
             phantom: PhantomData,
             tracer,
-        })
+        };
+        begin_vm!(
+            answer,
+            backend,
+            answer.context,
+            answer.chain_id,
+            answer.call_data.to_vec(),
+            opcode_table::CALL
+        );
+
+        Ok(answer)
     }
     pub fn take_tracer(&mut self) -> Option<T> {
         self.tracer.take()
@@ -321,8 +330,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend
             .transfer(origin, target, chain_id, trx.value())
             .await?;
-
-        Ok(Self {
+        let mut answer = Self {
             origin,
             chain_id,
             context: Context {
@@ -346,7 +354,17 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             parent: None,
             phantom: PhantomData,
             tracer,
-        })
+        };
+        begin_vm!(
+            answer,
+            backend,
+            answer.context,
+            answer.chain_id,
+            answer.execution_code.to_vec(),
+            opcode_table::CREATE
+        );
+
+        Ok(answer)
     }
 
     #[maybe_async]
@@ -356,24 +374,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend: &mut B,
     ) -> Result<(ExitStatus, u64, Option<T>)> {
         let mut step = 0_u64;
-        if self.pc == 0 {
-            begin_vm!(
-                self,
-                backend,
-                self.context,
-                self.chain_id,
-                if self.reason == Reason::Call {
-                    self.call_data.to_vec()
-                } else {
-                    self.execution_code.to_vec()
-                },
-                if self.reason == Reason::Call {
-                    opcode_table::CALL
-                } else {
-                    opcode_table::CREATE
-                }
-            );
-        };
 
         let status = if is_precompile_address(&self.context.contract) {
             let value = Self::precompile(&self.context.contract, &self.call_data).unwrap();

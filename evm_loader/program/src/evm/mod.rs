@@ -196,6 +196,8 @@ pub struct Machine<B: Database, T: EventListener> {
     phantom: PhantomData<*const B>,
 
     tracer: Option<T>,
+
+    need_transfer: bool,
 }
 
 #[cfg(target_os = "solana")]
@@ -261,10 +263,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         backend.snapshot();
 
-        backend
-            .transfer(origin, target, chain_id, trx.value())
-            .await?;
-
         let execution_code = backend.code(target).await?;
 
         Ok(Self {
@@ -291,6 +289,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             parent: None,
             phantom: PhantomData,
             tracer,
+            need_transfer: true,
         })
     }
 
@@ -313,11 +312,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         }
 
         backend.snapshot();
-
-        backend.increment_nonce(target, chain_id).await?;
-        backend
-            .transfer(origin, target, chain_id, trx.value())
-            .await?;
 
         Ok(Self {
             origin,
@@ -343,6 +337,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             parent: None,
             phantom: PhantomData,
             tracer,
+            need_transfer: true,
         })
     }
 
@@ -353,6 +348,21 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend: &mut B,
     ) -> Result<(ExitStatus, u64, Option<T>)> {
         let mut step = 0_u64;
+
+        if self.need_transfer {
+            backend
+                .increment_nonce(self.context.contract, self.context.contract_chain_id)
+                .await?;
+            backend
+                .transfer(
+                    self.context.caller,
+                    self.context.contract,
+                    self.context.contract_chain_id,
+                    self.context.value,
+                )
+                .await?;
+            self.need_transfer = false;
+        }
 
         begin_vm!(
             self,
@@ -453,6 +463,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             parent: None,
             phantom: PhantomData,
             tracer: self.tracer.take(),
+            need_transfer: self.need_transfer,
         };
 
         core::mem::swap(self, &mut other);

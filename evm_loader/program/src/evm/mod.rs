@@ -246,6 +246,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         }
     }
 
+    #[allow(unused_mut)]
     #[maybe_async]
     async fn new_call(
         chain_id: u64,
@@ -306,6 +307,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         self.tracer.take()
     }
 
+    #[allow(unused_mut)]
     #[maybe_async]
     async fn new_create(
         chain_id: u64,

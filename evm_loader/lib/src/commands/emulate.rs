@@ -423,9 +423,6 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
 
             if execution_step.is_reset {
                 tracer_result = evm.take_tracer();
-                if tracer_result.is_none() {
-                    error!("EVM execution tracer is none ");
-                }
                 drop(evm);
                 drop(backend);
                 drop(storage);

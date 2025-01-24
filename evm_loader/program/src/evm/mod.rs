@@ -267,7 +267,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             .await?;
 
         let execution_code = backend.code(target).await?;
-        let mut answer = Self {
+        let mut machine = Self {
             origin,
             chain_id,
             context: Context {
@@ -293,15 +293,15 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             tracer,
         };
         begin_vm!(
-            answer,
+            machine,
             backend,
-            answer.context,
-            answer.chain_id,
-            answer.call_data.to_vec(),
+            machine.context,
+            machine.chain_id,
+            machine.call_data.to_vec(),
             opcode_table::CALL
         );
 
-        Ok(answer)
+        Ok(machine)
     }
     pub fn take_tracer(&mut self) -> Option<T> {
         self.tracer.take()
@@ -332,7 +332,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend
             .transfer(origin, target, chain_id, trx.value())
             .await?;
-        let mut answer = Self {
+        let mut machine = Self {
             origin,
             chain_id,
             context: Context {
@@ -358,15 +358,15 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             tracer,
         };
         begin_vm!(
-            answer,
+            machine,
             backend,
-            answer.context,
-            answer.chain_id,
-            answer.execution_code.to_vec(),
+            machine.context,
+            machine.chain_id,
+            machine.execution_code.to_vec(),
             opcode_table::CREATE
         );
 
-        Ok(answer)
+        Ok(machine)
     }
 
     #[maybe_async]

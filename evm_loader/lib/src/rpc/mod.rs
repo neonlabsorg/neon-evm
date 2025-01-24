@@ -11,18 +11,18 @@ use crate::commands::get_config::{BuildConfigSimulator, ConfigSimulator};
 use crate::{NeonError, NeonResult};
 use async_trait::async_trait;
 
-use crate::types::programs_cache::get_program_programdata_address;
-use crate::types::programs_cache::get_programdata_slot_from_account;
-
+use bincode::deserialize;
 use enum_dispatch::enum_dispatch;
 use evm_loader::solana_program::bpf_loader_upgradeable::UpgradeableLoaderState;
 pub use solana_account_decoder::UiDataSliceConfig as SliceConfig;
 use solana_cli::cli::CliError;
 use solana_client::client_error::{ClientErrorKind, Result as ClientResult};
 use solana_sdk::{
-    account::Account, message::Message, native_token::lamports_to_sol, pubkey::Pubkey,
+    account::Account, bpf_loader, bpf_loader_upgradeable, message::Message,
+    native_token::lamports_to_sol, pubkey::Pubkey,
 };
 use std::cmp::max;
+
 #[async_trait(?Send)]
 #[enum_dispatch]
 pub trait Rpc {
@@ -37,29 +37,30 @@ pub trait Rpc {
             std::mem::size_of::<UpgradeableLoaderState>(),
             UpgradeableLoaderState::size_of_programdata_metadata(),
         );
-
         let slice = SliceConfig {
             offset: 0,
             length: slice_len,
         };
-
         let result = self.get_account_slice(program_id, Some(slice)).await;
-        // bpfv2 and request account from link
-
         if let Ok(Some(acc)) = result {
-            let slot = if acc.executable {
-                get_programdata_slot_from_account(&acc)
-                    .expect("error")
-                    .expect("No slot info")
-            } else {
-                let pd_addr = get_program_programdata_address(&acc)?.expect("no program info");
-                let rz = self
-                    .get_account_slice(&pd_addr, Some(slice))
-                    .await?
-                    .expect("No account ");
-                get_programdata_slot_from_account(&rz)?.expect("No slice ")
-            };
-            return Ok(Some(slot));
+            // check if not upgradeable
+            if bpf_loader::check_id(&acc.owner) {
+                return Ok(Some(0));
+            } else if bpf_loader_upgradeable::check_id(&acc.owner) {
+                return match deserialize::<UpgradeableLoaderState>(&acc.data) {
+                    Ok(UpgradeableLoaderState::Program {
+                        programdata_address,
+                        ..
+                    }) => self.get_last_deployed_slot(&programdata_address).await,
+                    Ok(UpgradeableLoaderState::ProgramData { slot, .. }) => Ok(Some(slot)),
+                    Ok(_) => Ok(None),
+                    Err(_) => {
+                        Err(ClientErrorKind::Custom("Data corruption error?  ".to_string()).into())
+                    }
+                };
+            }
+
+            return Ok(None);
         }
         Err(ClientErrorKind::Custom("Not account on slot ".to_string()).into())
     }

@@ -284,6 +284,7 @@ impl<'a> StateAccount<'a> {
             // reset all accounts revisions
             state.data.revisions.clear();
             state.data.touched_accounts.clear();
+            state.reset_steps_interrupted();
         }
 
         Ok((state, status))

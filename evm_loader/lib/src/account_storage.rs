@@ -115,7 +115,7 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     logs_stack: Vec<usize>,
 }
 
-async fn get_sysvar<T>(rpc: &dyn Rpc) -> NeonResult<T>
+async fn get_sysvar<T>(rpc: &impl Rpc) -> NeonResult<T>
 where
     T: Sysvar + SysvarId,
 {

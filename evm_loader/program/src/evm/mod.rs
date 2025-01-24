@@ -351,9 +351,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         if self.need_transfer {
             backend
-                .increment_nonce(self.context.contract, self.context.contract_chain_id)
-                .await?;
-            backend
                 .transfer(
                     self.context.caller,
                     self.context.contract,

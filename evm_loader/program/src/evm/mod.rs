@@ -349,6 +349,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     ) -> Result<(ExitStatus, u64, Option<T>)> {
         let mut step = 0_u64;
 
+        if self.context.code_address.is_none() {
+            backend
+                .increment_nonce(self.context.contract, self.context.contract_chain_id)
+                .await?;
+        }
         if self.need_transfer {
             backend
                 .transfer(

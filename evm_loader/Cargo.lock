@@ -1943,6 +1943,7 @@ dependencies = [
  "bincode",
  "borsh 0.10.4",
  "borsh 1.5.3",
+ "bytes",
  "cfg-if",
  "ethnum",
  "evm-loader-macro",
@@ -3217,6 +3218,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonrpsee-types"
+version = "0.24.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddb81adb1a5ae9182df379e374a79e24e992334e7346af4d065ae5b2acb8d4c6"
+dependencies = [
+ "http 1.2.0",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "jsonrpsee-ws-client"
 version = "0.20.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3763,7 +3776,7 @@ dependencies = [
  "build-info-build",
  "jsonrpsee-core 0.22.5",
  "jsonrpsee-http-client",
- "jsonrpsee-types 0.22.5",
+ "jsonrpsee-types 0.24.8",
  "neon-lib",
  "serde",
  "serde_json",

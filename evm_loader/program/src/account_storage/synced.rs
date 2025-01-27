@@ -103,7 +103,6 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
         &mut self,
         mut instruction: Instruction,
         seeds: Vector<Vector<Vector<u8>>>,
-        _fee: u64,
         _emulated_internally: bool,
     ) -> Result<()> {
         let seeds = seeds

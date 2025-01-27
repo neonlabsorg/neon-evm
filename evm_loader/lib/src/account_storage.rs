@@ -1382,7 +1382,6 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         &mut self,
         instruction: Instruction,
         seeds: Vector<Vector<Vector<u8>>>,
-        _fee: u64,
         emulated_internally: bool,
     ) -> evm_loader::error::Result<()> {
         use solana_sdk::{message::Message, signature::Signer, transaction::Transaction};

@@ -102,18 +102,18 @@ pub async fn create_account<State: Database>(
         let transfer =
             system_instruction::transfer(&FAKE_OPERATOR, &account.key, required_lamports);
         state
-            .queue_external_instruction(transfer, vector![], required_lamports, true)
+            .queue_external_instruction(transfer, vector![], true)
             .await?;
     }
 
     let allocate = system_instruction::allocate(&account.key, space.try_into().unwrap());
     state
-        .queue_external_instruction(allocate, vector![seeds.clone()], 0, true)
+        .queue_external_instruction(allocate, vector![seeds.clone()], true)
         .await?;
 
     let assign = system_instruction::assign(&account.key, owner);
     state
-        .queue_external_instruction(assign, vector![seeds], 0, true)
+        .queue_external_instruction(assign, vector![seeds], true)
         .await?;
 
     Ok(())

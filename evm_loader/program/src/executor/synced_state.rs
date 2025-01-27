@@ -306,11 +306,10 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
         &mut self,
         instruction: Instruction,
         seeds: Vector<Vector<Vector<u8>>>,
-        fee: u64,
         emulated_internally: bool,
     ) -> Result<()> {
         self.backend
-            .execute_external_instruction(instruction, seeds, fee, emulated_internally)
+            .execute_external_instruction(instruction, seeds, emulated_internally)
             .await?;
         Ok(())
     }

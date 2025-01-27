@@ -314,7 +314,7 @@ async fn initialize_mint<State: Database>(
         decimals,
     )?;
     state
-        .queue_external_instruction(initialize_mint, vector![], 0, true)
+        .queue_external_instruction(initialize_mint, vector![], true)
         .await?;
 
     Ok(mint_key.to_bytes().to_vector())
@@ -370,7 +370,7 @@ async fn initialize_account<State: Database>(
         &owner.unwrap_or(signer_pubkey),
     )?;
     state
-        .queue_external_instruction(initialize_mint, vector![], 0, true)
+        .queue_external_instruction(initialize_mint, vector![], true)
         .await?;
 
     Ok(account_key.to_bytes().to_vector())
@@ -399,7 +399,7 @@ async fn close_account<State: Database>(
         &[],
     )?;
     state
-        .queue_external_instruction(close_account, vector![seeds], 0, true)
+        .queue_external_instruction(close_account, vector![seeds], true)
         .await?;
 
     Ok(vector![])
@@ -431,7 +431,7 @@ async fn approve<State: Database>(
         amount,
     )?;
     state
-        .queue_external_instruction(approve, vector![seeds], 0, true)
+        .queue_external_instruction(approve, vector![seeds], true)
         .await?;
 
     Ok(vector![])
@@ -454,7 +454,7 @@ async fn revoke<State: Database>(
 
     let revoke = spl_token::instruction::revoke(&spl_token::ID, &account, &signer_pubkey, &[])?;
     state
-        .queue_external_instruction(revoke, vector![seeds], 0, true)
+        .queue_external_instruction(revoke, vector![seeds], true)
         .await?;
 
     Ok(vector![])
@@ -490,7 +490,7 @@ async fn transfer<State: Database>(
         amount,
     )?;
     state
-        .queue_external_instruction(transfer, vector![seeds], 0, true)
+        .queue_external_instruction(transfer, vector![seeds], true)
         .await?;
 
     Ok(vector![])
@@ -534,7 +534,7 @@ async fn transfer_with_seed<State: Database>(
         amount,
     )?;
     state
-        .queue_external_instruction(transfer, vector![seeds], 0, true)
+        .queue_external_instruction(transfer, vector![seeds], true)
         .await?;
 
     Ok(vector![])
@@ -570,7 +570,7 @@ async fn mint_to<State: Database>(
         amount,
     )?;
     state
-        .queue_external_instruction(mint_to, vector![seeds], 0, true)
+        .queue_external_instruction(mint_to, vector![seeds], true)
         .await?;
 
     Ok(vector![])
@@ -607,7 +607,7 @@ async fn burn<State: Database>(
         amount
     )?;
     state
-        .queue_external_instruction(burn, vector![seeds], 0, true)
+        .queue_external_instruction(burn, vector![seeds], true)
         .await?;
 
     Ok(vector![])
@@ -637,7 +637,7 @@ async fn freeze<State: Database>(
         &[],
     )?;
     state
-        .queue_external_instruction(freeze, vector![seeds], 0, true)
+        .queue_external_instruction(freeze, vector![seeds], true)
         .await?;
 
     Ok(vector![])
@@ -668,7 +668,7 @@ async fn thaw<State: Database>(
         &[]
     )?;
     state
-        .queue_external_instruction(thaw, vector![seeds], 0, true)
+        .queue_external_instruction(thaw, vector![seeds], true)
         .await?;
 
     Ok(vector![])

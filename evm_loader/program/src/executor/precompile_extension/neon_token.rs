@@ -3,7 +3,7 @@ use std::convert::TryInto;
 use arrayref::array_ref;
 use ethnum::U256;
 use maybe_async::maybe_async;
-use solana_program::{account_info::IntoAccountInfo, program_pack::Pack, pubkey::Pubkey};
+use solana_program::{account_info::IntoAccountInfo, pubkey::Pubkey};
 use spl_associated_token_account::get_associated_token_address;
 
 use crate::types::vector::VectorSliceExt;
@@ -115,9 +115,8 @@ async fn withdraw<State: Database>(
         let create_associated =
             create_associated_token_account(&FAKE_OPERATOR, &target, &mint_address, &spl_token::ID);
 
-        let fee = state.rent().minimum_balance(spl_token::state::Account::LEN);
         state
-            .queue_external_instruction(create_associated, vector![], fee, true)
+            .queue_external_instruction(create_associated, vector![], true)
             .await?;
     }
 
@@ -138,7 +137,7 @@ async fn withdraw<State: Database>(
 
     state.burn(source, chain_id, value).await?;
     state
-        .queue_external_instruction(transfer, vector![transfer_seeds], 0, true)
+        .queue_external_instruction(transfer, vector![transfer_seeds], true)
         .await?;
 
     Ok(())

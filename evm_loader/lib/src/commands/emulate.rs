@@ -5,6 +5,7 @@ use crate::commands::get_config::BuildConfigSimulator;
 use crate::config::DbConfig;
 use crate::rpc::Rpc;
 use crate::rpc::{CallDbClient, RpcEnum};
+use crate::sysvar::get_sysvar;
 use crate::tracing::tracers::Tracer;
 use crate::tracing::{AccountOverride, BlockOverrides};
 use crate::types::FromAddress;
@@ -394,7 +395,7 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
 
     let mut rpc = create_rpc(db_config, block, index).await?;
 
-    let clock: Clock = rpc.get_sysvar().await?;
+    let clock = get_sysvar::<Clock>(&rpc).await?;
 
     let mut overrides = init_overrides(emulate_request);
 

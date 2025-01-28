@@ -1,5 +1,6 @@
 use crate::account_data::AccountData;
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
+use crate::sysvar::get_sysvar;
 use crate::tracing::{AccountOverrides, BlockOverrides};
 use crate::{rpc::Rpc, solana_simulator::SolanaSimulator, NeonError, NeonResult};
 use async_trait::async_trait;
@@ -18,8 +19,8 @@ use evm_loader::{
     executor::OwnedAccountInfo,
     types::{vector::VectorVecExt, Address, Vector},
 };
+
 use log::{debug, info, trace};
-use solana_sdk::sysvar::{Sysvar, SysvarId};
 use solana_sdk::{
     account::Account,
     account_info::{AccountInfo, IntoAccountInfo},
@@ -113,19 +114,6 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     return_data: Option<TransactionReturnData>,
     logs: Vec<Log>,
     logs_stack: Vec<usize>,
-}
-
-async fn get_sysvar<T>(rpc: &impl Rpc) -> NeonResult<T>
-where
-    T: Sysvar + SysvarId,
-{
-    let account = rpc
-        .get_account(&T::id())
-        .await?
-        .ok_or(NeonError::AccountNotFound(T::id()))?;
-
-    let sysvar = bincode::deserialize::<T>(&account.data)?;
-    Ok(sysvar)
 }
 
 impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {

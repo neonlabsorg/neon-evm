@@ -316,7 +316,6 @@ pub enum Error {
     #[error("Transaction Tree - transaction with the same nonce already exists")]
     TreeAccountAlreadyExists,
 
-    // TODO reconcile with the TreeAccountTxInvalidType - potential duplicate.
     #[error("Attempt to perform an operation with classic transaction, whereas scheduled transaction is expected")]
     NotScheduledTransaction,
 
@@ -334,6 +333,24 @@ pub enum Error {
 
     #[error("Scheduled Transaction has invalid index: inside transaction={0}, inside instruction data={1}")]
     ScheduledTxInvalidIndex(u16, u16),
+
+    #[error("Attempt to perform an operation with scheduled transaction, whereas classic transaction is expected")]
+    NotClassicTransaction,
+
+    #[error("Treasury Account - not found")]
+    TreasuryMissing,
+
+    #[error("Account {0} - invalid header version {1}")]
+    AccountInvalidHeader(Pubkey, u8),
+
+    #[error("Revert after Solana Call is not supported")]
+    RevertAfterSolanaCall,
+
+    #[error("Unsupported EIP-2718 Transaction type | First byte: {0}")]
+    UnsuppotedEthereumTransactionType(u8),
+
+    #[error("Unsupported Neon Transaction type | Second byte: {0}")]
+    UnsuppotedNeonTransactionType(u8),
 }
 
 impl Error {
@@ -377,27 +394,12 @@ impl From<String> for Error {
     }
 }
 
-/// Macro to log a `ProgramError` in the current transaction log
-/// with the source file position like: file.rc:42
-/// and additional info if needed
-/// See `https://github.com/neonlabsorg/neon-evm/issues/159`
-///
-/// # Examples
-///
-/// ```ignore
-/// #    return Err!(ProgramError::InvalidArgument; "Caller pubkey: {} ", &caller_info.key.to_string());
-/// ```
-///
-macro_rules! Err {
-    ( $n:expr; $($args:expr),* ) => ({
-        #[cfg(target_os = "solana")]
-        solana_program::msg!("{}:{} : {}", file!(), line!(), &format!($($args),*));
-
-        #[cfg(all(not(target_os = "solana"), feature = "log"))]
-        log::error!("{}", &format!($($args),*));
-
-        Err($n)
-    });
+macro_rules! panic_with_error {
+    ($e:expr) => {{
+        let error = $crate::error::Error::from($e);
+        error.log_data();
+        panic!("{}", error);
+    }};
 }
 
 #[must_use]

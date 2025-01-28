@@ -99,7 +99,7 @@ pub fn emulate(
             spl_token::processor::Processor::process_sync_native(&spl_token::ID, &instruction_accounts)
         }
         _ => {
-            Err!(ProgramError::InvalidInstructionData; "SPL Token: unknown instrtuction")
+            Err(ProgramError::InvalidInstructionData)
         }
     }
 }

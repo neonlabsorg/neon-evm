@@ -420,9 +420,7 @@ impl<'a> TransactionTree<'a> {
             ExitStatus::Return(result) => (Status::Success, keccak256(result)),
             ExitStatus::Revert(result) => (Status::Failed, keccak256(result)),
             ExitStatus::Cancel => (Status::Failed, keccak256(&[])),
-            ExitStatus::StepLimit => {
-                panic!("Tree Account transaction can't be ended with StepLimit")
-            }
+            ExitStatus::StepLimit => unreachable!(),
         };
 
         node.status = status;
@@ -543,10 +541,15 @@ impl<'a> TransactionTree<'a> {
         Ok(())
     }
 
+    #[must_use]
+    pub fn pubkey(&self) -> &'a Pubkey {
+        self.account.key
+    }
+
     fn header_size(&self) -> usize {
         match super::header_version(&self.account) {
             0 | 1 => size_of::<HeaderV0>(),
-            _ => panic!("Unknown header version"),
+            v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
         }
     }
 
@@ -556,7 +559,7 @@ impl<'a> TransactionTree<'a> {
             0 | 1 => {
                 super::expand_header::<HeaderV0, Header>(&self.account, rent, db)?;
             }
-            _ => panic!("Unknown header version"),
+            v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
         }
 
         Ok(())

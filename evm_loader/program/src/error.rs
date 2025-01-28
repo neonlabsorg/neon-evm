@@ -196,7 +196,7 @@ pub enum Error {
     RecursiveCall,
 
     #[error("Solana programs was interrupted")]
-    InterruptedCall(Option<InterruptedState>),
+    InterruptedCall(Box<Option<InterruptedState>>),
 
     #[error("External call fails {0}: {1}")]
     ExternalCallFailed(Pubkey, String),

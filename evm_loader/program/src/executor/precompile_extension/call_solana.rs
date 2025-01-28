@@ -318,7 +318,7 @@ pub async fn execute_external_instruction<State: Database>(
     log::info!("instruction: {:?}", instruction);
 
     if !state.is_synced_state() {
-        return Err(Error::InterruptedCall(Some(
+        return Err(Error::InterruptedCall(Box::new(Some(
             crate::account::InterruptedState {
                 instruction: crate::account::InterruptedInstruction {
                     program_id: instruction.program_id,
@@ -328,7 +328,7 @@ pub async fn execute_external_instruction<State: Database>(
                 signer_seeds: signer_seeds.clone(),
                 lamports: required_lamports,
             },
-        )));
+        ))));
     }
 
     let called_program = instruction.program_id;

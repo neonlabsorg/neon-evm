@@ -11,6 +11,7 @@ use super::{
     database::{Database, DatabaseExt},
     end_vm, tracing_event, Context, Machine, Reason,
 };
+use crate::account::InterruptedState;
 use crate::evm::tracing::EventListener;
 use crate::types::vector::VectorSliceExt;
 use crate::types::Vector;
@@ -29,7 +30,7 @@ pub enum Action {
     Return(Vector<u8>),
     Revert(Vector<u8>),
     Suicide,
-    Interrupted,
+    Interrupted(Option<InterruptedState>),
     Noop,
 }
 
@@ -1112,10 +1113,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             contract_chain_id: chain_id,
             value,
             code_address: None,
-            interrupted_state: None,
         };
 
-        begin_vm!(self, backend, context.clone(), chain_id, init_code);
+        begin_vm!(self, backend, context, chain_id, init_code);
 
         self.fork(
             Reason::Create,
@@ -1167,10 +1167,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             contract_chain_id: backend.contract_chain_id(address).await.unwrap_or(chain_id),
             value,
             code_address: Some(address),
-            interrupted_state: None,
         };
 
-        begin_vm!(self, backend, context.clone(), chain_id, call_data);
+        begin_vm!(self, backend, context, chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1217,11 +1216,10 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             value,
             code_address: Some(address),
             caller: self.context.contract,
-            interrupted_state: None,
             ..self.context
         };
 
-        begin_vm!(self, backend, context.clone(), chain_id, call_data);
+        begin_vm!(self, backend, context, chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1265,11 +1263,10 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         let context = Context {
             code_address: Some(address),
-            interrupted_state: None,
             ..self.context
         };
 
-        begin_vm!(self, backend, context.clone(), self.chain_id, call_data);
+        begin_vm!(self, backend, context, self.chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1310,10 +1307,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             contract_chain_id: backend.contract_chain_id(address).await.unwrap_or(chain_id),
             value: U256::ZERO,
             code_address: Some(address),
-            interrupted_state: None,
         };
 
-        begin_vm!(self, backend, context.clone(), chain_id, call_data);
+        begin_vm!(self, backend, context, chain_id, call_data);
 
         self.fork(
             Reason::Call,
@@ -1357,7 +1353,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         match result {
             Some(Ok(return_data)) => self.opcode_return_impl(return_data, backend).await,
             Some(Err(e)) => match e {
-                Error::InterruptedCall => Ok(Action::Interrupted),
+                Error::InterruptedCall(state) => Ok(Action::Interrupted(state)),
                 _ => Err(e),
             },
             _ => Ok(Action::Noop),

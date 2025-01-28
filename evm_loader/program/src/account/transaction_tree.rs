@@ -416,7 +416,7 @@ impl<'a> TransactionTree<'a> {
         }
 
         let (status, Hash(result_hash)) = match result {
-            ExitStatus::Stop | ExitStatus::Suicide | ExitStatus::Interrupted => {
+            ExitStatus::Stop | ExitStatus::Suicide | ExitStatus::Interrupted(_) => {
                 (Status::Success, keccak256(&[]))
             }
             ExitStatus::Return(result) => (Status::Success, keccak256(result)),

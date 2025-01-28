@@ -1,8 +1,7 @@
 //! Error types
 #![allow(clippy::use_self)]
 
-use std::{array::TryFromSliceError, num::TryFromIntError, str::Utf8Error};
-
+use crate::account::InterruptedState;
 use crate::allocator::acc_allocator;
 use ethnum::U256;
 use solana_program::{
@@ -10,6 +9,7 @@ use solana_program::{
     pubkey::{Pubkey, PubkeyError},
     secp256k1_recover::Secp256k1RecoverError,
 };
+use std::{array::TryFromSliceError, num::TryFromIntError, str::Utf8Error};
 use thiserror::Error;
 
 use crate::types::{Address, Vector};
@@ -196,7 +196,7 @@ pub enum Error {
     RecursiveCall,
 
     #[error("Solana programs was interrupted")]
-    InterruptedCall,
+    InterruptedCall(Option<InterruptedState>),
 
     #[error("External call fails {0}: {1}")]
     ExternalCallFailed(Pubkey, String),

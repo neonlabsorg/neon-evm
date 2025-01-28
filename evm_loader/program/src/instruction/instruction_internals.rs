@@ -203,20 +203,19 @@ pub fn finalize_interrupted<'a>(
     let (exit_reason, steps_executed, _, _) = {
         let mut backend = SyncedExecutorState::new_with_state_data(&mut accounts, state_data);
         let mut evm = storage.read_evm::<SyncedEvmBackend, NoopEventListener>();
-        let interrupted_state = evm.context.interrupted_state.clone().expect(
-            "evm.context.interrupted_state should be Some within finalize_interrupted context",
-        );
-        let instruction = Instruction {
-            program_id: interrupted_state.instruction.program_id,
-            accounts: interrupted_state.instruction.accounts.to_vec(),
-            data: interrupted_state.instruction.data.to_vec(),
-        };
+        let interrupted_state = storage
+            .interrupted_state()
+            .expect("storage.interrupted_state should be Some within finalize_interrupted context");
 
         let result = execute_external_instruction(
             &mut backend,
             &mut evm.context,
-            instruction,
-            interrupted_state.signer_seeds,
+            Instruction {
+                program_id: interrupted_state.instruction.program_id,
+                accounts: interrupted_state.instruction.accounts.to_vec(),
+                data: interrupted_state.instruction.data.to_vec(),
+            },
+            interrupted_state.signer_seeds.clone(),
             interrupted_state.lamports,
         );
         if let Ok(return_data) = result {
@@ -242,7 +241,7 @@ pub fn log_return_value(status: &ExitStatus) {
         ExitStatus::Stop => 0x11,
         ExitStatus::Return(_) => 0x12,
         ExitStatus::Suicide => 0x13,
-        ExitStatus::Interrupted => 0x14,
+        ExitStatus::Interrupted(_) => 0x14,
         ExitStatus::Revert(_) => 0xd0,
         ExitStatus::StepLimit | ExitStatus::Cancel => unreachable!(),
     };

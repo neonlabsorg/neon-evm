@@ -3,10 +3,10 @@
 #![allow(clippy::unsafe_derive_deserialize)]
 #![allow(clippy::future_not_send)]
 
-use std::{fmt::Display, marker::PhantomData, mem::ManuallyDrop, ops::Range};
-
+use crate::account::InterruptedState;
 use ethnum::U256;
 use maybe_async::maybe_async;
+use std::{fmt::Display, marker::PhantomData, mem::ManuallyDrop, ops::Range};
 
 pub use buffer::Buffer;
 
@@ -32,7 +32,6 @@ mod precompile;
 mod stack;
 pub mod tracing;
 mod utils;
-use solana_program::{instruction::AccountMeta, pubkey::Pubkey};
 
 macro_rules! tracing_event {
     ($self:expr, $backend:expr, $event:expr) => {
@@ -74,10 +73,7 @@ macro_rules! end_vm {
             $self,
             $backend,
             crate::evm::tracing::Event::EndVM {
-                context: Context {
-                    interrupted_state: $self.context.interrupted_state.clone(),
-                    ..$self.context
-                },
+                context: $self.context,
                 chain_id: $self.chain_id,
                 status: $status
             }
@@ -91,10 +87,7 @@ macro_rules! begin_step {
             $self,
             $backend,
             crate::evm::tracing::Event::BeginStep {
-                context: Context {
-                    interrupted_state: $self.context.interrupted_state.clone(),
-                    ..$self.context
-                },
+                context: $self.context,
                 chain_id: $self.chain_id,
                 opcode: $self.execution_code.get_or_default($self.pc).into(),
                 pc: $self.pc,
@@ -118,7 +111,7 @@ pub enum ExitStatus {
     Return(Vector<u8>),
     Revert(Vector<u8>),
     Suicide,
-    Interrupted,
+    Interrupted(Option<InterruptedState>),
     StepLimit,
     Cancel,
 }
@@ -135,7 +128,7 @@ impl ExitStatus {
         match self {
             ExitStatus::Return(_) | ExitStatus::Stop | ExitStatus::Suicide => "succeed",
             ExitStatus::Revert(_) => "revert",
-            ExitStatus::Interrupted => "interrupted due Solana call",
+            ExitStatus::Interrupted(_) => "interrupted due Solana call",
             ExitStatus::StepLimit => "step limit exceeded",
             ExitStatus::Cancel => "cancel",
         }
@@ -145,7 +138,7 @@ impl ExitStatus {
     pub fn is_succeed(&self) -> Option<bool> {
         match self {
             ExitStatus::Stop | ExitStatus::Return(_) | ExitStatus::Suicide => Some(true),
-            ExitStatus::Revert(_) | ExitStatus::Interrupted | ExitStatus::Cancel => Some(false),
+            ExitStatus::Revert(_) | ExitStatus::Interrupted(_) | ExitStatus::Cancel => Some(false),
             ExitStatus::StepLimit => None,
         }
     }
@@ -156,7 +149,7 @@ impl ExitStatus {
             ExitStatus::Return(v) | ExitStatus::Revert(v) => Some(v.to_vec()),
             ExitStatus::Stop
             | ExitStatus::Suicide
-            | ExitStatus::Interrupted
+            | ExitStatus::Interrupted(_)
             | ExitStatus::StepLimit
             | ExitStatus::Cancel => None,
         }
@@ -170,23 +163,7 @@ pub enum Reason {
     Create,
 }
 
-#[derive(Debug, Clone)]
-#[repr(C)]
-pub struct InterruptedInstruction {
-    pub program_id: Pubkey,
-    pub accounts: Vector<AccountMeta>,
-    pub data: Vector<u8>,
-}
-
-#[derive(Debug, Clone)]
-#[repr(C)]
-pub struct InterruptedState {
-    pub instruction: InterruptedInstruction,
-    pub signer_seeds: Vector<Vector<u8>>,
-    pub lamports: u64,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct Context {
     pub caller: Address,
@@ -194,7 +171,6 @@ pub struct Context {
     pub contract_chain_id: u64,
     pub value: U256,
     pub code_address: Option<Address>,
-    pub interrupted_state: Option<InterruptedState>,
 }
 
 #[repr(C)]
@@ -303,7 +279,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 contract_chain_id: backend.contract_chain_id(target).await.unwrap_or(chain_id),
                 value: trx.value(),
                 code_address: Some(target),
-                interrupted_state: None,
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
@@ -356,7 +331,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 contract_chain_id: chain_id,
                 value: trx.value(),
                 code_address: None,
-                interrupted_state: None,
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
@@ -387,7 +361,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         begin_vm!(
             self,
             backend,
-            self.context.clone(),
+            self.context,
             self.chain_id,
             if self.reason == Reason::Call {
                 self.call_data.to_vec()
@@ -412,7 +386,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             let address = self.context.contract;
             let value = PrecompiledContracts::call_precompile_extension(
                 backend,
-                &mut self.context,
+                &self.context,
                 &address,
                 &self.call_data,
                 self.is_static,
@@ -441,9 +415,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                     }
                 };
 
-                if step_call_solana.is_none() && self.context.interrupted_state.is_some() {
-                    step_call_solana = Some(step);
-                }
                 match opcode_result {
                     Action::Continue => self.pc += 1,
                     Action::Jump(target) => self.pc = target,
@@ -451,7 +422,12 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                     Action::Return(value) => break ExitStatus::Return(value),
                     Action::Revert(value) => break ExitStatus::Revert(value),
                     Action::Suicide => break ExitStatus::Suicide,
-                    Action::Interrupted => break ExitStatus::Interrupted,
+                    Action::Interrupted(state) => {
+                        if step_call_solana.is_none() && state.is_some() {
+                            step_call_solana = Some(step);
+                        }
+                        break ExitStatus::Interrupted(state);
+                    }
                     Action::Noop => {}
                 };
             }

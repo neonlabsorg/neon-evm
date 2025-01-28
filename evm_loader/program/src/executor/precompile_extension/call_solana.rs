@@ -35,7 +35,7 @@ pub async fn call_solana<State: Database>(
     state: &mut State,
     address: &Address,
     input: &[u8],
-    context: &mut crate::evm::Context,
+    context: &crate::evm::Context,
     is_static: bool,
 ) -> Result<Vector<u8>> {
     if context.value != 0 {
@@ -309,7 +309,7 @@ pub async fn call_solana<State: Database>(
 #[maybe_async]
 pub async fn execute_external_instruction<State: Database>(
     state: &mut State,
-    context: &mut crate::evm::Context,
+    context: &crate::evm::Context,
     instruction: Instruction,
     signer_seeds: Vector<Vector<u8>>,
     required_lamports: u64,
@@ -317,17 +317,18 @@ pub async fn execute_external_instruction<State: Database>(
     #[cfg(not(target_os = "solana"))]
     log::info!("instruction: {:?}", instruction);
 
-    if !state.is_synced_state() && context.interrupted_state.is_none() {
-        context.interrupted_state = Some(crate::evm::InterruptedState {
-            instruction: crate::evm::InterruptedInstruction {
-                program_id: instruction.program_id,
-                accounts: instruction.accounts.elementwise_copy_to_vector(),
-                data: instruction.data.to_vector(),
+    if !state.is_synced_state() {
+        return Err(Error::InterruptedCall(Some(
+            crate::account::InterruptedState {
+                instruction: crate::account::InterruptedInstruction {
+                    program_id: instruction.program_id,
+                    accounts: instruction.accounts.elementwise_copy_to_vector(),
+                    data: instruction.data.to_vector(),
+                },
+                signer_seeds: signer_seeds.clone(),
+                lamports: required_lamports,
             },
-            signer_seeds: signer_seeds.clone(),
-            lamports: required_lamports,
-        });
-        return Err(Error::InterruptedCall);
+        )));
     }
 
     let called_program = instruction.program_id;

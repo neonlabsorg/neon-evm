@@ -82,10 +82,10 @@ impl TransactionEnvelope {
                     if subtype == 0x01 {
                         (Some(TransactionEnvelope::Scheduled), &bytes[2..])
                     } else {
-                        panic!("Unsupported Scheduled Transaction type | Second byte: {subtype}")
+                        panic_with_error!(Error::UnsuppotedNeonTransactionType(subtype))
                     }
                 }
-                byte => panic!("Unsupported EIP-2718 Transaction type | First byte: {byte}"),
+                byte => panic_with_error!(Error::UnsuppotedEthereumTransactionType(byte)),
             }
         }
     }
@@ -750,7 +750,7 @@ impl Transaction {
                 // Use `scheduled_from_rlp` instead.
                 // N.B. Panic instead of error- usage would indicate a bug in the caller's code
                 // (e.g. Neon Proxy) rather than an error.
-                panic!("Classic Eth transactions should be constructed via from_rlp method.");
+                panic_with_error!(Error::NotScheduledTransaction);
             }
         };
 
@@ -801,7 +801,7 @@ impl Transaction {
                 // Neon instructions and native Eth transactions.
                 // Use `scheduled_from_rlp` instead.
                 // N.B. Panic, instead of error, because usage would indicate a bug rather than an error.
-                panic!("Scheduled transaction should be constructed via special method - scheduled_from_rlp");
+                panic_with_error!(Error::NotClassicTransaction);
             }
             None => {
                 let legacy_tx = rlp::decode::<LegacyTx>(transaction).map_err(Error::from)?;
@@ -933,7 +933,7 @@ impl Transaction {
             TransactionPayload::Legacy(LegacyTx { r, .. })
             | TransactionPayload::AccessList(AccessListTx { r, .. })
             | TransactionPayload::DynamicFee(DynamicFeeTx { r, .. }) => r,
-            TransactionPayload::Scheduled(_) => panic!("Field R is not supported for Scheduled tx"),
+            TransactionPayload::Scheduled(_) => unreachable!(),
         }
     }
 
@@ -943,7 +943,7 @@ impl Transaction {
             TransactionPayload::Legacy(LegacyTx { s, .. })
             | TransactionPayload::AccessList(AccessListTx { s, .. })
             | TransactionPayload::DynamicFee(DynamicFeeTx { s, .. }) => s,
-            TransactionPayload::Scheduled(_) => panic!("Field S is not supported for Scheduled tx"),
+            TransactionPayload::Scheduled(_) => unreachable!(),
         }
     }
 
@@ -966,9 +966,7 @@ impl Transaction {
             TransactionPayload::Legacy(LegacyTx { recovery_id, .. })
             | TransactionPayload::AccessList(AccessListTx { recovery_id, .. })
             | TransactionPayload::DynamicFee(DynamicFeeTx { recovery_id, .. }) => recovery_id,
-            TransactionPayload::Scheduled(_) => {
-                panic!("Field recovery_id is not supported for Scheduled tx")
-            }
+            TransactionPayload::Scheduled(_) => unreachable!(),
         }
     }
 

@@ -22,7 +22,7 @@ pub fn emulate(
     };
 
     if instruction != AssociatedTokenAccountInstruction::Create {
-        return Err!(ProgramError::InvalidInstructionData; "Unknown spl_associated_token instruction");
+        return Err(ProgramError::InvalidInstructionData);
     }
 
     let funder_key = &meta[0].pubkey;
@@ -42,7 +42,7 @@ pub fn emulate(
     {
         let funder = accounts.get_mut(funder_key).unwrap();
         if funder.lamports < required_lamports {
-            return Err!(ProgramError::InsufficientFunds; "Insufficient operator lamports");
+            return Err(ProgramError::InsufficientFunds);
         }
 
         funder.lamports -= required_lamports;
@@ -51,7 +51,7 @@ pub fn emulate(
     {
         let associated_token_account = accounts.get_mut(associated_token_account_key).unwrap();
         if !solana_program::system_program::check_id(&associated_token_account.owner) {
-            return Err!(ProgramError::InvalidInstructionData; "Account {} is not system owned", associated_token_account_key);
+            return Err(ProgramError::InvalidAccountOwner);
         }
 
         associated_token_account.lamports += required_lamports;

@@ -1340,23 +1340,16 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             Some(x) => Some(x),
             None => {
                 backend
-                    .precompile_extension(
-                        &mut self.context,
-                        address,
-                        &self.call_data,
-                        self.is_static,
-                    )
+                    .precompile_extension(&self.context, address, &self.call_data, self.is_static)
                     .await
             }
         };
 
         match result {
             Some(Ok(return_data)) => self.opcode_return_impl(return_data, backend).await,
-            Some(Err(e)) => match e {
-                Error::InterruptedCall(state) => Ok(Action::Interrupted(Box::new(*state))),
-                _ => Err(e),
-            },
-            _ => Ok(Action::Noop),
+            Some(Err(Error::InterruptedCall(state))) => Ok(Action::Interrupted(Box::new(*state))),
+            Some(Err(e)) => Err(e),
+            None => Ok(Action::Noop),
         }
     }
 

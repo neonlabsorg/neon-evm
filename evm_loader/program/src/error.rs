@@ -249,9 +249,6 @@ pub enum Error {
     #[error("Program not allowed to call itself")]
     RecursiveCall,
 
-    #[error("Solana programs was interrupted")]
-    InterruptedCall(#[serde(skip)] Box<Option<InterruptedState>>),
-
     #[error("External call fails {0}: {1}")]
     ExternalCallFailed(Pubkey, String),
 
@@ -338,6 +335,9 @@ pub enum Error {
 
     #[error("Scheduled Transaction has invalid index: inside transaction={0}, inside instruction data={1}")]
     ScheduledTxInvalidIndex(u16, u16),
+
+    #[error("Solana programs was interrupted")]
+    InterruptedCall(#[serde(skip)] Box<Option<InterruptedState>>),
 }
 
 impl Error {

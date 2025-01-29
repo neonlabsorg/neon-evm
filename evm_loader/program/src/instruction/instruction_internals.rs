@@ -209,7 +209,7 @@ pub fn finalize_interrupted<'a>(
 
         let result = execute_external_instruction(
             &mut backend,
-            &mut evm.context,
+            evm.context(),
             Instruction {
                 program_id: interrupted_state.instruction.program_id,
                 accounts: interrupted_state.instruction.accounts.to_vec(),

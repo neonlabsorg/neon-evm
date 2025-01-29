@@ -94,9 +94,6 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
     fn is_synced_state(&self) -> bool {
         true
     }
-    fn is_on_emulator(&self) -> bool {
-        self.backend.is_on_emulator()
-    }
     fn program_id(&self) -> &Pubkey {
         self.backend.program_id()
     }
@@ -321,7 +318,7 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
 
     async fn precompile_extension(
         &mut self,
-        context: &mut Context,
+        context: &Context,
         address: &Address,
         data: &[u8],
         is_static: bool,

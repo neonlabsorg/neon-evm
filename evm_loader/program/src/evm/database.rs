@@ -11,7 +11,6 @@ use solana_program::{
 #[maybe_async(?Send)]
 pub trait Database: LogCollector {
     fn is_synced_state(&self) -> bool;
-    fn is_on_emulator(&self) -> bool;
     fn program_id(&self) -> &Pubkey;
     fn operator(&self) -> Pubkey;
     fn chain_id_to_token(&self, chain_id: u64) -> Pubkey;
@@ -76,7 +75,7 @@ pub trait Database: LogCollector {
 
     async fn precompile_extension(
         &mut self,
-        context: &mut Context,
+        context: &Context,
         address: &Address,
         data: &[u8],
         is_static: bool,

@@ -416,13 +416,11 @@ impl<'a> TransactionTree<'a> {
         }
 
         let (status, Hash(result_hash)) = match result {
-            ExitStatus::Stop | ExitStatus::Suicide | ExitStatus::Interrupted(_) => {
-                (Status::Success, keccak256(&[]))
-            }
+            ExitStatus::Stop | ExitStatus::Suicide => (Status::Success, keccak256(&[])),
             ExitStatus::Return(result) => (Status::Success, keccak256(result)),
             ExitStatus::Revert(result) => (Status::Failed, keccak256(result)),
             ExitStatus::Cancel => (Status::Failed, keccak256(&[])),
-            ExitStatus::StepLimit => {
+            ExitStatus::Interrupted(_) | ExitStatus::StepLimit => {
                 panic!("Tree Account transaction can't be ended with StepLimit")
             }
         };

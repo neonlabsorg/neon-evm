@@ -67,7 +67,6 @@ pub trait AccountStorage: LogCollector {
     /// Get solana user pubkey
     async fn solana_user_address(&self, address: Address) -> Option<Pubkey>;
 
-    fn is_on_emulator(&self) -> bool;
     fn is_valid_chain_id(&self, chain_id: u64) -> bool;
     fn chain_id_to_token(&self, chain_id: u64) -> Pubkey;
     fn default_chain_id(&self) -> u64;

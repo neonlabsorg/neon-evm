@@ -94,10 +94,6 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
             .map_or(U256::ZERO, |a| a.balance())
     }
 
-    fn is_on_emulator(&self) -> bool {
-        false
-    }
-
     fn solana_user_address(&self, address: Address) -> Option<Pubkey> {
         self.balance_account(address, crate::config::SOL_CHAIN_ID)
             .map_or(None, |a| a.solana_address())

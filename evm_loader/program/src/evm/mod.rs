@@ -138,8 +138,8 @@ impl ExitStatus {
     pub fn is_succeed(&self) -> Option<bool> {
         match self {
             ExitStatus::Stop | ExitStatus::Return(_) | ExitStatus::Suicide => Some(true),
-            ExitStatus::Revert(_) | ExitStatus::Interrupted(_) | ExitStatus::Cancel => Some(false),
-            ExitStatus::StepLimit => None,
+            ExitStatus::Revert(_) | ExitStatus::Cancel => Some(false),
+            ExitStatus::Interrupted(_) | ExitStatus::StepLimit => None,
         }
     }
 
@@ -177,7 +177,7 @@ pub struct Context {
 pub struct Machine<B: Database, T: EventListener> {
     origin: Address,
     chain_id: u64,
-    pub context: Context,
+    context: Context,
 
     gas_price: U256,
     gas_limit: U256,
@@ -493,5 +493,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     pub fn increment_pc(&mut self) {
         self.pc += 1;
+    }
+
+    pub fn context(&self) -> &Context {
+        &self.context
     }
 }

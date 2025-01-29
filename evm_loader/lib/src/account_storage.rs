@@ -1065,10 +1065,6 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         .unwrap()
     }
 
-    fn is_on_emulator(&self) -> bool {
-        true
-    }
-
     async fn solana_user_address(&self, address: Address) -> Option<Pubkey> {
         info!("solana_user_address {address}");
 

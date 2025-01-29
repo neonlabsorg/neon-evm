@@ -2,9 +2,9 @@ mod db_call_client;
 mod emulator_client;
 mod validator_client;
 use crate::commands::get_config::GetConfigResponse;
-
 pub use db_call_client::CallDbClient;
 use solana_sdk::sysvar::{Sysvar, SysvarId};
+use tracing::trace;
 pub use validator_client::CloneRpcClient;
 
 use crate::commands::get_config::{BuildConfigSimulator, ConfigSimulator};
@@ -42,9 +42,12 @@ pub trait Rpc {
             length: slice_len,
         };
         let result = self.get_account_slice(program_id, Some(slice)).await;
+
         if let Ok(Some(acc)) = result {
             // check if not upgradeable
+
             if bpf_loader::check_id(&acc.owner) {
+                trace!("Account {program_id}  is  program not upgradeable");
                 return Ok(Some(0));
             } else if bpf_loader_upgradeable::check_id(&acc.owner) {
                 return match deserialize::<UpgradeableLoaderState>(&acc.data) {
@@ -52,14 +55,20 @@ pub trait Rpc {
                         programdata_address,
                         ..
                     }) => self.get_last_deployed_slot(&programdata_address).await,
-                    Ok(UpgradeableLoaderState::ProgramData { slot, .. }) => Ok(Some(slot)),
-                    Ok(_) => Ok(None),
+                    Ok(UpgradeableLoaderState::ProgramData { slot, .. }) => {
+                        trace!("Account {program_id}  is  programdata with slot {slot} ");
+                        Ok(Some(slot))
+                    }
+                    Ok(_) => Err(ClientErrorKind::Custom(
+                        "Not program nither programdata  ".to_string(),
+                    )
+                    .into()),
                     Err(_) => {
                         Err(ClientErrorKind::Custom("Data corruption error?  ".to_string()).into())
                     }
                 };
             }
-
+            trace!("Account {program_id} some troulbes and return None ");
             return Ok(None);
         }
         Err(ClientErrorKind::Custom("Not account on slot ".to_string()).into())

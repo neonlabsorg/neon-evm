@@ -49,6 +49,7 @@ impl<'a> ExecutorStateData {
             block_number: backend.block_number(),
             block_timestamp: backend.block_timestamp(),
         };
+        block_params.log_data();
 
         ExecutorStateData::new_instance(block_params)
     }

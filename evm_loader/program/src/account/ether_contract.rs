@@ -183,7 +183,7 @@ impl<'a> ContractAccount<'a> {
         match super::header_version(&self.account) {
             0 | 1 => size_of::<HeaderV0>(),
             HeaderWithRevision::VERSION => size_of::<HeaderWithRevision>(),
-            _ => panic!("Unknown header version"),
+            v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
         }
     }
 
@@ -195,7 +195,7 @@ impl<'a> ContractAccount<'a> {
             HeaderWithRevision::VERSION => {
                 super::expand_header::<HeaderWithRevision, Header>(&self.account, rent, db)?;
             }
-            _ => panic!("Unknown header version"),
+            v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
         }
 
         Ok(())

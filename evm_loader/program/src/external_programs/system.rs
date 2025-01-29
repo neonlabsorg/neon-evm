@@ -26,7 +26,7 @@ pub fn emulate(
             {
                 let funder = accounts.get_mut(funder_key).unwrap();
                 if funder.lamports < lamports {
-                    return Err!(ProgramError::InsufficientFunds; "Insufficient operator lamports");
+                    return Err(ProgramError::InsufficientFunds);
                 }
 
                 funder.lamports -= lamports;
@@ -38,7 +38,7 @@ pub fn emulate(
                     || !account.data.is_empty()
                     || !system_program::check_id(&account.owner)
                 {
-                    return Err!(ProgramError::InvalidInstructionData; "Create Account: account already in use");
+                    return Err(ProgramError::AccountAlreadyInitialized);
                 }
 
                 account.lamports = lamports;
@@ -51,7 +51,7 @@ pub fn emulate(
             let account = accounts.get_mut(account_key).unwrap();
 
             if !system_program::check_id(&account.owner) {
-                return Err!(ProgramError::InvalidInstructionData; "Assign Account: account already in use");
+                return Err(ProgramError::AccountAlreadyInitialized);
             }
 
             account.owner = owner;
@@ -63,15 +63,15 @@ pub fn emulate(
             {
                 let from = accounts.get_mut(from_key).unwrap();
                 if !from.data.is_empty() {
-                    return Err!(ProgramError::InvalidArgument; "Transfer: `from` must not carry data");
+                    return Err(ProgramError::InvalidArgument);
                 }
 
                 if from.lamports < lamports {
-                    return Err!(ProgramError::InsufficientFunds; "Transfer: insufficient lamports");
+                    return Err(ProgramError::InsufficientFunds);
                 }
 
                 if !system_program::check_id(&from.owner) {
-                    return Err!(ProgramError::InsufficientFunds; "Transfer: source is not system owned");
+                    return Err(ProgramError::InsufficientFunds);
                 }
 
                 from.lamports -= lamports;
@@ -87,13 +87,13 @@ pub fn emulate(
             let account = accounts.get_mut(account_key).unwrap();
 
             if !account.data.is_empty() || !system_program::check_id(&account.owner) {
-                return Err!(ProgramError::InvalidInstructionData; "Allocate Account: account already in use");
+                return Err(ProgramError::InvalidInstructionData);
             }
 
             account.data.resize(space as usize, 0_u8);
         }
         _ => {
-            return Err!(ProgramError::InvalidInstructionData; "Unknown system instruction");
+            return Err(ProgramError::InvalidInstructionData);
         }
     }
 

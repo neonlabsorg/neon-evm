@@ -1,5 +1,5 @@
+use crate::error::{Error, Result};
 use solana_program::account_info::AccountInfo;
-use solana_program::program_error::ProgramError;
 use solana_program::program_pack::{IsInitialized, Pack};
 use std::ops::Deref;
 
@@ -9,9 +9,9 @@ pub struct Account<'a, T: Pack + IsInitialized> {
 }
 
 impl<'a, T: Pack + IsInitialized> Account<'a, T> {
-    pub fn from_account(info: &'a AccountInfo<'a>) -> Result<Self, ProgramError> {
+    pub fn from_account(info: &'a AccountInfo<'a>) -> Result<Self> {
         if !spl_token::check_id(info.owner) {
-            return Err!(ProgramError::InvalidArgument; "Account {} - is not spl token owned", info.key);
+            return Err(Error::AccountInvalidOwner(*info.key, spl_token::ID));
         }
 
         let data = info.try_borrow_data()?;

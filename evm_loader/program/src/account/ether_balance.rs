@@ -210,7 +210,7 @@ impl<'a> BalanceAccount<'a> {
             0 | 1 => size_of::<HeaderV0>(),
             HeaderWithRevision::VERSION => size_of::<HeaderWithRevision>(),
             HeaderWithSolanaAddress::VERSION => size_of::<HeaderWithSolanaAddress>(),
-            _ => panic!("Unknown header version"),
+            v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
         }
     }
 
@@ -225,7 +225,7 @@ impl<'a> BalanceAccount<'a> {
             HeaderWithSolanaAddress::VERSION => {
                 super::expand_header::<HeaderWithSolanaAddress, Header>(&self.account, rent, db)?;
             }
-            _ => panic!("Unknown header version"),
+            v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
         }
 
         Ok(())

@@ -1,6 +1,6 @@
 use crate::account_storage::{AccountStorage, LogCollector, ProgramAccountStorage};
 use crate::config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::executor::OwnedAccountInfo;
 use crate::types::Address;
 use ethnum::U256;
@@ -108,7 +108,7 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     fn chain_id_to_token(&self, chain_id: u64) -> Pubkey {
         let index = crate::config::CHAIN_ID_LIST
             .binary_search_by_key(&chain_id, |c| c.0)
-            .unwrap();
+            .unwrap_or_else(|_| panic_with_error!(Error::InvalidChainId(chain_id)));
 
         crate::config::CHAIN_ID_LIST[index].2
     }

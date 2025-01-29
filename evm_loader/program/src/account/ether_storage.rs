@@ -2,7 +2,7 @@ use std::cell::{Ref, RefMut};
 use std::mem::size_of;
 
 use super::{AccountHeader, AccountsDB, NoHeader, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_STORAGE_CELL};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent};
 
@@ -162,7 +162,7 @@ impl<'a> StorageCell<'a> {
         match super::header_version(&self.account) {
             0 | 1 => size_of::<NoHeader>(),
             HeaderWithRevision::VERSION => size_of::<HeaderWithRevision>(),
-            _ => panic!("Unknown header version"),
+            v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
         }
     }
 
@@ -174,7 +174,7 @@ impl<'a> StorageCell<'a> {
             HeaderWithRevision::VERSION => {
                 super::expand_header::<HeaderWithRevision, Header>(&self.account, rent, db)?;
             }
-            _ => panic!("Unknown header version"),
+            v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
         }
 
         Ok(())

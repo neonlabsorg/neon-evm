@@ -8,7 +8,6 @@ use mpl_token_metadata::{
     instructions::{CreateMasterEditionV3Builder, CreateMetadataAccountV3Builder},
     programs::MPL_TOKEN_METADATA_ID,
     types::{Creator, DataV2, TokenStandard},
-    MAX_CREATOR_LEN, MAX_CREATOR_LIMIT, MAX_NAME_LENGTH, MAX_SYMBOL_LENGTH, MAX_URI_LENGTH,
 };
 use solana_program::pubkey::Pubkey;
 
@@ -22,37 +21,6 @@ use crate::{
     evm::database::Database,
     types::Address,
 };
-
-// TODO: Use solana-program-test in the emulator to calculate fee
-// instead of relying on the hardcoded constants
-const CREATE_FEE: u64 = 10_000_000;
-
-const MAX_DATA_SIZE: usize = 4
-    + MAX_NAME_LENGTH
-    + 4
-    + MAX_SYMBOL_LENGTH
-    + 4
-    + MAX_URI_LENGTH
-    + 2
-    + 1
-    + 4
-    + MAX_CREATOR_LIMIT * MAX_CREATOR_LEN;
-
-const MAX_METADATA_LEN: usize = 1 // key
-    + 32             // update auth pubkey
-    + 32             // mint pubkey
-    + MAX_DATA_SIZE
-    + 1              // primary sale
-    + 1              // mutable
-    + 9              // nonce (pretty sure this only needs to be 2)
-    + 2              // token standard
-    + 34             // collection
-    + 18             // uses
-    + 10             // collection details
-    + 33             // programmable config
-    + 75; // Padding
-
-pub const MAX_MASTER_EDITION_LEN: usize = 1 + 9 + 8 + 264;
 
 // "[0xc5, 0x73, 0x50, 0xc6]": "createMetadata(bytes32,string,string,string)"
 // "[0x4a, 0xe8, 0xb6, 0x6b]": "createMasterEdition(bytes32,uint64)"
@@ -229,9 +197,8 @@ async fn create_metadata<State: Database>(
         })
         .instruction();
 
-    let fee = state.rent().minimum_balance(MAX_METADATA_LEN) + CREATE_FEE;
     state
-        .queue_external_instruction(instruction, vector![seeds], fee, true)
+        .queue_external_instruction(instruction, vector![seeds], true)
         .await?;
 
     Ok(metadata_pubkey.to_bytes().to_vector())
@@ -271,9 +238,8 @@ async fn create_master_edition<State: Database>(
 
     let instruction = instruction_builder.instruction();
 
-    let fee = state.rent().minimum_balance(MAX_MASTER_EDITION_LEN) + CREATE_FEE;
     state
-        .queue_external_instruction(instruction, vector![seeds], fee, true)
+        .queue_external_instruction(instruction, vector![seeds], true)
         .await?;
 
     Ok(edition_pubkey.to_bytes().to_vector())

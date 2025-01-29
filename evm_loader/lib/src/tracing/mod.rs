@@ -9,7 +9,7 @@ use evm_loader::types::Address;
 pub mod tracers;
 
 /// See <https://github.com/ethereum/go-ethereum/blob/master/internal/ethapi/api.go#L993>
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockOverrides {
     pub number: Option<u64>,

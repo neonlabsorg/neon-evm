@@ -30,7 +30,7 @@ pub enum Action {
     Return(Vector<u8>),
     Revert(Vector<u8>),
     Suicide,
-    Interrupted(Option<InterruptedState>),
+    Interrupted(Box<Option<InterruptedState>>),
     Noop,
 }
 
@@ -1353,7 +1353,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         match result {
             Some(Ok(return_data)) => self.opcode_return_impl(return_data, backend).await,
             Some(Err(e)) => match e {
-                Error::InterruptedCall(state) => Ok(Action::Interrupted(*state)),
+                Error::InterruptedCall(state) => Ok(Action::Interrupted(Box::new(*state))),
                 _ => Err(e),
             },
             _ => Ok(Action::Noop),

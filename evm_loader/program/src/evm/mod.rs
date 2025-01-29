@@ -111,7 +111,7 @@ pub enum ExitStatus {
     Return(Vector<u8>),
     Revert(Vector<u8>),
     Suicide,
-    Interrupted(Option<InterruptedState>),
+    Interrupted(Box<Option<InterruptedState>>),
     StepLimit,
     Cancel,
 }

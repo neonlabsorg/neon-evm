@@ -75,7 +75,7 @@ pub fn do_continue<'a>(
     reinit_evm(&mut account_storage, &mut storage, reset)?;
 
     let mut state_data = storage.read_executor_state();
-    if storage.steps_interrupted() > 0 {
+    if storage.interrupted_state().is_some() {
         return finalize_interrupted(storage, account_storage, gasometer, &mut state_data);
     }
     let mut evm = storage.read_evm::<EvmBackend, NoopEventListener>();
@@ -87,7 +87,6 @@ pub fn do_continue<'a>(
 
         if let ExitStatus::Interrupted(state) = exit_status {
             storage.set_interrupted_state(*state);
-            storage.increment_steps_interrupted(1)?;
         } else if ExitStatus::StepLimit != exit_status {
             backend.set_exit_status(exit_status);
         }

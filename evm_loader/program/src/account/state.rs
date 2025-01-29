@@ -119,9 +119,8 @@ struct Data {
     pub priority_fee_used: U256,
     /// Steps executed in the transaction
     pub steps_executed: u64,
-    /// Steps interrupted due Solana program call
-    pub steps_interrupted: u64,
-    /// State of `execute_external_instruction` at the interruption breakpoint
+    /// State of `execute_external_instruction` at the Solana call interruption breakpoint
+    /// None if no Solana call interruption occurs
     pub interrupted_state: Option<InterruptedState>,
     /// Address of the tree account (present for scheduled transactions).
     pub tree_account: Option<Pubkey>,
@@ -236,7 +235,6 @@ impl<'a> StateAccount<'a> {
             gas_used: U256::ZERO,
             priority_fee_used: U256::ZERO,
             steps_executed: 0_u64,
-            steps_interrupted: 0_u64,
             interrupted_state: None,
             tree_account,
         });
@@ -303,7 +301,7 @@ impl<'a> StateAccount<'a> {
             // reset all accounts revisions
             state.data.revisions.clear();
             state.data.touched_accounts.clear();
-            state.reset_steps_interrupted();
+            state.set_interrupted_state(None);
         }
 
         Ok((state, status))
@@ -557,25 +555,6 @@ impl<'a> StateAccount<'a> {
         self.data.steps_executed = self
             .data
             .steps_executed
-            .checked_add(steps)
-            .ok_or(Error::IntegerOverflow)?;
-
-        Ok(())
-    }
-
-    #[must_use]
-    pub fn steps_interrupted(&self) -> u64 {
-        self.data.steps_interrupted
-    }
-
-    pub fn reset_steps_interrupted(&mut self) {
-        self.data.steps_interrupted = 0;
-    }
-
-    pub fn increment_steps_interrupted(&mut self, steps: u64) -> Result<()> {
-        self.data.steps_interrupted = self
-            .data
-            .steps_interrupted
             .checked_add(steps)
             .ok_or(Error::IntegerOverflow)?;
 

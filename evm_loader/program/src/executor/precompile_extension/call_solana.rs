@@ -325,7 +325,7 @@ pub async fn execute_external_instruction<State: Database>(
                     accounts: instruction.accounts.elementwise_copy_to_vector(),
                     data: instruction.data.to_vector(),
                 },
-                signer_seeds: signer_seeds.clone(),
+                signer_seeds,
                 lamports: required_lamports,
             },
         ))));

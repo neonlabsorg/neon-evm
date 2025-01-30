@@ -294,9 +294,10 @@ impl CallTracer {
 
 impl Tracer for CallTracer {
     fn into_traces(mut self, emulator_gas_used: u64) -> Value {
+        let call_stack_len = self.call_stack.len();
         assert!(
-            self.call_stack.len() == 1,
-            "incorrect number of top-level calls"
+            call_stack_len == 1,
+            "incorrect number of top-level calls, call_stack_len== {call_stack_len}, and it must be 1 . (emulator_gas_used:   {emulator_gas_used})"
         );
 
         let call_frame = &mut self.call_stack[0];

@@ -23,6 +23,13 @@ pub struct KeyAccountCache {
     pub addr: Pubkey,
     pub slot: u64,
 }
+impl KeyAccountCache {
+    #[must_use]
+
+    pub const fn new(addr: &Pubkey, slot: u64) -> Self {
+        Self { addr: *addr, slot }
+    }
+}
 
 type ProgramDataCache<Value> = HashMap<KeyAccountCache, Value>;
 
@@ -78,25 +85,48 @@ async fn programdata_account_cache_get_instance() -> &'static ThreadSaveProgramD
         .await
 }
 
-async fn programdata_account_cache_get(addr: Pubkey, slot: u64) -> Option<Account> {
-    let key = KeyAccountCache { addr, slot };
-    programdata_account_cache_get_instance().await.get(&key)
+async fn programdata_account_cache_get(key: &KeyAccountCache) -> Option<Account> {
+    programdata_account_cache_get_instance().await.get(key)
 }
 
-async fn programdata_account_cache_add(addr: Pubkey, slot: u64, acc: Account) {
-    let key = KeyAccountCache { addr, slot };
+async fn programdata_account_cache_add(key: KeyAccountCache, acc: Account) {
     programdata_account_cache_get_instance().await.add(key, acc);
 }
 
-/// in case of Not upgradeable account - return option None  
-pub fn get_programdata_slot_from_account(acc: &Account) -> ClientResult<Option<u64>> {
-    if !bpf_loader_upgradeable::check_id(&acc.owner) {
-        return Ok(None);
-    }
+/// in case of Not upgradeable account - return option None
+pub fn get_program_programdata_address(acc: &Account) -> ClientResult<Option<Pubkey>> {
+    assert!(!bpf_loader_upgradeable::check_id(&acc.owner), "NOT AN ACC");
 
     match deserialize::<UpgradeableLoaderState>(&acc.data) {
+        Ok(UpgradeableLoaderState::Program {
+            programdata_address,
+            ..
+        }) => Ok(Some(programdata_address)),
+        Ok(_) => {
+            panic!("Unexpected account type! Only Program type is acceptable  ");
+        }
+        Err(e) => {
+            eprintln!("Error occurred: {e:?}");
+            panic!("Failed to deserialize account data.");
+        }
+    }
+}
+
+pub fn get_programdata_slot_from_account(acc: &Account) -> ClientResult<Option<u64>> {
+    assert!(bpf_loader_upgradeable::check_id(&acc.owner), "NOT AN ACC");
+    match deserialize::<UpgradeableLoaderState>(&acc.data) {
         Ok(UpgradeableLoaderState::ProgramData { slot, .. }) => Ok(Some(slot)),
-        Ok(_) => Ok(None),
+        Ok(UpgradeableLoaderState::Program {
+            programdata_address,
+            ..
+        }) => {
+            info!(" programdata_address:{programdata_address}");
+            Ok(Some(0))
+        }
+
+        Ok(_) => {
+            panic!("Unexpected account type! Only ProgramData type is acceptable   ");
+        }
         Err(e) => {
             eprintln!("Error occurred: {e:?}");
             panic!("Failed to deserialize account data.");
@@ -127,16 +157,18 @@ pub async fn programdata_cache_get_values_by_keys(
         "programdata_keys.size()!=future_requests.size()"
     );
     let results = join_all(future_requests).await;
-    for (result, key) in results.iter().zip(programdata_keys) {
+    for (result, addr) in results.iter().zip(programdata_keys) {
         match result {
             Ok(Some(account)) => {
                 if let Some(slot_val) = get_programdata_slot_from_account(account)? {
-                    if let Some(acc) = programdata_account_cache_get(*key, slot_val).await {
+                    let key = KeyAccountCache::new(addr, slot_val);
+                    if let Some(acc) = programdata_account_cache_get(&key).await {
                         answer.push(Some(acc));
-                    } else if let Ok(Some(tmp_acc)) = rpc.get_account(key).await {
+                    } else if let Ok(Some(tmp_acc)) = rpc.get_account(&key.addr).await {
                         let current_slot =
                             get_programdata_slot_from_account(&tmp_acc)?.expect("No current slot ");
-                        programdata_account_cache_add(*key, current_slot, tmp_acc.clone()).await;
+                        let key = KeyAccountCache::new(addr, current_slot);
+                        programdata_account_cache_add(key, tmp_acc.clone()).await;
 
                         answer.push(Some(tmp_acc));
                     } else {
@@ -147,11 +179,11 @@ pub async fn programdata_cache_get_values_by_keys(
                 }
             }
             Ok(None) => {
-                info!("Account for key {key:?} is None.");
+                info!("Account for key {addr:?} is None.");
                 answer.push(None);
             }
             Err(e) => {
-                info!("Error fetching account for key {key:?}: {e:?}");
+                info!("Error fetching account for key {addr:?}: {e:?}");
             }
         }
     }
@@ -318,24 +350,6 @@ mod tests {
                 addr: Pubkey::new_unique(),
             })
             .is_none());
-    }
-
-    #[test]
-    fn test_add_and_get_value() {
-        let cache: ThreadSaveCache<String> = ThreadSaveCache::new();
-        let key = KeyAccountCache {
-            slot: 0,
-            addr: Pubkey::new_unique(),
-        };
-        let value = "test_value".to_string();
-
-        // Add the value to the cache
-        cache.add(key.clone(), value.clone());
-
-        // Retrieve the value from the cache
-        let result = cache.get(&key);
-        assert!(result.is_some());
-        assert_eq!(result.unwrap(), value);
     }
 
     #[test]

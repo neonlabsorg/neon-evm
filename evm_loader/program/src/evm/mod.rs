@@ -249,6 +249,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         }
     }
 
+    #[allow(unused_mut)]
     #[maybe_async]
     async fn new_call(
         chain_id: u64,
@@ -269,8 +270,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             .await?;
 
         let execution_code = backend.code(target).await?;
-
-        Ok(Self {
+        let mut machine = Self {
             origin,
             chain_id,
             context: Context {
@@ -294,9 +294,23 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             parent: None,
             phantom: PhantomData,
             tracer,
-        })
+        };
+        begin_vm!(
+            machine,
+            backend,
+            machine.context,
+            machine.chain_id,
+            machine.call_data.to_vec(),
+            opcode_table::CALL
+        );
+
+        Ok(machine)
+    }
+    pub fn take_tracer(&mut self) -> Option<T> {
+        self.tracer.take()
     }
 
+    #[allow(unused_mut)]
     #[maybe_async]
     async fn new_create(
         chain_id: u64,
@@ -321,8 +335,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         backend
             .transfer(origin, target, chain_id, trx.value())
             .await?;
-
-        Ok(Self {
+        let mut machine = Self {
             origin,
             chain_id,
             context: Context {
@@ -346,7 +359,17 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             parent: None,
             phantom: PhantomData,
             tracer,
-        })
+        };
+        begin_vm!(
+            machine,
+            backend,
+            machine.context,
+            machine.chain_id,
+            machine.execution_code.to_vec(),
+            opcode_table::CREATE
+        );
+
+        Ok(machine)
     }
 
     #[maybe_async]
@@ -357,23 +380,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     ) -> Result<(ExitStatus, u64, Option<u64>, Option<T>)> {
         let mut step = 0_u64;
         let mut step_call_solana: Option<u64> = None;
-
-        begin_vm!(
-            self,
-            backend,
-            self.context,
-            self.chain_id,
-            if self.reason == Reason::Call {
-                self.call_data.to_vec()
-            } else {
-                self.execution_code.to_vec()
-            },
-            if self.reason == Reason::Call {
-                opcode_table::CALL
-            } else {
-                opcode_table::CREATE
-            }
-        );
 
         let status = if is_precompile_address(&self.context.contract) {
             let value = Self::precompile(&self.context.contract, &self.call_data).unwrap();

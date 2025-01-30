@@ -196,6 +196,11 @@ impl EventListener for StructLogger {
 
 impl Tracer for StructLogger {
     fn into_traces(self, emulator_gas_used: u64) -> Value {
+        let call_stack_len = self.depth;
+        assert!(
+            call_stack_len == 0,
+            "incorrect number of top-level calls {call_stack_len} - StructLogger depth should be 0  "
+        );
         let exit_status = self.exit_status.expect("Exit status should be set");
         let result = StructLoggerResult {
             gas: self.actual_gas_used.map_or(emulator_gas_used, U256::as_u64),

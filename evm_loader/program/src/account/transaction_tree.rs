@@ -420,7 +420,7 @@ impl<'a> TransactionTree<'a> {
             ExitStatus::Return(result) => (Status::Success, keccak256(result)),
             ExitStatus::Revert(result) => (Status::Failed, keccak256(result)),
             ExitStatus::Cancel => (Status::Failed, keccak256(&[])),
-            ExitStatus::StepLimit => unreachable!(),
+            ExitStatus::Interrupted(_) | ExitStatus::StepLimit => unreachable!(),
         };
 
         node.status = status;

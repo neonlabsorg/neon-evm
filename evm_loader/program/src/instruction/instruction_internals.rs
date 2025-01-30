@@ -2,17 +2,22 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use crate::account::{AllocateResult, Holder, Operator, StateAccount};
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
+use crate::allocator::acc_allocator;
 use crate::debug::log_data;
 use crate::error::Result;
 use crate::evm::tracing::NoopEventListener;
 use crate::evm::{ExitStatus, Machine};
-use crate::executor::{Action, ExecutorState, ExecutorStateData};
+use crate::executor::precompile_extension::call_solana::execute_external_instruction;
+use crate::executor::{Action, ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
 use crate::instruction::priority_fee_txn_calculator;
 use crate::types::boxx::boxx;
 use crate::types::Vector;
 use crate::types::{Transaction, TreeMap};
 
+use solana_program::instruction::Instruction;
+
+pub type SyncedEvmBackend<'a, 'r> = SyncedExecutorState<'r, ProgramAccountStorage<'a>>;
 pub type EvmBackend<'a, 'r> = ExecutorState<'r, ProgramAccountStorage<'a>>;
 pub type Evm<'a, 'r> = Machine<EvmBackend<'a, 'r>, NoopEventListener>;
 
@@ -176,11 +181,57 @@ pub fn finalize<'a, 'b>(
     Ok(())
 }
 
+pub fn finalize_interrupted<'a>(
+    storage: StateAccount<'a>,
+    mut accounts: ProgramAccountStorage<'a>,
+    gasometer: Gasometer,
+    state_data: &mut ExecutorStateData,
+) -> Result<()> {
+    debug_print!("finalize_interrupted");
+
+    accounts.apply_state_change(state_data.into_actions())?;
+    let (exit_reason, steps_executed, _, _) = {
+        let mut backend = SyncedExecutorState::new_with_state_data(&mut accounts, state_data);
+        let mut evm = storage.read_evm::<SyncedEvmBackend, NoopEventListener>();
+        let interrupted_state = storage
+            .interrupted_state()
+            .expect("storage.interrupted_state should be Some within finalize_interrupted context");
+
+        let result = execute_external_instruction(
+            &mut backend,
+            evm.context(),
+            Instruction {
+                program_id: interrupted_state.instruction.program_id,
+                accounts: interrupted_state.instruction.accounts.to_vec(),
+                data: interrupted_state.instruction.data.to_vec(),
+            },
+            interrupted_state.signer_seeds.clone(),
+            interrupted_state.lamports,
+        );
+        if let Ok(return_data) = result {
+            evm.opcode_return_impl(return_data, &mut backend)?;
+            evm.increment_pc();
+        }
+        evm.execute(u64::MAX, &mut backend)?
+    };
+    let (_, touched_accounts) = state_data.deconstruct();
+    let no_actions = Vector::new_in(acc_allocator());
+    finalize(
+        steps_executed,
+        storage,
+        accounts,
+        Some((&exit_reason, &no_actions)),
+        gasometer,
+        touched_accounts,
+    )
+}
+
 pub fn log_return_value(status: &ExitStatus) {
     let code: u8 = match status {
         ExitStatus::Stop => 0x11,
         ExitStatus::Return(_) => 0x12,
         ExitStatus::Suicide => 0x13,
+        ExitStatus::Interrupted(_) => 0x14,
         ExitStatus::Revert(_) => 0xd0,
         ExitStatus::StepLimit | ExitStatus::Cancel => unreachable!(),
     };

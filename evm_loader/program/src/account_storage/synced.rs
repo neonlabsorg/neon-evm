@@ -123,19 +123,16 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
             let account = self.accounts.get(&meta.pubkey).clone();
             accounts_info.push(account);
         }
-
         let instruction = Instruction {
             program_id: instruction.program_id,
             accounts: instruction.accounts,
             data: instruction.data,
         };
-
         if !seeds.is_empty() {
             invoke_signed_unchecked(&instruction, &accounts_info, &seeds)?;
         } else {
             invoke_unchecked(&instruction, &accounts_info)?;
         }
-
         Ok(())
     }
 

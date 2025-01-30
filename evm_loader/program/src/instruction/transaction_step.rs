@@ -7,7 +7,9 @@ use crate::evm::tracing::NoopEventListener;
 use crate::evm::ExitStatus;
 use crate::executor::ExecutorState;
 use crate::gasometer::Gasometer;
-use crate::instruction::instruction_internals::{allocate_evm, finalize, reinit_evm, EvmBackend};
+use crate::instruction::instruction_internals::{
+    allocate_evm, finalize, finalize_interrupted, reinit_evm, EvmBackend,
+};
 
 pub fn do_begin<'a>(
     accounts: AccountsDB<'a>,
@@ -66,24 +68,28 @@ pub fn do_continue<'a>(
             "Step limit {step_count} below minimum {EVM_STEPS_MIN}"
         )));
     }
-
-    let mut account_storage = ProgramAccountStorage::new(accounts)?;
     if reset {
         log_data(&[b"RESET"]);
     }
-
+    let mut account_storage = ProgramAccountStorage::new(accounts)?;
     reinit_evm(&mut account_storage, &mut storage, reset)?;
+
     let mut state_data = storage.read_executor_state();
+    if storage.interrupted_state().is_some() {
+        return finalize_interrupted(storage, account_storage, gasometer, &mut state_data);
+    }
     let mut evm = storage.read_evm::<EvmBackend, NoopEventListener>();
     let mut backend = ExecutorState::new(&mut account_storage, &mut state_data);
-
     let mut steps_executed = 0;
-    if backend.exit_status().is_none() {
-        let (exit_status, steps_returned, _) = evm.execute(step_count, &mut backend)?;
-        if exit_status != ExitStatus::StepLimit {
-            backend.set_exit_status(exit_status)
-        }
 
+    if backend.exit_status().is_none() {
+        let (exit_status, steps_returned, _, _) = evm.execute(step_count, &mut backend)?;
+
+        if let ExitStatus::Interrupted(state) = exit_status {
+            storage.set_interrupted_state(*state);
+        } else if ExitStatus::StepLimit != exit_status {
+            backend.set_exit_status(exit_status);
+        }
         steps_executed = steps_returned;
     }
 

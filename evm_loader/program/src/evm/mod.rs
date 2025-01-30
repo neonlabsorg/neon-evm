@@ -3,10 +3,10 @@
 #![allow(clippy::unsafe_derive_deserialize)]
 #![allow(clippy::future_not_send)]
 
-use std::{fmt::Display, marker::PhantomData, mem::ManuallyDrop, ops::Range};
-
+use crate::account::InterruptedState;
 use ethnum::U256;
 use maybe_async::maybe_async;
+use std::{fmt::Display, marker::PhantomData, mem::ManuallyDrop, ops::Range};
 
 pub use buffer::Buffer;
 
@@ -26,7 +26,7 @@ use self::{database::Database, memory::Memory, stack::Stack};
 mod buffer;
 pub mod database;
 mod memory;
-mod opcode;
+pub mod opcode;
 pub mod opcode_table;
 mod precompile;
 mod stack;
@@ -111,6 +111,7 @@ pub enum ExitStatus {
     Return(Vector<u8>),
     Revert(Vector<u8>),
     Suicide,
+    Interrupted(Box<Option<InterruptedState>>),
     StepLimit,
     Cancel,
 }
@@ -127,6 +128,7 @@ impl ExitStatus {
         match self {
             ExitStatus::Return(_) | ExitStatus::Stop | ExitStatus::Suicide => "succeed",
             ExitStatus::Revert(_) => "revert",
+            ExitStatus::Interrupted(_) => "interrupted due Solana call",
             ExitStatus::StepLimit => "step limit exceeded",
             ExitStatus::Cancel => "cancel",
         }
@@ -137,7 +139,7 @@ impl ExitStatus {
         match self {
             ExitStatus::Stop | ExitStatus::Return(_) | ExitStatus::Suicide => Some(true),
             ExitStatus::Revert(_) | ExitStatus::Cancel => Some(false),
-            ExitStatus::StepLimit => None,
+            ExitStatus::Interrupted(_) | ExitStatus::StepLimit => None,
         }
     }
 
@@ -145,9 +147,11 @@ impl ExitStatus {
     pub fn into_result(self) -> Option<Vec<u8>> {
         match self {
             ExitStatus::Return(v) | ExitStatus::Revert(v) => Some(v.to_vec()),
-            ExitStatus::Stop | ExitStatus::Suicide | ExitStatus::StepLimit | ExitStatus::Cancel => {
-                None
-            }
+            ExitStatus::Stop
+            | ExitStatus::Suicide
+            | ExitStatus::Interrupted(_)
+            | ExitStatus::StepLimit
+            | ExitStatus::Cancel => None,
         }
     }
 }
@@ -166,7 +170,6 @@ pub struct Context {
     pub contract: Address,
     pub contract_chain_id: u64,
     pub value: U256,
-
     pub code_address: Option<Address>,
 }
 
@@ -351,8 +354,9 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         &mut self,
         step_limit: u64,
         backend: &mut B,
-    ) -> Result<(ExitStatus, u64, Option<T>)> {
+    ) -> Result<(ExitStatus, u64, Option<u64>, Option<T>)> {
         let mut step = 0_u64;
+        let mut step_call_solana: Option<u64> = None;
 
         begin_vm!(
             self,
@@ -379,10 +383,11 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             end_vm!(self, backend, ExitStatus::Return(value.clone()));
             ExitStatus::Return(value)
         } else if PrecompiledContracts::is_precompile_extension(&self.context.contract) {
+            let address = self.context.contract;
             let value = PrecompiledContracts::call_precompile_extension(
                 backend,
                 &self.context,
-                &self.context.contract,
+                &address,
                 &self.call_data,
                 self.is_static,
             )
@@ -400,7 +405,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 step += 1;
 
                 let opcode = self.execution_code.get_or_default(self.pc);
-
                 begin_step!(self, backend);
 
                 let opcode_result = match self.execute_opcode(backend, opcode).await {
@@ -418,12 +422,18 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                     Action::Return(value) => break ExitStatus::Return(value),
                     Action::Revert(value) => break ExitStatus::Revert(value),
                     Action::Suicide => break ExitStatus::Suicide,
+                    Action::Interrupted(state) => {
+                        if step_call_solana.is_none() && state.is_some() {
+                            step_call_solana = Some(step);
+                        }
+                        break ExitStatus::Interrupted(state);
+                    }
                     Action::Noop => {}
                 };
             }
         };
 
-        Ok((status, step, self.tracer.take()))
+        Ok((status, step, step_call_solana, self.tracer.take()))
     }
 
     fn fork(
@@ -479,5 +489,13 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     pub fn set_tracer(&mut self, tracer: Option<T>) {
         self.tracer = tracer;
+    }
+
+    pub fn increment_pc(&mut self) {
+        self.pc += 1;
+    }
+
+    pub fn context(&self) -> &Context {
+        &self.context
     }
 }

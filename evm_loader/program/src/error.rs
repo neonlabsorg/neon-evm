@@ -1,6 +1,7 @@
 //! Error types
 #![allow(clippy::use_self)]
 
+use crate::account::InterruptedState;
 use crate::allocator::acc_allocator;
 use crate::debug::log_data;
 use crate::types::{Address, Vector};
@@ -351,6 +352,9 @@ pub enum Error {
 
     #[error("Unsupported Neon Transaction type | Second byte: {0}")]
     UnsuppotedNeonTransactionType(u8),
+
+    #[error("Solana programs was interrupted")]
+    InterruptedCall(#[serde(skip)] Box<Option<InterruptedState>>),
 }
 
 impl Error {

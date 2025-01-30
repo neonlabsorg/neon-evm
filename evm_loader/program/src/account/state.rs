@@ -15,13 +15,13 @@ use crate::types::boxx::{boxx, Boxx};
 use crate::types::{
     read_raw_utils::{read_vec, ReconstructRaw},
     AccessListTx, Address, DynamicFeeTx, LegacyTx, ScheduledTx, Transaction, TransactionPayload,
-    TreeMap,
+    TreeMap, Vector,
 };
 
 use ethnum::U256;
 use solana_program::hash::Hash;
 use solana_program::system_program;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, instruction::AccountMeta, pubkey::Pubkey};
 
 use super::{
     AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder, OperatorBalanceAccount,
@@ -86,6 +86,22 @@ impl AccountRevision {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[repr(C)]
+pub struct InterruptedInstruction {
+    pub program_id: Pubkey,
+    pub accounts: Vector<AccountMeta>,
+    pub data: Vector<u8>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[repr(C)]
+pub struct InterruptedState {
+    pub instruction: InterruptedInstruction,
+    pub signer_seeds: Vector<Vector<u8>>,
+    pub lamports: u64,
+}
+
 /// Storage data account to store execution metainfo between steps for iterative execution
 #[repr(C)]
 struct Data {
@@ -103,6 +119,9 @@ struct Data {
     pub priority_fee_used: U256,
     /// Steps executed in the transaction
     pub steps_executed: u64,
+    /// State of `execute_external_instruction` at the Solana call interruption breakpoint
+    /// None if no Solana call interruption occurs
+    pub interrupted_state: Option<InterruptedState>,
     /// Address of the tree account (present for scheduled transactions).
     pub tree_account: Option<Pubkey>,
 }
@@ -216,6 +235,7 @@ impl<'a> StateAccount<'a> {
             gas_used: U256::ZERO,
             priority_fee_used: U256::ZERO,
             steps_executed: 0_u64,
+            interrupted_state: None,
             tree_account,
         });
 
@@ -281,6 +301,7 @@ impl<'a> StateAccount<'a> {
             // reset all accounts revisions
             state.data.revisions.clear();
             state.data.touched_accounts.clear();
+            state.set_interrupted_state(None);
         }
 
         Ok((state, status))
@@ -538,6 +559,15 @@ impl<'a> StateAccount<'a> {
             .ok_or(Error::IntegerOverflow)?;
 
         Ok(())
+    }
+
+    #[must_use]
+    pub fn interrupted_state(&self) -> Option<&InterruptedState> {
+        self.data.interrupted_state.as_ref()
+    }
+
+    pub fn set_interrupted_state(&mut self, state: Option<InterruptedState>) {
+        self.data.interrupted_state = state;
     }
 }
 

@@ -1,54 +1,107 @@
 //! Error types
 #![allow(clippy::use_self)]
 
-use std::{array::TryFromSliceError, num::TryFromIntError, str::Utf8Error};
-
 use crate::allocator::acc_allocator;
+use crate::debug::log_data;
+use crate::types::{Address, Vector};
 use ethnum::U256;
 use solana_program::{
     program_error::ProgramError,
     pubkey::{Pubkey, PubkeyError},
     secp256k1_recover::Secp256k1RecoverError,
 };
+use std::{array::TryFromSliceError, num::TryFromIntError, str::Utf8Error};
 use thiserror::Error;
 
-use crate::types::{Address, Vector};
+mod as_display_string {
+    use std::fmt::Display;
+
+    use serde::ser::Serializer;
+
+    pub fn serialize<T, S>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        T: Display,
+        S: Serializer,
+    {
+        serializer.serialize_str(&value.to_string())
+    }
+}
 
 /// Errors that may be returned by the EVM Loader program.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, strum::EnumDiscriminants, serde::Serialize)]
 pub enum Error {
     #[error("Error: {0}")]
     Custom(String),
 
     #[error("Solana Program Error: {0}")]
-    ProgramError(#[from] ProgramError),
+    ProgramError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        ProgramError,
+    ),
 
     #[error("Solana Pubkey Error: {0}")]
-    PubkeyError(#[from] PubkeyError),
+    PubkeyError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        PubkeyError,
+    ),
 
     #[error("RLP error: {0}")]
-    RlpError(#[from] rlp::DecoderError),
+    RlpError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        rlp::DecoderError,
+    ),
 
     #[error("Secp256k1 error: {0}")]
-    Secp256k1Error(#[from] Secp256k1RecoverError),
+    Secp256k1Error(
+        #[from]
+        #[serde(with = "as_display_string")]
+        Secp256k1RecoverError,
+    ),
 
     #[error("Bincode error: {0}")]
-    BincodeError(#[from] bincode::Error),
+    BincodeError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        bincode::Error,
+    ),
 
     #[error("IO error: {0}")]
-    BorshError(#[from] std::io::Error),
+    BorshError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        std::io::Error,
+    ),
 
     #[error("FromHexError error: {0}")]
-    FromHexError(#[from] hex::FromHexError),
+    FromHexError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        hex::FromHexError,
+    ),
 
     #[error("TryFromIntError error: {0}")]
-    TryFromIntError(#[from] TryFromIntError),
+    TryFromIntError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        TryFromIntError,
+    ),
 
     #[error("TryFromSliceError error: {0}")]
-    TryFromSliceError(#[from] TryFromSliceError),
+    TryFromSliceError(
+        #[from]
+        #[serde(with = "as_display_string")]
+        TryFromSliceError,
+    ),
 
     #[error("Utf8Error error: {0}")]
-    Utf8Error(#[from] Utf8Error),
+    Utf8Error(
+        #[from]
+        #[serde(with = "as_display_string")]
+        Utf8Error,
+    ),
 
     #[error("Account {0} - not found")]
     AccountMissing(Pubkey),
@@ -263,7 +316,6 @@ pub enum Error {
     #[error("Transaction Tree - transaction with the same nonce already exists")]
     TreeAccountAlreadyExists,
 
-    // TODO reconcile with the TreeAccountTxInvalidType - potential duplicate.
     #[error("Attempt to perform an operation with classic transaction, whereas scheduled transaction is expected")]
     NotScheduledTransaction,
 
@@ -281,8 +333,43 @@ pub enum Error {
 
     #[error("Scheduled Transaction has invalid index: inside transaction={0}, inside instruction data={1}")]
     ScheduledTxInvalidIndex(u16, u16),
+
+    #[error("Attempt to perform an operation with scheduled transaction, whereas classic transaction is expected")]
+    NotClassicTransaction,
+
+    #[error("Treasury Account - not found")]
+    TreasuryMissing,
+
+    #[error("Account {0} - invalid header version {1}")]
+    AccountInvalidHeader(Pubkey, u8),
+
+    #[error("Revert after Solana Call is not supported")]
+    RevertAfterSolanaCall,
+
+    #[error("Unsupported EIP-2718 Transaction type | First byte: {0}")]
+    UnsuppotedEthereumTransactionType(u8),
+
+    #[error("Unsupported Neon Transaction type | Second byte: {0}")]
+    UnsuppotedNeonTransactionType(u8),
 }
 
+impl Error {
+    #[must_use]
+    pub fn code(&self) -> u8 {
+        let discriminant = ErrorDiscriminants::from(self);
+        discriminant as u8
+    }
+
+    pub fn log_data(&self) {
+        let bytes = bincode::serialize(self).unwrap();
+        log_data(&[
+            b"ERROR",
+            &self.code().to_le_bytes(),
+            &bytes,
+            (self.to_string().as_bytes()),
+        ]);
+    }
+}
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl From<Error> for ProgramError {
@@ -307,27 +394,12 @@ impl From<String> for Error {
     }
 }
 
-/// Macro to log a `ProgramError` in the current transaction log
-/// with the source file position like: file.rc:42
-/// and additional info if needed
-/// See `https://github.com/neonlabsorg/neon-evm/issues/159`
-///
-/// # Examples
-///
-/// ```ignore
-/// #    return Err!(ProgramError::InvalidArgument; "Caller pubkey: {} ", &caller_info.key.to_string());
-/// ```
-///
-macro_rules! Err {
-    ( $n:expr; $($args:expr),* ) => ({
-        #[cfg(target_os = "solana")]
-        solana_program::msg!("{}:{} : {}", file!(), line!(), &format!($($args),*));
-
-        #[cfg(all(not(target_os = "solana"), feature = "log"))]
-        log::error!("{}", &format!($($args),*));
-
-        Err($n)
-    });
+macro_rules! panic_with_error {
+    ($e:expr) => {{
+        let error = $crate::error::Error::from($e);
+        error.log_data();
+        panic!("{}", error);
+    }};
 }
 
 #[must_use]

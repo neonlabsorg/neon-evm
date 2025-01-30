@@ -5,6 +5,7 @@ use crate::commands::get_config::BuildConfigSimulator;
 use crate::config::DbConfig;
 use crate::rpc::Rpc;
 use crate::rpc::{CallDbClient, RpcEnum};
+use crate::sysvar::get_sysvar;
 use crate::tracing::tracers::Tracer;
 use crate::tracing::{AccountOverride, BlockOverrides};
 use crate::types::FromAddress;
@@ -30,6 +31,7 @@ use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::{hex::Hex, serde_as, DisplayFromStr};
+use solana_sdk::clock::Clock;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use web3::types::Log;
 
@@ -61,6 +63,7 @@ pub struct EmulateResponse {
     pub accounts_data: Option<Vec<AccountData>>,
 }
 
+#[derive(Clone)]
 struct Overrides {
     pub blocks: Option<BlockOverrides>,
     pub states: Option<HashMap<Address, AccountOverride>>,
@@ -159,9 +162,8 @@ async fn initialize_storage<'rpc, T: Rpc + BuildConfigSimulator>(
     rpc: &'rpc T,
     program_id: &Pubkey,
     emulate_request: &EmulateRequest,
+    overrides: Overrides,
 ) -> NeonResult<EmulatorAccountStorage<'rpc, T>> {
-    let overrides: Overrides = init_overrides(emulate_request);
-
     let storage = EmulatorAccountStorage::with_accounts(
         rpc,
         *program_id,
@@ -188,8 +190,9 @@ async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>
     program_id: &Pubkey,
     emulate_request: &EmulateRequest,
     rpc: &'rpc T,
+    overrides: Overrides,
 ) -> NeonResult<(EmulatorAccountStorage<'rpc, T>, Transaction)> {
-    let storage = initialize_storage(rpc, program_id, emulate_request).await?;
+    let storage = initialize_storage(rpc, program_id, emulate_request, overrides).await?;
 
     let (origin, tx) = emulate_request.tx.clone().into_transaction(&storage).await;
 
@@ -306,8 +309,9 @@ async fn emulate_trx<'rpc, T: Tracer>(
     info!("tx_params: {:?}", emulate_request.tx);
 
     if emulate_request.execution_map.is_none() {
+        let overrides = init_overrides(emulate_request);
         let (mut storage, tx) =
-            initialize_storage_and_transaction(program_id, emulate_request, rpc).await?;
+            initialize_storage_and_transaction(program_id, emulate_request, rpc, overrides).await?;
 
         let chain_id = emulate_request
             .tx
@@ -390,8 +394,20 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
     };
 
     let mut rpc = create_rpc(db_config, block, index).await?;
+
+    let clock = get_sysvar::<Clock>(&rpc).await?;
+
+    let mut overrides = init_overrides(emulate_request);
+
+    overrides.blocks.get_or_insert(BlockOverrides {
+        number: Some(clock.slot),
+        time: Some(clock.unix_timestamp),
+        ..Default::default()
+    });
+
     let (mut storage, mut tx) =
-        initialize_storage_and_transaction(program_id, emulate_request, &rpc).await?;
+        initialize_storage_and_transaction(program_id, emulate_request, &rpc, overrides.clone())
+            .await?;
 
     let chain_id = emulate_request
         .tx
@@ -431,8 +447,13 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
                 steps_executed = 0u64;
 
                 rpc = create_rpc(db_config, execution_step.block, execution_step.index).await?;
-                (storage, tx) =
-                    initialize_storage_and_transaction(program_id, emulate_request, &rpc).await?;
+                (storage, tx) = initialize_storage_and_transaction(
+                    program_id,
+                    emulate_request,
+                    &rpc,
+                    overrides.clone(),
+                )
+                .await?;
 
                 backend = SyncedExecutorState::new(&mut storage);
                 evm = match Machine::new(&tx, origin, &mut backend, tracer_result).await {
@@ -451,8 +472,13 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
                 drop(rpc);
 
                 rpc = create_rpc(db_config, block, index).await?;
-                (storage, _) =
-                    initialize_storage_and_transaction(program_id, emulate_request, &rpc).await?;
+                (storage, _) = initialize_storage_and_transaction(
+                    program_id,
+                    emulate_request,
+                    &rpc,
+                    overrides.clone(),
+                )
+                .await?;
 
                 increment_nonce(&mut storage, &origin, chain_id).await?;
                 transfer_gas_limit(&mut storage, &tx, &origin, chain_id, increase_gas_limit)

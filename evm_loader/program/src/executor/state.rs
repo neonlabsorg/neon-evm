@@ -49,6 +49,7 @@ impl<'a> ExecutorStateData {
             block_number: backend.block_number(),
             block_timestamp: backend.block_timestamp(),
         };
+        block_params.log_data();
 
         ExecutorStateData::new_instance(block_params)
     }
@@ -651,7 +652,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         &mut self,
         instruction: Instruction,
         seeds: Vector<Vector<Vector<u8>>>,
-        fee: u64,
         emulated_internally: bool,
     ) -> Result<()> {
         #[cfg(target_os = "solana")]
@@ -664,7 +664,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
             data: instruction.data.to_vector(),
             accounts: instruction.accounts.elementwise_copy_to_vector(),
             seeds,
-            fee,
             emulated_internally,
         };
 

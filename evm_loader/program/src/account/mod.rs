@@ -10,7 +10,6 @@ pub use ether_balance::{BalanceAccount, Header as BalanceHeader};
 pub use ether_contract::{AllocateResult, ContractAccount, Header as ContractHeader};
 pub use ether_storage::{Cell, Header as StorageCellHeader, StorageCell, StorageCellAddress};
 pub use holder::{Header as HolderHeader, Holder};
-pub use incinerator::Incinerator;
 pub use operator::Operator;
 pub use operator_balance::{OperatorBalanceAccount, OperatorBalanceValidator};
 pub use state::{AccountsStatus, StateAccount};
@@ -27,7 +26,6 @@ mod ether_balance;
 mod ether_contract;
 mod ether_storage;
 mod holder;
-mod incinerator;
 pub mod legacy;
 mod operator;
 mod operator_balance;
@@ -254,7 +252,7 @@ impl<'a> AccountsDB<'a> {
             return system;
         }
 
-        panic!("System Account must be present in the transaction");
+        panic_with_error!(Error::AccountMissing(solana_program::system_program::ID));
     }
 
     #[must_use]
@@ -263,7 +261,7 @@ impl<'a> AccountsDB<'a> {
             return treasury;
         }
 
-        panic!("Treasury Account must be present in the transaction");
+        panic_with_error!(Error::TreasuryMissing);
     }
 
     #[must_use]
@@ -277,7 +275,7 @@ impl<'a> AccountsDB<'a> {
             return operator_balance.clone();
         }
 
-        panic!("Operator Balance Account must be present in the transaction");
+        panic_with_error!(Error::OperatorBalanceMissing);
     }
 
     #[must_use]
@@ -303,7 +301,7 @@ impl<'a> AccountsDB<'a> {
         let index = self
             .sorted_accounts
             .binary_search_by_key(&pubkey, |a| a.key)
-            .unwrap_or_else(|_| panic!("address {pubkey} must be present in the transaction"));
+            .unwrap_or_else(|_| panic_with_error!(Error::AccountMissing(*pubkey)));
 
         // We just got an 'index' from the binary_search over this vector.
         unsafe { self.sorted_accounts.get_unchecked(index) }

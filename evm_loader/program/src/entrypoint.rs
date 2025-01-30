@@ -53,6 +53,10 @@ fn process_instruction<'a>(
             Err(ProgramError::InvalidInstructionData.into())
         }
     }
+    .map_err(|e| {
+        e.log_data();
+        e
+    })
     .map_err(ProgramError::from)
 }
 
@@ -220,5 +224,9 @@ fn process_instruction<'a>(
             instruction::operator_withdraw_balance::process(program_id, accounts, instruction)
         }
     }
+    .map_err(|e| {
+        e.log_data();
+        e
+    })
     .map_err(ProgramError::from)
 }

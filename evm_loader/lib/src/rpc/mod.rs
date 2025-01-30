@@ -2,6 +2,7 @@ mod db_call_client;
 mod emulator_client;
 mod validator_client;
 use crate::commands::get_config::GetConfigResponse;
+
 pub use db_call_client::CallDbClient;
 use solana_sdk::sysvar::{Sysvar, SysvarId};
 use tracing::trace;
@@ -118,6 +119,7 @@ macro_rules! e {
     };
 }
 
+use crate::types::programs_cache::get_programdata_slot_from_account;
 pub(crate) use e;
 
 pub(crate) async fn check_account_for_fee(

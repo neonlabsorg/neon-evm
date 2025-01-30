@@ -17,6 +17,7 @@ pub mod commands;
 pub mod config;
 pub mod errors;
 pub mod rpc;
+pub mod sysvar;
 
 pub mod solana_simulator;
 pub mod tracing;

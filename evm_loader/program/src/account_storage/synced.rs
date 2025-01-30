@@ -6,7 +6,7 @@ use solana_program::system_program;
 use crate::account::{AllocateResult, ContractAccount, StorageCell};
 use crate::account_storage::{SyncedAccountStorage, FAKE_OPERATOR};
 use crate::config::{ACCOUNT_SEED_VERSION, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::types::{vector::Vector, Address};
 
 use super::{AccountStorage, ProgramAccountStorage};
@@ -103,7 +103,6 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
         &mut self,
         mut instruction: Instruction,
         seeds: Vector<Vector<Vector<u8>>>,
-        _fee: u64,
         _emulated_internally: bool,
     ) -> Result<()> {
         let seeds = seeds
@@ -143,7 +142,7 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
     fn snapshot(&mut self) {}
 
     fn revert_snapshot(&mut self) {
-        panic!("revert snapshot not implemented for ProgramAccountStorage");
+        panic_with_error!(Error::RevertAfterSolanaCall);
     }
 
     fn commit_snapshot(&mut self) {}

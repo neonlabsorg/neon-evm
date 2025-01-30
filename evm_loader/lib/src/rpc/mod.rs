@@ -4,7 +4,6 @@ mod validator_client;
 use crate::commands::get_config::GetConfigResponse;
 
 pub use db_call_client::CallDbClient;
-use solana_sdk::sysvar::{Sysvar, SysvarId};
 use tracing::trace;
 pub use validator_client::CloneRpcClient;
 
@@ -82,19 +81,6 @@ pub trait Rpc {
     async fn get_multiple_accounts(&self, pubkeys: &[Pubkey])
         -> ClientResult<Vec<Option<Account>>>;
 
-    async fn get_sysvar<T>(&self) -> NeonResult<T>
-    where
-        T: Sysvar + SysvarId,
-    {
-        let account = self
-            .get_account(&T::id())
-            .await?
-            .ok_or(NeonError::AccountNotFound(T::id()))?;
-
-        let sysvar = bincode::deserialize::<T>(&account.data)?;
-        Ok(sysvar)
-    }
-
     async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>>;
 }
 
@@ -119,7 +105,6 @@ macro_rules! e {
     };
 }
 
-use crate::types::programs_cache::get_programdata_slot_from_account;
 pub(crate) use e;
 
 pub(crate) async fn check_account_for_fee(

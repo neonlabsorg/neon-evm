@@ -1,4 +1,6 @@
-use crate::{config::APIOptions, Config};
+use crate::{
+    config::APIOptions, types::deactivated_features::get_deactivated_features_at_slot, Config,
+};
 
 use super::{Rpc, SliceConfig};
 use async_trait::async_trait;
@@ -167,52 +169,6 @@ impl Rpc for CloneRpcClient {
     }
 
     async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {
-        use std::time::{Duration, Instant};
-        use tokio::sync::Mutex;
-
-        struct Cache {
-            data: Vec<Pubkey>,
-            timestamp: Instant,
-        }
-
-        static CACHE: Mutex<Option<Cache>> = Mutex::const_new(None);
-        let mut cache = CACHE.lock().await;
-
-        if let Some(cache) = cache.as_ref() {
-            if cache.timestamp.elapsed() < Duration::from_secs(24 * 60 * 60) {
-                return Ok(cache.data.clone());
-            }
-        }
-
-        let feature_keys: Vec<Pubkey> = solana_sdk::feature_set::FEATURE_NAMES
-            .keys()
-            .copied()
-            .collect();
-
-        let features = Rpc::get_multiple_accounts(self, &feature_keys).await?;
-
-        let mut result = Vec::with_capacity(feature_keys.len());
-        for (pubkey, feature) in feature_keys.iter().zip(features) {
-            let is_activated = feature
-                .and_then(|a| solana_sdk::feature::from_account(&a))
-                .and_then(|f| f.activated_at)
-                .is_some();
-
-            if !is_activated {
-                result.push(*pubkey);
-            }
-        }
-
-        for feature in &result {
-            debug!("Deactivated feature: {}", feature);
-        }
-
-        cache.replace(Cache {
-            data: result.clone(),
-            timestamp: Instant::now(),
-        });
-        drop(cache);
-
-        Ok(result)
+        get_deactivated_features_at_slot(None).await
     }
 }

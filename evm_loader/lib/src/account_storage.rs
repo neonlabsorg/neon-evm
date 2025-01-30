@@ -1,5 +1,6 @@
 use crate::account_data::AccountData;
 use crate::commands::get_config::{BuildConfigSimulator, ChainInfo};
+use crate::sysvar::get_sysvar;
 use crate::tracing::{AccountOverrides, BlockOverrides};
 use crate::{rpc::Rpc, solana_simulator::SolanaSimulator, NeonError, NeonResult};
 use async_trait::async_trait;
@@ -18,6 +19,7 @@ use evm_loader::{
     executor::OwnedAccountInfo,
     types::{vector::VectorVecExt, Address, Vector},
 };
+
 use log::{debug, info, trace};
 use solana_sdk::{
     account::Account,
@@ -126,8 +128,8 @@ impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
     ) -> Result<EmulatorAccountStorage<T>, NeonError> {
         trace!("backend::new");
 
-        let clock: Clock = rpc.get_sysvar().await?;
-        let rent: Rent = rpc.get_sysvar().await?;
+        let clock = get_sysvar::<Clock>(rpc).await?;
+        let rent = get_sysvar::<Rent>(rpc).await?;
 
         let (block_number, block_timestamp) = block_overrides
             .map(|o| (o.number, o.time))

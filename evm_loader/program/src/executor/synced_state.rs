@@ -4,15 +4,17 @@ use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
 
+use super::precompile_extension::PrecompiledContracts;
+use super::OwnedAccountInfo;
+
 use crate::account_storage::{AccountStorage, LogCollector, SyncedAccountStorage};
 use crate::allocator::acc_allocator;
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
 use crate::evm::Context;
+use crate::executor::action;
+use crate::executor::ExecutorStateData;
 use crate::types::{Address, Vector};
-
-use super::precompile_extension::PrecompiledContracts;
-use super::OwnedAccountInfo;
 
 enum Action {
     SetTransientStorage {
@@ -39,6 +41,38 @@ impl<'a, B: SyncedAccountStorage> SyncedExecutorState<'a, B> {
     }
 
     #[must_use]
+    pub fn new_with_state_data(backend: &'a mut B, state_data: &'a ExecutorStateData) -> Self {
+        let mut actions = Vector::with_capacity_in(64, acc_allocator());
+        let mut stack = state_data.into_stack().clone();
+
+        for (action_idx, action) in state_data.into_actions().iter().enumerate() {
+            if let action::Action::EvmSetTransientStorage {
+                address,
+                index,
+                value,
+            } = action
+            {
+                actions.push(Action::SetTransientStorage {
+                    address: *address,
+                    index: *index,
+                    value: *value,
+                });
+            } else {
+                for (frame_idx, frame) in stack.iter_mut().enumerate() {
+                    if state_data.into_stack()[frame_idx] >= action_idx {
+                        *frame -= 1;
+                    }
+                }
+            }
+        }
+        Self {
+            backend,
+            actions,
+            stack,
+        }
+    }
+
+    #[must_use]
     pub fn backend(&self) -> &B {
         self.backend
     }
@@ -57,6 +91,9 @@ impl<B: AccountStorage> LogCollector for SyncedExecutorState<'_, B> {
 
 #[maybe_async(?Send)]
 impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
+    fn is_synced_state(&self) -> bool {
+        true
+    }
     fn program_id(&self) -> &Pubkey {
         self.backend.program_id()
     }

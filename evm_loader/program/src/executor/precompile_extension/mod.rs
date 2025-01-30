@@ -11,7 +11,7 @@ use solana_program::{pubkey::Pubkey, system_instruction};
 
 use super::OwnedAccountInfo;
 
-mod call_solana;
+pub mod call_solana;
 mod metaplex;
 mod neon_account;
 mod neon_token;

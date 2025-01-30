@@ -4,7 +4,7 @@ use crate::{
     config::ACCOUNT_SEED_VERSION,
     error::{Error, Result},
     evm::database::Database,
-    types::{vector::VectorSliceExt, Address, Vector},
+    types::{vector::VectorSliceExt, vector::VectorSliceSlowExt, Address, Vector},
     vector,
 };
 
@@ -307,7 +307,7 @@ pub async fn call_solana<State: Database>(
 }
 
 #[maybe_async]
-async fn execute_external_instruction<State: Database>(
+pub async fn execute_external_instruction<State: Database>(
     state: &mut State,
     context: &crate::evm::Context,
     instruction: Instruction,
@@ -316,6 +316,20 @@ async fn execute_external_instruction<State: Database>(
 ) -> Result<Vector<u8>> {
     #[cfg(not(target_os = "solana"))]
     log::info!("instruction: {:?}", instruction);
+
+    if !state.is_synced_state() {
+        return Err(Error::InterruptedCall(Box::new(Some(
+            crate::account::InterruptedState {
+                instruction: crate::account::InterruptedInstruction {
+                    program_id: instruction.program_id,
+                    accounts: instruction.accounts.elementwise_copy_to_vector(),
+                    data: instruction.data.to_vector(),
+                },
+                signer_seeds,
+                lamports: required_lamports,
+            },
+        ))));
+    }
 
     let called_program = instruction.program_id;
     state.set_return_data(&[]);
@@ -385,7 +399,6 @@ async fn execute_external_instruction<State: Database>(
             .queue_external_instruction(instruction, vector![signer_seeds], false)
             .await?;
     }
-
     let return_data = state
         .return_data()
         .and_then(|(program, data)| {

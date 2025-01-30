@@ -11,6 +11,7 @@ use super::{
     database::{Database, DatabaseExt},
     end_vm, tracing_event, Context, Machine, Reason,
 };
+use crate::account::InterruptedState;
 use crate::evm::tracing::EventListener;
 use crate::types::vector::VectorSliceExt;
 use crate::types::Vector;
@@ -29,6 +30,7 @@ pub enum Action {
     Return(Vector<u8>),
     Revert(Vector<u8>),
     Suicide,
+    Interrupted(Box<Option<InterruptedState>>),
     Noop,
 }
 
@@ -1343,11 +1345,12 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             }
         };
 
-        if let Some(return_data) = result.transpose()? {
-            return self.opcode_return_impl(return_data, backend).await;
+        match result {
+            Some(Ok(return_data)) => self.opcode_return_impl(return_data, backend).await,
+            Some(Err(Error::InterruptedCall(state))) => Ok(Action::Interrupted(Box::new(*state))),
+            Some(Err(e)) => Err(e),
+            None => Ok(Action::Noop),
         }
-
-        Ok(Action::Noop)
     }
 
     /// Halt execution returning output data

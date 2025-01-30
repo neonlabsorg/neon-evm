@@ -83,6 +83,11 @@ impl<'a> ExecutorStateData {
         &self.actions
     }
 
+    #[must_use]
+    pub fn into_stack(&'a self) -> &'a Vector<usize> {
+        &self.stack
+    }
+
     fn new_instance(block_params: BlockParams) -> Self {
         Self {
             cache: RefCell::new(Cache {
@@ -214,6 +219,9 @@ impl<B: AccountStorage> LogCollector for ExecutorState<'_, B> {
 
 #[maybe_async(?Send)]
 impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
+    fn is_synced_state(&self) -> bool {
+        false
+    }
     fn program_id(&self) -> &Pubkey {
         self.backend.program_id()
     }

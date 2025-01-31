@@ -156,16 +156,26 @@ pub enum Error {
     UnknownPrecompileMethodSelector(Address, [u8; 4]),
 
     #[error("Insufficient balance for transfer, account = {0}, chain = {1}, required = {2}")]
-    InsufficientBalance(Address, u64, U256),
+    InsufficientBalance(
+        Address,
+        u64,
+        #[serde(with = "ethnum::serde::bytes::le")] U256,
+    ),
 
     #[error("Invalid token for transfer, account = {0}, chain = {1}")]
     InvalidTransferToken(Address, u64),
 
     #[error("Out of Gas, limit = {0}, required = {1}")]
-    OutOfGas(U256, U256),
+    OutOfGas(
+        #[serde(with = "ethnum::serde::bytes::le")] U256,
+        #[serde(with = "ethnum::serde::bytes::le")] U256,
+    ),
 
     #[error("Out of Priority Fee, limit = {0}, required = {1}")]
-    OutOfPriorityFee(U256, U256),
+    OutOfPriorityFee(
+        #[serde(with = "ethnum::serde::bytes::le")] U256,
+        #[serde(with = "ethnum::serde::bytes::le")] U256,
+    ),
 
     #[error("Invalid gas balance account")]
     GasReceiverInvalidChainId,

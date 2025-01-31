@@ -1,11 +1,13 @@
+use std::borrow::BorrowMut;
 use std::collections::HashMap;
 
 use ethnum::U256;
+use if_chain::if_chain;
 use solana_program::instruction::Instruction;
 use solana_program::program::{invoke_signed_unchecked, invoke_unchecked};
 use solana_program::system_program;
 
-use crate::account::{AllocateResult, BalanceAccount, ContractAccount, StorageCell};
+use crate::account::{AllocateResult, BalanceAccount, ContractAccount, StateAccount, StorageCell};
 use crate::account_storage::{ProgramAccountStorage, FAKE_OPERATOR};
 use crate::config::{
     ACCOUNT_SEED_VERSION, PAYMENT_TO_TREASURE, STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
@@ -68,7 +70,11 @@ impl<'a> ProgramAccountStorage<'a> {
     }
 
     /// Takes an *immutable borrow* of Actions from the accumulated state changes and applies it.
-    pub fn apply_state_change(&mut self, actions: &Vector<Action>) -> Result<()> {
+    pub fn apply_state_change(
+        &mut self,
+        actions: &Vector<Action>,
+        mut holder: Option<&mut StateAccount>,
+    ) -> Result<()> {
         debug_print!("Applies begin");
 
         let mut storage = HashMap::with_capacity(16);
@@ -81,13 +87,26 @@ impl<'a> ProgramAccountStorage<'a> {
                     chain_id,
                     value,
                 } => {
-                    let mut source = self.balance_account(*source, *chain_id)?;
                     let mut target = self.create_balance_account(*target, *chain_id)?;
 
-                    source.increment_revision(&self.rent, &self.accounts)?;
-                    target.increment_revision(&self.rent, &self.accounts)?;
+                    if_chain! {
+                        if let Some(ref mut state_account) = holder.borrow_mut();
+                        if state_account.trx_origin() == *source;
+                        then {
+                            state_account.set_value(state_account.value() - value);
+                            target.increment_revision(&self.rent, &self.accounts)?;
 
-                    source.transfer(&mut target, *value)?;
+                            target.mint(*value)?;
+                        }
+                        else {
+                            let mut source = self.balance_account(*source, *chain_id)?;
+
+                            source.increment_revision(&self.rent, &self.accounts)?;
+                            target.increment_revision(&self.rent, &self.accounts)?;
+
+                            source.transfer(&mut target, *value)?;
+                        }
+                    }
                 }
                 Action::Burn {
                     source,

@@ -35,7 +35,8 @@ pub fn do_scheduled_start<'a>(
     // Remaining tokens are returned back to the tree account in the last iteration.
     let gas_limit_in_tokens = storage.trx().gas_limit_in_tokens()?;
     let max_priority_fee_in_tokens = storage.trx().priority_fee_limit_in_tokens()?;
-    transaction_tree.burn(gas_limit_in_tokens + max_priority_fee_in_tokens)?;
+    transaction_tree
+        .burn(gas_limit_in_tokens + max_priority_fee_in_tokens + storage.trx().value())?;
 
     // record gas for the future finish
     gasometer.record_scheduled_transaction_finish();

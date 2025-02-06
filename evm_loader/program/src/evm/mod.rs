@@ -4,11 +4,11 @@
 #![allow(clippy::future_not_send)]
 
 use crate::account::InterruptedState;
+pub use buffer::Buffer;
+use ethnum::serde::bytes::le::Bytes;
 use ethnum::U256;
 use maybe_async::maybe_async;
 use std::{fmt::Display, marker::PhantomData, mem::ManuallyDrop, ops::Range};
-
-pub use buffer::Buffer;
 
 #[cfg(target_os = "solana")]
 use crate::evm::tracing::NoopEventListener;
@@ -99,6 +99,7 @@ macro_rules! begin_step {
     };
 }
 
+use crate::types::vector::VectorSliceExt;
 pub(crate) use begin_step;
 pub(crate) use begin_vm;
 pub(crate) use end_vm;
@@ -383,15 +384,25 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 .await?;
         }
         if self.need_transfer {
-            backend
+            match backend
                 .transfer(
                     self.context.caller,
                     self.context.contract,
                     self.context.contract_chain_id,
                     self.context.value,
                 )
-                .await?;
-            self.need_transfer = false;
+                .await
+            {
+                Ok(_) => self.need_transfer = false,
+                Err(_) => {
+                    return Ok((
+                        ExitStatus::Revert(self.context.value.to_bytes().to_vector()),
+                        step,
+                        step_call_solana,
+                        self.tracer.take(),
+                    ))
+                }
+            }
         }
 
         let status = if is_precompile_address(&self.context.contract) {

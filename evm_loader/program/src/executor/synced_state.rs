@@ -165,13 +165,19 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
 
     async fn code_size(&self, from_address: Address) -> Result<usize> {
         if PrecompiledContracts::is_precompile_extension(&from_address) {
-            return Ok(1); // This is required in order to make a normal call to an extension contract
+            // This is required in order to make a normal call to an extension contract
+            return Ok(1);
         }
 
         Ok(self.backend.code_size(from_address).await)
     }
 
     async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
+        if PrecompiledContracts::is_precompile_extension(&from_address) {
+            // This is required in order to make a normal call to an extension contract
+            let code: [u8; 1] = [0xFE];
+            return Ok(crate::evm::Buffer::from_slice(&code));
+        }
         Ok(self.backend.code(from_address).await)
     }
 
@@ -336,6 +342,9 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
     }
 
     async fn contract_chain_id(&self, contract: Address) -> Result<u64> {
+        if PrecompiledContracts::is_precompile_extension(&contract) {
+            return Ok(self.default_chain_id());
+        }
         self.backend.contract_chain_id(contract).await
     }
 

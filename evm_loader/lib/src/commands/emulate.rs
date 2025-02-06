@@ -343,7 +343,7 @@ async fn emulate_trx_single_step<'rpc, T: Tracer>(
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     let origin = emulate_request.tx.from.address();
 
-    let (exit_status, steps_executed, step_on_solana, tracer) = {
+    let (exit_status, steps_executed, step_on_solana, tracer, timestamped_contracts) = {
         let mut backend = SyncedExecutorState::new(storage);
         let mut evm = match Machine::new(tx, origin, &mut backend, tracer).await {
             Ok(evm) => evm,
@@ -363,8 +363,18 @@ async fn emulate_trx_single_step<'rpc, T: Tracer>(
                 None,
             ));
         }
-        (exit_status, steps_executed, step_on_solana, tracer)
+
+        let timestamped_contracts = backend.timestamped_contracts.take();
+        (
+            exit_status,
+            steps_executed,
+            step_on_solana,
+            tracer,
+            timestamped_contracts,
+        )
     };
+
+    storage.mark_timestamped_contracts(timestamped_contracts.keys());
 
     calculate_response(
         steps_executed,

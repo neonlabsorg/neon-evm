@@ -393,7 +393,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 )
                 .await
             {
-                Ok(_) => self.need_transfer = false,
+                Ok(()) => self.need_transfer = false,
                 Err(_) => {
                     return Ok((
                         ExitStatus::Revert(self.context.value.to_bytes().to_vector()),

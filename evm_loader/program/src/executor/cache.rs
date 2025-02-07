@@ -2,7 +2,7 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 use std::{cell::RefCell, rc::Rc};
 
 use crate::types::vector::VectorSliceExt;
-use crate::{types::TreeMap, types::Vector, vector};
+use crate::{types::Vector, vector};
 
 #[derive(Clone)]
 #[repr(C)]
@@ -56,7 +56,4 @@ impl<'a> solana_program::account_info::IntoAccountInfo<'a> for &'a mut OwnedAcco
 
 #[repr(C)]
 #[derive(Clone)]
-pub struct Cache {
-    pub actions_offset: usize,
-    pub accounts: TreeMap<Pubkey, OwnedAccountInfo>,
-}
+pub struct Cache {}

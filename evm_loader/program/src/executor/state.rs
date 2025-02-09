@@ -25,6 +25,7 @@ use super::OwnedAccountInfo;
 
 pub type ExecutionResult<'a> = Option<(&'a ExitStatus, &'a Vector<Action>)>;
 pub type TouchedAccounts = TreeMap<Pubkey, u64>;
+pub type TimestampedContracts = TreeMap<Address, ()>;
 
 /// Represents the state of executor abstracted away from a self.backend.
 /// Persistent part of `ExecutorState`.
@@ -32,6 +33,7 @@ pub type TouchedAccounts = TreeMap<Pubkey, u64>;
 pub struct ExecutorStateData {
     cache: RefCell<Cache>,
     pub block_params: BlockParams,
+    pub timestamped_contracts: RefCell<TimestampedContracts>,
     actions: Vector<Action>,
     stack: Vector<usize>,
     exit_status: Option<ExitStatus>,
@@ -46,8 +48,8 @@ pub struct ExecutorState<'a, B: AccountStorage> {
 impl<'a> ExecutorStateData {
     pub fn new<B: AccountStorage>(backend: &B) -> Self {
         let block_params = BlockParams {
-            block_number: backend.block_number(),
-            block_timestamp: backend.block_timestamp(),
+            number: backend.block_number(),
+            timestamp: backend.block_timestamp(),
         };
         block_params.log_data();
 
@@ -55,16 +57,9 @@ impl<'a> ExecutorStateData {
     }
 
     #[must_use]
-    pub fn new_with_block_params(block_params: BlockParams) -> Self {
-        ExecutorStateData::new_instance(block_params)
-    }
-
-    pub fn get_block_params(&self) -> BlockParams {
-        self.block_params.clone()
-    }
-
-    #[must_use]
-    pub fn deconstruct(&'a mut self) -> (ExecutionResult<'a>, TouchedAccounts) {
+    pub fn deconstruct(
+        &'a mut self,
+    ) -> (ExecutionResult<'a>, TouchedAccounts, TimestampedContracts) {
         let result = if let Some(exit_status) = self.exit_status.as_ref() {
             Some((exit_status, &self.actions))
         } else {
@@ -72,9 +67,11 @@ impl<'a> ExecutorStateData {
         };
         // Move out the current touched_accounts and replace with a new empty one. The previous touched_accounts object
         // is consumed by the caller to update touched_accounts inside StateAccount's Data.
+        // Timestamped Contracts are clonned because they need to be carried between iterations
         (
             result,
-            self.touched_accounts.replace(TouchedAccounts::new()),
+            self.touched_accounts.take(),
+            RefCell::get_mut(&mut self.timestamped_contracts).clone(),
         )
     }
 
@@ -96,6 +93,7 @@ impl<'a> ExecutorStateData {
             stack: Vector::with_capacity_in(16, acc_allocator()),
             exit_status: None,
             touched_accounts: RefCell::new(TouchedAccounts::new()),
+            timestamped_contracts: RefCell::new(TimestampedContracts::new()),
         }
     }
 
@@ -445,7 +443,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         }
 
         let number = number.as_u64();
-        let block_slot = self.data.block_params.block_number.as_u64();
+        let block_slot = self.data.block_params.number.as_u64();
         let lower_block_slot = if block_slot < 257 {
             0
         } else {
@@ -459,12 +457,18 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         Ok(self.backend.block_hash(number).await)
     }
 
-    fn block_number(&self) -> Result<U256> {
-        Ok(self.data.block_params.block_number)
+    fn block_number(&self, current_contract: Address) -> Result<U256> {
+        let mut timestamped_contracts = self.data.timestamped_contracts.borrow_mut();
+        timestamped_contracts.insert_if_not_exists(current_contract, ());
+
+        Ok(self.data.block_params.number)
     }
 
-    fn block_timestamp(&self) -> Result<U256> {
-        Ok(self.data.block_params.block_timestamp)
+    fn block_timestamp(&self, current_contract: Address) -> Result<U256> {
+        let mut timestamped_contracts = self.data.timestamped_contracts.borrow_mut();
+        timestamped_contracts.insert_if_not_exists(current_contract, ());
+
+        Ok(self.data.block_params.timestamp)
     }
 
     async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {

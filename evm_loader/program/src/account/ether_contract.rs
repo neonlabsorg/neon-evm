@@ -5,8 +5,8 @@ use crate::{
     types::Address,
 };
 use solana_program::{
-    account_info::AccountInfo, entrypoint::MAX_PERMITTED_DATA_INCREASE, pubkey::Pubkey, rent::Rent,
-    system_program,
+    account_info::AccountInfo, clock::Clock, entrypoint::MAX_PERMITTED_DATA_INCREASE,
+    pubkey::Pubkey, rent::Rent, system_program,
 };
 use std::{
     cell::{Ref, RefMut},
@@ -46,9 +46,19 @@ impl AccountHeader for HeaderWithRevision {
     const VERSION: u8 = 2;
 }
 
+#[repr(C, packed)]
+pub struct HeaderWithTimestamp {
+    pub v2: HeaderWithRevision,
+    pub timestamp_used_at: u64,
+}
+
+impl AccountHeader for HeaderWithTimestamp {
+    const VERSION: u8 = 3;
+}
+
 // Set the last version of the Header struct here
 // and change the `header_size` and `header_upgrade` functions
-pub type Header = HeaderWithRevision;
+pub type Header = HeaderWithTimestamp;
 
 pub type Storage = [[u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT];
 pub type Code = [u8];
@@ -158,11 +168,18 @@ impl<'a> ContractAccount<'a> {
         super::set_tag(program_id, &account, TAG_ACCOUNT_CONTRACT, Header::VERSION)?;
 
         {
-            let mut header = super::header_mut::<Header>(&account);
-            header.v0.address = address;
-            header.v0.chain_id = chain_id;
-            header.v0.generation = generation;
+            let mut header = super::header_mut::<HeaderV0>(&account);
+            header.address = address;
+            header.chain_id = chain_id;
+            header.generation = generation;
+        }
+        {
+            let mut header = super::header_mut::<HeaderWithRevision>(&account);
             header.revision = 1;
+        }
+        {
+            let mut header = super::header_mut::<HeaderWithTimestamp>(&account);
+            header.timestamp_used_at = 0;
         }
 
         let mut contract = Self::from_account(program_id, account)?;
@@ -183,6 +200,7 @@ impl<'a> ContractAccount<'a> {
         match super::header_version(&self.account) {
             0 | 1 => size_of::<HeaderV0>(),
             HeaderWithRevision::VERSION => size_of::<HeaderWithRevision>(),
+            HeaderWithTimestamp::VERSION => size_of::<HeaderWithTimestamp>(),
             v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
         }
     }
@@ -194,6 +212,9 @@ impl<'a> ContractAccount<'a> {
             }
             HeaderWithRevision::VERSION => {
                 super::expand_header::<HeaderWithRevision, Header>(&self.account, rent, db)?;
+            }
+            HeaderWithTimestamp::VERSION => {
+                super::expand_header::<HeaderWithTimestamp, Header>(&self.account, rent, db)?;
             }
             v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
         }
@@ -293,6 +314,32 @@ impl<'a> ContractAccount<'a> {
 
         let mut header = super::header_mut::<HeaderWithRevision>(&self.account);
         header.revision = header.revision.wrapping_add(1);
+
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn timestamp_used_at(&self) -> u64 {
+        if super::header_version(&self.account) < HeaderWithTimestamp::VERSION {
+            return 0;
+        }
+
+        let header = super::header::<HeaderWithTimestamp>(&self.account);
+        header.timestamp_used_at
+    }
+
+    pub fn update_timestamp_used_at(
+        &mut self,
+        clock: &Clock,
+        rent: &Rent,
+        db: &AccountsDB<'a>,
+    ) -> Result<()> {
+        if super::header_version(&self.account) < HeaderWithTimestamp::VERSION {
+            self.header_upgrade(rent, db)?;
+        }
+
+        let mut header = super::header_mut::<HeaderWithTimestamp>(&self.account);
+        header.timestamp_used_at = clock.slot;
 
         Ok(())
     }

@@ -12,7 +12,9 @@ use crate::config::{
 };
 use crate::error::Result;
 use crate::executor::Action;
-use crate::types::{Address, Vector};
+use crate::types::Address;
+
+use super::AccountStorage;
 
 impl<'a> ProgramAccountStorage<'a> {
     pub fn transfer_treasury_payment(&mut self) -> Result<()> {
@@ -67,8 +69,23 @@ impl<'a> ProgramAccountStorage<'a> {
         Ok(total_result)
     }
 
+    pub fn update_timestamped_contracts<'r>(
+        &mut self,
+        contracts: impl Iterator<Item = &'r Address>,
+    ) -> Result<()> {
+        for address in contracts {
+            let pubkey = self.keys.contract(self.program_id(), *address);
+            let account = self.accounts.get(&pubkey).clone();
+
+            let mut contract = ContractAccount::from_account(&crate::ID, account)?;
+            contract.update_timestamp_used_at(&self.clock, &self.rent, &self.accounts)?;
+        }
+
+        Ok(())
+    }
+
     /// Takes an *immutable borrow* of Actions from the accumulated state changes and applies it.
-    pub fn apply_state_change(&mut self, actions: &Vector<Action>) -> Result<()> {
+    pub fn apply_state_change(&mut self, actions: &[Action]) -> Result<()> {
         debug_print!("Applies begin");
 
         let mut storage = HashMap::with_capacity(16);

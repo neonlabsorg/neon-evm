@@ -34,6 +34,7 @@ pub fn execute(
     };
 
     let apply_state = backend_data.into_actions();
+    let timestamped_contracts = backend_data.timestamped_contracts.take();
 
     log_data(&[
         b"STEPS",
@@ -47,6 +48,7 @@ pub fn execute(
     }
 
     account_storage.apply_state_change(apply_state)?;
+    account_storage.update_timestamped_contracts(timestamped_contracts.keys())?;
     account_storage.transfer_treasury_payment()?;
 
     handle_gas(account_storage, &trx, gasometer, origin)?;

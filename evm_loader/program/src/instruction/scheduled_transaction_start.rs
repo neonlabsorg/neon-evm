@@ -43,7 +43,7 @@ pub fn do_scheduled_start<'a>(
     allocate_evm(&mut account_storage, &mut storage)?;
     let mut state_data = storage.read_executor_state();
 
-    let (_, touched_accounts) = state_data.deconstruct();
+    let (_, touched_accounts, timestamped_contracts) = state_data.deconstruct();
     finalize(
         0,
         storage,
@@ -51,6 +51,7 @@ pub fn do_scheduled_start<'a>(
         None,
         gasometer,
         touched_accounts,
+        timestamped_contracts,
     )
 }
 

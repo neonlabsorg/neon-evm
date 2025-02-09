@@ -392,6 +392,13 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
     }
 
+    pub fn mark_timestamped_contracts<'r>(&mut self, contracts: impl Iterator<Item = &'r Address>) {
+        for address in contracts {
+            let (pubkey, _) = address.find_solana_address(self.program_id());
+            self.mark_account(pubkey, true);
+        }
+    }
+
     fn _get_account_mark(&self, pubkey: Pubkey) -> RefMut<'_, SolanaAccount> {
         self.used_accounts
             .insert(

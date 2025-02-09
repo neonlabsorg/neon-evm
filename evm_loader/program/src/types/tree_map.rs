@@ -67,6 +67,12 @@ impl<K: Ord + Copy, V> TreeMap<K, V> {
         }
     }
 
+    pub fn insert_if_not_exists(&mut self, key: K, value: V) {
+        if let Err(idx) = self.entries.binary_search_by_key(&key, |(k, _)| *k) {
+            self.entries.insert(idx, (key, value));
+        }
+    }
+
     pub fn insert_with_if_not_exists<F>(&mut self, key: K, f: F)
     where
         F: FnOnce() -> V,

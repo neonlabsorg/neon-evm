@@ -51,8 +51,8 @@ pub trait Database: LogCollector {
     ) -> Result<()>;
 
     async fn block_hash(&self, number: U256) -> Result<[u8; 32]>;
-    fn block_number(&self) -> Result<U256>;
-    fn block_timestamp(&self) -> Result<U256>;
+    fn block_number(&self, current_contract: Address) -> Result<U256>;
+    fn block_timestamp(&self, current_contract: Address) -> Result<U256>;
     fn rent(&self) -> &Rent;
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)>;
     fn set_return_data(&mut self, data: &[u8]);

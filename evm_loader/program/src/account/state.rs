@@ -275,26 +275,11 @@ impl<'a> StateAccount<'a> {
         info: &AccountInfo<'a>,
         accounts: &AccountsDB,
     ) -> Result<(Self, AccountsStatus)> {
-        let mut status = AccountsStatus::Ok;
         let mut state = Self::from_account(program_id, info)?;
 
-        let touched_accounts = state
-            .data
-            .touched_accounts
-            .iter()
-            .filter_map(|(key, counter)| if counter >= &2 { Some(key) } else { None });
-
-        for key in touched_accounts {
-            let account = accounts.get(key);
-
-            let account_revision = AccountRevision::new(program_id, account);
-            let stored_revision = &state.data.revisions[key];
-
-            if stored_revision != &account_revision {
-                log_data(&[b"INVALID_REVISION", account.key.as_ref()]);
-                status = AccountsStatus::NeedRestart;
-                break;
-            }
+        let mut status = state.validate_revisions(program_id, accounts);
+        if status == AccountsStatus::Ok {
+            status = state.validate_timestamps(program_id, accounts);
         }
 
         if status == AccountsStatus::NeedRestart {
@@ -305,6 +290,49 @@ impl<'a> StateAccount<'a> {
         }
 
         Ok((state, status))
+    }
+
+    fn validate_revisions(&self, program_id: &Pubkey, accounts: &AccountsDB) -> AccountsStatus {
+        let touched_accounts = self
+            .data
+            .touched_accounts
+            .iter()
+            .filter_map(|(key, counter)| if counter >= &2 { Some(key) } else { None });
+
+        for pubkey in touched_accounts {
+            let account = accounts.get(pubkey);
+
+            let account_revision = AccountRevision::new(program_id, account);
+            let stored_revision = &self.data.revisions[pubkey];
+
+            if stored_revision != &account_revision {
+                log_data(&[b"INVALID_REVISION", pubkey.as_ref()]);
+                return AccountsStatus::NeedRestart;
+            }
+        }
+
+        AccountsStatus::Ok
+    }
+
+    fn validate_timestamps(&self, program_id: &Pubkey, accounts: &AccountsDB) -> AccountsStatus {
+        let executor_state = self.read_executor_state();
+        let state_block_number: u64 = executor_state.block_params.number.as_u64();
+
+        let timestamped_contracts = executor_state.timestamped_contracts.borrow();
+        for address in timestamped_contracts.keys() {
+            let (pubkey, _) = address.find_solana_address(program_id);
+            let account = accounts.get(&pubkey).clone();
+            let Ok(contract) = ContractAccount::from_account(program_id, account) else {
+                continue;
+            };
+
+            if contract.timestamp_used_at() > state_block_number {
+                log_data(&[b"INVALID_REVISION", pubkey.as_ref()]);
+                return AccountsStatus::NeedRestart;
+            }
+        }
+
+        AccountsStatus::Ok
     }
 
     #[must_use]
@@ -768,7 +796,7 @@ impl<'a> StateAccount<'a> {
                 origin,
                 accounts,
                 steps,
-                (block_params.block_timestamp, block_params.block_number),
+                (block_params.timestamp, block_params.number),
             ))
         }
     }

@@ -12,7 +12,7 @@ use crate::executor::{Action, ExecutorState, ExecutorStateData, SyncedExecutorSt
 use crate::gasometer::Gasometer;
 use crate::instruction::priority_fee_txn_calculator;
 use crate::types::boxx::boxx;
-use crate::types::Vector;
+use crate::types::{Address, Vector};
 use crate::types::{Transaction, TreeMap};
 
 use solana_program::instruction::Instruction;
@@ -108,6 +108,7 @@ pub fn finalize<'a, 'b>(
     results: Option<(&'b ExitStatus, &'b Vector<Action>)>,
     mut gasometer: Gasometer,
     touched_accounts: TreeMap<Pubkey, u64>,
+    timestamped_contracts: TreeMap<Address, ()>,
 ) -> Result<()> {
     debug_print!("finalize");
 
@@ -126,6 +127,7 @@ pub fn finalize<'a, 'b>(
     let status = if let Some((status, actions)) = results {
         if accounts.allocate(actions)? == AllocateResult::Ready {
             accounts.apply_state_change(actions)?;
+            accounts.update_timestamped_contracts(timestamped_contracts.keys())?;
             Some(status)
         } else {
             None
@@ -214,7 +216,7 @@ pub fn finalize_interrupted<'a>(
         }
         evm.execute(u64::MAX, &mut backend)?
     };
-    let (_, touched_accounts) = state_data.deconstruct();
+    let (_, touched_accounts, timestamped_contracts) = state_data.deconstruct();
     let no_actions = Vector::new_in(acc_allocator());
     finalize(
         steps_executed,
@@ -223,6 +225,7 @@ pub fn finalize_interrupted<'a>(
         Some((&exit_reason, &no_actions)),
         gasometer,
         touched_accounts,
+        timestamped_contracts,
     )
 }
 

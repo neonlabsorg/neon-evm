@@ -78,7 +78,7 @@ fn validate<'a>(
     }
 
     // Validate and get the exit_status and index.
-    let (results, _) = executor_state.deconstruct();
+    let (results, _, _) = executor_state.deconstruct();
     let (exit_status, _) = results.ok_or(Error::ScheduledTxNoExitStatus(*state.account_key()))?;
 
     let index = trx.if_scheduled().map(|t| t.index).unwrap();

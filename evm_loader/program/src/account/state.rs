@@ -577,6 +577,7 @@ impl<'a> StateAccount<'a> {
         self.data.value = value;
     }
 
+    #[must_use]
     pub fn value(&self) -> U256 {
         self.data.value
     }

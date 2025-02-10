@@ -46,7 +46,7 @@ pub fn execute(
         return Err(Error::AccountSpaceAllocationFailure);
     }
 
-    account_storage.apply_state_change(apply_state)?;
+    account_storage.apply_state_change(apply_state, None)?;
     account_storage.transfer_treasury_payment()?;
 
     handle_gas(account_storage, &trx, gasometer, origin)?;

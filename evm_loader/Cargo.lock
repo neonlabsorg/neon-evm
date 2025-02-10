@@ -1948,6 +1948,7 @@ dependencies = [
  "ethnum",
  "evm-loader-macro",
  "hex",
+ "if_chain",
  "linked_list_allocator",
  "log",
  "maybe-async",
@@ -2835,6 +2836,12 @@ dependencies = [
  "icu_normalizer",
  "icu_properties",
 ]
+
+[[package]]
+name = "if_chain"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
 
 [[package]]
 name = "im"

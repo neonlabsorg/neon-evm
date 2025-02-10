@@ -37,6 +37,7 @@ pub fn do_scheduled_start<'a>(
     let max_priority_fee_in_tokens = storage.trx().priority_fee_limit_in_tokens()?;
     transaction_tree
         .burn(gas_limit_in_tokens + max_priority_fee_in_tokens + storage.trx().value())?;
+    storage.set_value(storage.value() + storage.trx().value());
 
     // record gas for the future finish
     gasometer.record_scheduled_transaction_finish();

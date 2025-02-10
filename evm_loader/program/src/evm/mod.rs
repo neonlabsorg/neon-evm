@@ -4,6 +4,7 @@
 #![allow(clippy::future_not_send)]
 
 use crate::account::InterruptedState;
+use ethnum::serde::bytes::le::Bytes;
 use ethnum::U256;
 use maybe_async::maybe_async;
 use std::{fmt::Display, marker::PhantomData, mem::ManuallyDrop, ops::Range};
@@ -22,6 +23,8 @@ use crate::{
 use crate::{evm::tracing::EventListener, types::boxx::Boxx};
 
 use self::{database::Database, memory::Memory, stack::Stack};
+
+use crate::types::vector::VectorSliceExt;
 
 mod buffer;
 pub mod database;
@@ -383,14 +386,25 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 .await?;
         }
         if self.need_transfer {
-            backend
+            match backend
                 .transfer(
                     self.context.caller,
                     self.context.contract,
                     self.context.contract_chain_id,
                     self.context.value,
                 )
-                .await?;
+                .await
+            {
+                Ok(()) => self.need_transfer = false,
+                Err(_) => {
+                    return Ok((
+                        ExitStatus::Revert(self.context.value.to_bytes().to_vector()),
+                        step,
+                        step_call_solana,
+                        self.tracer.take(),
+                    ))
+                }
+            }
             self.need_transfer = false;
         }
 

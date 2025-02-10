@@ -1,6 +1,6 @@
 use super::{Buffer, Context};
 use crate::account_storage::LogCollector;
-use crate::evm::precompile::is_precompile_address;
+//use crate::evm::precompile::is_precompile_address;
 use crate::executor::precompile_extension::PrecompiledContracts;
 use crate::types::Vector;
 use crate::{error::Result, executor::OwnedAccountInfo, types::Address};
@@ -123,7 +123,7 @@ impl<T: Database> DatabaseExt for T {
         let code = self.code(address).await?;
         let bytes_to_hash: Option<&[u8]> =
             if PrecompiledContracts::is_precompile_extension(&address)
-                || is_precompile_address(&address)
+            //|| is_precompile_address(&address)
             {
                 log_msg!("code_hash: None (precompile_extension)");
                 None

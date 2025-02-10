@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use crate::account_storage::{AccountStorage, LogCollector};
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
-use crate::evm::precompile::is_precompile_address;
+//use crate::evm::precompile::is_precompile_address;
 use crate::evm::{Context, ExitStatus};
 use crate::types::Address;
 use ethnum::{AsU256, U256};
@@ -336,7 +336,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         //log_msg!("ExecutorState::code_size {}", from_address);
 
         if PrecompiledContracts::is_precompile_extension(&from_address)
-            || is_precompile_address(&from_address)
+        //|| is_precompile_address(&from_address)
         {
             // This is required in order to make a normal call to an extension contract
             return Ok(1);
@@ -359,7 +359,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         //log_msg!("ExecutorState::code {}", from_address);
 
         if PrecompiledContracts::is_precompile_extension(&from_address)
-            || is_precompile_address(&from_address)
+        //|| is_precompile_address(&from_address)
         {
             // This is required in order to make a normal call to an extension contract
             let code: [u8; 1] = [0xFE];
@@ -670,7 +670,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         //log_msg!("ExecutorState::contract_chain_id {}", contract);
 
         if PrecompiledContracts::is_precompile_extension(&contract)
-            || is_precompile_address(&contract)
+        //|| is_precompile_address(&contract)
         {
             return Ok(self.default_chain_id());
         }

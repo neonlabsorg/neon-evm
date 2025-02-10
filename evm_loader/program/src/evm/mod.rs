@@ -199,6 +199,8 @@ pub struct Machine<B: Database, T: EventListener> {
     phantom: PhantomData<*const B>,
 
     tracer: Option<T>,
+
+    need_transfer: bool,
 }
 
 #[cfg(target_os = "solana")]
@@ -265,10 +267,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         backend.snapshot();
 
-        backend
-            .transfer(origin, target, chain_id, trx.value())
-            .await?;
-
         let execution_code = backend.code(target).await?;
         let mut machine = Self {
             origin,
@@ -294,6 +292,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             parent: None,
             phantom: PhantomData,
             tracer,
+            need_transfer: true,
         };
         begin_vm!(
             machine,
@@ -331,10 +330,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         backend.snapshot();
 
-        backend.increment_nonce(target, chain_id).await?;
-        backend
-            .transfer(origin, target, chain_id, trx.value())
-            .await?;
         let mut machine = Self {
             origin,
             chain_id,
@@ -359,6 +354,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             parent: None,
             phantom: PhantomData,
             tracer,
+            need_transfer: true,
         };
         begin_vm!(
             machine,
@@ -380,6 +376,23 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     ) -> Result<(ExitStatus, u64, Option<u64>, Option<T>)> {
         let mut step = 0_u64;
         let mut step_call_solana: Option<u64> = None;
+
+        if self.context.code_address.is_none() {
+            backend
+                .increment_nonce(self.context.contract, self.context.contract_chain_id)
+                .await?;
+        }
+        if self.need_transfer {
+            backend
+                .transfer(
+                    self.context.caller,
+                    self.context.contract,
+                    self.context.contract_chain_id,
+                    self.context.value,
+                )
+                .await?;
+            self.need_transfer = false;
+        }
 
         let status = if is_precompile_address(&self.context.contract) {
             let value = Self::precompile(&self.context.contract, &self.call_data).unwrap();
@@ -469,6 +482,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             parent: None,
             phantom: PhantomData,
             tracer: self.tracer.take(),
+            need_transfer: self.need_transfer,
         };
 
         core::mem::swap(self, &mut other);

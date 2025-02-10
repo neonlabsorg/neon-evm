@@ -103,7 +103,7 @@ pub fn holder_parse_trx(
 
 pub fn finalize<'a, 'b>(
     steps_executed: u64,
-    mut storage: StateAccount<'a>,
+    mut holder: StateAccount<'a>,
     mut accounts: ProgramAccountStorage<'a>,
     results: Option<(&'b ExitStatus, &'b Vector<Action>)>,
     mut gasometer: Gasometer,
@@ -112,12 +112,12 @@ pub fn finalize<'a, 'b>(
 ) -> Result<()> {
     debug_print!("finalize");
 
-    storage.update_touched_accounts(accounts.program_id(), accounts.db(), &touched_accounts)?;
-    storage.increment_steps_executed(steps_executed)?;
+    holder.update_touched_accounts(accounts.program_id(), accounts.db(), &touched_accounts)?;
+    holder.increment_steps_executed(steps_executed)?;
     log_data(&[
         b"STEPS",
         &steps_executed.to_le_bytes(),
-        &storage.steps_executed().to_le_bytes(),
+        &holder.steps_executed().to_le_bytes(),
     ]);
 
     if steps_executed > 0 {
@@ -147,9 +147,9 @@ pub fn finalize<'a, 'b>(
     ]);
 
     // Calculate priority fee for the current iteration.
-    let trx = storage.trx();
+    let trx = holder.trx();
     let priority_fee_in_tokens = if status.is_some() {
-        let total_priority_fee_used = storage.priority_fee_in_tokens_used();
+        let total_priority_fee_used = holder.priority_fee_in_tokens_used();
         priority_fee_txn_calculator::finalize_priority_fee(
             trx,
             total_used_gas,
@@ -159,7 +159,7 @@ pub fn finalize<'a, 'b>(
         priority_fee_txn_calculator::handle_priority_fee(trx)?
     };
 
-    storage.consume_gas(
+    holder.consume_gas(
         used_gas,
         priority_fee_in_tokens,
         accounts.db().try_operator_balance(),
@@ -168,16 +168,16 @@ pub fn finalize<'a, 'b>(
     if let Some(status) = status {
         log_return_value(&status);
 
-        let trx = storage.trx();
+        let trx = holder.trx();
         // refund gas for scheduled transaction is happening in transaction_finish.
         if !trx.is_scheduled_tx() {
-            let mut origin = accounts.origin(storage.trx_origin(), trx)?;
+            let mut origin = accounts.origin(holder.trx_origin(), trx)?;
             origin.increment_revision(accounts.rent(), accounts.db())?;
 
-            storage.refund_unused_gas(&mut origin)?;
+            holder.refund_unused_gas(&mut origin)?;
         }
 
-        storage.finalize(accounts.program_id())?;
+        holder.finalize(accounts.program_id())?;
     }
 
     Ok(())

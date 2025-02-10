@@ -126,7 +126,7 @@ pub fn finalize<'a, 'b>(
 
     let status = if let Some((status, actions)) = results {
         if accounts.allocate(actions)? == AllocateResult::Ready {
-            accounts.apply_state_change(actions)?;
+            accounts.apply_state_change(actions, Some(&mut holder))?;
             accounts.update_timestamped_contracts(timestamped_contracts.keys())?;
             Some(status)
         } else {
@@ -191,7 +191,7 @@ pub fn finalize_interrupted<'a>(
 ) -> Result<()> {
     debug_print!("finalize_interrupted");
 
-    accounts.apply_state_change(state_data.into_actions())?;
+    accounts.apply_state_change(state_data.into_actions(), None)?;
     let (exit_reason, steps_executed, _, _) = {
         let mut backend = SyncedExecutorState::new_with_state_data(&mut accounts, state_data);
         let mut evm = storage.read_evm::<SyncedEvmBackend, NoopEventListener>();

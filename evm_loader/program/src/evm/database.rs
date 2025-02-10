@@ -1,7 +1,5 @@
 use super::{Buffer, Context};
 use crate::account_storage::LogCollector;
-//use crate::evm::precompile::is_precompile_address;
-use crate::executor::precompile_extension::PrecompiledContracts;
 use crate::types::Vector;
 use crate::{error::Result, executor::OwnedAccountInfo, types::Address};
 use ethnum::U256;
@@ -99,11 +97,6 @@ pub trait DatabaseExt {
 #[maybe_async(?Send)]
 impl<T: Database> DatabaseExt for T {
     async fn account_exists(&self, address: Address, chain_id: u64) -> Result<bool> {
-        //log_msg!(
-        //    "account_exists: address = {:?}, chain_id = {}",
-        //    address,
-        //    chain_id
-        //);
         Ok(self.nonce(address, chain_id).await? > 0 || self.balance(address, chain_id).await? > 0)
     }
 
@@ -115,28 +108,14 @@ impl<T: Database> DatabaseExt for T {
         // We could simplify the implementation by checking if the account exists first, but that
         // would lead to more computation in what we think is the common case where the account
         // exists and contains code.
-        //log_msg!(
-        //    "code_hash: address = {:?}, chain_id = {}",
-        //    address,
-        //    chain_id
-        //);
         let code = self.code(address).await?;
-        let bytes_to_hash: Option<&[u8]> =
-            if PrecompiledContracts::is_precompile_extension(&address)
-            //|| is_precompile_address(&address)
-            {
-                log_msg!("code_hash: None (precompile_extension)");
-                None
-            } else if !code.is_empty() {
-                log_msg!("code_hash: Some(&*code)");
-                Some(&*code)
-            } else if self.account_exists(address, chain_id).await? {
-                log_msg!("code_hash: Some(&[])");
-                Some(&[])
-            } else {
-                log_msg!("code_hash: None");
-                None
-            };
+        let bytes_to_hash: Option<&[u8]> = if !code.is_empty() {
+            Some(&*code)
+        } else if self.account_exists(address, chain_id).await? {
+            Some(&[])
+        } else {
+            None
+        };
 
         Ok(bytes_to_hash.map_or([0; 32], |bytes| {
             solana_program::keccak::hash(bytes).to_bytes()

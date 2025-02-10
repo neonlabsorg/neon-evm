@@ -39,6 +39,7 @@ pub fn do_begin<'a>(
     let max_priority_fee_in_tokens = storage.trx().priority_fee_limit_in_tokens()?;
     origin_account
         .burn(gas_limit_in_tokens + max_priority_fee_in_tokens + storage.trx().value())?;
+    storage.set_value(storage.value() + storage.trx().value());
 
     // TODO for scheduled transactions, evm should be created with origin:=payer.
     allocate_evm(&mut account_storage, &mut storage)?;

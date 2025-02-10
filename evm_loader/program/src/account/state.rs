@@ -124,6 +124,8 @@ struct Data {
     pub interrupted_state: Option<InterruptedState>,
     /// Address of the tree account (present for scheduled transactions).
     pub tree_account: Option<Pubkey>,
+    /// Number of tokens transferred to holder
+    pub value: U256,
 }
 
 // Stores relative offsets for the corresponding objects as allocated by the AccountAllocator.
@@ -237,6 +239,7 @@ impl<'a> StateAccount<'a> {
             steps_executed: 0_u64,
             interrupted_state: None,
             tree_account,
+            value: U256::ZERO,
         });
 
         let data_offset = {
@@ -596,6 +599,14 @@ impl<'a> StateAccount<'a> {
 
     pub fn set_interrupted_state(&mut self, state: Option<InterruptedState>) {
         self.data.interrupted_state = state;
+    }
+
+    pub fn value(&self) -> U256 {
+        self.data.value
+    }
+
+    pub fn set_value(&mut self, value: U256) {
+        self.data.value = value;
     }
 }
 

@@ -601,6 +601,7 @@ impl<'a> StateAccount<'a> {
         self.data.interrupted_state = state;
     }
 
+    #[must_use]
     pub fn value(&self) -> U256 {
         self.data.value
     }

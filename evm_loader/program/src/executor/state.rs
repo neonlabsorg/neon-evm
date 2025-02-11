@@ -237,13 +237,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn solana_user_address(&self, address: Address) -> Result<Option<Pubkey>> {
-        //log_msg!("ExecutorState::solana_user_address {}", address);
         let pubkey = self.backend.solana_user_address(address).await;
         Ok(pubkey)
     }
 
     async fn nonce(&self, from_address: Address, from_chain_id: u64) -> Result<u64> {
-        //log_msg!("ExecutorState::nonce {}", from_address);
         let mut nonce = self.backend.nonce(from_address, from_chain_id).await;
         let mut increment = 0_u64;
 
@@ -261,7 +259,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
-        //log_msg!("ExecutorState::increment_nonce {}", address);
         let increment = Action::EvmIncrementNonce { address, chain_id };
         self.data.actions.push(increment);
 
@@ -269,7 +266,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn balance(&self, address: Address, chain_id: u64) -> Result<U256> {
-        //log_msg!("ExecutorState::balance {}", address);
         self.touch_balance(address, chain_id);
 
         self.balance_internal(address, chain_id).await
@@ -282,12 +278,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         chain_id: u64,
         value: U256,
     ) -> Result<()> {
-        //log_msg!("ExecutorState::transfer {}", source);
         if value == U256::ZERO {
             return Ok(());
         }
-
-        self.touch_contract(target);
+        // TODO: should be fixed when the legacy account support code is removed
+        // self.touch_contract(target);
 
         let target_chain_id = self.contract_chain_id(target).await.unwrap_or(chain_id);
 
@@ -316,7 +311,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn burn(&mut self, source: Address, chain_id: u64, value: U256) -> Result<()> {
-        //log_msg!("ExecutorState::burn {}", source);
         self.touch_balance_indirect(source, chain_id);
         if self.balance_internal(source, chain_id).await? < value {
             return Err(Error::InsufficientBalance(source, chain_id, value));
@@ -333,8 +327,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn code_size(&self, from_address: Address) -> Result<usize> {
-        //log_msg!("ExecutorState::code_size {}", from_address);
-
         if PrecompiledContracts::is_precompile_extension(&from_address) {
             return Ok(1);
         }
@@ -356,8 +348,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
-        //log_msg!("ExecutorState::code {}", from_address);
-
         if PrecompiledContracts::is_precompile_extension(&from_address) {
             return Ok(crate::evm::Buffer::from_slice(&[0xFE]));
         }
@@ -378,7 +368,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn set_code(&mut self, address: Address, chain_id: u64, code: Vector<u8>) -> Result<()> {
-        //log_msg!("ExecutorState::set_code {}", address);
         if code.starts_with(&[0xEF]) {
             // https://eips.ethereum.org/EIPS/eip-3541
             return Err(Error::EVMObjectFormatNotSupported(address));
@@ -400,7 +389,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
-        //log_msg!("ExecutorState::storage {}", from_address);
         self.touch_storage(from_address, from_index);
 
         for action in self.data.actions.iter().rev() {
@@ -420,7 +408,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
-        //log_msg!("ExecutorState::set_storage {}", address);
         let set_storage = Action::EvmSetStorage {
             address,
             index,
@@ -432,7 +419,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn transient_storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
-        //log_msg!("ExecutorState::transient_storage {}", from_address);
         for action in self.data.actions.iter().rev() {
             if let Action::EvmSetTransientStorage {
                 address,
@@ -455,7 +441,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         index: U256,
         value: [u8; 32],
     ) -> Result<()> {
-        //log_msg!("ExecutorState::set_transient_storage {}", address);
         let set_storage = Action::EvmSetTransientStorage {
             address,
             index,
@@ -501,7 +486,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
     #[allow(clippy::await_holding_refcell_ref)]
     async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
-        //log_msg!("ExecutorState::external_account {}", address);
         self.touch_solana(address);
         let mut cache = self.data.cache.borrow_mut();
         // find accounts for actions we haven't processed yet
@@ -666,8 +650,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn contract_chain_id(&self, contract: Address) -> Result<u64> {
-        //log_msg!("ExecutorState::contract_chain_id {}", contract);
-
         if PrecompiledContracts::is_precompile_extension(&contract)
             || is_precompile_address(&contract)
         {

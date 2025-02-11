@@ -109,25 +109,21 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
     }
 
     async fn solana_user_address(&self, address: Address) -> Result<Option<Pubkey>> {
-        //log_msg!("SyncedExecutorState::solana_user_address {}", address);
         let pubkey = self.backend.solana_user_address(address).await;
         Ok(pubkey)
     }
 
     async fn nonce(&self, from_address: Address, from_chain_id: u64) -> Result<u64> {
-        //log_msg!("SyncedExecutorState::nonce {}", from_address);
         let nonce = self.backend.nonce(from_address, from_chain_id).await;
         Ok(nonce)
     }
 
     async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
-        //log_msg!("SyncedExecutorState::increment_nonce {}", address);
         self.backend.increment_nonce(address, chain_id).await?;
         Ok(())
     }
 
     async fn balance(&self, from_address: Address, from_chain_id: u64) -> Result<U256> {
-        //log_msg!("SyncedExecutorState::balance {}", from_address);
         let balance = self.backend.balance(from_address, from_chain_id).await;
         Ok(balance)
     }
@@ -139,7 +135,6 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
         chain_id: u64,
         value: U256,
     ) -> Result<()> {
-        //log_msg!("SyncedExecutorState::transfer {}", source);
         if value == U256::ZERO {
             return Ok(());
         }
@@ -165,14 +160,11 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
     }
 
     async fn burn(&mut self, source: Address, chain_id: u64, value: U256) -> Result<()> {
-        //log_msg!("SyncedExecutorState::burn {}", source);
         self.backend.burn(source, chain_id, value).await?;
         Ok(())
     }
 
     async fn code_size(&self, from_address: Address) -> Result<usize> {
-        //log_msg!("SyncedExecutorState::code_size {}", from_address);
-
         if PrecompiledContracts::is_precompile_extension(&from_address) {
             return Ok(1);
         }
@@ -184,8 +176,6 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
     }
 
     async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
-        //log_msg!("SyncedExecutorState::code {}", from_address);
-
         if PrecompiledContracts::is_precompile_extension(&from_address) {
             return Ok(crate::evm::Buffer::from_slice(&[0xFE]));
         }
@@ -197,7 +187,6 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
     }
 
     async fn set_code(&mut self, address: Address, chain_id: u64, code: Vector<u8>) -> Result<()> {
-        //log_msg!("SyncedExecutorState::set_code {}", address);
         if code.starts_with(&[0xEF]) {
             // https://eips.ethereum.org/EIPS/eip-3541
             return Err(Error::EVMObjectFormatNotSupported(address));
@@ -213,18 +202,15 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
     }
 
     async fn storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
-        //log_msg!("SyncedExecutorState::storage {}", from_address);
         Ok(self.backend.storage(from_address, from_index).await)
     }
 
     async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {
-        //log_msg!("SyncedExecutorState::set_storage {}", address);
         self.backend.set_storage(address, index, value).await?;
         Ok(())
     }
 
     async fn transient_storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {
-        //log_msg!("SyncedExecutorState::transient {}", from_address);
         for action in self.actions.iter().rev() {
             #[allow(irrefutable_let_patterns)]
             if let Action::SetTransientStorage {
@@ -248,7 +234,6 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
         index: U256,
         value: [u8; 32],
     ) -> Result<()> {
-        //log_msg!("SyncedExecutorState::set_transient_storage {}", address);
         self.actions.push(Action::SetTransientStorage {
             address,
             index,
@@ -291,7 +276,6 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
     }
 
     async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
-        //log_msg!("SyncedExecutorState::external_account {}", address);
         let account = self.backend.clone_solana_account(&address).await;
         return Ok(account);
     }
@@ -312,7 +296,6 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
     where
         F: FnOnce(&solana_program::account_info::AccountInfo) -> R,
     {
-        //log_msg!("SyncedExecutorState::map_solana_account {}", address);
         self.backend.map_solana_account(address, action).await
     }
 
@@ -364,8 +347,6 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
     }
 
     async fn contract_chain_id(&self, contract: Address) -> Result<u64> {
-        //log_msg!("SyncedExecutorState::contract_chain_id {}", contract);
-
         if PrecompiledContracts::is_precompile_extension(&contract)
             || is_precompile_address(&contract)
         {

@@ -395,12 +395,12 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                     let message = build_revert_message(&e.to_string());
                     self.opcode_revert_impl(message.clone(), backend).await?;
 
-                    Ok((
+                    return Ok((
                         ExitStatus::Revert(message.clone().to_vector()),
                         step,
                         step_call_solana,
                         self.tracer.take(),
-                    ))
+                    ));
                 }
             }
             self.need_transfer = false;

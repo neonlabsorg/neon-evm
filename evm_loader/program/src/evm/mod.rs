@@ -4,7 +4,6 @@
 #![allow(clippy::future_not_send)]
 
 use crate::account::InterruptedState;
-use ethnum::serde::bytes::le::Bytes;
 use ethnum::U256;
 use maybe_async::maybe_async;
 use std::{fmt::Display, marker::PhantomData, mem::ManuallyDrop, ops::Range};
@@ -332,6 +331,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         }
 
         backend.snapshot();
+        backend.increment_nonce(target, chain_id).await?;
 
         let mut machine = Self {
             origin,
@@ -380,11 +380,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         let mut step = 0_u64;
         let mut step_call_solana: Option<u64> = None;
 
-        if self.context.code_address.is_none() {
-            backend
-                .increment_nonce(self.context.contract, self.context.contract_chain_id)
-                .await?;
-        }
         if self.need_transfer {
             match backend
                 .transfer(
@@ -396,9 +391,12 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                 .await
             {
                 Ok(()) => self.need_transfer = false,
-                Err(_) => {
-                    return Ok((
-                        ExitStatus::Revert(self.context.value.to_bytes().to_vector()),
+                Err(e) => {
+                    let message = build_revert_message(&e.to_string());
+                    self.opcode_revert_impl(message.clone(), backend).await?;
+
+                    Ok((
+                        ExitStatus::Revert(message.clone().to_vector()),
                         step,
                         step_call_solana,
                         self.tracer.take(),

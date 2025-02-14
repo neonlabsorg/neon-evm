@@ -35,6 +35,13 @@ pub fn process<'a>(
 
     // Validate.
     let (index, exit_status) = validate(&mut executor_state, &state, trx, &transaction_tree)?;
+    match exit_status {
+        ExitStatus::Revert(_) => {
+            transaction_tree.mint(state.trx().value())?;
+            state.set_value(state.value() - state.trx().value());
+        }
+        _ => {}
+    }
 
     // Handle gas, transaction costs to operator, refund into tree account.
     const GAS: U256 = U256::new(TREE_ACCOUNT_FINISH_TRANSACTION_GAS as u128);

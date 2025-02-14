@@ -561,6 +561,10 @@ impl<'a> StateAccount<'a> {
         origin.mint(total_refund)
     }
 
+    pub fn refund_unused_value(&mut self, origin: &mut BalanceAccount) -> Result<()> {
+        self.set_value(self.value() - self.trx().value());
+        origin.mint(self.trx().value())
+    }
     /// Use available gas and return it to the caller.
     /// It's caller's responsibility to mint the unused gas tokens to the appropriate recipient.
     pub fn materialize_unused_gas(&mut self) -> Result<U256> {

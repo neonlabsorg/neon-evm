@@ -177,6 +177,19 @@ pub fn finalize<'a, 'b>(
             holder.refund_unused_gas(&mut origin)?;
         }
 
+        match status {
+            ExitStatus::Revert(_) => {
+                let mut origin = accounts.origin(holder.trx_origin(), holder.trx())?;
+
+                origin.increment_revision(accounts.rent(), accounts.db())?;
+                holder.refund_unused_value(&mut origin)?;
+
+                // origin_account.mint(holder.trx().value());
+                // holder.set_value(holder.value() - holder.trx().value())
+            }
+            _ => {}
+        }
+
         holder.finalize(accounts.program_id())?;
     }
 

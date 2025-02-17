@@ -377,6 +377,10 @@ impl<'a> TransactionTree<'a> {
         }
 
         node.status = Status::InProgress;
+        std::mem::drop(node);
+
+        let clock = Clock::get()?;
+        self.update_last_slot(&clock);
 
         Ok(())
     }
@@ -400,6 +404,9 @@ impl<'a> TransactionTree<'a> {
 
         let child_index = node.child_transaction;
         std::mem::drop(node);
+
+        let clock = Clock::get()?;
+        self.update_last_slot(&clock);
 
         self.decrease_parent_count(child_index, Status::Skipped);
 
@@ -428,6 +435,9 @@ impl<'a> TransactionTree<'a> {
 
         let child_index = node.child_transaction;
         std::mem::drop(node);
+
+        let clock = Clock::get()?;
+        self.update_last_slot(&clock);
 
         self.decrease_parent_count(child_index, status);
 

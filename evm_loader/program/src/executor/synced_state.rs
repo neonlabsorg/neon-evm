@@ -14,6 +14,7 @@ use crate::account_storage::{AccountStorage, LogCollector, SyncedAccountStorage}
 use crate::allocator::acc_allocator;
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
+use crate::evm::precompile::is_precompile_address;
 use crate::evm::Context;
 use crate::executor::action;
 use crate::executor::ExecutorStateData;
@@ -175,13 +176,23 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
 
     async fn code_size(&self, from_address: Address) -> Result<usize> {
         if PrecompiledContracts::is_precompile_extension(&from_address) {
-            return Ok(1); // This is required in order to make a normal call to an extension contract
+            return Ok(1);
+        }
+        if is_precompile_address(&from_address) {
+            return Ok(0);
         }
 
         Ok(self.backend.code_size(from_address).await)
     }
 
     async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
+        if PrecompiledContracts::is_precompile_extension(&from_address) {
+            return Ok(crate::evm::Buffer::from_slice(&[0xFE]));
+        }
+        if is_precompile_address(&from_address) {
+            return Ok(crate::evm::Buffer::from_slice(&[]));
+        }
+
         Ok(self.backend.code(from_address).await)
     }
 
@@ -360,6 +371,11 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
     }
 
     async fn contract_chain_id(&self, contract: Address) -> Result<u64> {
+        if PrecompiledContracts::is_precompile_extension(&contract)
+            || is_precompile_address(&contract)
+        {
+            return Ok(self.default_chain_id());
+        }
         self.backend.contract_chain_id(contract).await
     }
 

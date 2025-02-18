@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use crate::account_storage::{AccountStorage, LogCollector};
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
+use crate::evm::precompile::is_precompile_address;
 use crate::evm::{Context, ExitStatus};
 use crate::types::Address;
 use ethnum::{AsU256, U256};
@@ -271,8 +272,8 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         if value == U256::ZERO {
             return Ok(());
         }
-
-        self.touch_contract(target);
+        // TODO: should be fixed when the legacy account support code is removed
+        // self.touch_contract(target);
 
         let target_chain_id = self.contract_chain_id(target).await.unwrap_or(chain_id);
 
@@ -318,7 +319,10 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
 
     async fn code_size(&self, from_address: Address) -> Result<usize> {
         if PrecompiledContracts::is_precompile_extension(&from_address) {
-            return Ok(1); // This is required in order to make a normal call to an extension contract
+            return Ok(1);
+        }
+        if is_precompile_address(&from_address) {
+            return Ok(0);
         }
 
         self.touch_contract(from_address);
@@ -335,6 +339,13 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
+        if PrecompiledContracts::is_precompile_extension(&from_address) {
+            return Ok(crate::evm::Buffer::from_slice(&[0xFE]));
+        }
+        if is_precompile_address(&from_address) {
+            return Ok(crate::evm::Buffer::from_slice(&[]));
+        }
+
         self.touch_contract(from_address);
 
         for action in &self.data.actions {
@@ -344,7 +355,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
                 }
             }
         }
-
         Ok(self.backend.code(from_address).await)
     }
 
@@ -617,6 +627,12 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
     }
 
     async fn contract_chain_id(&self, contract: Address) -> Result<u64> {
+        if PrecompiledContracts::is_precompile_extension(&contract)
+            || is_precompile_address(&contract)
+        {
+            return Ok(self.default_chain_id());
+        }
+
         self.touch_contract(contract);
 
         for action in self.data.actions.iter().rev() {

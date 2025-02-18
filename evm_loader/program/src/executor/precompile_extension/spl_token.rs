@@ -306,7 +306,7 @@ async fn initialize_mint<State: Database>(
     )
     .await?;
 
-    let initialize_mint = spl_token::instruction::initialize_mint(
+    let initialize_mint = spl_token::instruction::initialize_mint2(
         &spl_token::ID,
         &mint_key,
         &mint_authority.unwrap_or(signer_pubkey),
@@ -363,7 +363,7 @@ async fn initialize_account<State: Database>(
     )
     .await?;
 
-    let initialize_mint = spl_token::instruction::initialize_account2(
+    let initialize_mint = spl_token::instruction::initialize_account3(
         &spl_token::ID,
         &account_key,
         &mint,

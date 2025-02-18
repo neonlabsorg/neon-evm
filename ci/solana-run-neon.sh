@@ -17,11 +17,13 @@ PYTH_NEON_ID=F2VfCymdNQiCa8Vyg5E7BwEv9UPwfm8cVN6eqQLqXiGo
 PYTH_ETH_ID=42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC
 PUTH_USDC_ID=Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX
 PUTH_USDT_ID=HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM
+WSOL_ID=6dM4TqWyWJsbx7obrdLcviBkTafD5E8av61zfU6jq57X
 PYTH_SOL_PATH=${NEON_BIN}/pyth_sol.json
 PYTH_NEON_PATH=${NEON_BIN}/pyth_neon.json
 PYTH_ETH_PATH=${NEON_BIN}/pyth_eth.json
 PUTH_USDC_PATH=${NEON_BIN}/pyth_usdc.json
 PUTH_USDT_PATH=${NEON_BIN}/pyth_usdt.json
+WSOL_PATH=${NEON_BIN}/wsol.json
 
 if [ -n "$DEVNET_SOLANA_URL" ]; then
     url=$DEVNET_SOLANA_URL
@@ -36,6 +38,7 @@ solana account F2VfCymdNQiCa8Vyg5E7BwEv9UPwfm8cVN6eqQLqXiGo --output-file pyth_n
 solana account 42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC --output-file pyth_eth.json --output json-compact --url ${url}
 solana account Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX --output-file pyth_usdc.json --output json-compact --url ${url}
 solana account HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM --output-file pyth_usdt.json --output json-compact --url ${url}
+solana account 6dM4TqWyWJsbx7obrdLcviBkTafD5E8av61zfU6jq57X --output-file wsol.json --output json-compact --url ${url}
 
 VALIDATOR_ARGS=(
   --reset
@@ -49,6 +52,7 @@ VALIDATOR_ARGS=(
   --account ${PYTH_ETH_ID} ${PYTH_ETH_PATH}
   --account ${PUTH_USDC_ID} ${PUTH_USDC_PATH}
   --account ${PUTH_USDT_ID} ${PUTH_USDT_PATH}
+  --account ${WSOL_ID} ${WSOL_PATH}
   --limit-ledger-size 400000000
 )
 

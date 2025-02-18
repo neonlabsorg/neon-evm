@@ -30,7 +30,7 @@ pub mod database;
 mod memory;
 pub mod opcode;
 pub mod opcode_table;
-mod precompile;
+pub mod precompile;
 mod stack;
 pub mod tracing;
 mod utils;

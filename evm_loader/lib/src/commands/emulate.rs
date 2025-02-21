@@ -435,8 +435,10 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
 
     transfer_gas_limit(&mut storage, &tx, &origin, chain_id, increase_gas_limit).await?;
 
-    let (exit_status, steps_executed, step_on_solana, tracer) = {
+    let (exit_status, steps_executed, step_on_solana, tracer, timestamped_contracts) = {
         let mut backend = SyncedExecutorState::new(&mut storage);
+
+        // put tracer only for the first evm creation because it call begin_vm macros
         let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
             Ok(evm) => evm,
             Err(e) => {
@@ -448,14 +450,9 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
         let mut exit_status: ExitStatus = ExitStatus::Stop;
         let mut steps_executed = 0u64;
         let mut step_on_solana = None;
-        let mut tracer_result: Option<T> = None;
-        for (pos, execution_step) in execution_map.iter().enumerate() {
-            if execution_step.steps == 0 && !execution_step.is_cancel {
-                continue;
-            }
-
+        let mut tracer_result: Option<T> = evm.take_tracer();
+        for execution_step in &execution_map {
             if execution_step.is_reset {
-                tracer_result = evm.take_tracer();
                 drop(evm);
                 drop(backend);
                 drop(storage);
@@ -473,7 +470,7 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
                 .await?;
 
                 backend = SyncedExecutorState::new(&mut storage);
-                evm = match Machine::new(&tx, origin, &mut backend, tracer_result).await {
+                evm = match Machine::new(&tx, origin, &mut backend, None).await {
                     Ok(evm) => evm,
                     Err(e) => {
                         error!("EVM creation failed {e:?}");
@@ -481,7 +478,9 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
                     }
                 }
             } else if execution_step.is_cancel {
+                evm.set_tracer(tracer_result);
                 evm.end_vm(&backend, ExitStatus::Cancel).await?;
+                tracer_result = evm.take_tracer();
 
                 drop(evm);
                 drop(backend);
@@ -508,9 +507,13 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
                 exit_status = ExitStatus::Cancel;
 
                 break;
-            } else if pos != 0 {
-                evm.set_tracer(tracer_result);
             }
+
+            if execution_step.steps == 0 && execution_step.is_return {
+                break;
+            }
+
+            evm.set_tracer(tracer_result);
 
             let (local_exit_status, local_steps_executed, local_step_on_solana, local_tracer) = evm
                 .execute(u64::from(execution_step.steps), &mut backend)
@@ -530,8 +533,17 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
             ));
         }
 
-        (exit_status, steps_executed, step_on_solana, tracer_result)
+        let timestamped_contracts = backend.timestamped_contracts.take();
+        (
+            exit_status,
+            steps_executed,
+            step_on_solana,
+            tracer_result,
+            timestamped_contracts,
+        )
     };
+
+    storage.mark_timestamped_contracts(timestamped_contracts.keys());
 
     calculate_response(
         steps_executed,

@@ -11,6 +11,7 @@ use tracing::error;
 
 pub mod build_info;
 pub mod emulate;
+pub mod emulate_multiple;
 pub mod get_balance;
 pub mod get_config;
 pub mod get_contract;

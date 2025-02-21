@@ -175,6 +175,15 @@ pub struct Context {
     pub code_address: Option<Address>,
 }
 
+#[derive(Debug, Copy, Clone)]
+#[repr(C)]
+pub struct TransferParams {
+    pub origin: Address,
+    pub target: Address,
+    pub chain_id: u64,
+    pub value: U256,
+}
+
 #[repr(C)]
 pub struct Machine<B: Database, T: EventListener> {
     origin: Address,
@@ -202,7 +211,7 @@ pub struct Machine<B: Database, T: EventListener> {
 
     tracer: Option<T>,
 
-    need_transfer: bool,
+    transfer_params: Option<TransferParams>,
 }
 
 #[cfg(target_os = "solana")]
@@ -294,7 +303,12 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             parent: None,
             phantom: PhantomData,
             tracer,
-            need_transfer: true,
+            transfer_params: Some(TransferParams {
+                origin,
+                target,
+                chain_id,
+                value: trx.value(),
+            }),
         };
         begin_vm!(
             machine,
@@ -357,7 +371,12 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             parent: None,
             phantom: PhantomData,
             tracer,
-            need_transfer: true,
+            transfer_params: Some(TransferParams {
+                origin,
+                target,
+                chain_id,
+                value: trx.value(),
+            }),
         };
         begin_vm!(
             machine,
@@ -380,18 +399,22 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         let mut step = 0_u64;
         let mut step_call_solana: Option<u64> = None;
 
-        if self.need_transfer {
+        if let Some(transfer_params) = self.transfer_params {
             match backend
                 .transfer(
-                    self.context.caller,
-                    self.context.contract,
-                    self.context.contract_chain_id,
-                    self.context.value,
+                    transfer_params.origin,
+                    transfer_params.target,
+                    transfer_params.chain_id,
+                    transfer_params.value,
                 )
                 .await
             {
-                Ok(()) => self.need_transfer = false,
+                Ok(()) => {
+                    self.transfer_params = None;
+                    log_msg!("backend transfer OK, need_transfer = false;");
+                }
                 Err(e) => {
+                    log_msg!("backend transfer ERROR");
                     let message = build_revert_message(&e.to_string());
                     self.opcode_revert_impl(message.clone(), backend).await?;
 
@@ -403,7 +426,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                     ));
                 }
             }
-            self.need_transfer = false;
         }
 
         let status = if is_precompile_address(&self.context.contract) {
@@ -494,7 +516,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             parent: None,
             phantom: PhantomData,
             tracer: self.tracer.take(),
-            need_transfer: self.need_transfer,
+            transfer_params: self.transfer_params,
         };
 
         core::mem::swap(self, &mut other);

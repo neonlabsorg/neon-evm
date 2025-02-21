@@ -63,4 +63,6 @@ pub enum LibMethod {
     GetBalanceWithPubkey,
     #[strum(serialize = "transaction_tree")]
     GetTransactionTree,
+    #[strum(serialize = "emulate_mutiple")]
+    EmulateMultiple,
 }

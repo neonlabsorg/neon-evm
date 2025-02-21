@@ -1,0 +1,17 @@
+use super::params_to_neon_error;
+use crate::commands::emulate::EmulateResponse;
+use crate::commands::emulate_multiple;
+use crate::commands::get_config::BuildConfigSimulator;
+use crate::config::APIOptions;
+use crate::{types::EmulateMultipleRequest, NeonResult};
+
+pub async fn execute(
+    rpc: &impl BuildConfigSimulator,
+    config: &APIOptions,
+    params: &str,
+) -> NeonResult<Vec<EmulateResponse>> {
+    let params: EmulateMultipleRequest =
+        serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
+
+    emulate_multiple::execute(rpc, &config.db_config, &config.evm_loader, params).await
+}

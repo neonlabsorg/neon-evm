@@ -1,6 +1,6 @@
 use crate::context::Context;
 use crate::handlers::{
-    emulate, get_balance, get_config, get_contract, get_holder, get_storage_at,
+    emulate, emulate_multiple, get_balance, get_config, get_contract, get_holder, get_storage_at,
     get_transaction_tree, info, lib_info, trace,
 };
 
@@ -27,6 +27,10 @@ pub fn build_rpc(ctx: Context) -> Arc<Server<MapRouter>> {
         .with_method(
             LibMethod::GetTransactionTree.to_string(),
             get_transaction_tree::handle,
+        )
+        .with_method(
+            LibMethod::EmulateMultiple.to_string(),
+            emulate_multiple::handle,
         )
         .finish()
 }

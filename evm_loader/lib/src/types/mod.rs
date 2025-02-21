@@ -306,6 +306,30 @@ impl From<&SerializedAccount> for Account {
     }
 }
 
+impl From<Account> for SerializedAccount {
+    fn from(account: Account) -> Self {
+        Self {
+            lamports: account.lamports,
+            owner: account.owner,
+            executable: account.executable,
+            rent_epoch: account.rent_epoch,
+            data: account.data,
+        }
+    }
+}
+
+impl From<AccountData> for SerializedAccount {
+    fn from(account: AccountData) -> Self {
+        Self {
+            lamports: account.lamports,
+            owner: account.owner,
+            executable: account.executable,
+            rent_epoch: account.rent_epoch,
+            data: account.data().to_vec(),
+        }
+    }
+}
+
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AccountInfoLevel {
@@ -332,6 +356,19 @@ pub struct EmulateRequest {
 pub struct EmulateApiRequest {
     #[serde(flatten)]
     pub body: EmulateRequest,
+    pub slot: Option<u64>,
+    pub tx_index_in_block: Option<u64>,
+    pub id: Option<String>,
+}
+
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmulateMultipleRequest {
+    pub tx: Vec<TxParams>,
+    pub step_limit: Option<u64>,
+    pub chains: Option<Vec<ChainInfo>>,
+    #[serde_as(as = "Vec<DisplayFromStr>")]
+    pub accounts: Vec<Pubkey>,
     pub slot: Option<u64>,
     pub tx_index_in_block: Option<u64>,
     pub id: Option<String>,

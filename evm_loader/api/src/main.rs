@@ -22,6 +22,7 @@ use std::{env, net::SocketAddr, str::FromStr};
 
 use crate::api_server::handlers::build_info::build_info_route;
 use crate::api_server::handlers::emulate::emulate;
+use crate::api_server::handlers::emulate_multiple::emulate_multiple;
 use crate::api_server::handlers::get_balance::get_balance;
 use crate::api_server::handlers::get_balance::get_balance_with_pubkey;
 use crate::api_server::handlers::get_config::get_config;
@@ -74,6 +75,7 @@ async fn main() -> NeonApiResult<()> {
                 .app_data(state.clone())
                 .service(build_info_route)
                 .service(emulate)
+                .service(emulate_multiple)
                 .service(get_balance)
                 .service(get_balance_with_pubkey)
                 .service(get_contract)

@@ -35,13 +35,6 @@ pub fn process<'a>(
 
     // Validate.
     let (index, exit_status) = validate(&mut executor_state, &state, trx, &transaction_tree)?;
-    match exit_status {
-        ExitStatus::Revert(_) => {
-            transaction_tree.mint(state.trx().value())?;
-            state.set_value(state.value() - state.trx().value());
-        }
-        _ => {}
-    }
 
     // Handle gas, transaction costs to operator, refund into tree account.
     const GAS: U256 = U256::new(TREE_ACCOUNT_FINISH_TRANSACTION_GAS as u128);
@@ -49,6 +42,10 @@ pub fn process<'a>(
         // don't burn tokens in tree, because it was already reserved at the start
         operator_balance.mint(GAS)?;
     }
+
+    // Refund value from holder
+    transaction_tree.mint(state.value())?;
+    state.set_value(U256::ZERO);
 
     let refund = state.materialize_unused_gas()?;
     transaction_tree.mint(refund)?;

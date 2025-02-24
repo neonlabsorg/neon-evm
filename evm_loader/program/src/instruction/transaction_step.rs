@@ -1,3 +1,4 @@
+#![allow(unreachable_code, unused_variables, unused_mut)]
 use crate::account::{AccountsDB, StateAccount};
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::config::{EVM_STEPS_LAST_ITERATION_MAX, EVM_STEPS_MIN};
@@ -14,6 +15,8 @@ pub fn do_begin<'a>(
     mut storage: StateAccount<'a>,
     gasometer: Gasometer,
 ) -> Result<()> {
+    panic!("SERVICE MODE: NEW ITERATIVE TRANSACTIONS ARE NOT ALLOWED");
+
     debug_print!("do_begin");
 
     let mut account_storage = ProgramAccountStorage::new(accounts)?;

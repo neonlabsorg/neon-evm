@@ -7,6 +7,7 @@ pub struct ExecutionStep {
     pub index: Option<u64>,
     pub is_reset: bool,
     pub is_cancel: bool,
+    pub is_return: bool,
     pub steps: u32,
 }
 

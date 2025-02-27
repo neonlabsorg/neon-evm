@@ -47,7 +47,7 @@ pub async fn execute(
         )
         .await?;
 
-        let accounts = response.accounts_data.take().unwrap();
+        let accounts = response.accounts_data.take().unwrap_or_default();
         for account in accounts {
             overrides.insert(account.pubkey, Some(account.into()));
         }

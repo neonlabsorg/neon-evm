@@ -1,16 +1,16 @@
 use std::mem::size_of;
 
+use super::{
+    program, AccountHeader, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION,
+    TAG_OPERATOR_BALANCE,
+};
+use crate::debug::log_data;
 use crate::{
     error::{Error, Result},
     types::{Address, Transaction},
 };
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, system_program};
-
-use super::{
-    program, AccountHeader, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION,
-    TAG_OPERATOR_BALANCE,
-};
 
 #[repr(C, packed)]
 pub struct Header {
@@ -163,6 +163,7 @@ impl<'a> OperatorBalanceAccount<'a> {
         }
 
         let value = self.balance();
+        log_data(&[b"OPERATOR_WITHDRAW", &value.to_le_bytes()]);
 
         self.burn(value)?;
         target.mint(value)

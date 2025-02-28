@@ -325,6 +325,13 @@ async fn emulate_trx<'rpc, T: Tracer>(
 
         increment_nonce(&mut storage, &from, chain_id).await?;
 
+        if let FromAddress::Solana(_) = emulate_request.tx.from {
+            //correct sender's balance because neon-evm takes value from the storage
+            if let Some(value) = emulate_request.tx.value {
+                storage.mint(from, chain_id, value).await?;
+            }
+        }
+
         let result =
             emulate_trx_single_step(&mut storage, &tx, tracer, emulate_request, step_limit).await?;
 
@@ -352,6 +359,10 @@ async fn emulate_trx_single_step<'rpc, T: Tracer>(
                 return Ok((EmulateResponse::revert(&e, &backend), None));
             }
         };
+
+        // transfer from origin to holder
+        let mut holder_balance = U256::ZERO;
+        holder_balance += tx.value();
 
         let (exit_status, steps_executed, step_on_solana, tracer) =
             evm.execute(step_limit, &mut backend).await?;

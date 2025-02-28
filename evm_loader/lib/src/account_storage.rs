@@ -845,7 +845,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
     }
 
-    async fn mint(
+    pub async fn mint(
         &mut self,
         address: Address,
         chain_id: u64,

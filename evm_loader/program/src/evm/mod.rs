@@ -247,14 +247,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     ) -> Result<Self> {
         let trx_chain_id = trx.chain_id().unwrap_or_else(|| backend.default_chain_id());
 
-        if backend.balance(origin, trx_chain_id).await? < trx.value() {
-            return Err(Error::InsufficientBalance(
-                origin,
-                trx_chain_id,
-                trx.value(),
-            ));
-        }
-
         if trx.target().is_some() {
             Self::new_call(trx_chain_id, trx, origin, backend, tracer).await
         } else {

@@ -32,6 +32,7 @@ pub trait Database: LogCollector {
         target: Address,
         chain_id: u64,
         value: U256,
+        holder_value: Option<U256>,
     ) -> Result<()>;
     async fn burn(&mut self, address: Address, chain_id: u64, value: U256) -> Result<()>;
 

@@ -224,7 +224,7 @@ pub fn finalize_interrupted<'a>(
             evm.opcode_return_impl(return_data, &mut backend)?;
             evm.increment_pc();
         }
-        evm.execute(u64::MAX, &mut backend)?
+        evm.execute(u64::MAX, &mut backend, Some(storage.value()))?
     };
     let (_, touched_accounts, timestamped_contracts) = state_data.deconstruct();
     let no_actions = Vector::new_in(acc_allocator());

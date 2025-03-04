@@ -387,6 +387,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         &mut self,
         step_limit: u64,
         backend: &mut B,
+        holder_value: Option<U256>,
     ) -> Result<(ExitStatus, u64, Option<u64>, Option<T>)> {
         let mut step = 0_u64;
         let mut step_call_solana: Option<u64> = None;
@@ -398,6 +399,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
                     transfer_params.target,
                     transfer_params.chain_id,
                     transfer_params.value,
+                    holder_value,
                 )
                 .await
             {

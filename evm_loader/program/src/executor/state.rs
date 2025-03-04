@@ -2,10 +2,13 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use crate::account_storage::{AccountStorage, LogCollector};
+use crate::allocator::acc_allocator;
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
 use crate::evm::precompile::is_precompile_address;
 use crate::evm::{Context, ExitStatus};
+use crate::types::tree_map::TreeMap;
+use crate::types::vector::{Vector, VectorSliceExt, VectorSliceSlowExt};
 use crate::types::Address;
 use ethnum::{AsU256, U256};
 use maybe_async::maybe_async;
@@ -13,10 +16,6 @@ use mpl_token_metadata::programs::MPL_TOKEN_METADATA_ID;
 use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
-
-use crate::allocator::acc_allocator;
-use crate::types::tree_map::TreeMap;
-use crate::types::vector::{Vector, VectorSliceExt, VectorSliceSlowExt};
 
 use super::action::Action;
 use super::block_params::BlockParams;
@@ -268,6 +267,7 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         target: Address,
         chain_id: u64,
         value: U256,
+        holder_value: Option<U256>,
     ) -> Result<()> {
         if value == U256::ZERO {
             return Ok(());
@@ -286,7 +286,11 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         }
 
         self.touch_balance_indirect(source, chain_id);
-        if self.balance_internal(source, chain_id).await? < value {
+        if let Some(holder_value) = holder_value {
+            if holder_value < value {
+                return Err(Error::InsufficientBalance(source, chain_id, value));
+            }
+        } else if self.balance_internal(source, chain_id).await? < value {
             return Err(Error::InsufficientBalance(source, chain_id, value));
         }
 

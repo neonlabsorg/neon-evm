@@ -1,14 +1,13 @@
 use std::cell::RefCell;
 
+use super::precompile_extension::PrecompiledContracts;
+use super::state::TimestampedContracts;
+use super::{BlockParams, OwnedAccountInfo};
 use ethnum::{AsU256, U256};
 use maybe_async::maybe_async;
 use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
-
-use super::precompile_extension::PrecompiledContracts;
-use super::state::TimestampedContracts;
-use super::{BlockParams, OwnedAccountInfo};
 
 use crate::account_storage::{AccountStorage, LogCollector, SyncedAccountStorage};
 use crate::allocator::acc_allocator;
@@ -144,6 +143,7 @@ impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
         target: Address,
         chain_id: u64,
         value: U256,
+        _holder_value: Option<U256>,
     ) -> Result<()> {
         if value == U256::ZERO {
             return Ok(());

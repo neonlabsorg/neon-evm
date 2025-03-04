@@ -86,7 +86,8 @@ pub fn do_continue<'a>(
     let mut steps_executed = 0;
 
     if backend.exit_status().is_none() {
-        let (exit_status, steps_returned, _, _) = evm.execute(step_count, &mut backend)?;
+        let (exit_status, steps_returned, _, _) =
+            evm.execute(step_count, &mut backend, Some(storage.value()))?;
 
         if let ExitStatus::Interrupted(state) = exit_status {
             storage.set_interrupted_state(*state);

@@ -362,8 +362,9 @@ async fn emulate_trx_single_step<'rpc, T: Tracer>(
             }
         };
 
-        let (exit_status, steps_executed, step_on_solana, tracer) =
-            evm.execute(step_limit, &mut backend).await?;
+        let (exit_status, steps_executed, step_on_solana, tracer) = evm
+            .execute(step_limit, &mut backend, Some(tx.value()))
+            .await?;
 
         if exit_status == ExitStatus::StepLimit {
             error!("Step_limit={step_limit} exceeded");
@@ -525,7 +526,7 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
             evm.set_tracer(tracer_result);
 
             let (local_exit_status, local_steps_executed, local_step_on_solana, local_tracer) = evm
-                .execute(u64::from(execution_step.steps), &mut backend)
+                .execute(u64::from(execution_step.steps), &mut backend, None)
                 .await?;
 
             exit_status = local_exit_status;

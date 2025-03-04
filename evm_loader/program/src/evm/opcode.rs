@@ -1137,7 +1137,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
         backend.increment_nonce(address, chain_id).await?;
         backend
-            .transfer(self.context.caller, address, chain_id, value)
+            .transfer(self.context.caller, address, chain_id, value, None)
             .await?;
 
         Ok(Action::Noop)
@@ -1188,7 +1188,13 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         }
 
         backend
-            .transfer(self.context.caller, self.context.contract, chain_id, value)
+            .transfer(
+                self.context.caller,
+                self.context.contract,
+                chain_id,
+                value,
+                None,
+            )
             .await?;
 
         self.opcode_call_precompile_impl(backend, &address).await
@@ -1479,7 +1485,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         let chain_id = self.context.contract_chain_id;
         let value = backend.balance(self.context.contract, chain_id).await?;
         backend
-            .transfer(self.context.contract, address, chain_id, value)
+            .transfer(self.context.contract, address, chain_id, value, None)
             .await?;
 
         backend.commit_snapshot();

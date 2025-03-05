@@ -2,6 +2,7 @@ use crate::account::{AccountsDB, AllocateResult};
 use crate::account_storage::ProgramAccountStorage;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
+use crate::evm::database::Database;
 use crate::evm::tracing::NoopEventListener;
 use crate::evm::Machine;
 use crate::executor::{ExecutorState, ExecutorStateData, SyncedExecutorState};
@@ -27,6 +28,14 @@ pub fn execute(
     let (exit_reason, steps_executed) = {
         let mut backend = ExecutorState::new(&mut account_storage, &mut backend_data);
 
+        let trx_chain_id = trx.chain_id().unwrap_or_else(|| backend.default_chain_id());
+        if backend.balance(origin, trx_chain_id)? < trx.value() {
+            return Err(Error::InsufficientBalance(
+                origin,
+                trx_chain_id,
+                trx.value(),
+            ));
+        }
         let mut evm = Machine::new(&trx, origin, &mut backend, None::<NoopEventListener>)?;
         let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend, None)?;
 

@@ -103,7 +103,7 @@ pub fn net_specific_config_parser(tokens: TokenStream) -> TokenStream {
     let neon_chain_id_str = neon_chain_id.to_string();
 
     quote! {
-        pub const PROGRAM_ID: solana_program::pubkey::Pubkey = solana_program::pubkey!(#program_id);
+        pub const PROGRAM_ID: &str = #program_id;
         pub const DEFAULT_CHAIN_ID: u64 = #neon_chain_id;
         pub const SOL_CHAIN_ID: u64 = #sol_chain_id;
 

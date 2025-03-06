@@ -2,7 +2,7 @@ use crate::types::vector::{VectorSliceExt, VectorVecExt};
 use crate::types::Vector;
 use crate::vector;
 use ethnum::U256;
-use solana_program::alt_bn128::prelude::*;
+use solana_bn254::prelude::*;
 
 /// Call inner `bn256Add`
 #[must_use]

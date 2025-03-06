@@ -13,5 +13,5 @@ pub async fn execute(
     let params: SimulateSolanaRequest =
         serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
 
-    simulate_solana::execute(rpc, params).await
+    simulate_solana::execute(rpc, params).await.map(|r| r.0)
 }

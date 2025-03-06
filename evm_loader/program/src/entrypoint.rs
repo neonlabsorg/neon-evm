@@ -224,9 +224,8 @@ fn process_instruction<'a>(
             instruction::operator_withdraw_balance::process(program_id, accounts, instruction)
         }
     }
-    .map_err(|e| {
+    .inspect_err(|e| {
         e.log_data();
-        e
     })
     .map_err(ProgramError::from)
 }

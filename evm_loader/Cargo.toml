@@ -12,22 +12,26 @@ members = [
 ]
 
 [workspace.dependencies]
-solana-clap-utils = "=2.0.21"
-solana-cli = "=2.0.21"
-solana-cli-config = "=2.0.21"
-solana-client = "=2.0.21"
-solana-account-decoder = "=2.0.21"
-solana-program = { version = "=2.0.21", default-features = false }
-solana-sdk = "=2.0.21"
-solana-program-runtime = "=2.0.21"
-solana-runtime = { version = "=2.0.21", features = ["dev-context-only-utils"] }
-solana-accounts-db = { version = "=2.0.21", default-features = false }
-solana-bpf-loader-program = "=2.0.21"
-solana-loader-v4-program = "=2.0.21"
-solana-transaction-status = "=2.0.21"
-solana-compute-budget = "=2.0.21"
-solana-svm = "=2.0.21"
-spl-associated-token-account = { version = "5.0.1", default-features = false, features = ["no-entrypoint"] }
+solana-clap-utils = "=2.1.15"
+solana-cli = "=2.1.15"
+solana-cli-config = "=2.1.15"
+solana-client = "=2.1.15"
+solana-account-decoder = "=2.1.15"
+solana-program = { version = "=2.1.15", default-features = false }
+solana-bn254 = "=2.1.15"
+solana-sdk = "=2.1.15"
+solana-program-runtime = "=2.1.15"
+solana-runtime = { version = "=2.1.15", features = ["dev-context-only-utils"] }
+solana-accounts-db = { version = "=2.1.15", default-features = false }
+solana-bpf-loader-program = "=2.1.15"
+solana-loader-v4-program = "=2.1.15"
+solana-transaction-status = "=2.1.15"
+solana-compute-budget = "=2.1.15"
+solana-log-collector = "=2.1.15"
+solana-timings = "=2.1.15"
+solana-svm = "=2.1.15"
+spl-associated-token-account = { version = "6.0", default-features = false, features = ["no-entrypoint"] }
+spl-token = { version = "7.0", default-features = false, features = ["no-entrypoint"] }
 ethnum = { version = "1.5.0", default-features = false, features = ["serde"] }
 
 [profile.test]

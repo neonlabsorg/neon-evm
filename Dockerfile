@@ -1,7 +1,11 @@
 ARG DOCKERHUB_ORG_NAME
 # Install BPF SDK
-FROM anzaxyz/ci:rust_1.78.0_nightly-2024-03-26 AS builder
+FROM rust:1.79.0 AS builder
+RUN rustup component add rustfmt
+RUN rustup component add clippy
 RUN cargo install rustfilt
+RUN apt-get update
+RUN apt-get install -y libssl-dev libudev-dev pkg-config libprotobuf-dev protobuf-compiler
 WORKDIR /opt
 ARG SOLANA_BPF_VERSION
 RUN sh -c "$(curl -sSfL https://release.anza.xyz/${SOLANA_BPF_VERSION}/install)" && \

@@ -10,17 +10,17 @@ use evm_loader::solana_program::loader_v4;
 use evm_loader::solana_program::loader_v4::{LoaderV4State, LoaderV4Status};
 use evm_loader::solana_program::message::SanitizedMessage;
 use log::debug;
-use solana_bpf_loader_program::syscalls::create_program_runtime_environment_v1;
+use solana_bpf_loader_program::syscalls::{
+    create_program_runtime_environment_v1, create_program_runtime_environment_v2,
+};
 use solana_compute_budget::compute_budget::ComputeBudget;
-use solana_loader_v4_program::create_program_runtime_environment_v2;
+use solana_log_collector::LogCollector;
 use solana_program_runtime::invoke_context::{EnvironmentConfig, InvokeContext};
 use solana_program_runtime::loaded_programs::{LoadProgramMetrics, ProgramRuntimeEnvironments};
 use solana_program_runtime::loaded_programs::{
     ProgramCacheEntry, ProgramCacheEntryOwner, ProgramCacheEntryType, ProgramCacheForTxBatch,
 };
-use solana_program_runtime::log_collector::LogCollector;
 use solana_program_runtime::sysvar_cache::SysvarCache;
-use solana_program_runtime::timings::ExecuteTimings;
 use solana_runtime::bank::builtins::BUILTINS;
 use solana_runtime::{bank::TransactionSimulationResult, runtime_config::RuntimeConfig};
 use solana_sdk::account::{
@@ -53,6 +53,7 @@ use solana_sdk::{
     sysvar::{Sysvar, SysvarId},
     transaction::{SanitizedTransaction, VersionedTransaction},
 };
+use solana_timings::ExecuteTimings;
 pub use utils::SyncState;
 
 use crate::rpc::Rpc;

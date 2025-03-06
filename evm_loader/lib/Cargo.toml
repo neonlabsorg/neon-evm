@@ -24,8 +24,10 @@ solana-bpf-loader-program.workspace = true
 solana-loader-v4-program.workspace = true
 solana-transaction-status.workspace = true
 solana-compute-budget.workspace = true
+solana-log-collector.workspace = true
+solana-timings.workspace = true
 solana-svm.workspace = true
-spl-token = { version = "~6.0", default-features = false, features = ["no-entrypoint"] }
+spl-token.workspace = true
 spl-associated-token-account.workspace = true
 bs58 = "0.5.1"
 base64 = "0.22"

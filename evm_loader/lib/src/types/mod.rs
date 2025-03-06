@@ -27,6 +27,7 @@ use evm_loader::{
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
+use solana_sdk::account::{AccountSharedData, ReadableAccount};
 
 use crate::rpc::SliceConfig;
 use solana_sdk::signature::Signature;
@@ -330,6 +331,18 @@ impl From<AccountData> for SerializedAccount {
     }
 }
 
+impl From<AccountSharedData> for SerializedAccount {
+    fn from(account: AccountSharedData) -> Self {
+        Self {
+            lamports: account.lamports(),
+            owner: *account.owner(),
+            executable: account.executable(),
+            rent_epoch: account.rent_epoch(),
+            data: account.data().to_vec(),
+        }
+    }
+}
+
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AccountInfoLevel {
@@ -364,6 +377,7 @@ pub struct EmulateApiRequest {
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulateMultipleRequest {
+    pub solana_tx: SimulateSolanaRequest,
     pub tx: Vec<TxParams>,
     pub step_limit: Option<u64>,
     pub chains: Option<Vec<ChainInfo>>,
@@ -472,7 +486,7 @@ pub struct GetHolderRequest {
 }
 
 #[serde_as]
-#[derive(Deserialize, Serialize, Debug, Default)]
+#[derive(Deserialize, Serialize, Debug, Default, Clone)]
 pub struct SimulateSolanaRequest {
     pub compute_units: Option<u64>,
     pub heap_size: Option<u32>,

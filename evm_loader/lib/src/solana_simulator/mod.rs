@@ -193,6 +193,10 @@ impl SolanaSimulator {
         self.accounts_db.get(pubkey).cloned()
     }
 
+    pub fn into_accounts(self) -> impl Iterator<Item = (Pubkey, AccountSharedData)> {
+        self.accounts_db.into_iter()
+    }
+
     pub fn sanitize_transaction(
         &self,
         tx: VersionedTransaction,

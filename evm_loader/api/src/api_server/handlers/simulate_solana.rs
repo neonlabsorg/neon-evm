@@ -29,6 +29,7 @@ pub async fn simulate_solana(
     process_result(
         &SimulateSolanaCommand::execute(&rpc, emulate_request)
             .await
+            .map(|r| r.0)
             .map_err(Into::into),
     )
 }

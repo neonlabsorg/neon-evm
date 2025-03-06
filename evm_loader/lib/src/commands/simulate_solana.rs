@@ -92,7 +92,7 @@ fn runtime_config(request: &SimulateSolanaRequest) -> RuntimeConfig {
 pub async fn execute(
     rpc: &impl Rpc,
     request: SimulateSolanaRequest,
-) -> NeonResult<SimulateSolanaResponse> {
+) -> NeonResult<(SimulateSolanaResponse, SolanaSimulator)> {
     let verify = request.verify.unwrap_or(true);
     let config = runtime_config(&request);
 
@@ -135,7 +135,10 @@ pub async fn execute(
         });
     }
 
-    Ok(SimulateSolanaResponse {
-        transactions: results,
-    })
+    Ok((
+        SimulateSolanaResponse {
+            transactions: results,
+        },
+        simulator,
+    ))
 }

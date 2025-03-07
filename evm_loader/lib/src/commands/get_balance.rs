@@ -2,7 +2,7 @@
 
 use ethnum::U256;
 use evm_loader::account::BalanceAccount;
-use evm_loader::{account::legacy::LegacyEtherData, types::Address};
+use evm_loader::types::Address;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account::Account, pubkey::Pubkey};
 
@@ -65,7 +65,7 @@ fn read_account(
         user_pubkey: balance_account.solana_address(),
     })
 }
-
+/*
 fn read_legacy_account(
     program_id: &Pubkey,
     address: &BalanceAddress,
@@ -86,7 +86,7 @@ fn read_legacy_account(
         user_pubkey: None,
     })
 }
-
+*/
 pub async fn execute(
     rpc: &impl BuildConfigSimulator,
     program_id: &Pubkey,
@@ -95,7 +95,7 @@ pub async fn execute(
     let legacy_chain_id = super::get_config::read_legacy_chain_id(rpc, *program_id).await?;
 
     let mut response: Vec<Option<GetBalanceResponse>> = vec![None; address.len()];
-    let mut missing: Vec<BalanceAddress> = Vec::with_capacity(address.len());
+    //let mut missing: Vec<BalanceAddress> = Vec::with_capacity(address.len());
 
     // Download accounts
     let pubkeys: Vec<_> = address.iter().map(|a| a.find_pubkey(program_id)).collect();
@@ -106,13 +106,13 @@ pub async fn execute(
             let balance = read_account(program_id, &address[i], account)?;
             response[i] = Some(balance);
         } else if address[i].chain_id == legacy_chain_id {
-            missing.push(address[i]);
+            //missing.push(address[i]);
         } else {
             let balance = GetBalanceResponse::empty(program_id, &address[i]);
             response[i] = Some(balance);
         }
     }
-
+    /*
     // Download missing accounts from legacy addresses
     let pubkeys: Vec<_> = missing
         .iter()
@@ -135,12 +135,12 @@ pub async fn execute(
         let Some(account) = account else {
             continue;
         };
-        let Ok(balance) = read_legacy_account(program_id, &address, account) else {
-            continue;
-        };
+        //let Ok(balance) = read_legacy_account(program_id, &address, account) else {
+        //    continue;
+        //};
         response[i] = Some(balance);
     }
-
+    */
     // Treat still missing accounts as empty
     let mut result = Vec::with_capacity(response.len());
     for (i, balance) in response.into_iter().enumerate() {

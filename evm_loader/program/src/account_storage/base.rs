@@ -4,7 +4,6 @@ use crate::account::{
     AccountsDB, BalanceAccount, ContractAccount, Operator, StorageCell, Treasury,
 };
 use crate::account_storage::ProgramAccountStorage;
-use crate::config::DEFAULT_CHAIN_ID;
 use crate::error::Result;
 use crate::types::{Address, Transaction};
 use ethnum::U256;
@@ -57,10 +56,10 @@ impl<'a> ProgramAccountStorage<'a> {
         let account = self.accounts.get(&pubkey);
         let result = ContractAccount::from_account(&crate::ID, account.clone());
 
-        if result.is_err() {
-            let legacy_tag = crate::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED;
-            assert!(crate::account::validate_tag(&crate::ID, account, legacy_tag).is_err());
-        }
+        //if result.is_err() {
+        //    let legacy_tag = crate::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED;
+        //    assert!(crate::account::validate_tag(&crate::ID, account, legacy_tag).is_err());
+        //}
 
         result
     }
@@ -70,16 +69,16 @@ impl<'a> ProgramAccountStorage<'a> {
 
         let account = self.accounts.get(&pubkey);
         let result = BalanceAccount::from_account(&crate::ID, account.clone());
-
+        /*
         if result.is_err() && (chain_id == DEFAULT_CHAIN_ID) {
             let contract_pubkey = self.keys.contract(&crate::ID, address);
 
             let contract = self.accounts.get(&contract_pubkey);
 
-            let legacy_tag = crate::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED;
-            assert!(crate::account::validate_tag(&crate::ID, contract, legacy_tag).is_err());
+            //let legacy_tag = crate::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED;
+            //assert!(crate::account::validate_tag(&crate::ID, contract, legacy_tag).is_err());
         }
-
+        */
         result
     }
 

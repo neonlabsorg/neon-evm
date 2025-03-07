@@ -1,7 +1,5 @@
 use evm_loader::{
-    account::{legacy::LegacyEtherData, ContractAccount},
-    executor::precompile_extension::PrecompiledContracts,
-    types::Address,
+    account::ContractAccount, executor::precompile_extension::PrecompiledContracts, types::Address,
 };
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account::Account, pubkey::Pubkey};
@@ -32,7 +30,7 @@ impl GetContractResponse {
         }
     }
 }
-
+/*
 fn read_legacy_account(
     program_id: &Pubkey,
     legacy_chain_id: u64,
@@ -53,10 +51,10 @@ fn read_legacy_account(
         code,
     }
 }
-
+*/
 fn read_account(
     program_id: &Pubkey,
-    legacy_chain_id: u64,
+    _legacy_chain_id: u64,
     solana_address: Pubkey,
     account: Option<Account>,
 ) -> GetContractResponse {
@@ -66,7 +64,8 @@ fn read_account(
 
     let account_info = account_info(&solana_address, &mut account);
     let Ok(contract) = ContractAccount::from_account(program_id, account_info) else {
-        return read_legacy_account(program_id, legacy_chain_id, solana_address, account);
+        //return read_legacy_account(program_id, legacy_chain_id, solana_address, account);
+        return GetContractResponse::empty(solana_address);
     };
 
     let chain_id = Some(contract.chain_id());

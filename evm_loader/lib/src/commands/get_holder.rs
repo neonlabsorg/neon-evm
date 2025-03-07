@@ -1,10 +1,6 @@
 use ethnum::U256;
 use evm_loader::{
     account::{
-        legacy::{
-            LegacyFinalizedData, LegacyHolderData, TAG_HOLDER_DEPRECATED,
-            TAG_STATE_FINALIZED_DEPRECATED,
-        },
         Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
         TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
     },
@@ -101,6 +97,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 ..GetHolderResponse::default()
             })
         }
+        /*
         TAG_HOLDER_DEPRECATED => {
             let holder = LegacyHolderData::from_account(program_id, &info)?;
             Ok(GetHolderResponse {
@@ -115,6 +112,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 ..GetHolderResponse::default()
             })
         }
+         */
         TAG_STATE_FINALIZED => {
             let state = StateFinalizedAccount::from_account(program_id, info)?;
             Ok(GetHolderResponse {
@@ -130,6 +128,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 ..GetHolderResponse::default()
             })
         }
+        /*
         TAG_STATE_FINALIZED_DEPRECATED => {
             let state = LegacyFinalizedData::from_account(program_id, &info)?;
             Ok(GetHolderResponse {
@@ -145,6 +144,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 ..GetHolderResponse::default()
             })
         }
+        */
         tag @ (TAG_STATE | TAG_SCHEDULED_STATE_FINALIZED | TAG_SCHEDULED_STATE_CANCELLED) => {
             let status = match tag {
                 TAG_STATE => Status::Active,

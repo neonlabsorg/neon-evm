@@ -5,7 +5,7 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, sysv
 use spl_associated_token_account::get_associated_token_address;
 
 use crate::account::{program, token, AccountsDB, BalanceAccount, Operator, ACCOUNT_SEED_VERSION};
-use crate::config::{CHAIN_ID_LIST, DEFAULT_CHAIN_ID};
+use crate::config::CHAIN_ID_LIST;
 use crate::error::{Error, Result};
 use crate::types::Address;
 
@@ -156,11 +156,11 @@ fn execute(program_id: &Pubkey, accounts: Accounts, address: Address, chain_id: 
         None,
     );
 
-    let mut excessive_lamports = 0;
-    if chain_id == DEFAULT_CHAIN_ID {
-        // we don't have enough accounts to update non Neon chains
-        excessive_lamports += crate::account::legacy::update_legacy_accounts(&accounts_db)?;
-    }
+    //let mut excessive_lamports = 0;
+    //if chain_id == DEFAULT_CHAIN_ID {
+    //    // we don't have enough accounts to update non Neon chains
+    //    excessive_lamports += crate::account::legacy::update_legacy_accounts(&accounts_db)?;
+    //}
 
     let rent = Rent::get()?;
 
@@ -168,7 +168,7 @@ fn execute(program_id: &Pubkey, accounts: Accounts, address: Address, chain_id: 
     balance_account.increment_revision(&rent, &accounts_db)?;
     balance_account.mint(deposit)?;
 
-    **accounts_db.operator().try_borrow_mut_lamports()? += excessive_lamports;
+    //**accounts_db.operator().try_borrow_mut_lamports()? += excessive_lamports;
 
     Ok(())
 }

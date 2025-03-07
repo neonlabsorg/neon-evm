@@ -9,10 +9,7 @@ use ethnum::U256;
 use evm_loader::account_storage::LogCollector;
 pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use evm_loader::{
-    account::{
-        legacy::{LegacyEtherData, LegacyStorageData},
-        BalanceAccount, ContractAccount, StorageCell, StorageCellAddress,
-    },
+    account::{BalanceAccount, ContractAccount, StorageCell, StorageCellAddress},
     account_storage::{find_slot_hash, FAKE_OPERATOR},
     config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
     error::Error as EvmLoaderError,
@@ -379,7 +376,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         let mut data = self._get_account_mark(pubkey);
         data.is_writable |= is_writable;
     }
-
+    /*
     fn mark_legacy_account(
         &self,
         pubkey: Pubkey,
@@ -393,7 +390,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             data.lamports_after_upgrade = lamports_after_upgrade;
         }
     }
-
+    */
     pub fn mark_timestamped_contracts<'r>(&mut self, contracts: impl Iterator<Item = &'r Address>) {
         for address in contracts {
             let (pubkey, _) = address.find_solana_address(self.program_id());
@@ -414,7 +411,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             )
             .borrow_mut()
     }
-
+    /*
     fn _add_legacy_account(
         &self,
         info: &AccountInfo<'_>,
@@ -464,7 +461,8 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
 
         Ok((contract_data, balance_data))
     }
-
+    */
+    /*
     async fn _get_contract_generation_limited(&self, address: Address) -> NeonResult<Option<u32>> {
         let extract_generation = |contract_data: &RefCell<AccountData>| -> NeonResult<Option<u32>> {
             let mut contract_data = contract_data.borrow_mut();
@@ -496,9 +494,9 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                             let data = AccountData::new_from_account(pubkey, account);
                             self.accounts.insert(pubkey, Box::new(RefCell::new(data)))
                         }
-                        evm_loader::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED => self
-                            ._add_legacy_account(&info)
-                            .map(|(contract, _balance)| contract)?,
+                        //evm_loader::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED => self
+                        //    ._add_legacy_account(&info)
+                        //    .map(|(contract, _balance)| contract)?,
                         _ => {
                             unimplemented!();
                         }
@@ -515,7 +513,8 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         self.mark_legacy_account(pubkey, false, None);
         extract_generation(contract_data)
     }
-
+    */
+    /*
     async fn _add_legacy_storage(
         &self,
         legacy_storage: &LegacyStorageData,
@@ -544,12 +543,8 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
         Ok(storage_data)
     }
-
-    async fn add_account(
-        &self,
-        pubkey: Pubkey,
-        account: &Account,
-    ) -> NeonResult<&RefCell<AccountData>> {
+    */
+    fn add_account(&self, pubkey: Pubkey, account: &Account) -> NeonResult<&RefCell<AccountData>> {
         let mut account = account.clone();
         let info = account_info(&pubkey, &mut account);
         if *info.owner == self.program_id {
@@ -565,14 +560,14 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                         .accounts
                         .insert(pubkey, Box::new(RefCell::new(account_data))))
                 }
-                evm_loader::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED => self
-                    ._add_legacy_account(&info)
-                    .map(|(contract, _balance)| contract),
-                evm_loader::account::legacy::TAG_STORAGE_CELL_DEPRECATED => {
-                    let legacy_storage = LegacyStorageData::from_account(&self.program_id, &info)?;
-                    self._add_legacy_storage(&legacy_storage, &info, pubkey)
-                        .await
-                }
+                //evm_loader::account::legacy::TAG_ACCOUNT_CONTRACT_DEPRECATED => self
+                //    ._add_legacy_account(&info)
+                //    .map(|(contract, _balance)| contract),
+                //evm_loader::account::legacy::TAG_STORAGE_CELL_DEPRECATED => {
+                //    let legacy_storage = LegacyStorageData::from_account(&self.program_id, &info)?;
+                //    self._add_legacy_storage(&legacy_storage, &info, pubkey)
+                //        .await
+                //}
                 evm_loader::account::TAG_EMPTY => Ok(self.add_empty_account(pubkey)),
                 _ => {
                     unimplemented!();
@@ -613,13 +608,23 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
 
         let account = self._get_account_from_rpc(pubkey).await?;
-        if let Some(account) = account {
-            info!("found account for pubkey={pubkey} in RPC account={account:?}");
-            self.add_account(pubkey, account).await
-        } else {
-            info!("account not found in RPC, adding empty account for pubkey={pubkey}");
-            Ok(self.add_empty_account(pubkey))
-        }
+        //if let Some(account) = account {
+        //    info!("found account for pubkey={pubkey} in RPC account={account:?}");
+        //    self.add_account(pubkey, account)
+        //} else {
+        //    info!("account not found in RPC, adding empty account for pubkey={pubkey}");
+        //    Ok(self.add_empty_account(pubkey))
+        //}
+        account.map_or_else(
+            || {
+                info!("account not found in RPC, adding empty account for pubkey={pubkey}");
+                Ok(self.add_empty_account(pubkey))
+            },
+            |account| {
+                info!("found account for pubkey={pubkey} in RPC account={account:?}");
+                self.add_account(pubkey, account)
+            },
+        )
     }
 
     async fn get_balance_account(
@@ -634,7 +639,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
 
         match self._get_account_from_rpc(pubkey).await? {
-            Some(account) => self.add_account(pubkey, account).await,
+            Some(account) => self.add_account(pubkey, account),
             None => {
                 if chain_id == self.default_chain_id() {
                     let (legacy_pubkey, _) = address.find_solana_address(self.program_id());
@@ -648,7 +653,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                         if let Some(legacy_account) =
                             self._get_account_from_rpc(legacy_pubkey).await?
                         {
-                            self.add_account(legacy_pubkey, legacy_account).await?;
+                            self.add_account(legacy_pubkey, legacy_account)?;
                             self.accounts
                                 .get(&pubkey)
                                 .map_or_else(|| Ok(self.add_empty_account(pubkey)), Ok)
@@ -671,10 +676,14 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             return Ok(account);
         }
 
-        match self._get_account_from_rpc(pubkey).await? {
-            Some(account) => self.add_account(pubkey, account).await,
-            None => Ok(self.add_empty_account(pubkey)),
-        }
+        //match self._get_account_from_rpc(pubkey).await? {
+        //    Some(account) => self.add_account(pubkey, account),
+        //    None => Ok(self.add_empty_account(pubkey)),
+        //}
+        (self._get_account_from_rpc(pubkey).await?).map_or_else(
+            || Ok(self.add_empty_account(pubkey)),
+            |account| self.add_account(pubkey, account),
+        )
     }
 
     async fn get_storage_account(
@@ -690,10 +699,14 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
             return Ok(account);
         }
 
-        match self._get_account_from_rpc(cell_pubkey).await? {
-            Some(account) => self.add_account(cell_pubkey, account).await,
-            None => Ok(self.add_empty_account(cell_pubkey)),
-        }
+        //match self._get_account_from_rpc(cell_pubkey).await? {
+        //    Some(account) => self.add_account(cell_pubkey, account),
+        //    None => Ok(self.add_empty_account(cell_pubkey)),
+        //}
+        (self._get_account_from_rpc(cell_pubkey).await?).map_or_else(
+            || Ok(self.add_empty_account(cell_pubkey)),
+            |account| self.add_account(cell_pubkey, account),
+        )
     }
 
     pub async fn ethereum_balance_map_or<F, R>(

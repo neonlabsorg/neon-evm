@@ -7,7 +7,7 @@ use solana_account_decoder::UiDataSliceConfig;
 
 use std::collections::HashMap;
 use std::str::FromStr;
-const STORAGE_LENGTH: usize = 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
+//const STORAGE_LENGTH: usize = 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 
 mod mock_rpc_client {
 
@@ -153,9 +153,9 @@ where
 
     Ok(action(&balance_account?))
 }
-
+/*
 #[allow(clippy::too_many_arguments)]
-fn create_legacy_ether_contract(
+fn _create_legacy_ether_contract(
     program_id: &Pubkey,
     rent: &Rent,
     address: Address,
@@ -219,7 +219,7 @@ fn create_legacy_ether_contract(
     }
 }
 
-fn create_legacy_ether_account(
+fn _create_legacy_ether_account(
     program_id: &Pubkey,
     rent: &Rent,
     address: Address,
@@ -238,18 +238,18 @@ fn create_legacy_ether_account(
         &storage,
     )
 }
-
+*/
 struct ActualStorage {
     index: U256,
     values: &'static [(u8, [u8; 32])],
 }
-
+/*
 struct LegacyStorage {
     generation: u32,
     index: U256,
     values: &'static [(u8, [u8; 32])],
 }
-
+*/
 impl ActualStorage {
     pub fn account_with_pubkey(
         &self,
@@ -282,7 +282,7 @@ impl ActualStorage {
         )
     }
 }
-
+/*
 impl LegacyStorage {
     pub const fn required_account_size(count: usize) -> usize {
         1 + LegacyStorageData::SIZE + std::mem::size_of::<(u8, [u8; 32])>() * count
@@ -325,7 +325,9 @@ impl LegacyStorage {
         (cell_pubkey, account)
     }
 }
+*/
 
+/*
 struct LegacyAccount {
     pub address: Address,
     pub balance: U256,
@@ -387,7 +389,7 @@ impl LegacyContract {
             .account_with_pubkey(program_id, rent, self.address)
     }
 }
-
+*/
 struct ActualBalance {
     pub address: Address,
     pub chain_id: u64,
@@ -434,8 +436,8 @@ struct ActualContract {
     pub storage: [[u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
 
     pub actual_storage: ActualStorage,
-    pub legacy_storage: LegacyStorage,
-    pub outdate_storage: LegacyStorage,
+    //pub legacy_storage: LegacyStorage,
+    //pub outdate_storage: LegacyStorage,
 }
 
 impl ActualContract {
@@ -477,7 +479,7 @@ impl ActualContract {
         self.actual_storage
             .account_with_pubkey(program_id, rent, self.address)
     }
-
+    /*
     pub fn legacy_storage_with_pubkey(
         &self,
         program_id: &Pubkey,
@@ -486,7 +488,8 @@ impl ActualContract {
         self.legacy_storage
             .account_with_pubkey(program_id, rent, self.address)
     }
-
+    */
+    /*
     pub fn outdate_storage_with_pubkey(
         &self,
         program_id: &Pubkey,
@@ -495,6 +498,7 @@ impl ActualContract {
         self.outdate_storage
             .account_with_pubkey(program_id, rent, self.address)
     }
+    */
 }
 
 const LEGACY_CHAIN_ID: u64 = 1;
@@ -503,8 +507,8 @@ const MISSING_ADDRESS: Address = Address(hex!("7a250d5630b4cf539739df2c5dacb4c65
 
 const MISSING_STORAGE_INDEX: U256 = U256::new(256u128);
 const ACTUAL_STORAGE_INDEX: U256 = U256::new(2 * 256u128);
-const LEGACY_STORAGE_INDEX: U256 = U256::new(3 * 256u128);
-const OUTDATE_STORAGE_INDEX: U256 = U256::new(4 * 256u128);
+//const LEGACY_STORAGE_INDEX: U256 = U256::new(3 * 256u128);
+//const OUTDATE_STORAGE_INDEX: U256 = U256::new(4 * 256u128);
 
 const ACTUAL_BALANCE: ActualBalance = ActualBalance {
     address: Address(hex!("7a250d5630b4cf539739df2c5dacb4c659f24810")),
@@ -530,6 +534,7 @@ const ACTUAL_CONTRACT: ActualContract = ActualContract {
         index: ACTUAL_STORAGE_INDEX,
         values: &[(0u8, [64u8; 32])],
     },
+    /*
     legacy_storage: LegacyStorage {
         generation: 4,
         index: LEGACY_STORAGE_INDEX,
@@ -540,6 +545,7 @@ const ACTUAL_CONTRACT: ActualContract = ActualContract {
         index: OUTDATE_STORAGE_INDEX,
         values: &[(0u8, [34u8; 32])],
     },
+     */
 };
 
 const ACTUAL_SUICIDE: ActualContract = ActualContract {
@@ -552,6 +558,7 @@ const ACTUAL_SUICIDE: ActualContract = ActualContract {
         index: U256::ZERO,
         values: &[],
     },
+    /*
     legacy_storage: LegacyStorage {
         generation: 0,
         index: U256::ZERO,
@@ -562,8 +569,9 @@ const ACTUAL_SUICIDE: ActualContract = ActualContract {
         index: LEGACY_STORAGE_INDEX,
         values: &[(0u8, [13u8; 32])],
     },
+    */
 };
-
+/*
 const LEGACY_ACCOUNT: LegacyAccount = LegacyAccount {
     address: Address(hex!("7a250d5630b4cf539739df2c5dacb4c659f24820")),
     balance: U256::new(10234),
@@ -628,7 +636,7 @@ const LEGACY_SUICIDE: LegacyContract = LegacyContract {
         values: &[(0u8, [76u8; 32])],
     },
 };
-
+*/
 struct Fixture {
     program_id: Pubkey,
     chains: Vec<ChainInfo>,
@@ -646,19 +654,19 @@ impl Fixture {
         let accounts = vec![
             ACTUAL_BALANCE.account_with_pubkey(&program_id, &rent),
             ACTUAL_BALANCE2.account_with_pubkey(&program_id, &rent),
-            LEGACY_ACCOUNT.account_with_pubkey(&program_id, &rent),
+            //LEGACY_ACCOUNT.account_with_pubkey(&program_id, &rent),
             ACTUAL_CONTRACT.account_with_pubkey(&program_id, &rent),
             ACTUAL_CONTRACT.actual_storage_with_pubkey(&program_id, &rent),
-            ACTUAL_CONTRACT.legacy_storage_with_pubkey(&program_id, &rent),
-            ACTUAL_CONTRACT.outdate_storage_with_pubkey(&program_id, &rent),
+            //ACTUAL_CONTRACT.legacy_storage_with_pubkey(&program_id, &rent),
+            //ACTUAL_CONTRACT.outdate_storage_with_pubkey(&program_id, &rent),
             ACTUAL_SUICIDE.account_with_pubkey(&program_id, &rent),
-            ACTUAL_SUICIDE.outdate_storage_with_pubkey(&program_id, &rent),
-            LEGACY_CONTRACT.account_with_pubkey(&program_id, &rent),
-            LEGACY_CONTRACT.legacy_storage_with_pubkey(&program_id, &rent),
-            LEGACY_CONTRACT.outdate_storage_with_pubkey(&program_id, &rent),
-            LEGACY_CONTRACT_NO_BALANCE.account_with_pubkey(&program_id, &rent),
-            LEGACY_SUICIDE.account_with_pubkey(&program_id, &rent),
-            LEGACY_SUICIDE.outdate_storage_with_pubkey(&program_id, &rent),
+            //ACTUAL_SUICIDE.outdate_storage_with_pubkey(&program_id, &rent),
+            //LEGACY_CONTRACT.account_with_pubkey(&program_id, &rent),
+            //LEGACY_CONTRACT.legacy_storage_with_pubkey(&program_id, &rent),
+            //LEGACY_CONTRACT.outdate_storage_with_pubkey(&program_id, &rent),
+            //LEGACY_CONTRACT_NO_BALANCE.account_with_pubkey(&program_id, &rent),
+            //LEGACY_SUICIDE.account_with_pubkey(&program_id, &rent),
+            //LEGACY_SUICIDE.outdate_storage_with_pubkey(&program_id, &rent),
         ];
 
         let rpc_client = mock_rpc_client::MockRpcClient::new(&accounts);
@@ -745,24 +753,24 @@ impl Fixture {
         self.rent
             .minimum_balance(StorageCell::required_account_size(count))
     }
-
+    /*
     pub fn legacy_storage_rent(&self, count: usize) -> u64 {
         self.rent
             .minimum_balance(LegacyStorage::required_account_size(count))
     }
-
+    */
     pub fn balance_rent(&self) -> u64 {
         self.rent
             .minimum_balance(BalanceAccount::required_account_size())
     }
-
+    /*
     pub fn legacy_rent(&self, code_len: Option<usize>) -> u64 {
         let data_length = code_len.map_or(1 + LegacyEtherData::SIZE, |len| {
             1 + LegacyEtherData::SIZE + 32 * STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT + len
         });
         self.rent.minimum_balance(data_length)
     }
-
+    */
     pub fn contract_rent(&self, code: &[u8]) -> u64 {
         self.rent
             .minimum_balance(ContractAccount::required_account_size(code))
@@ -882,7 +890,7 @@ async fn test_read_balance_actual_account_extra_chain() {
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
 }
-
+/*
 #[tokio::test]
 async fn test_read_balance_legacy_account() {
     let fixture = Fixture::new();
@@ -906,7 +914,7 @@ async fn test_read_balance_legacy_account() {
     storage.verify_upgrade_rent(fixture.balance_rent(), fixture.legacy_rent(None));
     storage.verify_regular_rent(0, 0);
 }
-
+*/
 #[tokio::test]
 async fn test_modify_actual_and_missing_account() {
     let fixture = Fixture::new();
@@ -983,7 +991,7 @@ async fn test_modify_actual_and_missing_account_extra_chain() {
         amount
     );
 }
-
+/*
 #[tokio::test]
 async fn test_modify_actual_and_legacy_account() {
     let fixture = Fixture::new();
@@ -1023,7 +1031,7 @@ async fn test_modify_actual_and_legacy_account() {
         to.balance + amount
     );
 }
-
+*/
 #[tokio::test]
 async fn test_read_missing_contract() {
     let fixture = Fixture::new();
@@ -1048,7 +1056,7 @@ async fn test_read_missing_contract() {
         [0u8; 32]
     );
 }
-
+/*
 #[tokio::test]
 async fn test_read_legacy_contract() {
     let fixture = Fixture::new();
@@ -1076,7 +1084,8 @@ async fn test_read_legacy_contract() {
     );
     storage.verify_regular_rent(0, 0);
 }
-
+*/
+/*
 #[tokio::test]
 async fn test_read_legacy_contract_no_balance() {
     let fixture = Fixture::new();
@@ -1102,7 +1111,7 @@ async fn test_read_legacy_contract_no_balance() {
     );
     storage.verify_regular_rent(0, 0);
 }
-
+*/
 #[tokio::test]
 async fn test_read_actual_suicide_contract() {
     let fixture = Fixture::new();
@@ -1118,7 +1127,7 @@ async fn test_read_actual_suicide_contract() {
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
 }
-
+/*
 #[tokio::test]
 async fn test_read_legacy_suicide_contract() {
     let fixture = Fixture::new();
@@ -1144,7 +1153,7 @@ async fn test_read_legacy_suicide_contract() {
     );
     storage.verify_regular_rent(0, 0);
 }
-
+*/
 #[tokio::test]
 async fn test_deploy_at_missing_contract() {
     let fixture = Fixture::new();
@@ -1196,7 +1205,7 @@ async fn test_deploy_at_actual_contract() {
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
 }
-
+/*
 #[tokio::test]
 async fn test_deploy_at_legacy_account() {
     let fixture = Fixture::new();
@@ -1223,7 +1232,8 @@ async fn test_deploy_at_legacy_account() {
     storage.verify_upgrade_rent(fixture.balance_rent(), fixture.legacy_rent(None));
     storage.verify_regular_rent(fixture.contract_rent(&code), 0);
 }
-
+*/
+/*
 #[tokio::test]
 async fn test_deploy_at_legacy_contract() {
     let fixture = Fixture::new();
@@ -1254,7 +1264,7 @@ async fn test_deploy_at_legacy_contract() {
     );
     storage.verify_regular_rent(0, 0);
 }
-
+*/
 #[tokio::test]
 async fn test_deploy_at_actual_suicide() {
     let fixture = Fixture::new();
@@ -1278,7 +1288,7 @@ async fn test_deploy_at_actual_suicide() {
         fixture.contract_rent(contract.code),
     );
 }
-
+/*
 #[tokio::test]
 async fn test_deploy_at_legacy_suicide() {
     let fixture = Fixture::new();
@@ -1312,7 +1322,7 @@ async fn test_deploy_at_legacy_suicide() {
         fixture.contract_rent(contract.code),
     );
 }
-
+*/
 #[tokio::test]
 async fn test_read_missing_storage_for_missing_contract() {
     let fixture = Fixture::new();
@@ -1453,7 +1463,7 @@ async fn test_modify_internal_storage_for_actual_contract() {
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
 }
-
+/*
 #[tokio::test]
 async fn test_read_legacy_storage_for_actual_contract() {
     let fixture = Fixture::new();
@@ -1477,7 +1487,8 @@ async fn test_read_legacy_storage_for_actual_contract() {
     storage.verify_upgrade_rent(fixture.storage_rent(1), fixture.legacy_storage_rent(1));
     storage.verify_regular_rent(0, 0);
 }
-
+*/
+/*
 #[tokio::test]
 async fn test_read_outdate_storage_for_actual_contract() {
     let fixture = Fixture::new();
@@ -1501,7 +1512,9 @@ async fn test_read_outdate_storage_for_actual_contract() {
     storage.verify_upgrade_rent(0, fixture.legacy_storage_rent(1));
     storage.verify_regular_rent(0, 0);
 }
+*/
 
+/*
 #[tokio::test]
 async fn test_read_missing_storage_for_legacy_contract() {
     let fixture = Fixture::new();
@@ -1522,7 +1535,8 @@ async fn test_read_missing_storage_for_legacy_contract() {
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
 }
-
+*/
+/*
 #[tokio::test]
 async fn test_read_legacy_storage_for_legacy_contract() {
     let fixture = Fixture::new();
@@ -1554,7 +1568,8 @@ async fn test_read_legacy_storage_for_legacy_contract() {
     );
     storage.verify_regular_rent(0, 0);
 }
-
+*/
+/*
 #[tokio::test]
 async fn test_read_outdate_storage_for_legacy_contract() {
     let fixture = Fixture::new();
@@ -1586,7 +1601,8 @@ async fn test_read_outdate_storage_for_legacy_contract() {
     );
     storage.verify_regular_rent(0, 0);
 }
-
+*/
+/*
 #[tokio::test]
 async fn test_read_missing_storage_for_legacy_suicide() {
     let fixture = Fixture::new();
@@ -1607,7 +1623,8 @@ async fn test_read_missing_storage_for_legacy_suicide() {
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
 }
-
+*/
+/*
 #[tokio::test]
 async fn test_read_outdate_storage_for_legacy_suicide() {
     let fixture = Fixture::new();
@@ -1639,7 +1656,7 @@ async fn test_read_outdate_storage_for_legacy_suicide() {
     );
     storage.verify_regular_rent(0, 0);
 }
-
+*/
 #[tokio::test]
 async fn test_state_overrides_nonce_and_balance() {
     let expected_nonce = 17;

@@ -26,7 +26,6 @@ mod ether_balance;
 mod ether_contract;
 mod ether_storage;
 mod holder;
-pub mod legacy;
 mod operator;
 mod operator_balance;
 pub mod program;

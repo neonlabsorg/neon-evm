@@ -272,9 +272,6 @@ impl<'a, B: AccountStorage> Database for ExecutorState<'a, B> {
         if value == U256::ZERO {
             return Ok(());
         }
-        // TODO: should be fixed when the legacy account support code is removed
-        // self.touch_contract(target);
-
         let target_chain_id = self.contract_chain_id(target).await.unwrap_or(chain_id);
 
         if (self.code_size(target).await? > 0) && (target_chain_id != chain_id) {

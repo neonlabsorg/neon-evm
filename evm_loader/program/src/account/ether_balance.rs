@@ -117,21 +117,7 @@ impl<'a> BalanceAccount<'a> {
 
             return Ok(balance_account);
         }
-        /*
-        if chain_id == DEFAULT_CHAIN_ID { // TODO: remove this block
-            // Make sure no legacy account exists
-            let legacy_pubkey = keys.map_or_else(
-                || address.find_solana_address(&crate::ID).0,
-                |keys| keys.contract(&crate::ID, address),
-            );
 
-            let legacy_account = accounts.get(&legacy_pubkey);
-            if crate::check_id(legacy_account.owner) {
-                let legacy_tag = super::tag(&crate::ID, legacy_account)?;
-                assert!(legacy_tag == TAG_EMPTY || legacy_tag == TAG_ACCOUNT_CONTRACT);
-            }
-        }
-        */
         // Create a new account
         let program_seeds: &[&[u8]] = &[
             &[ACCOUNT_SEED_VERSION],

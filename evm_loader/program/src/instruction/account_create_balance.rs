@@ -30,16 +30,8 @@ pub fn process<'a>(
 
     log_msg!("Address: {}, ChainID: {}", address, chain_id);
 
-    //let mut excessive_lamports = 0;
-    //if chain_id == DEFAULT_CHAIN_ID {
-    //    // we don't have enough accounts to update non Neon chains
-    //    excessive_lamports += crate::account::legacy::update_legacy_accounts(&accounts_db)?;
-    //};
-
     let rent = Rent::get()?;
     BalanceAccount::create(address, chain_id, &accounts_db, None, &rent)?;
-
-    //**accounts_db.operator().try_borrow_mut_lamports()? += excessive_lamports;
 
     Ok(())
 }

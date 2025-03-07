@@ -30,28 +30,7 @@ impl GetContractResponse {
         }
     }
 }
-/*
-fn read_legacy_account(
-    program_id: &Pubkey,
-    legacy_chain_id: u64,
-    solana_address: Pubkey,
-    mut account: Account,
-) -> GetContractResponse {
-    let account_info = account_info(&solana_address, &mut account);
-    let Ok(contract) = LegacyEtherData::from_account(program_id, &account_info) else {
-        return GetContractResponse::empty(solana_address);
-    };
 
-    let chain_id = Some(legacy_chain_id);
-    let code = contract.read_code(&account_info);
-
-    GetContractResponse {
-        solana_address,
-        chain_id,
-        code,
-    }
-}
-*/
 fn read_account(
     program_id: &Pubkey,
     solana_address: Pubkey,

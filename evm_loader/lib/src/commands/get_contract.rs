@@ -54,7 +54,6 @@ fn read_legacy_account(
 */
 fn read_account(
     program_id: &Pubkey,
-    _legacy_chain_id: u64,
     solana_address: Pubkey,
     account: Option<Account>,
 ) -> GetContractResponse {
@@ -83,7 +82,6 @@ pub async fn execute(
     program_id: &Pubkey,
     account_addresses: &[Address],
 ) -> NeonResult<Vec<GetContractResponse>> {
-    let legacy_chain_id = super::get_config::read_legacy_chain_id(rpc, *program_id).await?;
     let pubkeys: Vec<_> = account_addresses
         .iter()
         .map(|a| a.find_solana_address(program_id).0)
@@ -95,7 +93,7 @@ pub async fn execute(
     for ((key, account), account_address) in
         pubkeys.into_iter().zip(accounts).zip(account_addresses)
     {
-        let mut response = read_account(program_id, legacy_chain_id, key, account);
+        let mut response = read_account(program_id, key, account);
         if PrecompiledContracts::is_precompile_extension(account_address) {
             response.code = vec![0xfe];
         }

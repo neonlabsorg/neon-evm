@@ -49,7 +49,6 @@ pub struct ExecuteStatus {
 pub struct SolanaAccount {
     pub pubkey: Pubkey,
     pub is_writable: bool,
-    pub is_legacy: bool,
     pub lamports_after_upgrade: Option<u64>,
 }
 
@@ -405,7 +404,6 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
                 Box::new(RefCell::new(SolanaAccount {
                     pubkey,
                     is_writable: false,
-                    is_legacy: false,
                     lamports_after_upgrade: None,
                 })),
             )

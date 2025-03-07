@@ -778,15 +778,15 @@ impl Fixture {
 }
 
 impl<'rpc, T: Rpc> EmulatorAccountStorage<'rpc, T> {
-    pub fn verify_used_accounts(&self, expected: &[(Pubkey, bool, bool)]) {
+    pub fn verify_used_accounts(&self, expected: &[(Pubkey, bool)]) {
         let mut expected = expected.to_vec();
-        expected.sort_by_key(|(k, _, _)| *k);
+        expected.sort_by_key(|(k, _)| *k);
         let mut actual = self
             .used_accounts()
             .iter()
-            .map(|v| (v.pubkey, v.is_writable, v.is_legacy))
+            .map(|v| (v.pubkey, v.is_writable))
             .collect::<Vec<_>>();
-        actual.sort_by_key(|(k, _, _)| *k);
+        actual.sort_by_key(|(k, _)| *k);
         assert_eq!(actual, expected);
     }
 
@@ -820,9 +820,8 @@ async fn test_read_balance_missing_account() {
         (
             fixture.balance_pubkey(MISSING_ADDRESS, LEGACY_CHAIN_ID),
             false,
-            false,
         ),
-        (fixture.legacy_pubkey(MISSING_ADDRESS), false, false),
+        (fixture.legacy_pubkey(MISSING_ADDRESS), false),
     ]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
@@ -842,7 +841,6 @@ async fn test_read_balance_missing_account_extra_chain() {
     storage.verify_used_accounts(&[(
         fixture.balance_pubkey(MISSING_ADDRESS, EXTRA_CHAIN_ID),
         false,
-        false,
     )]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
@@ -860,11 +858,7 @@ async fn test_read_balance_actual_account() {
     );
     assert_eq!(storage.nonce(acc.address, acc.chain_id).await, acc.nonce);
 
-    storage.verify_used_accounts(&[(
-        fixture.balance_pubkey(acc.address, acc.chain_id),
-        false,
-        false,
-    )]);
+    storage.verify_used_accounts(&[(fixture.balance_pubkey(acc.address, acc.chain_id), false)]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
 }
@@ -882,11 +876,7 @@ async fn test_read_balance_actual_account_extra_chain() {
     );
     assert_eq!(storage.nonce(acc.address, acc.chain_id).await, acc.nonce);
 
-    storage.verify_used_accounts(&[(
-        fixture.balance_pubkey(acc.address, acc.chain_id),
-        false,
-        false,
-    )]);
+    storage.verify_used_accounts(&[(fixture.balance_pubkey(acc.address, acc.chain_id), false)]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
 }
@@ -907,9 +897,8 @@ async fn test_read_balance_legacy_account() {
         (
             fixture.balance_pubkey(acc.address, LEGACY_CHAIN_ID),
             true,
-            true,
         ),
-        (fixture.legacy_pubkey(acc.address), true, true),
+        (fixture.legacy_pubkey(acc.address), true),
     ]);
     storage.verify_upgrade_rent(fixture.balance_rent(), fixture.legacy_rent(None));
     storage.verify_regular_rent(0, 0);
@@ -929,17 +918,12 @@ async fn test_modify_actual_and_missing_account() {
         .is_ok());
 
     storage.verify_used_accounts(&[
-        (
-            fixture.balance_pubkey(from.address, from.chain_id),
-            true,
-            false,
-        ),
+        (fixture.balance_pubkey(from.address, from.chain_id), true),
         (
             fixture.balance_pubkey(MISSING_ADDRESS, LEGACY_CHAIN_ID),
             true,
-            false,
         ),
-        (fixture.legacy_pubkey(MISSING_ADDRESS), false, false),
+        (fixture.legacy_pubkey(MISSING_ADDRESS), false),
     ]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(fixture.balance_rent(), 0);
@@ -968,16 +952,8 @@ async fn test_modify_actual_and_missing_account_extra_chain() {
         .is_ok());
 
     storage.verify_used_accounts(&[
-        (
-            fixture.balance_pubkey(from.address, from.chain_id),
-            true,
-            false,
-        ),
-        (
-            fixture.balance_pubkey(MISSING_ADDRESS, from.chain_id),
-            true,
-            false,
-        ),
+        (fixture.balance_pubkey(from.address, from.chain_id), true),
+        (fixture.balance_pubkey(MISSING_ADDRESS, from.chain_id), true),
     ]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(fixture.balance_rent(), 0);
@@ -1010,14 +986,12 @@ async fn test_modify_actual_and_legacy_account() {
         (
             fixture.balance_pubkey(from.address, from.chain_id),
             true,
-            false,
         ),
         (
             fixture.balance_pubkey(to.address, LEGACY_CHAIN_ID),
             true,
-            true,
         ),
-        (fixture.legacy_pubkey(to.address), true, true),
+        (fixture.legacy_pubkey(to.address), true),
     ]);
     storage.verify_upgrade_rent(fixture.balance_rent(), fixture.legacy_rent(None));
     storage.verify_regular_rent(0, 0);
@@ -1042,7 +1016,7 @@ async fn test_read_missing_contract() {
         storage.storage(MISSING_ADDRESS, U256::ZERO).await,
         [0u8; 32]
     );
-    storage.verify_used_accounts(&[(fixture.contract_pubkey(MISSING_ADDRESS), false, false)]);
+    storage.verify_used_accounts(&[(fixture.contract_pubkey(MISSING_ADDRESS), false)]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
 
@@ -1074,9 +1048,8 @@ async fn test_read_legacy_contract() {
         (
             fixture.balance_pubkey(LEGACY_CONTRACT.address, LEGACY_CHAIN_ID),
             true,
-            true,
         ),
-        (fixture.contract_pubkey(LEGACY_CONTRACT.address), true, true),
+        (fixture.contract_pubkey(LEGACY_CONTRACT.address), true),
     ]);
     storage.verify_upgrade_rent(
         fixture.balance_rent() + fixture.contract_rent(LEGACY_CONTRACT.code),
@@ -1101,9 +1074,8 @@ async fn test_read_legacy_contract_no_balance() {
         (
             fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
             false,
-            true,
         ),
-        (fixture.contract_pubkey(contract.address), true, true),
+        (fixture.contract_pubkey(contract.address), true),
     ]);
     storage.verify_upgrade_rent(
         fixture.contract_rent(contract.code),
@@ -1123,7 +1095,7 @@ async fn test_read_actual_suicide_contract() {
         storage.storage(contract.address, U256::ZERO).await,
         [0u8; 32]
     );
-    storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), false, false)]);
+    storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), false)]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
 }
@@ -1143,9 +1115,8 @@ async fn test_read_legacy_suicide_contract() {
         (
             fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
             true,
-            true,
         ),
-        (fixture.contract_pubkey(contract.address), true, true),
+        (fixture.contract_pubkey(contract.address), true),
     ]);
     storage.verify_upgrade_rent(
         fixture.balance_rent() + fixture.contract_rent(contract.code),
@@ -1164,7 +1135,7 @@ async fn test_deploy_at_missing_contract() {
         .set_code(MISSING_ADDRESS, LEGACY_CHAIN_ID, code.clone().into_vector())
         .await
         .is_ok());
-    storage.verify_used_accounts(&[(fixture.contract_pubkey(MISSING_ADDRESS), true, false)]);
+    storage.verify_used_accounts(&[(fixture.contract_pubkey(MISSING_ADDRESS), true)]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(fixture.contract_rent(&code), 0);
 }
@@ -1180,7 +1151,7 @@ async fn test_deploy_at_actual_balance() {
         .set_code(acc.address, LEGACY_CHAIN_ID, code.clone().into_vector())
         .await
         .is_ok());
-    storage.verify_used_accounts(&[(fixture.contract_pubkey(acc.address), true, false)]);
+    storage.verify_used_accounts(&[(fixture.contract_pubkey(acc.address), true)]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(fixture.contract_rent(&code), 0);
 }
@@ -1201,7 +1172,7 @@ async fn test_deploy_at_actual_contract() {
         EvmLoaderError::AccountAlreadyInitialized(fixture.contract_pubkey(contract.address))
             .to_string()
     );
-    storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), false, false)]);
+    storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), false)]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
 }
@@ -1225,9 +1196,8 @@ async fn test_deploy_at_legacy_account() {
         (
             fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
             true,
-            true,
         ),
-        (fixture.contract_pubkey(contract.address), true, true),
+        (fixture.contract_pubkey(contract.address), true),
     ]);
     storage.verify_upgrade_rent(fixture.balance_rent(), fixture.legacy_rent(None));
     storage.verify_regular_rent(fixture.contract_rent(&code), 0);
@@ -1254,9 +1224,8 @@ async fn test_deploy_at_legacy_contract() {
         (
             fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
             true,
-            true,
         ),
-        (fixture.contract_pubkey(contract.address), true, true),
+        (fixture.contract_pubkey(contract.address), true),
     ]);
     storage.verify_upgrade_rent(
         fixture.balance_rent() + fixture.contract_rent(contract.code),
@@ -1281,7 +1250,7 @@ async fn test_deploy_at_actual_suicide() {
         )
         .await
         .is_ok(),);
-    storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), true, false)]);
+    storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), true)]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(
         fixture.contract_rent(&code),
@@ -1309,9 +1278,8 @@ async fn test_deploy_at_legacy_suicide() {
         (
             fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
             true,
-            true,
         ),
-        (fixture.contract_pubkey(contract.address), true, true),
+        (fixture.contract_pubkey(contract.address), true),
     ]);
     storage.verify_upgrade_rent(
         fixture.balance_rent() + fixture.contract_rent(contract.code),
@@ -1337,7 +1305,6 @@ async fn test_read_missing_storage_for_missing_contract() {
     storage.verify_used_accounts(&[(
         fixture.storage_pubkey(MISSING_ADDRESS, MISSING_STORAGE_INDEX),
         false,
-        false,
     )]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
@@ -1358,7 +1325,6 @@ async fn test_read_missing_storage_for_actual_contract() {
     storage.verify_used_accounts(&[(
         fixture.storage_pubkey(contract.address, MISSING_STORAGE_INDEX),
         false,
-        false,
     )]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
@@ -1378,7 +1344,6 @@ async fn test_read_actual_storage_for_actual_contract() {
     );
     storage.verify_used_accounts(&[(
         fixture.storage_pubkey(contract.address, ACTUAL_STORAGE_INDEX),
-        false,
         false,
     )]);
     storage.verify_upgrade_rent(0, 0);
@@ -1414,7 +1379,6 @@ async fn test_modify_new_storage_for_actual_contract() {
     storage.verify_used_accounts(&[(
         fixture.storage_pubkey(contract.address, ACTUAL_STORAGE_INDEX),
         true,
-        false,
     )]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(fixture.storage_rent(2), fixture.storage_rent(1));
@@ -1440,7 +1404,6 @@ async fn test_modify_missing_storage_for_actual_contract() {
     storage.verify_used_accounts(&[(
         fixture.storage_pubkey(contract.address, MISSING_STORAGE_INDEX),
         true,
-        false,
     )]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(fixture.storage_rent(1), 0);
@@ -1459,7 +1422,7 @@ async fn test_modify_internal_storage_for_actual_contract() {
         .await
         .is_ok());
     assert_eq!(storage.storage(contract.address, index).await, new_value);
-    storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), true, false)]);
+    storage.verify_used_accounts(&[(fixture.contract_pubkey(contract.address), true)]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
 }
@@ -1477,10 +1440,9 @@ async fn test_read_legacy_storage_for_actual_contract() {
         contract.legacy_storage.values[0].1
     );
     storage.verify_used_accounts(&[
-        (fixture.contract_pubkey(contract.address), false, true),
+        (fixture.contract_pubkey(contract.address), false),
         (
             fixture.storage_pubkey(contract.address, LEGACY_STORAGE_INDEX),
-            true,
             true,
         ),
     ]);
@@ -1502,10 +1464,9 @@ async fn test_read_outdate_storage_for_actual_contract() {
         [0u8; 32]
     );
     storage.verify_used_accounts(&[
-        (fixture.contract_pubkey(contract.address), false, true),
+        (fixture.contract_pubkey(contract.address), false),
         (
             fixture.storage_pubkey(contract.address, OUTDATE_STORAGE_INDEX),
-            true,
             true,
         ),
     ]);
@@ -1530,7 +1491,6 @@ async fn test_read_missing_storage_for_legacy_contract() {
     storage.verify_used_accounts(&[(
         fixture.storage_pubkey(contract.address, MISSING_STORAGE_INDEX),
         false,
-        false,
     )]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
@@ -1550,15 +1510,13 @@ async fn test_read_legacy_storage_for_legacy_contract() {
         contract.legacy_storage.values[0].1
     );
     storage.verify_used_accounts(&[
-        (fixture.contract_pubkey(contract.address), true, true),
+        (fixture.contract_pubkey(contract.address), true),
         (
             fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
-            true,
             true,
         ),
         (
             fixture.storage_pubkey(contract.address, LEGACY_STORAGE_INDEX),
-            true,
             true,
         ),
     ]);
@@ -1583,15 +1541,13 @@ async fn test_read_outdate_storage_for_legacy_contract() {
         [0u8; 32]
     );
     storage.verify_used_accounts(&[
-        (fixture.contract_pubkey(contract.address), true, true),
+        (fixture.contract_pubkey(contract.address), true),
         (
             fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
-            true,
             true,
         ),
         (
             fixture.storage_pubkey(contract.address, OUTDATE_STORAGE_INDEX),
-            true,
             true,
         ),
     ]);
@@ -1618,7 +1574,6 @@ async fn test_read_missing_storage_for_legacy_suicide() {
     storage.verify_used_accounts(&[(
         fixture.storage_pubkey(contract.address, MISSING_STORAGE_INDEX),
         false,
-        false,
     )]);
     storage.verify_upgrade_rent(0, 0);
     storage.verify_regular_rent(0, 0);
@@ -1638,15 +1593,13 @@ async fn test_read_outdate_storage_for_legacy_suicide() {
         [0u8; 32]
     );
     storage.verify_used_accounts(&[
-        (fixture.contract_pubkey(contract.address), true, true),
+        (fixture.contract_pubkey(contract.address), true),
         (
             fixture.balance_pubkey(contract.address, LEGACY_CHAIN_ID),
-            true,
             true,
         ),
         (
             fixture.storage_pubkey(contract.address, OUTDATE_STORAGE_INDEX),
-            true,
             true,
         ),
     ]);

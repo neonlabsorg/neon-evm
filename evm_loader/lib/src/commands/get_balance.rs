@@ -15,7 +15,6 @@ use super::get_config::BuildConfigSimulator;
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
 pub enum BalanceStatus {
     Ok,
-    Legacy,
     Empty,
 }
 
@@ -92,8 +91,6 @@ pub async fn execute(
     program_id: &Pubkey,
     address: &[BalanceAddress],
 ) -> NeonResult<Vec<GetBalanceResponse>> {
-    let legacy_chain_id = super::get_config::read_legacy_chain_id(rpc, *program_id).await?;
-
     let mut response: Vec<Option<GetBalanceResponse>> = vec![None; address.len()];
     //let mut missing: Vec<BalanceAddress> = Vec::with_capacity(address.len());
 
@@ -105,8 +102,6 @@ pub async fn execute(
         if let Some(account) = account {
             let balance = read_account(program_id, &address[i], account)?;
             response[i] = Some(balance);
-        } else if address[i].chain_id == legacy_chain_id {
-            //missing.push(address[i]);
         } else {
             let balance = GetBalanceResponse::empty(program_id, &address[i]);
             response[i] = Some(balance);

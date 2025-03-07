@@ -7,7 +7,7 @@ use crate::account_storage::ProgramAccountStorage;
 use crate::error::Result;
 use crate::types::{Address, Transaction};
 use ethnum::U256;
-use solana_program::{clock::Clock, rent::Rent, system_program, sysvar::Sysvar};
+use solana_program::{clock::Clock, rent::Rent, sysvar::Sysvar};
 
 use super::keys_cache::KeysCache;
 use super::AccountStorage;
@@ -40,13 +40,13 @@ impl<'a> ProgramAccountStorage<'a> {
 
         let account = self.accounts.get(&pubkey);
         let result = StorageCell::from_account(&crate::ID, account.clone());
-
+        /*
         if result.is_err() {
             // Check that account is not in a legacy format
             // Correct account can ether be owned by System or be valid StorageCell
-            assert!(system_program::check_id(account.owner));
+            // assert!(system_program::check_id(account.owner));
         }
-
+        */
         result
     }
 

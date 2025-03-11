@@ -14,4 +14,5 @@ pub struct ExecutionStep {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionMap {
     pub steps: Vec<ExecutionStep>,
+    pub is_skd_transaction: bool,
 }

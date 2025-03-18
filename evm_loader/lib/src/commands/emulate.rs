@@ -395,12 +395,14 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
     let execution_map = emulate_request
         .execution_map
         .clone()
-        .expect("execution map must be not empty")
-        .steps;
+        .expect("execution map must be not empty");
+
+    let is_skd_transaction = execution_map.is_skd_transaction;
 
     let origin = emulate_request.tx.from.address();
     let (block, index) = {
         let step = execution_map
+            .steps
             .first()
             .expect("execution map must be not empty")
             .clone();
@@ -427,16 +429,16 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
         .tx
         .chain_id
         .unwrap_or_else(|| storage.default_chain_id());
-    increment_nonce(&mut storage, &origin, chain_id).await?;
-
     let increase_gas_limit = emulate_request.tx.chain_id.is_none();
 
-    transfer_gas_limit(&mut storage, &tx, &origin, chain_id, increase_gas_limit).await?;
+    if !is_skd_transaction {
+        increment_nonce(&mut storage, &origin, chain_id).await?;
+        transfer_gas_limit(&mut storage, &tx, &origin, chain_id, increase_gas_limit).await?;
+    }
 
     let (exit_status, steps_executed, step_on_solana, tracer, timestamped_contracts) = {
         let mut backend = SyncedExecutorState::new(&mut storage);
 
-        // put tracer only for the first evm creation because it call begin_vm macros
         let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
             Ok(evm) => evm,
             Err(e) => {
@@ -449,7 +451,7 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
         let mut steps_executed = 0u64;
         let mut step_on_solana = None;
         let mut tracer_result: Option<T> = evm.take_tracer();
-        for execution_step in &execution_map {
+        for execution_step in &execution_map.steps {
             if execution_step.is_reset {
                 drop(evm);
                 drop(backend);
@@ -468,13 +470,14 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
                 .await?;
 
                 backend = SyncedExecutorState::new(&mut storage);
-                evm = match Machine::new(&tx, origin, &mut backend, None).await {
+                evm = match Machine::new(&tx, origin, &mut backend, tracer_result).await {
                     Ok(evm) => evm,
                     Err(e) => {
                         error!("EVM creation failed {e:?}");
                         return Ok((EmulateResponse::revert(&e, &backend), None));
                     }
-                }
+                };
+                tracer_result = evm.take_tracer();
             } else if execution_step.is_cancel {
                 evm.set_tracer(tracer_result);
                 evm.end_vm(&backend, ExitStatus::Cancel).await?;
@@ -494,9 +497,11 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
                 )
                 .await?;
 
-                increment_nonce(&mut storage, &origin, chain_id).await?;
-                transfer_gas_limit(&mut storage, &tx, &origin, chain_id, increase_gas_limit)
-                    .await?;
+                if !is_skd_transaction {
+                    increment_nonce(&mut storage, &origin, chain_id).await?;
+                    transfer_gas_limit(&mut storage, &tx, &origin, chain_id, increase_gas_limit)
+                        .await?;
+                }
 
                 backend = SyncedExecutorState::new(&mut storage);
 

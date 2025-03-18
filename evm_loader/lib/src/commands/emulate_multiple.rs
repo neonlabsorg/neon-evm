@@ -17,6 +17,8 @@ pub async fn execute(
     program_id: &Pubkey,
     request: EmulateMultipleRequest,
 ) -> NeonResult<Vec<EmulateResponse>> {
+    let mut responses = vec![];
+
     let accounts = rpc
         .get_multiple_accounts(&request.accounts)
         .await?
@@ -24,7 +26,11 @@ pub async fn execute(
         .map(|a| a.map(SerializedAccount::from));
 
     let mut overrides: HashMap<_, _> = request.accounts.into_iter().zip(accounts).collect();
-    let mut responses = vec![];
+
+    let (_, simulator) = super::simulate_solana::execute(rpc, request.solana_tx).await?;
+    for (key, account) in simulator.into_accounts() {
+        overrides.insert(key, Some(account.into()));
+    }
 
     for tx in request.tx {
         let single_emulate_request = EmulateRequest {
@@ -47,7 +53,7 @@ pub async fn execute(
         )
         .await?;
 
-        let accounts = response.accounts_data.take().unwrap();
+        let accounts = response.accounts_data.take().unwrap_or_default();
         for account in accounts {
             overrides.insert(account.pubkey, Some(account.into()));
         }

@@ -18,6 +18,8 @@ mainnet = []
 testnet = []
 ## Builds NeonEVM for devnet deployment
 devnet = []
+## Builds NeonEVM for devnet-2 deployment
+devnet-2 = []
 ## Builds NeonEVM for CI environment
 ci = []
 ## Builds NeonEVM for rollup deployment with settings adjusted.

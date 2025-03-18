@@ -365,6 +365,9 @@ pub enum Error {
 
     #[error("Solana programs was interrupted")]
     InterruptedCall(#[serde(skip)] Box<Option<InterruptedState>>),
+
+    #[error("Transaction tree - transaction invalid too much nodes")]
+    TreeAccountTxInvalidTooMuchNodes,
 }
 
 impl Error {

@@ -368,6 +368,9 @@ pub enum Error {
 
     #[error("Transaction tree - transaction invalid too much nodes")]
     TreeAccountTxInvalidTooMuchNodes,
+
+    #[error("Priorotiy fee is forbidden in CPI calls")]
+    PriorityFeeForbiddenInCpi,
 }
 
 impl Error {

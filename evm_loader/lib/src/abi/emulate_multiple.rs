@@ -3,10 +3,11 @@ use crate::commands::emulate::EmulateResponse;
 use crate::commands::emulate_multiple;
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::config::APIOptions;
+use crate::rpc::Rpc;
 use crate::{types::EmulateMultipleRequest, NeonResult};
 
 pub async fn execute(
-    rpc: &impl BuildConfigSimulator,
+    rpc: &(impl Rpc + BuildConfigSimulator),
     config: &APIOptions,
     params: &str,
 ) -> NeonResult<Vec<EmulateResponse>> {

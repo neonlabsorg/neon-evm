@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use solana_sdk::pubkey::Pubkey;
 
+use super::{emulate::EmulateResponse, get_config::BuildConfigSimulator};
+use crate::rpc::Rpc;
 use crate::{
     config::DbConfig,
     tracing::tracers::TracerTypeEnum,
@@ -9,10 +11,8 @@ use crate::{
     NeonResult,
 };
 
-use super::{emulate::EmulateResponse, get_config::BuildConfigSimulator};
-
 pub async fn execute(
-    rpc: &impl BuildConfigSimulator,
+    rpc: &(impl Rpc + BuildConfigSimulator),
     db_config: &Option<DbConfig>,
     program_id: &Pubkey,
     request: EmulateMultipleRequest,

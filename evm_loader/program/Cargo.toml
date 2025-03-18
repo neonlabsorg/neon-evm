@@ -2,7 +2,7 @@
 
 [package]
 name = "evm-loader"
-version = "1.17.5"
+version = "1.17.6"
 description = "Neon EVM loader"
 authors = ["NeonLabs Maintainers <maintainers@neonlabs.org>"]
 edition = "2021"

@@ -369,7 +369,7 @@ pub enum Error {
     #[error("Transaction tree - transaction invalid too much nodes")]
     TreeAccountTxInvalidTooMuchNodes,
 
-    #[error("Priorotiy fee is forbidden in CPI calls")]
+    #[error("CPI calls of Neon EVM are forbidden for DynamicFee transaction type")]
     PriorityFeeForbiddenInCpi,
 }
 

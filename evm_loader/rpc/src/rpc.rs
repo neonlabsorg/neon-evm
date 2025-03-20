@@ -1,7 +1,7 @@
 use crate::context::Context;
 use crate::handlers::{
     emulate, emulate_multiple, get_balance, get_config, get_contract, get_holder, get_storage_at,
-    get_transaction_tree, info, lib_info, trace,
+    get_transaction_tree, info, lib_info, simulate_solana, trace,
 };
 
 use jsonrpc_v2::{Data, MapRouter, Server};
@@ -31,6 +31,10 @@ pub fn build_rpc(ctx: Context) -> Arc<Server<MapRouter>> {
         .with_method(
             LibMethod::EmulateMultiple.to_string(),
             emulate_multiple::handle,
+        )
+        .with_method(
+            LibMethod::SimulateSolana.to_string(),
+            simulate_solana::handle,
         )
         .finish()
 }

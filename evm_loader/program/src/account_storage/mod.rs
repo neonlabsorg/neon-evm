@@ -20,6 +20,7 @@ mod synced;
 
 mod block_hash;
 pub use block_hash::find_slot_hash;
+pub use block_hash::find_slot_hash_provided;
 
 mod keys_cache;
 pub use keys_cache::KeysCache;

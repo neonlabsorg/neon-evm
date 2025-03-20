@@ -78,7 +78,7 @@ fn find_slot_hash_impl<Provider: SlotHashesProvider>(value: Slot, provider: &Pro
         let mid = left + size / 2;
         let offset = to_offset(mid);
 
-        if size < Provider::OPTIMIZE_SMALL_BUF {
+        if size < Provider::OPTIMIZE_SMALL_BUF && small_buf.is_none() {
             let mut buf = vec![0_u8; Provider::OPTIMIZE_SMALL_BUF * ONE_SIZE];
             provider.fill_slot_hash_slice(
                 buf.borrow_mut(),

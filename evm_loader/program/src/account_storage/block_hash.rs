@@ -17,18 +17,10 @@ trait SlotHashesProvider {
     const OPTIMIZE_SMALL_BUF: usize = 0;
 }
 
+#[cfg(target_os = "solana")]
 struct SlotHashesSysvarProvider {}
 
-#[allow(dead_code)]
-fn sol_get_sysvar_stub(
-    _sysvar_id_addr: *const u8,
-    _result: *mut u8,
-    _offset: u64,
-    _length: u64,
-) -> u64 {
-    solana_program::entrypoint::SUCCESS
-}
-
+#[cfg(target_os = "solana")]
 impl SlotHashesProvider for SlotHashesSysvarProvider {
     const OPTIMIZE_SMALL_BUF: usize = 32;
 
@@ -43,12 +35,8 @@ impl SlotHashesProvider for SlotHashesSysvarProvider {
         let sz: u64 = sz.try_into().unwrap();
         let offset: u64 = offset.try_into().unwrap();
 
-        #[cfg(target_os = "solana")]
         let result =
             unsafe { solana_program::syscalls::sol_get_sysvar(sysvar_id, var_addr, offset, sz) };
-
-        #[cfg(not(target_os = "solana"))]
-        let result = sol_get_sysvar_stub(sysvar_id, var_addr, offset, sz);
 
         assert!(
             result == solana_program::entrypoint::SUCCESS,
@@ -142,9 +130,16 @@ pub fn find_slot_hash_provided(value: Slot, slot_hash_data: &[u8]) -> [u8; 32] {
 }
 
 #[must_use]
+#[cfg(target_os = "solana")]
 pub fn find_slot_hash(value: Slot) -> [u8; 32] {
     let provider = SlotHashesSysvarProvider {};
     find_slot_hash_impl::<SlotHashesSysvarProvider>(value, &provider)
+}
+
+#[must_use]
+#[cfg(not(target_os = "solana"))]
+pub fn find_slot_hash(value: Slot) -> [u8; 32] {
+    generate_fake_slot_hash(value)
 }
 
 #[must_use]

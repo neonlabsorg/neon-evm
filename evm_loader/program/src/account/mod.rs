@@ -29,6 +29,7 @@ mod holder;
 pub mod legacy;
 mod operator;
 mod operator_balance;
+pub mod pda_accounts;
 pub mod program;
 mod state;
 mod state_finalized;

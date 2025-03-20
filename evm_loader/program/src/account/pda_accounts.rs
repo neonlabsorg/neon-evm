@@ -49,11 +49,17 @@ pub fn main_pool_authority_seeds(bump_seed: u8) -> Vector<Vector<u8>> {
 }
 
 #[must_use]
-pub fn operator_address(program_id: &Pubkey, operator: &Pubkey, chain_id: u64) -> (Pubkey, u8) {
+pub fn operator_address(
+    program_id: &Pubkey,
+    operator: &Pubkey,
+    balance: &Address,
+    chain_id: u64,
+) -> (Pubkey, u8) {
     let chain_id = U256::from(chain_id);
     let operator_seeds: &[&[u8]] = &[
         &[ACCOUNT_SEED_VERSION],
         operator.as_ref(),
+        balance.as_bytes(),
         &chain_id.to_be_bytes(),
     ];
     Pubkey::find_program_address(operator_seeds, program_id)

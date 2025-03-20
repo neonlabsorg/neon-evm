@@ -79,7 +79,7 @@ impl Address {
         chain_id: u64,
         operator: &Operator,
     ) -> (Pubkey, u8) {
-        pda_accounts::operator_address(program_id, operator.key, chain_id)
+        pda_accounts::operator_address(program_id, operator.key, self, chain_id)
     }
 }
 

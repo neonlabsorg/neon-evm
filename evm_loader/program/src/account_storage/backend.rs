@@ -5,7 +5,7 @@ use crate::executor::OwnedAccountInfo;
 use crate::types::Address;
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
-use solana_program::{pubkey::Pubkey, rent::Rent, sysvar::slot_hashes};
+use solana_program::{pubkey::Pubkey, rent::Rent};
 use std::convert::TryInto;
 
 use crate::debug::log_data;
@@ -78,10 +78,7 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     }
 
     fn block_hash(&self, slot: u64) -> [u8; 32] {
-        let slot_hashes_account = self.accounts.get(&slot_hashes::ID);
-        let slot_hashes_data = slot_hashes_account.data.borrow();
-
-        super::block_hash::find_slot_hash(slot, &slot_hashes_data[..])
+        super::block_hash::find_slot_hash(slot)
     }
 
     fn nonce(&self, address: Address, chain_id: u64) -> u64 {

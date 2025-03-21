@@ -4,7 +4,13 @@ use crate::error::Error;
 use crate::gasometer::LAMPORTS_PER_SIGNATURE;
 use crate::types::Transaction;
 use ethnum::U256;
-use solana_program::{instruction::get_processed_sibling_instruction, pubkey, pubkey::Pubkey};
+use solana_program::{
+    instruction::{
+        get_processed_sibling_instruction, get_stack_height, TRANSACTION_LEVEL_STACK_HEIGHT,
+    },
+    pubkey,
+    pubkey::Pubkey,
+};
 use std::convert::From;
 
 // Because ComputeBudget program is not accessible through CPI, it's not a part of the standard
@@ -133,6 +139,13 @@ pub fn calc_priority_fee(txn: &Transaction) -> Result<U256, Error> {
 fn get_compute_budget_priority_fee() -> Result<(u32, u64), Error> {
     // Intent is to check first several instructions in hopes to find ComputeBudget ones.
     let max_idx = 5;
+
+    // The reason to forbid the calls for DynamicFee transactions - priority fee calculation
+    // uses get_processed_sibling_instruction syscall which doesn't work well for CPI.
+    let is_root_transaction = get_stack_height() == TRANSACTION_LEVEL_STACK_HEIGHT;
+    if !is_root_transaction {
+        return Err(Error::PriorityFeeForbiddenInCpi);
+    }
 
     let mut idx = 0;
     let mut compute_unit_limit: Option<u32> = None;

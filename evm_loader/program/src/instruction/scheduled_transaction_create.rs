@@ -1,7 +1,7 @@
 use crate::account::program::System;
 use crate::account::{
-    token, AccountsDB, BalanceAccount, NodeInitializer, Operator, TransactionTree, Treasury,
-    TreeInitializer, NO_CHILD_TRANSACTION,
+    pda_accounts, token, AccountsDB, BalanceAccount, NodeInitializer, Operator, TransactionTree,
+    Treasury, TreeInitializer, NO_CHILD_TRANSACTION,
 };
 use crate::config::SOL_CHAIN_ID;
 use crate::debug::log_data;
@@ -15,8 +15,6 @@ use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
 use solana_program::sysvar::Sysvar;
 use spl_associated_token_account::get_associated_token_address;
-
-use super::neon_tokens_deposit::AUTHORITY_SEED;
 
 fn validate_scheduled_tx(tx: &ScheduledTxShell, payer: Address) -> Result<U256> {
     if tx.payer != payer {
@@ -52,7 +50,7 @@ fn validate_scheduled_tx(tx: &ScheduledTxShell, payer: Address) -> Result<U256> 
 }
 
 pub fn validate_pool(pool: &token::State) -> Result<()> {
-    let (authority_address, _) = Pubkey::find_program_address(&[AUTHORITY_SEED], &crate::ID);
+    let (authority_address, _) = pda_accounts::main_pool_authority(&crate::ID);
     let expected_pool =
         get_associated_token_address(&authority_address, &spl_token::native_mint::ID);
 

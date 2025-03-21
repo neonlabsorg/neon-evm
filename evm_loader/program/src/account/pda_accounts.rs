@@ -1,0 +1,167 @@
+use crate::types::vector::VectorSliceExt;
+use crate::types::Vector;
+use crate::vector;
+use crate::{config::TREASURY_POOL_SEED, types::Address};
+use ethnum::U256;
+use solana_program::pubkey::Pubkey;
+
+use super::ACCOUNT_SEED_VERSION;
+
+// Program Derived Addresses for all account types in the program.
+// Caution: When adding new account types, make sure no collisions occur with existing seeds.
+//          Using a unique prefix for each account type is recommended.
+
+#[must_use]
+pub fn main_treasury_pool_address(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[TREASURY_POOL_SEED.as_bytes()], program_id)
+}
+
+#[must_use]
+pub fn aux_treasury_pool_address(program_id: &Pubkey, index: u32) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[TREASURY_POOL_SEED.as_bytes(), &index.to_le_bytes()],
+        program_id,
+    )
+}
+
+#[must_use]
+pub fn tree_account_address(
+    program_id: &Pubkey,
+    payer: Address,
+    chain_id: u64,
+    nonce: u64,
+) -> (Pubkey, u8) {
+    let seeds: &[&[u8]] = &[
+        &[ACCOUNT_SEED_VERSION],
+        b"TREE",
+        payer.as_bytes(),
+        &chain_id.to_le_bytes(),
+        &nonce.to_le_bytes(),
+    ];
+
+    Pubkey::find_program_address(seeds, program_id)
+}
+
+#[must_use]
+pub fn main_pool_authority(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[b"Deposit"], program_id)
+}
+
+#[must_use]
+pub fn main_pool_authority_seeds(bump_seed: u8) -> Vector<Vector<u8>> {
+    vector![b"Deposit".to_vector(), vector![bump_seed]]
+}
+
+#[must_use]
+pub fn operator_address(
+    program_id: &Pubkey,
+    operator: &Pubkey,
+    balance: &Address,
+    chain_id: u64,
+) -> (Pubkey, u8) {
+    let chain_id = U256::from(chain_id);
+    let operator_seeds: &[&[u8]] = &[
+        &[ACCOUNT_SEED_VERSION],
+        operator.as_ref(),
+        balance.as_bytes(),
+        &chain_id.to_be_bytes(),
+    ];
+    Pubkey::find_program_address(operator_seeds, program_id)
+}
+
+#[must_use]
+pub fn balance_address(program_id: &Pubkey, account: &Address, chain_id: u64) -> (Pubkey, u8) {
+    let chain_id = U256::from(chain_id);
+    let balance_seeds: &[&[u8]] = &[
+        &[ACCOUNT_SEED_VERSION],
+        account.as_bytes(),
+        &chain_id.to_be_bytes(),
+    ];
+    Pubkey::find_program_address(balance_seeds, program_id)
+}
+
+#[must_use]
+pub fn contract_address(program_id: &Pubkey, contract: &Address) -> (Pubkey, u8) {
+    let contract_seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], contract.as_bytes()];
+    Pubkey::find_program_address(contract_seeds, program_id)
+}
+
+#[must_use]
+pub fn contract_seeds(contract: &Address, bump_seed: u8) -> Vector<Vector<u8>> {
+    vector![
+        vector![ACCOUNT_SEED_VERSION],
+        contract.as_bytes().to_vector(),
+        vector![bump_seed]
+    ]
+}
+
+#[must_use]
+pub fn contract_payer_address(program_id: &Pubkey, contract: &Address) -> (Pubkey, u8) {
+    let payer_seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], b"PAYER", contract.as_bytes()];
+    Pubkey::find_program_address(payer_seeds, program_id)
+}
+
+#[must_use]
+pub fn contract_payer_seeds(contract: &Address, bump_seed: u8) -> Vector<Vector<u8>> {
+    vector![
+        vector![ACCOUNT_SEED_VERSION],
+        b"PAYER".to_vector(),
+        contract.as_bytes().to_vector(),
+        vector![bump_seed],
+    ]
+}
+
+#[must_use]
+pub fn contract_auth_address(
+    program_id: &Pubkey,
+    contract: &Address,
+    salt: &[u8; 32],
+) -> (Pubkey, u8) {
+    let auth_seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], b"AUTH", contract.as_bytes(), salt];
+    Pubkey::find_program_address(auth_seeds, program_id)
+}
+
+#[must_use]
+pub fn contract_auth_seeds(
+    contract: &Address,
+    salt: &[u8; 32],
+    bump_seed: u8,
+) -> Vector<Vector<u8>> {
+    vector![
+        vector![ACCOUNT_SEED_VERSION],
+        b"AUTH".to_vector(),
+        contract.as_bytes().to_vector(),
+        salt.to_vector(),
+        vector![bump_seed],
+    ]
+}
+
+#[must_use]
+pub fn contract_data_address(
+    program_id: &Pubkey,
+    contract: &Address,
+    salt: &[u8; 32],
+) -> (Pubkey, u8) {
+    let data_seeds: &[&[u8]] = &[
+        &[ACCOUNT_SEED_VERSION],
+        b"ContractData",
+        contract.as_bytes(),
+        salt,
+    ];
+    Pubkey::find_program_address(data_seeds, program_id)
+}
+
+#[must_use]
+pub fn contract_data_seeds(
+    contract: &Address,
+    salt: &[u8; 32],
+    bump_seed: u8,
+) -> Vector<Vector<u8>> {
+    vector![
+        vector![ACCOUNT_SEED_VERSION],
+        b"ContractData".to_vector(),
+        contract.as_bytes().to_vector(),
+        salt.to_vector(),
+        vector![bump_seed],
+    ]
+}

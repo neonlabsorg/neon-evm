@@ -17,7 +17,7 @@ use {
         Config,
     },
     evm_loader::{
-        account::{MainTreasury, Treasury},
+        account::{pda_accounts, MainTreasury, Treasury},
         config::TREASURY_POOL_SEED,
     },
     log::{error, info, warn},
@@ -124,11 +124,7 @@ pub async fn execute(
     let executor = Rc::new(TransactionExecutor::new(client, fee_payer, send_trx));
     let keys = keys_dir.map_or(Ok(HashMap::new()), read_keys_dir)?;
 
-    let program_data_address = Pubkey::find_program_address(
-        &[&config.evm_loader.to_bytes()],
-        &bpf_loader_upgradeable::id(),
-    )
-    .0;
+    let program_data_address = bpf_loader_upgradeable::get_program_data_address(&config.evm_loader);
     let (program_upgrade_authority, program_data) =
         read_program_data_from_account(config, client, &config.evm_loader).await?;
     let data = file.map_or(Ok(program_data), read_program_data)?;
@@ -203,7 +199,7 @@ pub async fn execute(
     executor.checkpoint(config.commitment).await?;
 
     //====================== Create 'Deposit' NEON-token balance ======================================================
-    let (deposit_authority, _) = Pubkey::find_program_address(&[b"Deposit"], &config.evm_loader);
+    let (deposit_authority, _) = pda_accounts::main_pool_authority(&config.evm_loader);
     let chains = super::get_config::read_chains(client, config.evm_loader).await?;
     for chain in chains {
         let pool = get_associated_token_address(&deposit_authority, &chain.token);

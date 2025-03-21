@@ -1,4 +1,5 @@
 use crate::{
+    account::pda_accounts,
     account_storage::FAKE_OPERATOR,
     allocator::acc_allocator,
     config::ACCOUNT_SEED_VERSION,
@@ -97,20 +98,9 @@ pub async fn call_solana<State: Database>(
             let instruction: Instruction =
                 bincode::deserialize(&input[offset + 32..]).map_err(|_| Error::OutOfBounds)?;
 
-            let seeds: &[&[u8]] = &[
-                &[ACCOUNT_SEED_VERSION],
-                b"AUTH",
-                context.caller.as_bytes(),
-                salt,
-            ];
-            let (_, signer_seed) = Pubkey::find_program_address(seeds, state.program_id());
-            let seeds = vector![
-                vector![ACCOUNT_SEED_VERSION],
-                b"AUTH".to_vector(),
-                context.caller.as_bytes().to_vector(),
-                salt.to_vector(),
-                vector![signer_seed],
-            ];
+            let (_, signer_seed) =
+                pda_accounts::contract_auth_address(state.program_id(), &context.caller, salt);
+            let seeds = pda_accounts::contract_auth_seeds(&context.caller, salt, signer_seed);
 
             execute_external_instruction(state, context, instruction, seeds, required_lamports)
                 .await
@@ -128,12 +118,7 @@ pub async fn call_solana<State: Database>(
 
             let signer = context.caller;
             let (_signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-
-            let signer_seeds = vector![
-                vector![ACCOUNT_SEED_VERSION],
-                signer.as_bytes().to_vector(),
-                vector![bump_seed],
-            ];
+            let signer_seeds = pda_accounts::contract_seeds(&signer, bump_seed);
 
             execute_external_instruction(
                 state,
@@ -156,21 +141,9 @@ pub async fn call_solana<State: Database>(
             let instruction_offset = read_usize(&input[64..])?;
             let instruction = read_instruction(&input[instruction_offset..])?;
 
-            let seeds: &[&[u8]] = &[
-                &[ACCOUNT_SEED_VERSION],
-                b"AUTH",
-                context.caller.as_bytes(),
-                salt,
-            ];
-            let (_, signer_seed) = Pubkey::find_program_address(seeds, state.program_id());
-            let seeds = vector![
-                vector![ACCOUNT_SEED_VERSION],
-                b"AUTH".to_vector(),
-                context.caller.as_bytes().to_vector(),
-                salt.to_vector(),
-                vector![signer_seed],
-            ];
-
+            let (_, signer_seed) =
+                pda_accounts::contract_auth_address(state.program_id(), &context.caller, salt);
+            let seeds = pda_accounts::contract_auth_seeds(&context.caller, salt, signer_seed);
             execute_external_instruction(state, context, instruction, seeds, required_lamports)
                 .await
         }
@@ -185,26 +158,16 @@ pub async fn call_solana<State: Database>(
         // "59e4ad63": "getResourceAddress(bytes32)"
         [0x59, 0xe4, 0xad, 0x63] => {
             let salt = read_salt(input)?;
-            let seeds: &[&[u8]] = &[
-                &[ACCOUNT_SEED_VERSION],
-                b"ContractData",
-                context.caller.as_bytes(),
-                salt,
-            ];
-            let (sol_address, _) = Pubkey::find_program_address(seeds, state.program_id());
+            let (sol_address, _) =
+                pda_accounts::contract_data_address(state.program_id(), &context.caller, salt);
             Ok(sol_address.to_bytes().to_vector())
         }
 
         // "cd2d1a3a": "getExtAuthority(bytes32)"
         [0xcd, 0x2d, 0x1a, 0x3a] => {
             let salt = read_salt(input)?;
-            let seeds: &[&[u8]] = &[
-                &[ACCOUNT_SEED_VERSION],
-                b"AUTH",
-                context.caller.as_bytes(),
-                salt,
-            ];
-            let (sol_address, _) = Pubkey::find_program_address(seeds, state.program_id());
+            let (sol_address, _) =
+                pda_accounts::contract_auth_address(state.program_id(), &context.caller, salt);
             Ok(sol_address.to_bytes().to_vector())
         }
 
@@ -226,9 +189,8 @@ pub async fn call_solana<State: Database>(
 
         // "30aa81c6": "getPayer()"
         [0x30, 0xaa, 0x81, 0xc6] => {
-            let seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], b"PAYER", context.caller.as_bytes()];
-            let (sol_address, _bump_seed) = Pubkey::find_program_address(seeds, state.program_id());
-
+            let (sol_address, _) =
+                pda_accounts::contract_payer_address(state.program_id(), &context.caller);
             Ok(sol_address.to_bytes().to_vector())
         }
 
@@ -243,23 +205,10 @@ pub async fn call_solana<State: Database>(
             let _lamports = read_u64(&input[64..])?;
             let owner = read_pubkey(&input[96..])?;
 
-            let (sol_address, bump_seed) = Pubkey::find_program_address(
-                &[
-                    &[ACCOUNT_SEED_VERSION],
-                    b"ContractData",
-                    context.caller.as_bytes(),
-                    salt,
-                ],
-                state.program_id(),
-            );
+            let (sol_address, bump_seed) =
+                pda_accounts::contract_data_address(state.program_id(), &context.caller, salt);
+            let seeds = pda_accounts::contract_data_seeds(&context.caller, salt, bump_seed);
             let account = state.external_account(sol_address).await?;
-            let seeds: Vector<Vector<u8>> = vector![
-                vector![ACCOUNT_SEED_VERSION],
-                b"ContractData".to_vector(),
-                context.caller.as_bytes().to_vector(),
-                salt.to_vector(),
-                vector![bump_seed],
-            ];
 
             super::create_account(state, &account, space, &owner, seeds).await?;
             Ok(sol_address.to_bytes().to_vector())
@@ -347,21 +296,15 @@ pub async fn execute_external_instruction<State: Database>(
         }
     }
 
-    let payer_seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], b"PAYER", context.caller.as_bytes()];
     let (payer_pubkey, payer_bump_seed) =
-        Pubkey::find_program_address(payer_seeds, state.program_id());
+        pda_accounts::contract_payer_address(state.program_id(), &context.caller);
     let required_payer = instruction
         .accounts
         .iter()
         .any(|meta| meta.pubkey == payer_pubkey);
 
     if required_payer {
-        let payer_seeds = vector![
-            vector![ACCOUNT_SEED_VERSION],
-            b"PAYER".to_vector(),
-            context.caller.as_bytes().to_vector(),
-            vector![payer_bump_seed],
-        ];
+        let payer_seeds = pda_accounts::contract_payer_seeds(&context.caller, payer_bump_seed);
 
         let payer = state.external_account(payer_pubkey).await?;
         if payer.lamports < required_lamports {

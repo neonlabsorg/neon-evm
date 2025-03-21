@@ -6,7 +6,7 @@ use maybe_async::maybe_async;
 use solana_program::{account_info::IntoAccountInfo, pubkey::Pubkey};
 use spl_associated_token_account::get_associated_token_address;
 
-use crate::types::vector::VectorSliceExt;
+use crate::account::pda_accounts;
 use crate::vector;
 
 use crate::types::Vector;
@@ -120,7 +120,7 @@ async fn withdraw<State: Database>(
             .await?;
     }
 
-    let (authority, bump_seed) = Pubkey::find_program_address(&[b"Deposit"], state.program_id());
+    let (authority, bump_seed) = pda_accounts::main_pool_authority(state.program_id());
     let pool = get_associated_token_address(&authority, &mint_address);
 
     let transfer = spl_token::instruction::transfer_checked(
@@ -133,7 +133,7 @@ async fn withdraw<State: Database>(
         spl_amount.as_u64(),
         mint_data.decimals,
     )?;
-    let transfer_seeds = vector![b"Deposit".to_vector(), vector![bump_seed]];
+    let transfer_seeds = pda_accounts::main_pool_authority_seeds(bump_seed);
 
     state.burn(source, chain_id, value).await?;
     state

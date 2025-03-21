@@ -144,6 +144,7 @@ impl<'a> TransactionTree<'a> {
         const MIN_GAS_LIMIT: U256 = U256::new(
             BASE_ITERATIVE_TRANSACTION_COST as u128 + TREE_ACCOUNT_FINISH_TRANSACTION_GAS as u128,
         );
+        const TREE_ACCOUNT_MAX_NODES: usize = 16;
 
         // Validate account
         let (pubkey, bump) = Self::find_address(&crate::ID, init.payer, init.chain_id, init.nonce);
@@ -162,6 +163,10 @@ impl<'a> TransactionTree<'a> {
         }
 
         let nodes = init.nodes;
+        if nodes.len() > TREE_ACCOUNT_MAX_NODES {
+            return Err(Error::TreeAccountTxInvalidTooMuchNodes);
+        }
+
         let mut parent_counts = vec![0_u16; nodes.len()];
 
         for (i, node) in nodes.iter().enumerate() {
@@ -182,7 +187,10 @@ impl<'a> TransactionTree<'a> {
                 return Err(Error::TreeAccountTxInvalidChildIndex);
             }
 
-            parent_counts[node.child as usize] += 1;
+            let parent_count = &mut parent_counts[node.child as usize];
+            *parent_count = parent_count
+                .checked_add(1)
+                .ok_or(Error::TreeAccountTxInvalidParentCount)?;
         }
 
         for (node, parent_count) in nodes.iter().zip(&parent_counts) {

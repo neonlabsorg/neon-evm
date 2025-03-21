@@ -2,7 +2,6 @@ use ethnum::U256;
 use maybe_async::maybe_async;
 use rlp::{DecoderError, Rlp};
 use serde::{Deserialize, Serialize};
-use solana_program::instruction::{get_stack_height, TRANSACTION_LEVEL_STACK_HEIGHT};
 use std::convert::TryInto;
 
 use crate::account::TransactionTree;
@@ -1131,15 +1130,6 @@ impl Transaction {
         if validate_nonce && (origin_nonce != self.nonce()) {
             let error = Error::InvalidTransactionNonce(origin, origin_nonce, self.nonce());
             return Err(error);
-        }
-
-        // The reason to forbid the calls for DynamicFee transactions - priority fee calculation
-        // uses get_processed_sibling_instruction syscall which doesn't work well for CPI.
-        let is_root_transaction = get_stack_height() == TRANSACTION_LEVEL_STACK_HEIGHT;
-        if matches!(self.tx_type(), 2 | 0x80) && !is_root_transaction {
-            return Err(
-                "CPI calls of Neon EVM are forbidden for DynamicFee transaction type.".into(),
-            );
         }
 
         Ok(())

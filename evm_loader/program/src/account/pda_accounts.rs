@@ -7,6 +7,10 @@ use solana_program::pubkey::Pubkey;
 
 use super::ACCOUNT_SEED_VERSION;
 
+// Program Derived Addresses for all account types in the program.
+// Caution: When adding new account types, make sure no collisions occur with existing seeds.
+//          Using a unique prefix for each account type is recommended.
+
 #[must_use]
 pub fn main_treasury_pool_address(program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[TREASURY_POOL_SEED.as_bytes()], program_id)

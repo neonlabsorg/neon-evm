@@ -387,6 +387,30 @@ async fn emulate_trx_single_step<'rpc, T: Tracer>(
     .await
 }
 
+async fn prepare_origin<'rpc, T: Rpc + BuildConfigSimulator>(
+    origin: &Address,
+    storage: &mut EmulatorAccountStorage<'rpc, T>,
+    tx: &Transaction,
+    chain_id: u64,
+    increase_gas_limit: bool,
+    is_skd_transaction: bool,
+) -> NeonResult<()> {
+    if is_skd_transaction {
+        // Increment origin's nonce only once for the whole execution tree.
+        let tx_nonce = tx.nonce();
+        let origin_nonce = storage.nonce(*origin, chain_id).await;
+
+        if origin_nonce == tx_nonce {
+            increment_nonce(storage, origin, chain_id).await?;
+        }
+    } else {
+        increment_nonce(storage, origin, chain_id).await?;
+        transfer_gas_limit(storage, tx, origin, chain_id, increase_gas_limit).await?;
+    }
+
+    Ok(())
+}
+
 async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
     db_config: &Option<DbConfig>,
     program_id: &Pubkey,
@@ -433,10 +457,15 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
         .unwrap_or_else(|| storage.default_chain_id());
     let increase_gas_limit = emulate_request.tx.chain_id.is_none();
 
-    if !is_skd_transaction {
-        increment_nonce(&mut storage, &origin, chain_id).await?;
-        transfer_gas_limit(&mut storage, &tx, &origin, chain_id, increase_gas_limit).await?;
-    }
+    prepare_origin(
+        &origin,
+        &mut storage,
+        &tx,
+        chain_id,
+        increase_gas_limit,
+        is_skd_transaction,
+    )
+    .await?;
 
     let (exit_status, steps_executed, step_on_solana, tracer, timestamped_contracts) = {
         let mut backend = SyncedExecutorState::new(&mut storage);
@@ -499,11 +528,15 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
                 )
                 .await?;
 
-                if !is_skd_transaction {
-                    increment_nonce(&mut storage, &origin, chain_id).await?;
-                    transfer_gas_limit(&mut storage, &tx, &origin, chain_id, increase_gas_limit)
-                        .await?;
-                }
+                prepare_origin(
+                    &origin,
+                    &mut storage,
+                    &tx,
+                    chain_id,
+                    increase_gas_limit,
+                    is_skd_transaction,
+                )
+                .await?;
 
                 backend = SyncedExecutorState::new(&mut storage);
 

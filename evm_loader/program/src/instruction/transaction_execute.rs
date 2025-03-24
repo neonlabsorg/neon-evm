@@ -99,6 +99,8 @@ fn handle_gas(
     mut gasometer: Gasometer,
     origin: Address,
 ) -> Result<()> {
+    use priority_fee_txn_calculator::finalize_priority_fee;
+
     let gas_limit = trx.gas_limit();
     let gas_price = trx.gas_price();
     let chain_id = trx.chain_id().unwrap_or(crate::config::DEFAULT_CHAIN_ID);
@@ -111,10 +113,15 @@ fn handle_gas(
 
     log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
-    let gas_cost = used_gas.saturating_mul(gas_price);
-    let priority_fee =
-        priority_fee_txn_calculator::finalize_priority_fee(&trx, used_gas, U256::ZERO)?;
-    account_storage.transfer_gas_payment(origin, chain_id, gas_cost + priority_fee)?;
+    let priority_fee = finalize_priority_fee(&trx, used_gas, U256::ZERO)?;
+    let Some(gas_cost) = used_gas.checked_mul(gas_price) else {
+        return Err(Error::IntegerOverflow);
+    };
+    let Some(gas_to_be_paid) = gas_cost.checked_add(priority_fee) else {
+        return Err(Error::IntegerOverflow);
+    };
+
+    account_storage.transfer_gas_payment(origin, chain_id, gas_to_be_paid)?;
 
     Ok(())
 }

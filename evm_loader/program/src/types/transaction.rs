@@ -886,6 +886,14 @@ impl Transaction {
             .ok_or(Error::IntegerOverflow)
     }
 
+    pub fn tokens_to_be_paid(&self) -> Result<U256, Error> {
+        let gas_limit = self.gas_limit_in_tokens()?;
+        let priority_fee_limit = self.priority_fee_limit_in_tokens()?;
+        gas_limit
+            .checked_add(priority_fee_limit)
+            .ok_or(Error::IntegerOverflow)
+    }
+
     #[must_use]
     pub fn payer(&self, origin: Address) -> Address {
         match self.transaction {

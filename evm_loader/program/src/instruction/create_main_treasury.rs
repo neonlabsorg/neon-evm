@@ -41,7 +41,8 @@ fn get_program_upgrade_authority<'a>(
     program_id: &'a Pubkey,
     program_data: &'a AccountInfo<'a>,
 ) -> Result<Pubkey> {
-    let expected_program_data_key = bpf_loader_upgradeable::get_program_data_address(&program_id);
+    let (expected_program_data_key, _) =
+        Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id());
 
     if *program_data.key != expected_program_data_key {
         return Err(Error::AccountInvalidKey(

@@ -72,7 +72,7 @@ fn update_ether_account_from_v1(
 
     let mut lamports_collected = 0_u64;
 
-    if (legacy_data.generation > 0) || (legacy_data.code_size > 0) {
+    if legacy_data.code_size > 0 {
         // This is contract account. Convert it to new format
         super::validate_tag(&crate::ID, account, TAG_ACCOUNT_CONTRACT_DEPRECATED)?;
 

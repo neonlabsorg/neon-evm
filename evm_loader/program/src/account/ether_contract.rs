@@ -16,7 +16,8 @@ use std::{
 use crate::config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 
 use super::{
-    AccountHeader, AccountsDB, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION, TAG_ACCOUNT_CONTRACT,
+    program, AccountHeader, AccountsDB, Operator, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION,
+    TAG_ACCOUNT_CONTRACT,
 };
 
 #[derive(Eq, PartialEq)]
@@ -262,6 +263,44 @@ impl<'a> ContractAccount<'a> {
 
         let data = self.account.data.borrow_mut();
         RefMut::map(data, |d| &mut d[offset..])
+    }
+
+    pub fn replace_code(
+        &mut self,
+        new_code: &[u8],
+        operator: &Operator<'a>,
+        system: &program::System<'a>,
+        rent: &Rent,
+    ) -> Result<()> {
+        let existing_code_len = self.code_len();
+        let new_code_len = new_code.len();
+
+        match new_code_len.cmp(&existing_code_len) {
+            std::cmp::Ordering::Less => {
+                let diff = existing_code_len - new_code_len;
+                let required_size = self.account.data_len() - diff;
+                self.account.realloc(required_size, false)?;
+            }
+            std::cmp::Ordering::Greater => {
+                let diff = new_code_len - existing_code_len;
+                let required_size = self.account.data_len() + diff;
+                self.account.realloc(required_size, false)?;
+
+                let required_balance = rent.minimum_balance(required_size);
+                if self.account.lamports() < required_balance {
+                    let lamports = required_balance - self.account.lamports();
+                    system.transfer(operator, &self.account, lamports)?;
+                }
+            }
+            std::cmp::Ordering::Equal => {}
+        }
+
+        {
+            let mut code = self.code_mut();
+            code.copy_from_slice(new_code);
+        }
+
+        Ok(())
     }
 
     #[must_use]

@@ -223,6 +223,9 @@ fn process_instruction(
         EvmInstruction::OperatorBalanceWithdraw => {
             instruction::operator_withdraw_balance::process(program_id, accounts, instruction)
         }
+        EvmInstruction::UpdateERC20 => {
+            instruction::erc20_update::process(program_id, accounts, instruction)
+        }
     }
     .inspect_err(|e| {
         e.log_data();

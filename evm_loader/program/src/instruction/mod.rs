@@ -290,6 +290,7 @@ pub enum EvmInstruction {
     OperatorBalanceCreate,
     OperatorBalanceDelete,
     OperatorBalanceWithdraw,
+    UpdateERC20,
 }
 
 impl EvmInstruction {
@@ -338,6 +339,8 @@ impl EvmInstruction {
             0xA6 => Self::ConfigGetStatus,
             0xA7 => Self::ConfigGetVersion,
 
+            0xB0 => Self::UpdateERC20,
+
             _ => return Err(ProgramError::InvalidInstructionData),
         })
     }
@@ -357,6 +360,7 @@ pub mod config_get_property_count;
 pub mod config_get_status;
 pub mod config_get_version;
 pub mod create_main_treasury;
+pub mod erc20_update;
 pub mod instruction_internals;
 pub mod neon_tokens_deposit;
 pub mod operator_create_balance;

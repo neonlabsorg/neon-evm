@@ -201,7 +201,7 @@ impl<'a> ProgramAccountStorage<'a> {
 
         for (address, storage) in storage {
             let mut contract: Option<ContractAccount> = None;
-
+            let mut contract_updated = false;
             let mut infinite_values: HashMap<U256, HashMap<u8, [u8; 32]>> =
                 HashMap::with_capacity(storage.len());
 
@@ -214,7 +214,10 @@ impl<'a> ProgramAccountStorage<'a> {
 
                     // Static Storage - Write into contract account
                     let index: usize = index.as_usize();
-                    contract.set_storage_value(index, &value);
+                    if value != contract.storage_value(index) {
+                        contract.set_storage_value(index, &value);
+                        contract_updated = true;
+                    }
                 } else {
                     // Infinite Storage - Write into separate account
                     let subindex = (index & 0xFF).as_u8();
@@ -228,7 +231,9 @@ impl<'a> ProgramAccountStorage<'a> {
             }
 
             if let Some(mut contract) = contract {
-                contract.increment_revision(&self.rent, &self.accounts)?;
+                if contract_updated {
+                    contract.increment_revision(&self.rent, &self.accounts)?;
+                }
             }
 
             for (index, values) in infinite_values {
@@ -264,12 +269,18 @@ impl<'a> ProgramAccountStorage<'a> {
                     }
                 } else {
                     let mut storage = StorageCell::from_account(&crate::ID, account.clone())?;
+                    let mut storage_updated = false;
                     for (subindex, value) in values {
-                        storage.update(subindex, &value)?;
+                        if storage.get(subindex) != value {
+                            storage.update(subindex, &value)?;
+                            storage_updated = true;
+                        }
                     }
 
                     storage.sync_lamports(&self.rent, &self.accounts)?;
-                    storage.increment_revision(&self.rent, &self.accounts)?;
+                    if storage_updated {
+                        storage.increment_revision(&self.rent, &self.accounts)?;
+                    }
                 };
             }
         }

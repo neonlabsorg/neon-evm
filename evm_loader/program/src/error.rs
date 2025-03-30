@@ -319,7 +319,7 @@ pub enum Error {
     TreeAccountTxInvalidStatus,
 
     #[error("Transaction Tree - transaction requires at least 1.1 GAlan for gas price")]
-    TreeAccountInvalidPriorityFeePerGas,
+    TreeAccountInvalidFeePerGas,
 
     #[error("Transaction Tree - transaction requires at least 25'000 gas limit")]
     TreeAccountInvalidGasLimit,
@@ -371,6 +371,9 @@ pub enum Error {
 
     #[error("CPI calls of Neon EVM are forbidden for DynamicFee transaction type")]
     PriorityFeeForbiddenInCpi,
+
+    #[error("Gas Limit is too big: {0}")]
+    GasLimitOverflow(#[serde(with = "ethnum::serde::bytes::le")] U256),
 }
 
 impl Error {

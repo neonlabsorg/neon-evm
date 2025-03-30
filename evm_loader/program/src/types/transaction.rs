@@ -842,24 +842,11 @@ impl Transaction {
             TransactionPayload::Legacy(LegacyTx { gas_price, .. })
             | TransactionPayload::AccessList(AccessListTx { gas_price, .. }) => gas_price,
             TransactionPayload::DynamicFee(DynamicFeeTx {
-                max_priority_fee_per_gas,
-                max_fee_per_gas,
-                ..
+                max_fee_per_gas, ..
             })
             | TransactionPayload::Scheduled(ScheduledTx {
-                max_priority_fee_per_gas,
-                max_fee_per_gas,
-                ..
-            }) => {
-                // If a priority fee is defined, use it to pay the operator the base cost
-                //  for details see priority_fee_txn_calculator.rs
-                if max_priority_fee_per_gas == U256::ZERO {
-                    // if there is no priority fee, use the whole max-fee-per-gas
-                    max_fee_per_gas
-                } else {
-                    max_priority_fee_per_gas
-                }
-            }
+                max_fee_per_gas, ..
+            }) => max_fee_per_gas,
         }
     }
 
@@ -876,21 +863,6 @@ impl Transaction {
     pub fn gas_limit_in_tokens(&self) -> Result<U256, Error> {
         self.gas_price()
             .checked_mul(self.gas_limit())
-            .ok_or(Error::IntegerOverflow)
-    }
-
-    pub fn priority_fee_limit_in_tokens(&self) -> Result<U256, Error> {
-        self.base_fee_per_gas()
-            .unwrap_or_default()
-            .checked_mul(self.gas_limit())
-            .ok_or(Error::IntegerOverflow)
-    }
-
-    pub fn tokens_to_be_paid(&self) -> Result<U256, Error> {
-        let gas_limit = self.gas_limit_in_tokens()?;
-        let priority_fee_limit = self.priority_fee_limit_in_tokens()?;
-        gas_limit
-            .checked_add(priority_fee_limit)
             .ok_or(Error::IntegerOverflow)
     }
 
@@ -1035,31 +1007,6 @@ impl Transaction {
                 max_priority_fee_per_gas,
                 ..
             }) => Some(max_priority_fee_per_gas),
-        }
-    }
-
-    #[must_use]
-    pub fn base_fee_per_gas(&self) -> Option<U256> {
-        match self.transaction {
-            TransactionPayload::Legacy(_) | TransactionPayload::AccessList(_) => None,
-            TransactionPayload::DynamicFee(DynamicFeeTx {
-                max_priority_fee_per_gas,
-                max_fee_per_gas,
-                ..
-            })
-            | TransactionPayload::Scheduled(ScheduledTx {
-                max_priority_fee_per_gas,
-                max_fee_per_gas,
-                ..
-            }) => {
-                if max_priority_fee_per_gas == U256::ZERO
-                    || max_fee_per_gas == max_priority_fee_per_gas
-                {
-                    None
-                } else {
-                    Some(max_fee_per_gas.saturating_sub(max_priority_fee_per_gas))
-                }
-            }
         }
     }
 

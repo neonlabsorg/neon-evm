@@ -31,6 +31,7 @@ pub mod gasometer;
 pub mod instruction;
 #[macro_use]
 pub mod types;
+pub mod priority_gas_calculator;
 
 // Export current solana-sdk types for downstream users who may also be building with a different
 // solana-sdk version

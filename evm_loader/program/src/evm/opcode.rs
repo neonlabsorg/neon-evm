@@ -754,9 +754,7 @@ impl<T: EventListener> Machine<T> {
     }
 
     /// London hardfork, EIP-3198: current block's base fee, taken from the transaction.
-    /// N.B. for DynamicFee transaction (EIP-1559), gas_price here is equal to:
-    /// `max_priority_fee_per_gas`.
-    /// For details see priority_fee_txn_calculator.rs
+    /// N.B. for DynamicFee transaction (EIP-1559), gas_price here is equal to: `max_fee_per_gas`.
     #[maybe_async]
     pub async fn opcode_basefee(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_u256(self.gas_price)?;

@@ -265,6 +265,11 @@ impl<'a> AccountsDB<'a> {
     }
 
     #[must_use]
+    pub fn has_treasury(&self) -> bool {
+        self.treasury.is_some()
+    }
+
+    #[must_use]
     pub fn operator(&self) -> &Operator<'a> {
         &self.operator
     }

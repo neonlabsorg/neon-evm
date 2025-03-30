@@ -57,9 +57,7 @@ pub fn process<'a>(
             log_data(&[b"MINER", miner_address.as_bytes()]);
 
             let mut gasometer = Gasometer::new(U256::ZERO, &operator)?;
-            gasometer.record_solana_transaction_cost();
             gasometer.record_address_lookup_table(accounts);
-            gasometer.record_write_to_holder(&trx);
 
             let storage = StateAccount::new(
                 program_id,

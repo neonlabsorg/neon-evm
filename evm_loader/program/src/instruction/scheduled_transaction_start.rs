@@ -30,11 +30,11 @@ pub fn do_scheduled_start<'a>(
         origin_account.increment_nonce()?;
     }
 
-    // Burn `gas_limit` tokens (both base fee and priority, if any) from the tree account.
+    // Burn `gas_limit` tokens from the tree account.
     // Later we will mint them to the operator.
     // Remaining tokens are returned back to the tree account in the last iteration.
-    let tokens_to_be_paid = storage.trx().tokens_to_be_paid()?;
-    transaction_tree.burn(tokens_to_be_paid)?;
+    let gas_limit_in_tokens = storage.trx().gas_limit_in_tokens()?;
+    transaction_tree.burn(gas_limit_in_tokens)?;
 
     // record gas for the future finish
     gasometer.record_scheduled_transaction_finish();

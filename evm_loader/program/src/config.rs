@@ -33,3 +33,14 @@ common_config_parser!("config/common.toml");
 
 neon_elf_param!(NEON_PKG_VERSION, env!("CARGO_PKG_VERSION"));
 neon_elf_param!(NEON_REVISION, env!("NEON_REVISION"));
+
+// LAMPORTs for signature verification
+pub const LAMPORTS_PER_SIGNATURE: u64 = 5000;
+// Minimal iterations in the Neon transaction: (start) + (exec) + (finalization)
+pub const MINIMAL_ITERATION_COUNT: u64 = 3;
+// Execution gas for an iteration
+pub const EXEC_ITERATION_COST: u64 = LAMPORTS_PER_SIGNATURE + PAYMENT_TO_TREASURE;
+// Gas for the last iteration
+pub const LAST_ITERATION_COST: u64 = LAMPORTS_PER_SIGNATURE + PAYMENT_TO_TREASURE;
+// 10'000 (start) + 10'000 (exec) + 5000 (finalization)
+pub const BASE_ITERATIVE_TRANSACTION_COST: u64 = EXEC_ITERATION_COST * 2 + LAST_ITERATION_COST;

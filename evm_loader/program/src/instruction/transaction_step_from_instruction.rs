@@ -59,7 +59,6 @@ pub fn process<'a>(
             log_data(&[b"MINER", miner_address.as_bytes()]);
 
             let mut gasometer = Gasometer::new(U256::ZERO, &operator)?;
-            gasometer.record_solana_transaction_cost();
             gasometer.record_address_lookup_table(accounts);
 
             let storage =
@@ -77,8 +76,7 @@ pub fn process<'a>(
             log_data(&[b"HASH", &storage.trx().hash()]);
             log_data(&[b"MINER", miner_address.as_bytes()]);
 
-            let mut gasometer = Gasometer::new(storage.gas_used(), &operator)?;
-            gasometer.record_solana_transaction_cost();
+            let gasometer = Gasometer::new(storage.gas_used(), &operator)?;
 
             let reset = accounts_status != AccountsStatus::Ok;
             do_continue(step_count, accounts_db, storage, gasometer, reset)

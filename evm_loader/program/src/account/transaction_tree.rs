@@ -7,11 +7,11 @@ use super::{
     ACCOUNT_SEED_VERSION, TAG_TRANSACTION_TREE,
 };
 use crate::config::{
-    TREE_ACCOUNT_DESTROY_FEE, TREE_ACCOUNT_FINISH_TRANSACTION_GAS, TREE_ACCOUNT_TIMEOUT,
+    BASE_ITERATIVE_TRANSACTION_COST, TREE_ACCOUNT_DESTROY_FEE, TREE_ACCOUNT_FINISH_TRANSACTION_GAS,
+    TREE_ACCOUNT_TIMEOUT,
 };
 use crate::error::{Error, Result};
 use crate::evm::ExitStatus;
-use crate::gasometer::BASE_ITERATIVE_TRANSACTION_COST;
 use crate::types::{Address, Transaction, TransactionPayload};
 use ethnum::U256;
 use solana_program::{
@@ -132,7 +132,7 @@ impl<'a> TransactionTree<'a> {
         rent: &Rent,
         clock: &Clock,
     ) -> Result<Self> {
-        const MIN_PRIORITY_FEE_PER_GAS: U256 = U256::new(1_100_000_000);
+        const MIN_FEE_PER_GAS: U256 = U256::new(1_100_000_000);
         const MIN_GAS_LIMIT: U256 = U256::new(
             BASE_ITERATIVE_TRANSACTION_COST as u128 + TREE_ACCOUNT_FINISH_TRANSACTION_GAS as u128,
         );
@@ -148,10 +148,10 @@ impl<'a> TransactionTree<'a> {
             return Err(Error::TreeAccountAlreadyExists);
         }
 
-        if init.max_priority_fee_per_gas < MIN_PRIORITY_FEE_PER_GAS {
+        if init.max_fee_per_gas < MIN_FEE_PER_GAS {
             // Require at least 1.1 to 1.1 ratio to operator spending
             // 1.1 GAlan in gas equals to 1.1 lamport
-            return Err(Error::TreeAccountInvalidPriorityFeePerGas);
+            return Err(Error::TreeAccountInvalidFeePerGas);
         }
 
         let nodes = init.nodes;

@@ -1,18 +1,15 @@
 use std::convert::TryInto;
 
 use crate::account::Operator;
-use crate::config::{HOLDER_MSG_SIZE, TREE_ACCOUNT_FINISH_TRANSACTION_GAS};
+use crate::config::{HOLDER_MSG_SIZE, LAMPORTS_PER_SIGNATURE, TREE_ACCOUNT_FINISH_TRANSACTION_GAS};
+use crate::error::Error;
+use crate::priority_gas_calculator::calc_priority_gas;
 use crate::types::Transaction;
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
 use solana_program::program_error::ProgramError;
 
-pub const LAMPORTS_PER_SIGNATURE: u64 = 5000;
-
 const WRITE_TO_HOLDER_TRX_COST: u64 = LAMPORTS_PER_SIGNATURE;
-pub const CANCEL_TRX_COST: u64 = LAMPORTS_PER_SIGNATURE;
-pub const LAST_ITERATION_COST: u64 = LAMPORTS_PER_SIGNATURE;
-pub const BASE_ITERATIVE_TRANSACTION_COST: u64 = 25_000; // 10'000 (start) + 10'000 (exec) + 5000 (finalization)
 
 pub struct Gasometer {
     paid_gas: U256,
@@ -51,8 +48,13 @@ impl Gasometer {
         self.gas = self.gas.saturating_add(expenses);
     }
 
-    pub fn record_solana_transaction_cost(&mut self) {
+    pub fn record_solana_transaction_cost(&mut self, trx: &Transaction) -> Result<(), Error> {
         self.gas = self.gas.saturating_add(LAMPORTS_PER_SIGNATURE);
+
+        let priority_gas = calc_priority_gas(trx)?;
+        self.gas = self.gas.saturating_add(priority_gas);
+
+        Ok(())
     }
 
     pub fn record_write_to_holder(&mut self, trx: &Transaction) {

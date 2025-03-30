@@ -1,11 +1,11 @@
 use std::cmp::min;
 
 use crate::account::{AccountsDB, BalanceAccount, Operator, OperatorBalanceAccount, StateAccount};
-use crate::config::DEFAULT_CHAIN_ID;
+use crate::config::{DEFAULT_CHAIN_ID, LAST_ITERATION_COST};
 use crate::debug::log_data;
 use crate::error::{Error, Result};
-use crate::gasometer::{CANCEL_TRX_COST, LAST_ITERATION_COST};
-use crate::instruction::priority_fee_txn_calculator;
+
+use crate::priority_gas_calculator::calc_priority_gas;
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::rent::Rent;
@@ -53,11 +53,13 @@ fn execute<'a>(
     accounts: AccountsDB<'a>,
     mut storage: StateAccount<'a>,
 ) -> Result<()> {
-    let trx_chain_id = storage.trx().chain_id().unwrap_or(DEFAULT_CHAIN_ID);
+    let trx = storage.trx();
+    let trx_chain_id = trx.chain_id().unwrap_or(DEFAULT_CHAIN_ID);
+    let priority_gas = calc_priority_gas(trx)?;
 
     let used_gas = min(
         storage.gas_available(),
-        U256::from(CANCEL_TRX_COST + LAST_ITERATION_COST),
+        U256::from(LAST_ITERATION_COST + priority_gas),
     );
     let total_used_gas = storage.gas_used() + used_gas;
 
@@ -67,14 +69,7 @@ fn execute<'a>(
         &total_used_gas.to_le_bytes(),
     ]);
 
-    let trx = storage.trx();
-    let total_priority_fee_used = storage.priority_fee_in_tokens_used();
-    let priority_fee = priority_fee_txn_calculator::finalize_priority_fee(
-        trx,
-        total_used_gas,
-        total_priority_fee_used,
-    )?;
-    let _ = storage.consume_gas(used_gas, priority_fee, accounts.try_operator_balance()); // ignore error
+    let _ = storage.consume_gas(used_gas, accounts.try_operator_balance()); // ignore error
 
     let origin = storage.trx_origin();
     let (origin_pubkey, _) = origin.find_balance_address(program_id, trx_chain_id);

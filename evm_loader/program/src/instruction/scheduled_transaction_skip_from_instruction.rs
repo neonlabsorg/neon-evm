@@ -1,4 +1,3 @@
-use super::priority_fee_txn_calculator::handle_priority_fee;
 use crate::account::{
     Holder, Operator, OperatorBalanceAccount, OperatorBalanceValidator, TransactionTree,
 };
@@ -11,7 +10,9 @@ use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-pub fn calculate_gas_for_skip(trx: &Transaction, gasometer: &Gasometer) -> Result<U256> {
+pub fn calculate_gas_for_skip(trx: &Transaction, mut gasometer: Gasometer) -> Result<U256> {
+    gasometer.record_solana_transaction_cost(trx)?;
+
     let gas_limit = trx.gas_limit();
     let gas_price = trx.gas_price();
 
@@ -22,10 +23,7 @@ pub fn calculate_gas_for_skip(trx: &Transaction, gasometer: &Gasometer) -> Resul
 
     log_data(&[b"GAS", &used_gas.to_le_bytes(), &used_gas.to_le_bytes()]);
 
-    let gas_cost = used_gas.saturating_mul(gas_price);
-    let priority_fee = handle_priority_fee(&trx)?;
-
-    let gas = gas_cost.saturating_add(priority_fee);
+    let gas = used_gas.saturating_mul(gas_price);
     Ok(gas)
 }
 
@@ -60,10 +58,8 @@ pub fn process<'a>(
     transaction_tree.skip_transaction(&trx)?;
 
     if let Some(operator_balance) = &mut operator_balance {
-        let mut gasometer = Gasometer::new(U256::ZERO, &operator)?;
-        gasometer.record_solana_transaction_cost();
-
-        let gas = calculate_gas_for_skip(&trx, &gasometer)?;
+        let gasometer = Gasometer::new(U256::ZERO, &operator)?;
+        let gas = calculate_gas_for_skip(&trx, gasometer)?;
 
         assert_eq!(transaction_tree.chain_id(), operator_balance.chain_id());
         transaction_tree.burn(gas)?;

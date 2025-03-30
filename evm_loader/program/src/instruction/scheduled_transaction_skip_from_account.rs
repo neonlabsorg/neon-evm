@@ -37,10 +37,9 @@ pub fn process<'a>(
 
     if let Some(operator_balance) = &mut operator_balance {
         let mut gasometer = Gasometer::new(U256::ZERO, &operator)?;
-        gasometer.record_solana_transaction_cost();
         gasometer.record_write_to_holder(&trx);
 
-        let gas = calculate_gas_for_skip(&trx, &gasometer)?;
+        let gas = calculate_gas_for_skip(&trx, gasometer)?;
 
         assert_eq!(transaction_tree.chain_id(), operator_balance.chain_id());
         transaction_tree.burn(gas)?;

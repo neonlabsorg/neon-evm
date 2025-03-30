@@ -10,7 +10,6 @@ use crate::evm::{ExitStatus, Machine};
 use crate::executor::precompile_extension::call_solana::execute_external_instruction;
 use crate::executor::{Action, ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
-use crate::instruction::priority_fee_txn_calculator;
 use crate::types::boxx::boxx;
 use crate::types::{Address, Vector};
 use crate::types::{Transaction, TreeMap};
@@ -120,7 +119,7 @@ pub fn finalize<'a, 'b>(
         &storage.steps_executed().to_le_bytes(),
     ]);
 
-    if steps_executed > 0 {
+    if accounts.has_treasury() {
         accounts.transfer_treasury_payment()?;
     }
 
@@ -136,6 +135,7 @@ pub fn finalize<'a, 'b>(
         None
     };
 
+    gasometer.record_solana_transaction_cost(storage.trx())?;
     gasometer.record_operator_expenses(accounts.operator());
 
     let used_gas = gasometer.used_gas();
@@ -146,24 +146,7 @@ pub fn finalize<'a, 'b>(
         &total_used_gas.to_le_bytes(),
     ]);
 
-    // Calculate priority fee for the current iteration.
-    let trx = storage.trx();
-    let priority_fee_in_tokens = if status.is_some() {
-        let total_priority_fee_used = storage.priority_fee_in_tokens_used();
-        priority_fee_txn_calculator::finalize_priority_fee(
-            trx,
-            total_used_gas,
-            total_priority_fee_used,
-        )?
-    } else {
-        priority_fee_txn_calculator::handle_priority_fee(trx)?
-    };
-
-    storage.consume_gas(
-        used_gas,
-        priority_fee_in_tokens,
-        accounts.db().try_operator_balance(),
-    )?;
+    storage.consume_gas(used_gas, accounts.db().try_operator_balance())?;
 
     if let Some(status) = status {
         log_return_value(&status);

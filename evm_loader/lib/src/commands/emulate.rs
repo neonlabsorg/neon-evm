@@ -22,10 +22,11 @@ use evm_loader::account_storage::AccountStorage;
 use evm_loader::error::build_revert_message;
 use evm_loader::types::{Address, Transaction};
 use evm_loader::{
-    config::{EVM_STEPS_MIN, GAS_LIMIT_MULTIPLIER_NO_CHAINID, PAYMENT_TO_TREASURE},
+    config::{
+        EVM_STEPS_MIN, GAS_LIMIT_MULTIPLIER_NO_CHAINID, LAMPORTS_PER_SIGNATURE, PAYMENT_TO_TREASURE,
+    },
     evm::{ExitStatus, Machine},
     executor::SyncedExecutorState,
-    gasometer::LAMPORTS_PER_SIGNATURE,
 };
 use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
@@ -225,10 +226,7 @@ async fn transfer_gas_limit<'rpc, T: Rpc + BuildConfigSimulator>(
     chain_id: u64,
     increase_gas_limit: bool,
 ) -> NeonResult<()> {
-    let gas_limit_in_tokens = tx.gas_limit_in_tokens()?;
-    let max_priority_fee_in_tokens = tx.priority_fee_limit_in_tokens()?;
-
-    let mut gas_limit = gas_limit_in_tokens + max_priority_fee_in_tokens;
+    let mut gas_limit = tx.gas_limit_in_tokens()?;
 
     if increase_gas_limit {
         gas_limit = gas_limit.saturating_mul(U256::from(GAS_LIMIT_MULTIPLIER_NO_CHAINID));
@@ -255,16 +253,15 @@ async fn calculate_response<T: Rpc + BuildConfigSimulator, Tr: Tracer>(
     let logs = storage.logs();
     let execute_status = storage.execute_status;
 
-    let steps_iterations = (steps_executed + (EVM_STEPS_MIN - 1)) / EVM_STEPS_MIN;
-    let treasury_gas = steps_iterations * PAYMENT_TO_TREASURE;
-    let cancel_gas = LAMPORTS_PER_SIGNATURE;
+    let steps_iterations = 1.max((steps_executed + (EVM_STEPS_MIN - 1)) / EVM_STEPS_MIN);
 
     let begin_end_iterations = 2;
     let iterations: u64 = steps_iterations + begin_end_iterations + storage.realloc_iterations;
     let iterations_gas = iterations * LAMPORTS_PER_SIGNATURE;
+    let treasury_gas = iterations * PAYMENT_TO_TREASURE;
     let storage_gas = storage.get_changes_in_rent()?;
 
-    let used_gas = storage_gas + iterations_gas + treasury_gas + cancel_gas;
+    let used_gas = storage_gas + iterations_gas + treasury_gas;
 
     let solana_accounts = storage
         .used_accounts()

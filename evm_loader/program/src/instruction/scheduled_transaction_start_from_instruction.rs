@@ -63,9 +63,7 @@ pub fn process<'a>(
             log_data(&[b"MINER", miner_address.as_bytes()]);
 
             let mut gasometer = Gasometer::new(U256::ZERO, &operator)?;
-            gasometer.record_solana_transaction_cost();
             gasometer.record_address_lookup_table(accounts);
-            gasometer.record_write_to_holder(&trx);
 
             excessive_lamports += crate::account::legacy::update_legacy_accounts(&accounts_db)?;
             gasometer.refund_lamports(excessive_lamports);

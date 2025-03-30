@@ -49,7 +49,6 @@ pub fn process<'a>(
     );
 
     let mut gasometer = Gasometer::new(U256::ZERO, accounts_db.operator())?;
-    gasometer.record_solana_transaction_cost();
     gasometer.record_address_lookup_table(accounts);
 
     super::transaction_execute::execute_with_solana_call(accounts_db, gasometer, trx, origin)

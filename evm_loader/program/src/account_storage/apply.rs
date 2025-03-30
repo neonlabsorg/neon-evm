@@ -27,6 +27,10 @@ impl<'a> ProgramAccountStorage<'a> {
         Ok(())
     }
 
+    pub fn has_treasury(&self) -> bool {
+        self.accounts.has_treasury()
+    }
+
     pub fn transfer_gas_payment(
         &mut self,
         origin: Address,

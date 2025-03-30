@@ -32,11 +32,11 @@ pub fn do_begin<'a>(
     origin_account.increment_revision(account_storage.rent(), account_storage.db())?;
     origin_account.increment_nonce()?;
 
-    // Burn `gas_limit` tokens (both base fee and priority, if any) from the origin account.
+    // Burn `gas_limit` tokens from the origin account.
     // Later we will mint them to the operator.
     // Remaining tokens are returned to the origin in the last iteration.
-    let tokens_to_be_paid = storage.trx().tokens_to_be_paid()?;
-    origin_account.burn(tokens_to_be_paid)?;
+    let gas_limit_in_tokens = storage.trx().gas_limit_in_tokens()?;
+    origin_account.burn(gas_limit_in_tokens)?;
 
     // TODO for scheduled transactions, evm should be created with origin:=payer.
     allocate_evm(&mut account_storage, &mut storage)?;

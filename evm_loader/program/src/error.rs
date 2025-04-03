@@ -365,6 +365,12 @@ pub enum Error {
 
     #[error("Solana programs was interrupted")]
     InterruptedCall(#[serde(skip)] Box<Option<InterruptedState>>),
+
+    #[error("Transaction tree - transaction invalid too much nodes")]
+    TreeAccountTxInvalidTooMuchNodes,
+
+    #[error("CPI calls of Neon EVM are forbidden for DynamicFee transaction type")]
+    PriorityFeeForbiddenInCpi,
 }
 
 impl Error {

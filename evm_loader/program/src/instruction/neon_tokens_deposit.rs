@@ -4,7 +4,9 @@ use solana_program::program::invoke_signed;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
 use spl_associated_token_account::get_associated_token_address;
 
-use crate::account::{program, token, AccountsDB, BalanceAccount, Operator, ACCOUNT_SEED_VERSION};
+use crate::account::{
+    pda_accounts, program, token, AccountsDB, BalanceAccount, Operator, ACCOUNT_SEED_VERSION,
+};
 use crate::config::CHAIN_ID_LIST;
 use crate::error::{Error, Result};
 use crate::types::Address;
@@ -19,8 +21,6 @@ struct Accounts<'a> {
     operator: Operator<'a>,
     system_program: program::System<'a>,
 }
-
-pub const AUTHORITY_SEED: &[u8] = b"Deposit";
 
 impl<'a> Accounts<'a> {
     pub fn from_slice(accounts: &'a [AccountInfo<'a>]) -> Result<Accounts<'a>> {
@@ -86,7 +86,7 @@ fn validate(
         return Err(Error::AccountInvalidKey(mint, expected_mint));
     }
 
-    let (authority_address, _) = Pubkey::find_program_address(&[AUTHORITY_SEED], program_id);
+    let (authority_address, _) = pda_accounts::main_pool_authority(program_id);
     let expected_pool = get_associated_token_address(&authority_address, &mint);
     if pool != expected_pool {
         return Err(Error::AccountInvalidKey(pool, expected_pool));

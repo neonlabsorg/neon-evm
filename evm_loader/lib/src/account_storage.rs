@@ -10,7 +10,7 @@ use evm_loader::account_storage::LogCollector;
 pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use evm_loader::{
     account::{BalanceAccount, ContractAccount, StorageCell, StorageCellAddress},
-    account_storage::{find_slot_hash, FAKE_OPERATOR},
+    account_storage::{find_slot_hash_provided, FAKE_OPERATOR},
     config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
     error::Error as EvmLoaderError,
     executor::OwnedAccountInfo,
@@ -880,11 +880,12 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     async fn block_hash(&self, slot: u64) -> [u8; 32] {
         info!("block_hash {slot}");
 
-        if let Ok(account) = self.use_account(slot_hashes::ID, false).await {
-            let account_data = account.borrow();
-            let data = account_data.data();
+        let account = self._get_account_from_rpc(slot_hashes::ID).await;
+
+        if let Ok(Some(account)) = account {
+            let data = account.data.as_slice();
             if !data.is_empty() {
-                return find_slot_hash(slot, data);
+                return find_slot_hash_provided(slot, data);
             }
         }
         panic!("Error querying account {} from Solana", slot_hashes::ID)

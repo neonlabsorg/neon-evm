@@ -10,6 +10,7 @@ pub mod get_storage_at;
 pub mod get_transaction_tree;
 pub mod info;
 pub mod lib_info;
+pub mod simulate_solana;
 pub mod trace;
 
 use crate::context::Context;

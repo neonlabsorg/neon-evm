@@ -3,8 +3,8 @@ use std::mem::size_of;
 
 use super::treasury::Treasury;
 use super::{
-    AccountHeader, AccountsDB, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION,
-    TAG_TRANSACTION_TREE,
+    pda_accounts, AccountHeader, AccountsDB, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN,
+    ACCOUNT_SEED_VERSION, TAG_TRANSACTION_TREE,
 };
 use crate::config::{
     TREE_ACCOUNT_DESTROY_FEE, TREE_ACCOUNT_FINISH_TRANSACTION_GAS, TREE_ACCOUNT_TIMEOUT,
@@ -122,15 +122,7 @@ impl<'a> TransactionTree<'a> {
         chain_id: u64,
         nonce: u64,
     ) -> (Pubkey, u8) {
-        let seeds: &[&[u8]] = &[
-            &[ACCOUNT_SEED_VERSION],
-            b"TREE",
-            payer.as_bytes(),
-            &chain_id.to_le_bytes(),
-            &nonce.to_le_bytes(),
-        ];
-
-        Pubkey::find_program_address(seeds, program_id)
+        pda_accounts::tree_account_address(program_id, payer, chain_id, nonce)
     }
 
     pub fn create(
@@ -144,6 +136,7 @@ impl<'a> TransactionTree<'a> {
         const MIN_GAS_LIMIT: U256 = U256::new(
             BASE_ITERATIVE_TRANSACTION_COST as u128 + TREE_ACCOUNT_FINISH_TRANSACTION_GAS as u128,
         );
+        const TREE_ACCOUNT_MAX_NODES: usize = 16;
 
         // Validate account
         let (pubkey, bump) = Self::find_address(&crate::ID, init.payer, init.chain_id, init.nonce);
@@ -162,6 +155,10 @@ impl<'a> TransactionTree<'a> {
         }
 
         let nodes = init.nodes;
+        if nodes.len() > TREE_ACCOUNT_MAX_NODES {
+            return Err(Error::TreeAccountTxInvalidTooMuchNodes);
+        }
+
         let mut parent_counts = vec![0_u16; nodes.len()];
 
         for (i, node) in nodes.iter().enumerate() {
@@ -182,7 +179,10 @@ impl<'a> TransactionTree<'a> {
                 return Err(Error::TreeAccountTxInvalidChildIndex);
             }
 
-            parent_counts[node.child as usize] += 1;
+            let parent_count = &mut parent_counts[node.child as usize];
+            *parent_count = parent_count
+                .checked_add(1)
+                .ok_or(Error::TreeAccountTxInvalidParentCount)?;
         }
 
         for (node, parent_count) in nodes.iter().zip(&parent_counts) {

@@ -88,6 +88,7 @@ impl<'a> ProgramAccountStorage<'a> {
     pub fn apply_state_change(&mut self, actions: &[Action]) -> Result<()> {
         debug_print!("Applies begin");
 
+        let mut balance = HashMap::with_capacity(16);
         let mut storage = HashMap::with_capacity(16);
 
         for action in actions {
@@ -98,21 +99,30 @@ impl<'a> ProgramAccountStorage<'a> {
                     chain_id,
                     value,
                 } => {
-                    let mut source = self.balance_account(*source, *chain_id)?;
-                    let mut target = self.create_balance_account(*target, *chain_id)?;
+                    if *value == U256::ZERO {
+                        continue;
+                    }
+                    let mut source_acc = self.balance_account(*source, *chain_id)?;
+                    let mut target_acc = self.create_balance_account(*target, *chain_id)?;
 
-                    source.increment_revision(&self.rent, &self.accounts)?;
-                    target.increment_revision(&self.rent, &self.accounts)?;
+                    source_acc.increment_revision(&self.rent, &self.accounts)?;
+                    target_acc.increment_revision(&self.rent, &self.accounts)?;
 
-                    source.transfer(&mut target, *value)?;
+                    balance.entry((source, chain_id)).or_insert_with(|| source_acc.balance());
+                    balance.entry((target, chain_id)).or_insert_with(|| target_acc.balance());
+
+                    source_acc.transfer(&mut target_acc, *value)?;
                 }
                 Action::Burn {
                     source,
                     chain_id,
                     value,
                 } => {
+                    if *value == U256::ZERO {
+                        continue;
+                    }
                     let mut account = self.create_balance_account(*source, *chain_id)?;
-                    account.increment_revision(&self.rent, &self.accounts)?;
+                    balance.entry((source, chain_id)).or_insert_with(|| account.balance());
                     account.burn(*value)?;
                 }
                 Action::EvmSetStorage {
@@ -188,12 +198,24 @@ impl<'a> ProgramAccountStorage<'a> {
                 }
             }
         }
-
+        self.apply_balance(balance)?;
         self.apply_storage(storage)?;
 
         debug_print!("Applies done");
 
         Ok(())
+    }
+
+    fn apply_balance(&mut self, balance: HashMap<(&Address, &u64), U256>) -> Result<()> {
+        for ((address, chain_id), balance) in balance {
+            let mut account = self.create_balance_account(*address, *chain_id)?;
+            if account.balance() != balance {
+                account.increment_revision(&self.rent, &self.accounts)?;
+            } else {
+                account.increment_revision(&self.rent, &self.accounts)?;
+            }
+        }
+        Ok({})
     }
 
     fn apply_storage(&mut self, storage: HashMap<Address, HashMap<U256, [u8; 32]>>) -> Result<()> {

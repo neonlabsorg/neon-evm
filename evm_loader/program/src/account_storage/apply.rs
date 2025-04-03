@@ -211,8 +211,6 @@ impl<'a> ProgramAccountStorage<'a> {
             let mut account = self.create_balance_account(*address, *chain_id)?;
             if account.balance() != balance {
                 account.increment_revision(&self.rent, &self.accounts)?;
-            } else {
-                account.increment_revision(&self.rent, &self.accounts)?;
             }
         }
         Ok({})

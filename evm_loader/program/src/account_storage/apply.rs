@@ -108,8 +108,12 @@ impl<'a> ProgramAccountStorage<'a> {
                     source_acc.increment_revision(&self.rent, &self.accounts)?;
                     target_acc.increment_revision(&self.rent, &self.accounts)?;
 
-                    balance.entry((source, chain_id)).or_insert_with(|| source_acc.balance());
-                    balance.entry((target, chain_id)).or_insert_with(|| target_acc.balance());
+                    balance
+                        .entry((source, chain_id))
+                        .or_insert_with(|| source_acc.balance());
+                    balance
+                        .entry((target, chain_id))
+                        .or_insert_with(|| target_acc.balance());
 
                     source_acc.transfer(&mut target_acc, *value)?;
                 }
@@ -122,7 +126,9 @@ impl<'a> ProgramAccountStorage<'a> {
                         continue;
                     }
                     let mut account = self.create_balance_account(*source, *chain_id)?;
-                    balance.entry((source, chain_id)).or_insert_with(|| account.balance());
+                    balance
+                        .entry((source, chain_id))
+                        .or_insert_with(|| account.balance());
                     account.burn(*value)?;
                 }
                 Action::EvmSetStorage {

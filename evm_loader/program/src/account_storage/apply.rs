@@ -105,9 +105,6 @@ impl<'a> ProgramAccountStorage<'a> {
                     let mut source_acc = self.balance_account(*source, *chain_id)?;
                     let mut target_acc = self.create_balance_account(*target, *chain_id)?;
 
-                    source_acc.increment_revision(&self.rent, &self.accounts)?;
-                    target_acc.increment_revision(&self.rent, &self.accounts)?;
-
                     balance
                         .entry((source, chain_id))
                         .or_insert_with(|| source_acc.balance());

@@ -1,4 +1,3 @@
-use crate::account::legacy::{TAG_HOLDER_DEPRECATED, TAG_STATE_FINALIZED_DEPRECATED};
 use crate::account::{
     program, AccountsDB, AccountsStatus, Operator, OperatorBalanceAccount,
     OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
@@ -49,15 +48,9 @@ pub fn process_inner<'a>(
         Some(treasury),
     );
 
-    let mut excessive_lamports = 0_u64;
-
-    let mut tag = crate::account::tag(program_id, &holder_or_storage)?;
-    if (tag == TAG_HOLDER_DEPRECATED) || (tag == TAG_STATE_FINALIZED_DEPRECATED) {
-        tag = crate::account::legacy::update_holder_account(&holder_or_storage)?;
-    }
-
+    let tag = crate::account::tag(program_id, &holder_or_storage)?;
     match tag {
-        TAG_HOLDER | TAG_HOLDER_DEPRECATED => {
+        TAG_HOLDER => {
             let mut trx =
                 holder_parse_trx(holder_or_storage.clone(), &operator, program_id, false)?;
             let origin = trx.recover_caller_address()?;
@@ -77,9 +70,6 @@ pub fn process_inner<'a>(
             gasometer.record_solana_transaction_cost();
             gasometer.record_address_lookup_table(accounts);
             gasometer.record_write_to_holder(&trx);
-
-            excessive_lamports += crate::account::legacy::update_legacy_accounts(&accounts_db)?;
-            gasometer.refund_lamports(excessive_lamports);
 
             let storage = StateAccount::new(
                 program_id,
@@ -111,11 +101,9 @@ pub fn process_inner<'a>(
         TAG_SCHEDULED_STATE_CANCELLED | TAG_SCHEDULED_STATE_FINALIZED => {
             Err(Error::ScheduledTxAlreadyComplete(*holder_or_storage.key))
         }
-        TAG_STATE_FINALIZED | TAG_STATE_FINALIZED_DEPRECATED => Err(Error::StorageAccountFinalized),
+        TAG_STATE_FINALIZED => Err(Error::StorageAccountFinalized),
         _ => Err(Error::AccountInvalidTag(*holder_or_storage.key, TAG_HOLDER)),
     }?;
-
-    **operator.try_borrow_mut_lamports()? += excessive_lamports;
 
     Ok(())
 }

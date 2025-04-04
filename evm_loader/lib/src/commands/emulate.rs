@@ -41,7 +41,6 @@ pub struct SolanaAccount {
     #[serde_as(as = "DisplayFromStr")]
     pub pubkey: Pubkey,
     pub is_writable: bool,
-    pub is_legacy: bool,
 }
 
 #[serde_as]
@@ -272,7 +271,6 @@ async fn calculate_response<T: Rpc + BuildConfigSimulator, Tr: Tracer>(
         .map(|v| SolanaAccount {
             pubkey: v.pubkey,
             is_writable: v.is_writable,
-            is_legacy: v.is_legacy,
         })
         .collect::<Vec<_>>();
 

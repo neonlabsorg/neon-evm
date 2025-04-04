@@ -1,7 +1,5 @@
 use evm_loader::{
-    account::{legacy::LegacyEtherData, ContractAccount},
-    executor::precompile_extension::PrecompiledContracts,
-    types::Address,
+    account::ContractAccount, executor::precompile_extension::PrecompiledContracts, types::Address,
 };
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account::Account, pubkey::Pubkey};
@@ -33,30 +31,8 @@ impl GetContractResponse {
     }
 }
 
-fn read_legacy_account(
-    program_id: &Pubkey,
-    legacy_chain_id: u64,
-    solana_address: Pubkey,
-    mut account: Account,
-) -> GetContractResponse {
-    let account_info = account_info(&solana_address, &mut account);
-    let Ok(contract) = LegacyEtherData::from_account(program_id, &account_info) else {
-        return GetContractResponse::empty(solana_address);
-    };
-
-    let chain_id = Some(legacy_chain_id);
-    let code = contract.read_code(&account_info);
-
-    GetContractResponse {
-        solana_address,
-        chain_id,
-        code,
-    }
-}
-
 fn read_account(
     program_id: &Pubkey,
-    legacy_chain_id: u64,
     solana_address: Pubkey,
     account: Option<Account>,
 ) -> GetContractResponse {
@@ -66,7 +42,8 @@ fn read_account(
 
     let account_info = account_info(&solana_address, &mut account);
     let Ok(contract) = ContractAccount::from_account(program_id, account_info) else {
-        return read_legacy_account(program_id, legacy_chain_id, solana_address, account);
+        //return read_legacy_account(program_id, legacy_chain_id, solana_address, account);
+        return GetContractResponse::empty(solana_address);
     };
 
     let chain_id = Some(contract.chain_id());
@@ -84,7 +61,6 @@ pub async fn execute(
     program_id: &Pubkey,
     account_addresses: &[Address],
 ) -> NeonResult<Vec<GetContractResponse>> {
-    let legacy_chain_id = super::get_config::read_legacy_chain_id(rpc, *program_id).await?;
     let pubkeys: Vec<_> = account_addresses
         .iter()
         .map(|a| a.find_solana_address(program_id).0)
@@ -96,7 +72,7 @@ pub async fn execute(
     for ((key, account), account_address) in
         pubkeys.into_iter().zip(accounts).zip(account_addresses)
     {
-        let mut response = read_account(program_id, legacy_chain_id, key, account);
+        let mut response = read_account(program_id, key, account);
         if PrecompiledContracts::is_precompile_extension(account_address) {
             response.code = vec![0xfe];
         }

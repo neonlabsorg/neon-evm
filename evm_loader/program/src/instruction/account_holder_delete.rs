@@ -12,8 +12,6 @@ pub fn process<'a>(
     let holder_info = accounts[0].clone();
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1]) }?;
 
-    crate::account::legacy::update_holder_account(&holder_info)?;
-
     let holder = Holder::from_account(program_id, holder_info)?;
     holder.validate_owner(&operator)?;
     unsafe {

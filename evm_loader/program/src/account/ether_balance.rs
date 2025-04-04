@@ -1,9 +1,7 @@
 use std::mem::size_of;
 
 use crate::{
-    account::{TAG_ACCOUNT_CONTRACT, TAG_EMPTY},
     account_storage::KeysCache,
-    config::DEFAULT_CHAIN_ID,
     error::{Error, Result},
     types::Address,
 };
@@ -118,20 +116,6 @@ impl<'a> BalanceAccount<'a> {
             assert_eq!(balance_account.chain_id(), chain_id);
 
             return Ok(balance_account);
-        }
-
-        if chain_id == DEFAULT_CHAIN_ID {
-            // Make sure no legacy account exists
-            let legacy_pubkey = keys.map_or_else(
-                || address.find_solana_address(&crate::ID).0,
-                |keys| keys.contract(&crate::ID, address),
-            );
-
-            let legacy_account = accounts.get(&legacy_pubkey);
-            if crate::check_id(legacy_account.owner) {
-                let legacy_tag = super::tag(&crate::ID, legacy_account)?;
-                assert!(legacy_tag == TAG_EMPTY || legacy_tag == TAG_ACCOUNT_CONTRACT);
-            }
         }
 
         // Create a new account

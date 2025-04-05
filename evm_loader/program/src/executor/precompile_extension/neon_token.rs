@@ -1,6 +1,7 @@
+#![allow(warnings)]
 use std::convert::TryInto;
 
-use arrayref::array_ref;
+use arrayref::{array_ref, array_refs};
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::{account_info::IntoAccountInfo, pubkey::Pubkey};
@@ -21,8 +22,10 @@ use crate::{
 // Neon token method ids:
 //--------------------------------------------------
 // withdraw(bytes32)           => 8e19899e
+// withdraw_on_chain(uint64,bytes32,uint256) => bfd9861d
 //--------------------------------------------------
 const NEON_TOKEN_METHOD_WITHDRAW_ID: &[u8; 4] = &[0x8e, 0x19, 0x89, 0x9e];
+const NEON_TOKEN_METHOD_WITHDRAW_ON_CHAIN_ID: &[u8; 4] = &[0xbf, 0xd9, 0x86, 0x1d];
 
 #[maybe_async]
 pub async fn neon_token<State: Database>(
@@ -56,6 +59,21 @@ pub async fn neon_token<State: Database>(
         let destination = Pubkey::new_from_array(*destination);
 
         withdraw(state, source, chain_id, destination, value).await?;
+
+        let mut output = vector![0_u8; 32];
+        output[31] = 1; // return true
+
+        return Ok(output);
+    };
+
+    if method_id == NEON_TOKEN_METHOD_WITHDRAW_ON_CHAIN_ID {
+        // withdraw_on_chain(uint64 chainId, bytes32 to, uint256 amount)
+        let (chain_id, dest, amount) = array_refs![rest.try_into()?, 32, 32, 32];
+        let chain_id = U256::from_be_bytes(*chain_id).try_into()?;
+        let dest = Pubkey::new_from_array(*dest);
+        let amount = U256::from_be_bytes(*amount);
+
+        withdraw(state, context.caller, chain_id, dest, amount).await?;
 
         let mut output = vector![0_u8; 32];
         output[31] = 1; // return true

@@ -22,10 +22,10 @@ use crate::{
 // Neon token method ids:
 //--------------------------------------------------
 // withdraw(bytes32)           => 8e19899e
-// withdraw_on_chain(uint64,bytes32,uint256) => bfd9861d
+// withdraw_on_chain(uint256,bytes32,uint256) => 78db6706
 //--------------------------------------------------
 const NEON_TOKEN_METHOD_WITHDRAW_ID: &[u8; 4] = &[0x8e, 0x19, 0x89, 0x9e];
-const NEON_TOKEN_METHOD_WITHDRAW_ON_CHAIN_ID: &[u8; 4] = &[0xbf, 0xd9, 0x86, 0x1d];
+const NEON_TOKEN_METHOD_WITHDRAW_ON_CHAIN_ID: &[u8; 4] = &[0x78, 0xdb, 0x67, 0x06];
 
 #[maybe_async]
 pub async fn neon_token<State: Database>(
@@ -67,9 +67,15 @@ pub async fn neon_token<State: Database>(
     };
 
     if method_id == NEON_TOKEN_METHOD_WITHDRAW_ON_CHAIN_ID {
-        // withdraw_on_chain(uint64 chainId, bytes32 to, uint256 amount)
+        if is_static {
+            return Err(Error::StaticModeViolation(*address));
+        }
+        // withdraw_on_chain(uint256 chainId, bytes32 to, uint256 amount)
         let (chain_id, dest, amount) = array_refs![rest.try_into()?, 32, 32, 32];
         let chain_id = U256::from_be_bytes(*chain_id).try_into()?;
+        if context.value != 0 {
+            return Err(Error::InvalidTransferToken(*address, chain_id));
+        }
         let dest = Pubkey::new_from_array(*dest);
         let amount = U256::from_be_bytes(*amount);
 

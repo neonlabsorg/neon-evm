@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::future::Future;
 
 use serde::{Deserialize, Serialize};
-use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcSendTransactionConfig};
 
 use {
     crate::errors::NeonError,
@@ -136,8 +136,13 @@ impl<'a, 'b> TransactionExecutor<'a, 'b> {
         &self,
         transaction: &Transaction,
     ) -> Result<Signature, NeonError> {
+        let config = RpcSendTransactionConfig {
+            skip_preflight: true,
+            preflight_commitment: Some(self.client.commitment().commitment),
+            ..RpcSendTransactionConfig::default()
+        };
         self.client
-            .send_transaction(transaction)
+            .send_transaction_with_config(transaction, config)
             .await
             .map_err(std::convert::Into::into)
     }

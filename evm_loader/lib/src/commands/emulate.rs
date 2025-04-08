@@ -476,18 +476,19 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
             }
         };
 
-        let mut exit_status: ExitStatus = ExitStatus::Stop;
+        let mut exit_status = ExitStatus::StepLimit;
         let mut steps_executed = 0u64;
         let mut step_on_solana = None;
         let mut tracer_result: Option<T> = evm.take_tracer();
         for execution_step in &execution_map.steps {
-            if execution_step.is_reset {
+            if execution_step.is_reset || execution_step.is_cancel {
                 drop(evm);
                 drop(backend);
                 drop(storage);
                 drop(rpc);
 
                 steps_executed = 0u64;
+                exit_status = ExitStatus::StepLimit;
 
                 rpc = create_rpc(db_config, execution_step.block, execution_step.index).await?;
                 (storage, tx) = initialize_storage_and_transaction(
@@ -498,6 +499,10 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
                 )
                 .await?;
 
+                if let Some(ref mut tracer) = tracer_result {
+                    tracer.clear(&emulate_request.tx);
+                }
+
                 backend = SyncedExecutorState::new(&mut storage);
                 evm = match Machine::new(&tx, origin, &mut backend, tracer_result).await {
                     Ok(evm) => evm,
@@ -507,50 +512,29 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
                     }
                 };
                 tracer_result = evm.take_tracer();
-            } else if execution_step.is_cancel {
+            }
+
+            if execution_step.is_cancel {
                 evm.set_tracer(tracer_result);
+
                 evm.end_vm(&backend, ExitStatus::Cancel).await?;
-                tracer_result = evm.take_tracer();
-
-                drop(evm);
-                drop(backend);
-                drop(storage);
-                drop(rpc);
-
-                rpc = create_rpc(db_config, block, index).await?;
-                (storage, _) = initialize_storage_and_transaction(
-                    program_id,
-                    emulate_request,
-                    &rpc,
-                    overrides.clone(),
-                )
-                .await?;
-
-                prepare_origin(
-                    &origin,
-                    &mut storage,
-                    &tx,
-                    chain_id,
-                    increase_gas_limit,
-                    is_skd_transaction,
-                )
-                .await?;
-
-                backend = SyncedExecutorState::new(&mut storage);
-
-                // do not create evm because it initiates transfer to "to"
-                // it will cause incorrect changed accounts in tracer
                 exit_status = ExitStatus::Cancel;
 
+                tracer_result = evm.take_tracer();
                 break;
             }
 
-            if execution_step.steps == 0 && execution_step.is_return {
-                break;
+            match exit_status {
+                ExitStatus::Return(_) | ExitStatus::Stop => {
+                    if execution_step.steps == 0 {
+                        // skipping empty instructions
+                        continue;
+                    }
+                }
+                _ => (),
             }
 
             evm.set_tracer(tracer_result);
-
             let (local_exit_status, local_steps_executed, local_step_on_solana, local_tracer) = evm
                 .execute(u64::from(execution_step.steps), &mut backend)
                 .await?;

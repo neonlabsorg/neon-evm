@@ -69,4 +69,8 @@ impl Tracer for PrestateTracer {
         }
         .expect("serialization should not fail")
     }
+
+    fn clear(&mut self, tx: &TxParams) {
+        self.state_diff_tracer = StateDiffTracer::new(tx);
+    }
 }

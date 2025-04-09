@@ -141,6 +141,10 @@ jobs:
       - run: pip install -r ./.github/workflows/requirements.txt
       - run: curl https://api.github.com/user
       - run: ping -c2 api.github.com
+      - name: Resolve api.github.com to a specific IP to prevent any potential DNS resolution issues during next steps
+        run: |
+          export ip_api_github_com=$(dig +short api.github.com)
+          echo "$ip_api_github_com api.github.com" | tee -a /etc/hosts
       - name: Trigger proxy build
         run: |
           python3 ./.github/workflows/deploy.py trigger_proxy_action \

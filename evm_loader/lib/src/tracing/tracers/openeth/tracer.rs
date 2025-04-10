@@ -69,4 +69,9 @@ impl Tracer for OpenEthereumTracer {
         })
         .expect("serialization should not fail")
     }
+
+    fn clear(&mut self, tx: &TxParams) {
+        self.output = None;
+        self.state_diff_tracer = StateDiffTracer::new(tx);
+    }
 }

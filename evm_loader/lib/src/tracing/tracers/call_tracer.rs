@@ -307,4 +307,13 @@ impl Tracer for CallTracer {
 
         serde_json::to_value(call_frame).expect("serialization should not fail")
     }
+
+    fn clear(&mut self, tx: &TxParams) {
+        self.call_stack = vec![CallFrame {
+            gas: tx.gas_limit.map(to_web3_u256).unwrap_or_default(),
+            gas_used: tx.actual_gas_used.map(to_web3_u256).unwrap_or_default(),
+            ..CallFrame::default()
+        }];
+        self.depth = 0;
+    }
 }

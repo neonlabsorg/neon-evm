@@ -212,6 +212,14 @@ impl Tracer for StructLogger {
         };
         serde_json::to_value(result).expect("serialization should not fail")
     }
+
+    fn clear(&mut self, tx: &TxParams) {
+        self.actual_gas_used = tx.actual_gas_used;
+        self.logs = vec![];
+        self.depth = 0;
+        self.storage = BTreeMap::new();
+        self.exit_status = None;
+    }
 }
 
 #[cfg(test)]

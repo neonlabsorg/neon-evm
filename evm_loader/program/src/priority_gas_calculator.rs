@@ -64,20 +64,18 @@ pub fn calc_priority_gas(trx: &Transaction) -> Result<u64, Error> {
             "cu_limit * cu_price / 10^6 overflow".to_string(),
         ))?;
 
-    let trx_max_priority_gas = get_trx_max_priority_gas(trx)?;
-
-    Ok(priority_gas.min(trx_max_priority_gas))
-}
-
-/// Extracts the maximum Solana Priority Fee encoded in gas-limit of Neon transaction  
-fn get_trx_max_priority_gas(trx: &Transaction) -> Result<u64, Error> {
     let gas_limit = trx.gas_limit();
     if gas_limit > U256::from(u64::MAX) {
         return Err(Error::GasLimitOverflow(gas_limit));
     }
 
-    let gas_limit = gas_limit.as_u64();
+    let trx_max_priority_gas = get_max_priority_gas(gas_limit.as_u64());
 
+    Ok(priority_gas.min(trx_max_priority_gas))
+}
+
+/// Extracts the maximum Solana Priority Fee encoded in gas-limit of Neon transaction  
+fn get_max_priority_gas(gas_limit: u64) -> u64 {
     // unpack header
     // {
     //   int gas_unit_cnt:4;
@@ -101,15 +99,15 @@ fn get_trx_max_priority_gas(trx: &Transaction) -> Result<u64, Error> {
 
     // Calculate the maximum gas for one iteration
     let Some(iter_priority_gas) = BASE_PRIORITY_GAS_UNIT.checked_mul(gas_unit_cnt + 1) else {
-        return Ok(0);
+        return 0;
     };
 
     // Next steps validate overflows
     let Some(trx_priority_gas) = total_iter_cnt.checked_mul(iter_priority_gas) else {
-        return Ok(0);
+        return 0;
     };
     let Some(trx_exec_gas) = iter_cnt.checked_mul(EXEC_ITERATION_COST) else {
-        return Ok(0);
+        return 0;
     };
 
     if let Some(base_trx_gas) = gas_limit
@@ -117,14 +115,14 @@ fn get_trx_max_priority_gas(trx: &Transaction) -> Result<u64, Error> {
         .checked_sub(trx_exec_gas)
     {
         if BASE_ITERATIVE_TRANSACTION_COST <= base_trx_gas {
-            return Ok(iter_priority_gas);
+            return iter_priority_gas;
         }
     }
-    Ok(0)
+    0
 }
 
 fn unpack_hdr_value(value: u64, mask: u64) -> u64 {
-    ((value + 1) & mask) * HDR_BIT_LENGTH_BATCH
+    ((value & mask) + 1) * HDR_BIT_LENGTH_BATCH
 }
 
 fn unpack_length(value: u64, mask_len: u64) -> u64 {
@@ -200,4 +198,167 @@ fn get_compute_budget_priority_fee() -> Result<(u32, u64), Error> {
 
     // Both are not none, it's safe to unwrap.
     Ok((compute_unit_limit.unwrap(), compute_unit_price.unwrap()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bit_length(value: u64) -> u64 {
+        64u64 - u64::from(value.leading_zeros())
+    }
+
+    fn calc_gas_unit_cnt(cu_price: u64) -> u64 {
+        0.max(cu_price - 1) / BASE_COMPUTE_UNIT_PRICE_UNIT
+    }
+
+    fn calc_iter_cnt(iter_cnt: u64) -> u64 {
+        iter_cnt - MINIMAL_ITERATION_COUNT
+    }
+
+    fn calc_pkt_len(value: u64) -> u64 {
+        (bit_length(value) / HDR_BIT_LENGTH_BATCH + 1) * HDR_BIT_LENGTH_BATCH
+    }
+
+    fn calc_hdr_len(value: u64) -> u64 {
+        value / HDR_BIT_LENGTH_BATCH - 1
+    }
+
+    fn calc_pkt_cu_cost_len(gas_unit_cnt: u64, iter_cnt: u64) -> u64 {
+        HDR_TOTAL_LENGTH + calc_pkt_len(iter_cnt) + calc_pkt_len(gas_unit_cnt)
+    }
+
+    fn calc_pkt_cu_cost(gas_unit_cnt: u64, iter_cnt: u64, pkt_cu_cost_len: u64) -> u64 {
+        let gas_unit_len = calc_pkt_len(gas_unit_cnt);
+        let iter_cnt_len = calc_pkt_len(iter_cnt);
+
+        let mut pkt_cu_cost = gas_unit_cnt;
+        pkt_cu_cost <<= iter_cnt_len;
+        pkt_cu_cost |= iter_cnt;
+
+        pkt_cu_cost <<= HDR_GAS_UNIT_COUNT_LENGTH;
+        pkt_cu_cost |= calc_hdr_len(gas_unit_len);
+        pkt_cu_cost <<= HDR_ITERATION_COUNT_LENGTH;
+        pkt_cu_cost |= calc_hdr_len(iter_cnt_len);
+
+        pkt_cu_cost ^ bitmask(pkt_cu_cost_len)
+    }
+
+    fn calc_trx_cu_cost(gas_unit_cnt: u64, iter_cnt: u64) -> u64 {
+        let iter_cu_cost = BASE_PRIORITY_GAS_UNIT * (gas_unit_cnt + 1);
+        (iter_cnt + MINIMAL_ITERATION_COUNT) * iter_cu_cost
+    }
+
+    fn calc_trx_cost(base_gas: u64, cu_price: u64, base_iter_cnt: u64) -> u64 {
+        let iter_cnt = calc_iter_cnt(base_iter_cnt);
+        let gas_unit_cnt = calc_gas_unit_cnt(cu_price);
+        let pkt_cu_cost_len = calc_pkt_cu_cost_len(gas_unit_cnt, iter_cnt);
+        let pkt_cu_cost = calc_pkt_cu_cost(gas_unit_cnt, iter_cnt, pkt_cu_cost_len);
+
+        let min_trx_cost = base_gas + calc_trx_cu_cost(gas_unit_cnt, iter_cnt);
+
+        let mut high_trx_cost = min_trx_cost >> pkt_cu_cost_len;
+        let trx_cost = high_trx_cost << pkt_cu_cost_len | pkt_cu_cost;
+        if trx_cost > min_trx_cost {
+            return trx_cost;
+        }
+
+        let bit_len = bit_length(high_trx_cost);
+        let mut has_bit = false;
+        for i in 0..bit_len {
+            let bit = 1u64 << i;
+
+            if high_trx_cost & bit == 0 {
+                high_trx_cost |= bit;
+                has_bit = true;
+                break;
+            }
+        }
+
+        if !has_bit {
+            high_trx_cost = 1 << bit_len;
+        }
+
+        high_trx_cost << pkt_cu_cost_len | pkt_cu_cost
+    }
+
+    #[test]
+    fn test_bitmask() {
+        assert_eq!(bitmask(0), 0b0);
+        assert_eq!(bitmask(1), 0b1);
+        assert_eq!(bitmask(4), 0b1111);
+        assert_eq!(bitmask(8), 0b1111_1111);
+    }
+
+    #[test]
+    fn test_bit_length() {
+        assert_eq!(bit_length(0b1), 1);
+        assert_eq!(bit_length(0b111), 3);
+        assert_eq!(bit_length(0b1111), 4);
+        assert_eq!(bit_length(0b1111_1111), 8);
+    }
+
+    #[test]
+    fn test_unpack_hdr_value() {
+        assert_eq!(
+            unpack_hdr_value(0b000_1000, 0b1111),
+            0b1001 * HDR_BIT_LENGTH_BATCH
+        );
+        assert_eq!(
+            unpack_hdr_value(0b000_0100, 0b111),
+            0b101 * HDR_BIT_LENGTH_BATCH
+        );
+    }
+
+    #[test]
+    fn test_unpack_length() {
+        assert_eq!(unpack_length(0b111_1111, 4), 0b1111);
+        assert_eq!(unpack_length(0b111_1111, 3), 0b111);
+    }
+
+    #[test]
+    fn test_min_trx_cost() {
+        let min_trx_cost = calc_trx_cost(
+            BASE_ITERATIVE_TRANSACTION_COST,
+            BASE_COMPUTE_UNIT_PRICE_UNIT,
+            MINIMAL_ITERATION_COUNT,
+        );
+        assert_eq!(min_trx_cost, 0x127ff);
+
+        let trx_max_priority_gas = get_max_priority_gas(min_trx_cost);
+        assert_eq!(trx_max_priority_gas, BASE_PRIORITY_GAS_UNIT);
+    }
+
+    #[test]
+    fn test_unpack_max_trx_gas_gas() {
+        for base_gas in (BASE_ITERATIVE_TRANSACTION_COST
+            ..BASE_ITERATIVE_TRANSACTION_COST + 1_000_000)
+            .step_by(100_000)
+        {
+            for base_iter_cnt in 1..200 {
+                for cu_price in (BASE_COMPUTE_UNIT_PRICE_UNIT..BASE_COMPUTE_UNIT_PRICE_UNIT * 100)
+                    .step_by(10_000)
+                {
+                    let gas = base_gas + base_iter_cnt * EXEC_ITERATION_COST;
+                    let iter_cnt = base_iter_cnt + MINIMAL_ITERATION_COUNT;
+
+                    let trx_cost = calc_trx_cost(gas, cu_price, iter_cnt);
+                    assert!(trx_cost > 0);
+
+                    let gas_unit_cnt = calc_gas_unit_cnt(cu_price);
+                    if cu_price > BASE_COMPUTE_UNIT_PRICE_UNIT {
+                        assert!(gas_unit_cnt > 0);
+                    }
+
+                    let trx_max_priority_gas = get_max_priority_gas(trx_cost);
+                    assert!(trx_max_priority_gas > 0);
+
+                    assert_eq!(
+                        trx_max_priority_gas,
+                        BASE_PRIORITY_GAS_UNIT * (gas_unit_cnt + 1)
+                    );
+                }
+            }
+        }
+    }
 }

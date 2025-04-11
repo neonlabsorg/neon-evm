@@ -142,7 +142,7 @@ fn get_compute_budget_priority_fee() -> Result<(u32, u64), Error> {
     // uses get_processed_sibling_instruction syscall which doesn't work well for CPI.
     let is_root_transaction = get_stack_height() == TRANSACTION_LEVEL_STACK_HEIGHT;
     if !is_root_transaction {
-        return Err(Error::PriorityFeeForbiddenInCpi);
+        return Ok((0, 0));
     }
 
     let mut idx = 0;

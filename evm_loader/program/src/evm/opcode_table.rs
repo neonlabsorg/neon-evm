@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::evm::{tracing::EventListener, database::Database};
+use crate::evm::{database::Database, tracing::EventListener};
 use maybe_async::maybe_async;
 
 use super::{opcode::Action, Machine};
@@ -78,7 +78,11 @@ macro_rules! opcode_table {
 
 #[maybe_async]
 impl<T: EventListener> Machine<T> {
-    pub async fn execute_opcode(&mut self, backend: &mut impl Database, opcode: u8) -> Result<Action> {
+    pub async fn execute_opcode(
+        &mut self,
+        backend: &mut impl Database,
+        opcode: u8,
+    ) -> Result<Action> {
         OpcodeTable::execute_opcode(self, backend, opcode).await
     }
 }

@@ -961,7 +961,10 @@ impl<T: EventListener> Machine<T> {
 
     /// Place 2-31 byte item on stack.
     #[maybe_async]
-    pub async fn opcode_push_2_31<const N: usize>(&mut self, _backend: &mut impl Database) -> Result<Action> {
+    pub async fn opcode_push_2_31<const N: usize>(
+        &mut self,
+        _backend: &mut impl Database,
+    ) -> Result<Action> {
         if self.execution_code.len() <= self.pc + 1 + N {
             return Err(Error::PushOutOfBounds(self.context.contract));
         }
@@ -996,7 +999,10 @@ impl<T: EventListener> Machine<T> {
     /// Duplicate Nth stack item
     /// ~25% of contract bytecode are DUP and SWAP opcodes
     #[maybe_async]
-    pub async fn opcode_dup_1_16<const N: usize>(&mut self, _backend: &mut impl Database) -> Result<Action> {
+    pub async fn opcode_dup_1_16<const N: usize>(
+        &mut self,
+        _backend: &mut impl Database,
+    ) -> Result<Action> {
         self.stack.dup_1_16::<N>()?;
 
         Ok(Action::Continue)
@@ -1004,7 +1010,10 @@ impl<T: EventListener> Machine<T> {
 
     /// Exchange 1st and (N+1)th stack item
     #[maybe_async]
-    pub async fn opcode_swap_1_16<const N: usize>(&mut self, _backend: &mut impl Database) -> Result<Action> {
+    pub async fn opcode_swap_1_16<const N: usize>(
+        &mut self,
+        _backend: &mut impl Database,
+    ) -> Result<Action> {
         self.stack.swap_1_16::<N>()?;
 
         Ok(Action::Continue)
@@ -1012,7 +1021,10 @@ impl<T: EventListener> Machine<T> {
 
     /// Append log record with N topics
     #[maybe_async]
-    pub async fn opcode_log_0_4<const N: usize>(&mut self, backend: &mut impl Database) -> Result<Action> {
+    pub async fn opcode_log_0_4<const N: usize>(
+        &mut self,
+        backend: &mut impl Database,
+    ) -> Result<Action> {
         let address = self.context.contract;
 
         if self.is_static {

@@ -1,19 +1,22 @@
+use std::cell::RefMut;
+
 use crate::account::{AccountsDB, StateAccount};
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::config::{EVM_STEPS_LAST_ITERATION_MAX, EVM_STEPS_MIN};
 use crate::debug::log_data;
 use crate::error::{Error, Result};
-use crate::evm::tracing::NoopEventListener;
 use crate::evm::ExitStatus;
 use crate::executor::ExecutorState;
 use crate::gasometer::Gasometer;
+use crate::types::{Transaction, TrxView};
 use crate::instruction::instruction_internals::{
     allocate_evm, finalize, finalize_interrupted, reinit_evm,
 };
 
-pub fn do_begin<'a>(
+pub fn do_begin<'b, 'a: 'b>(
+    tx: Transaction,
     accounts: AccountsDB<'a>,
-    mut storage: StateAccount<'a>,
+    mut storage: StateAccount<'b>,
     gasometer: Gasometer,
 ) -> Result<()> {
     debug_print!("do_begin");
@@ -39,25 +42,22 @@ pub fn do_begin<'a>(
     origin_account.burn(gas_limit_in_tokens)?;
 
     // TODO for scheduled transactions, evm should be created with origin:=payer.
-    allocate_evm(&mut account_storage, &mut storage)?;
-    let mut state_data = storage.read_executor_state();
+    allocate_evm(&tx, &mut account_storage, &mut storage)?;
 
-    let (_, touched_accounts, timestamped_contracts) = state_data.deconstruct();
     finalize(
         0,
         storage,
         account_storage,
-        None,
         gasometer,
-        touched_accounts,
-        timestamped_contracts,
+        true,
+        None
     )
 }
 
-pub fn do_continue<'a>(
+pub fn do_continue<'b, 'a: 'b>(
     step_count: u64,
     accounts: AccountsDB<'a>,
-    mut storage: StateAccount<'a>,
+    mut storage: StateAccount<'b>,
     gasometer: Gasometer,
     reset: bool,
 ) -> Result<()> {
@@ -74,37 +74,38 @@ pub fn do_continue<'a>(
     let mut account_storage = ProgramAccountStorage::new(accounts)?;
     reinit_evm(&mut account_storage, &mut storage, reset)?;
 
-    let mut state_data = storage.read_executor_state();
     if storage.interrupted_state().is_some() {
-        return finalize_interrupted(storage, account_storage, gasometer, &mut state_data);
+        return finalize_interrupted(storage, account_storage, gasometer);
     }
-    let mut evm = storage.read_evm::<NoopEventListener>();
-    let mut backend = ExecutorState::new(&mut account_storage, &mut state_data);
-    let mut steps_executed = 0;
 
-    if backend.exit_status().is_none() {
-        let (exit_status, steps_returned, _, _) = evm.execute(step_count, &mut backend)?;
+    let steps_executed= {
+        let root = storage.root_ref_mut();
+        let mut state_data = RefMut::map(root.executor_state.borrow_mut(), |opt| opt.as_mut().unwrap());
+        let mut evm = RefMut::map(root.machine_state.borrow_mut(), |opt| opt.as_mut().unwrap());
 
-        if let ExitStatus::Interrupted(state) = exit_status {
-            storage.set_interrupted_state(*state);
-        } else if ExitStatus::StepLimit != exit_status {
-            backend.set_exit_status(exit_status);
+        let mut backend = ExecutorState::new(&mut account_storage, &mut state_data);
+        let mut steps_executed = 0;
+
+        if backend.exit_status().is_none() {
+            let (exit_status, steps_returned, _, _) = evm.execute(step_count, &mut backend)?;
+
+            if let ExitStatus::Interrupted(state) = exit_status {
+                root.interrupted_state = *state;
+            } else if ExitStatus::StepLimit != exit_status {
+                backend.set_exit_status(exit_status);
+            }
+            steps_executed = steps_returned;
         }
-        steps_executed = steps_returned;
-    }
 
-    let (mut results, touched_accounts, timestamped_contracts) = state_data.deconstruct();
-    if steps_executed > EVM_STEPS_LAST_ITERATION_MAX {
-        results = None;
-    }
+        steps_executed
+    };
 
     finalize(
         steps_executed,
         storage,
         account_storage,
-        results,
         gasometer,
-        touched_accounts,
-        timestamped_contracts,
+        steps_executed > EVM_STEPS_LAST_ITERATION_MAX,
+        None
     )
 }

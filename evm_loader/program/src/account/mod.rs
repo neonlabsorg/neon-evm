@@ -4,7 +4,7 @@ use crate::error::{Error, Result};
 use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
-use std::cell::{Ref, RefMut};
+use std::{cell::{Ref, RefMut}, ops::DerefMut};
 
 pub use crate::{account_storage::FAKE_OPERATOR, config::ACCOUNT_SEED_VERSION};
 
@@ -57,6 +57,26 @@ const TAG_OFFSET: usize = 0;
 const HEADER_VERSION_OFFSET: usize = 1;
 pub const ACCOUNT_PREFIX_LEN: usize = 1/*tag*/ + 1/*header version*/;
 
+pub struct BorrowedAccountInfo<'a> {
+    data: &'a mut [u8],
+    key: &'a Pubkey,
+    owner: &'a Pubkey
+}
+
+impl<'a> BorrowedAccountInfo<'a> {
+    pub fn new<'b: 'a>(info: &'a AccountInfo<'b>, data: &'a mut RefMut<&'b mut [u8]>) -> Self {
+        BorrowedAccountInfo::<'a> {
+            data: data.deref_mut(),
+            key: info.key,
+            owner: info.owner
+        }
+    }
+    
+    pub fn data_len(&self) -> usize {
+        self.data.len()
+    }
+}
+
 #[inline]
 fn section<'r, T>(account: &'r AccountInfo<'_>, offset: usize) -> Ref<'r, T> {
     let begin = offset;
@@ -73,19 +93,43 @@ fn section<'r, T>(account: &'r AccountInfo<'_>, offset: usize) -> Ref<'r, T> {
 }
 
 #[inline]
-fn section_mut<'r, T>(account: &'r AccountInfo<'_>, offset: usize) -> RefMut<'r, T> {
+fn section_from_borrowed<'r, T>(account: &'r BorrowedAccountInfo<'_>, offset: usize) -> &'r T {
     let begin = offset;
     let end = begin + std::mem::size_of::<T>();
 
+    let bytes = &account.data[begin..end];
+
+    assert_eq!(std::mem::align_of::<T>(), 1);
+    assert_eq!(std::mem::size_of::<T>(), bytes.len());
+    unsafe { &*(bytes.as_ptr().cast()) }
+}
+
+#[inline]
+fn section_mut_from_slice<'r, T>(data: &'r mut [u8], offset: usize) -> &'r mut T {
+    let begin = offset;
+    let end = begin + std::mem::size_of::<T>();
+
+    let bytes = &mut data[begin..end];
+
+    assert_eq!(std::mem::align_of::<T>(), 1);
+    assert_eq!(std::mem::size_of::<T>(), bytes.len());
+    unsafe { &mut *(bytes.as_mut_ptr().cast()) }
+}
+
+#[inline]
+fn section_mut_from_borrowed<'r, T>(account: &'r mut BorrowedAccountInfo<'_>, offset: usize) -> &'r mut T {
+    section_mut_from_slice(account.data, offset)
+}
+
+#[inline]
+fn section_mut<'r, T>(account: &'r AccountInfo<'_>, offset: usize) -> RefMut<'r, T> {
     let data = account.data.borrow_mut();
     RefMut::map(data, |d| {
-        let bytes = &mut d[begin..end];
-
-        assert_eq!(std::mem::align_of::<T>(), 1);
-        assert_eq!(std::mem::size_of::<T>(), bytes.len());
-        unsafe { &mut *(bytes.as_mut_ptr().cast()) }
+        section_mut_from_slice(d, offset)
     })
 }
+
+
 
 trait AccountHeader {
     const VERSION: u8;
@@ -101,8 +145,18 @@ fn header<'r, T: AccountHeader>(account: &'r AccountInfo<'_>) -> Ref<'r, T> {
 }
 
 #[inline]
+fn header_from_borrowed<'r, T: AccountHeader>(account: &'r BorrowedAccountInfo<'_>) -> &'r T {
+    section_from_borrowed(account, ACCOUNT_PREFIX_LEN)
+}
+
+#[inline]
 fn header_mut<'r, T: AccountHeader>(account: &'r AccountInfo<'_>) -> RefMut<'r, T> {
     section_mut(account, ACCOUNT_PREFIX_LEN)
+}
+
+#[inline]
+fn header_mut_from_borrowed<'r, T: AccountHeader>(account: &'r mut BorrowedAccountInfo<'_>) -> &'r mut T {
+    section_mut_from_borrowed(account, ACCOUNT_PREFIX_LEN)
 }
 
 fn expand_header<'a, From: AccountHeader, To: AccountHeader>(
@@ -151,17 +205,41 @@ fn header_version(info: &AccountInfo) -> u8 {
     data[HEADER_VERSION_OFFSET]
 }
 
+pub fn tag_borrowed(program_id: &Pubkey, info: &BorrowedAccountInfo) -> Result<u8> {
+    if info.owner != program_id {
+        return Err(Error::AccountInvalidOwner(*info.key, *program_id));
+    }
+
+    if info.data.len() < ACCOUNT_PREFIX_LEN {
+        return Err(Error::AccountInvalidData(*info.key));
+    }
+
+    Ok(info.data[TAG_OFFSET])
+}
+
 pub fn tag(program_id: &Pubkey, info: &AccountInfo) -> Result<u8> {
     if info.owner != program_id {
         return Err(Error::AccountInvalidOwner(*info.key, *program_id));
     }
 
     let data = info.try_borrow_data()?;
+
     if data.len() < ACCOUNT_PREFIX_LEN {
         return Err(Error::AccountInvalidData(*info.key));
     }
 
     Ok(data[TAG_OFFSET])
+}
+
+pub fn set_tag_borrowed(program_id: &Pubkey, info: &mut BorrowedAccountInfo, tag: u8, header_version: u8) -> Result<()> {
+    assert_eq!(info.owner, program_id);
+
+    assert!(info.data.len() >= ACCOUNT_PREFIX_LEN);
+
+    info.data[TAG_OFFSET] = tag;
+    info.data[HEADER_VERSION_OFFSET] = header_version;
+
+    Ok(())
 }
 
 pub fn set_tag(program_id: &Pubkey, info: &AccountInfo, tag: u8, header_version: u8) -> Result<()> {
@@ -174,6 +252,16 @@ pub fn set_tag(program_id: &Pubkey, info: &AccountInfo, tag: u8, header_version:
     data[HEADER_VERSION_OFFSET] = header_version;
 
     Ok(())
+}
+
+pub fn validate_tag_borrowed(program_id: &Pubkey, info: &BorrowedAccountInfo, tag: u8) -> Result<()> {
+    let account_tag = crate::account::tag_borrowed(program_id, info)?;
+
+    if account_tag == tag {
+        Ok(())
+    } else {
+        Err(Error::AccountInvalidTag(*info.key, tag))
+    }
 }
 
 pub fn validate_tag(program_id: &Pubkey, info: &AccountInfo, tag: u8) -> Result<()> {

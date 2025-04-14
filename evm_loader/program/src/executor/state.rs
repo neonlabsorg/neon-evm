@@ -37,8 +37,8 @@ pub struct ExecutorStateData {
     pub timestamped_contracts: RefCell<TimestampedContracts>,
     actions: Vector<Action>,
     stack: Vector<usize>,
-    exit_status: Option<ExitStatus>,
-    touched_accounts: RefCell<TouchedAccounts>,
+    pub exit_status: Option<ExitStatus>,
+    pub touched_accounts: RefCell<TouchedAccounts>,
 }
 
 pub struct ExecutorState<'a, B: AccountStorage> {

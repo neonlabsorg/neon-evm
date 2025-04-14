@@ -3,14 +3,17 @@ use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
 use crate::instruction::instruction_internals::{allocate_evm, finalize};
-use crate::types::{ScheduledTx, Transaction};
+use crate::types::{ScheduledTx, Transaction, TrxView};
 
-pub fn do_scheduled_start<'a>(
+pub fn do_scheduled_start<'a, 'b>(
+    trx: &Transaction,
     accounts: AccountsDB<'a>,
-    mut storage: StateAccount<'a>,
+    mut storage: StateAccount<'b>,
     mut transaction_tree: TransactionTree<'a>,
     mut gasometer: Gasometer,
-) -> Result<()> {
+) -> Result<()> 
+    where 'a: 'b
+{
     debug_print!("do_scheduled_start");
 
     let mut account_storage = ProgramAccountStorage::new(accounts)?;
@@ -39,18 +42,14 @@ pub fn do_scheduled_start<'a>(
     // record gas for the future finish
     gasometer.record_scheduled_transaction_finish();
 
-    allocate_evm(&mut account_storage, &mut storage)?;
-    let mut state_data = storage.read_executor_state();
-
-    let (_, touched_accounts, timestamped_contracts) = state_data.deconstruct();
+    allocate_evm(trx, &mut account_storage, &mut storage)?;
     finalize(
         0,
         storage,
         account_storage,
-        None,
         gasometer,
-        touched_accounts,
-        timestamped_contracts,
+        false,
+        None
     )
 }
 

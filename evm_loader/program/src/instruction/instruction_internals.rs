@@ -1,6 +1,8 @@
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use std::ops::DerefMut;
 
-use crate::account::{AllocateResult, Holder, Operator, StateAccount};
+use solana_program::pubkey::Pubkey;
+
+use crate::account::{AllocateResult, BorrowedAccountInfo, Holder, Operator, StateAccount};
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::allocator::acc_allocator;
 use crate::debug::log_data;
@@ -10,9 +12,8 @@ use crate::evm::{ExitStatus, Machine};
 use crate::executor::precompile_extension::call_solana::execute_external_instruction;
 use crate::executor::{Action, ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
-use crate::types::boxx::boxx;
-use crate::types::{Address, Vector};
-use crate::types::{Transaction, TreeMap};
+use crate::types::Vector;
+use crate::types::{Transaction, TrxView};
 
 use solana_program::instruction::Instruction;
 
@@ -21,31 +22,26 @@ pub type EvmBackend<'a, 'r> = ExecutorState<'r, ProgramAccountStorage<'a>>;
 pub type Evm = Machine<NoopEventListener>;
 
 pub fn allocate_evm(
+    trx: &Transaction,
     account_storage: &mut ProgramAccountStorage<'_>,
     storage: &mut StateAccount<'_>,
 ) -> Result<()> {
     storage.reset_steps_executed();
 
     // Dealloc evm that was potentially alloced in previous iterations before the reset.
-    if storage.is_evm_alloced() {
-        storage.dealloc_evm::<NoopEventListener>();
+    if storage.evm().is_some() {
+        storage.evm_mut().take();
     }
 
-    // Dealloc executor state that was potentially alloced in previous iterations before the reset.
-    if storage.is_executor_state_alloced() {
-        storage.dealloc_executor_state();
-    }
-
-    let mut state_data = boxx(ExecutorStateData::new(account_storage));
-    let mut evm_backend = ExecutorState::new(account_storage, &mut state_data);
-    let evm = boxx(Evm::new(
-        storage.trx(),
+    let mut state_data = storage.executor_state_mut();
+    *state_data = Some(ExecutorStateData::new(account_storage));
+    let mut evm_backend = ExecutorState::new(account_storage, state_data.deref_mut().as_mut().unwrap());
+    storage.evm_mut().replace(Evm::new_from_tx(
+        trx,
         storage.trx_origin(),
         &mut evm_backend,
         None,
     )?);
-    storage.alloc_evm(evm);
-    storage.alloc_executor_state(state_data);
 
     Ok(())
 }
@@ -56,23 +52,35 @@ pub fn reinit_evm(
     reallocate: bool,
 ) -> Result<()> {
     if reallocate {
-        allocate_evm(account_storage, storage)?;
-    } else {
-        let mut state_data = storage.read_executor_state();
-        let mut evm = storage.read_evm();
+        storage.reset_steps_executed();
 
-        let evm_backend = ExecutorState::new(account_storage, &mut state_data);
-        evm.reinit(&evm_backend);
+        let mut state_data = storage.executor_state_mut();
+        *state_data = Some(ExecutorStateData::new(account_storage));
+        let mut evm_backend = ExecutorState::new(account_storage, state_data.deref_mut().as_mut().unwrap());
+        let evm = storage.evm_mut().take();
+        storage.evm_mut().replace(Evm::new_from_machine(
+            evm.unwrap(),
+            storage.trx(),
+            storage.trx_origin(),
+            &mut evm_backend,
+            None,
+        )?);
+    } else {
+        let mut state_data = storage.executor_state_mut();
+        let mut evm = storage.evm_mut();
+
+        let evm_backend = ExecutorState::new(account_storage, state_data.deref_mut().as_mut().unwrap());
+        evm.as_mut().unwrap().reinit(&evm_backend);
     };
     Ok(())
 }
 
 pub fn holder_parse_trx(
-    info: AccountInfo<'_>,
+    info: BorrowedAccountInfo<'_>,
     operator: &Operator,
     program_id: &Pubkey,
     is_scheduled: bool,
-) -> Result<Transaction> {
+) -> Result<(Transaction, Vec<u8>)> {
     let mut holder = Holder::from_account(program_id, info)?;
 
     // We have to initialize the heap before creating Transaction object, but since
@@ -97,21 +105,20 @@ pub fn holder_parse_trx(
 
     holder.validate_transaction(&trx)?;
 
-    Ok(trx)
+    Ok((trx, transaction_rlp_copy))
 }
 
-pub fn finalize<'a, 'b>(
+pub fn finalize<'a, 'b: 'a, 'c>(
     steps_executed: u64,
     mut storage: StateAccount<'a>,
-    mut accounts: ProgramAccountStorage<'a>,
-    results: Option<(&'b ExitStatus, &'b Vector<Action>)>,
+    mut accounts: ProgramAccountStorage<'b>,
     mut gasometer: Gasometer,
-    touched_accounts: TreeMap<Pubkey, u64>,
-    timestamped_contracts: TreeMap<Address, ()>,
+    apply_state: bool,
+    provided_execution_result: Option<(&ExitStatus, &Vector<Action>)>,
 ) -> Result<()> {
     debug_print!("finalize");
 
-    storage.update_touched_accounts(accounts.program_id(), accounts.db(), &touched_accounts)?;
+    storage.update_touched_accounts(accounts.program_id(), accounts.db())?;
     storage.increment_steps_executed(steps_executed)?;
     log_data(&[
         b"STEPS",
@@ -123,61 +130,77 @@ pub fn finalize<'a, 'b>(
         accounts.transfer_treasury_payment()?;
     }
 
-    let status = if let Some((status, actions)) = results {
-        if accounts.allocate(actions)? == AllocateResult::Ready {
-            accounts.apply_state_change(actions)?;
-            accounts.update_timestamped_contracts(timestamped_contracts.keys())?;
-            Some(status)
+    if {
+        let root = storage.root_ref_mut();
+        let mut executor_state = root.executor_state.borrow_mut(); 
+
+        let (storage_header, status) = {
+            let (execution_result, _, timestamped_contracts) = executor_state.as_mut().unwrap().deconstruct();
+            let status = if let Some((status, actions)) = provided_execution_result.or(execution_result) {
+                if apply_state && accounts.allocate(actions)? == AllocateResult::Ready {
+                    accounts.apply_state_change(actions)?;
+                    accounts.update_timestamped_contracts(timestamped_contracts.keys())?;
+                    Some(status)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            (&mut root.plain_data, status)
+        };
+
+        gasometer.record_solana_transaction_cost(storage_header)?;
+        gasometer.record_operator_expenses(accounts.operator());
+
+        let used_gas = gasometer.used_gas();
+        let total_used_gas = gasometer.used_gas_total();
+        log_data(&[
+            b"GAS",
+            &used_gas.to_le_bytes(),
+            &total_used_gas.to_le_bytes(),
+        ]);
+
+        storage_header.consume_gas(used_gas, accounts.db().try_operator_balance())?;
+
+        if let Some(status) = status {
+            log_return_value(&status);
+
+            // refund gas for scheduled transaction is happening in transaction_finish.
+            if !storage_header.is_scheduled_tx() {
+                let mut origin = accounts.origin(storage_header.origin, storage_header)?;
+                origin.increment_revision(accounts.rent(), accounts.db())?;
+
+                storage_header.refund_unused_gas(&mut origin)?;
+            }
+
+
+            true
         } else {
-            None
+            false
         }
-    } else {
-        None
-    };
-
-    gasometer.record_solana_transaction_cost(storage.trx())?;
-    gasometer.record_operator_expenses(accounts.operator());
-
-    let used_gas = gasometer.used_gas();
-    let total_used_gas = gasometer.used_gas_total();
-    log_data(&[
-        b"GAS",
-        &used_gas.to_le_bytes(),
-        &total_used_gas.to_le_bytes(),
-    ]);
-
-    storage.consume_gas(used_gas, accounts.db().try_operator_balance())?;
-
-    if let Some(status) = status {
-        log_return_value(&status);
-
-        let trx = storage.trx();
-        // refund gas for scheduled transaction is happening in transaction_finish.
-        if !trx.is_scheduled_tx() {
-            let mut origin = accounts.origin(storage.trx_origin(), trx)?;
-            origin.increment_revision(accounts.rent(), accounts.db())?;
-
-            storage.refund_unused_gas(&mut origin)?;
-        }
-
+    } {
         storage.finalize(accounts.program_id())?;
     }
 
     Ok(())
 }
 
-pub fn finalize_interrupted<'a>(
+pub fn finalize_interrupted<'a, 'b: 'a>(
     storage: StateAccount<'a>,
-    mut accounts: ProgramAccountStorage<'a>,
+    mut accounts: ProgramAccountStorage<'b>,
     gasometer: Gasometer,
-    state_data: &mut ExecutorStateData,
 ) -> Result<()> {
     debug_print!("finalize_interrupted");
 
-    accounts.apply_state_change(state_data.into_actions())?;
     let (exit_reason, steps_executed, _, _) = {
+        let mut state_ref = storage.executor_state_mut();
+        let state_data = state_ref.as_mut().unwrap();
+        accounts.apply_state_change(state_data.into_actions())?;
         let mut backend = SyncedExecutorState::new_with_state_data(&mut accounts, state_data);
-        let mut evm = storage.read_evm::<NoopEventListener>();
+
+        let mut evm_ref = storage.evm_mut();
+        let evm = evm_ref.as_mut().unwrap();
         let interrupted_state = storage
             .interrupted_state()
             .expect("storage.interrupted_state should be Some within finalize_interrupted context");
@@ -199,16 +222,15 @@ pub fn finalize_interrupted<'a>(
         }
         evm.execute(u64::MAX, &mut backend)?
     };
-    let (_, touched_accounts, timestamped_contracts) = state_data.deconstruct();
+
     let no_actions = Vector::new_in(acc_allocator());
     finalize(
         steps_executed,
         storage,
         accounts,
-        Some((&exit_reason, &no_actions)),
         gasometer,
-        touched_accounts,
-        timestamped_contracts,
+        true,
+        Some((&exit_reason, &no_actions))
     )
 }
 

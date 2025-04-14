@@ -1,17 +1,15 @@
 use linked_list_allocator::Heap;
-use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 use static_assertions::const_assert;
-use std::cell::{Ref, RefMut};
 use std::mem::{align_of, size_of};
 use std::ptr::write_unaligned;
 
 use crate::account::TAG_STATE_FINALIZED;
 use crate::allocator::STATE_ACCOUNT_DATA_ADDRESS;
 use crate::error::{Error, Result};
-use crate::types::Transaction;
+use crate::types::{Transaction, TrxView};
 
-use super::{AccountHeader, Operator, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_HOLDER};
+use super::{AccountHeader, BorrowedAccountInfo, Operator, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_HOLDER};
 
 /// Ethereum holder data account
 #[repr(C, packed)]
@@ -26,7 +24,7 @@ impl AccountHeader for Header {
 }
 
 pub struct Holder<'a> {
-    account: AccountInfo<'a>,
+    account: BorrowedAccountInfo<'a>,
 }
 
 // Offset of the memory cell that denotes pointer to the heap from the start of the header.
@@ -44,10 +42,14 @@ const_assert!(HEAP_PTR_OFFSET >= size_of::<crate::account::state::Header>());
 const_assert!(HEAP_PTR_OFFSET >= size_of::<crate::account::state_finalized::Header>());
 
 impl<'a> Holder<'a> {
-    pub fn from_account(program_id: &Pubkey, account: AccountInfo<'a>) -> Result<Self> {
-        match super::tag(program_id, &account)? {
+    pub fn into_account(self) -> BorrowedAccountInfo<'a> {
+        self.account
+    }
+
+    pub fn from_account(program_id: &Pubkey, mut account: BorrowedAccountInfo<'a>) -> Result<Self> {
+        match super::tag_borrowed(program_id, &account)? {
             TAG_STATE_FINALIZED => {
-                super::set_tag(program_id, &account, TAG_HOLDER, Header::VERSION)?;
+                super::set_tag_borrowed(program_id, &mut account, TAG_HOLDER, Header::VERSION)?;
 
                 let mut holder = Self { account };
                 holder.clear();
@@ -61,7 +63,7 @@ impl<'a> Holder<'a> {
 
     pub fn create(
         program_id: &Pubkey,
-        account: AccountInfo<'a>,
+        mut account: BorrowedAccountInfo<'a>,
         seed: &str,
         operator: &Operator,
     ) -> Result<Self> {
@@ -74,8 +76,8 @@ impl<'a> Holder<'a> {
             return Err(Error::AccountInvalidKey(*account.key, key));
         }
 
-        super::validate_tag(program_id, &account, TAG_EMPTY)?;
-        super::set_tag(&crate::ID, &account, TAG_HOLDER, Header::VERSION)?;
+        super::validate_tag_borrowed(program_id, &account, TAG_EMPTY)?;
+        super::set_tag_borrowed(&crate::ID, &mut account, TAG_HOLDER, Header::VERSION)?;
 
         let mut holder = Self::from_account(program_id, account)?;
         holder.header_mut().owner = *operator.key;
@@ -92,34 +94,32 @@ impl<'a> Holder<'a> {
         f(&mut header);
     }
 
-    fn header(&self) -> Ref<Header> {
-        super::section(&self.account, HEADER_OFFSET)
+    fn header(&self) -> &Header {
+        super::section_from_borrowed(&self.account, HEADER_OFFSET)
     }
 
-    fn header_mut(&mut self) -> RefMut<Header> {
-        super::section_mut(&self.account, HEADER_OFFSET)
+    fn header_mut(&mut self) -> &mut Header {
+        super::section_mut_from_borrowed(&mut self.account, HEADER_OFFSET)
     }
 
-    fn buffer(&self) -> Ref<[u8]> {
-        let data = self.account.data.borrow();
-        Ref::map(data, |d| &d[BUFFER_OFFSET..])
+    fn buffer(&self) -> &[u8] {
+        &self.account.data[BUFFER_OFFSET..]
     }
 
-    fn buffer_mut(&mut self) -> RefMut<[u8]> {
-        let data = self.account.data.borrow_mut();
-        RefMut::map(data, |d| &mut d[BUFFER_OFFSET..])
+    fn buffer_mut(&mut self) -> &mut [u8] {
+        &mut self.account.data[BUFFER_OFFSET..]
     }
 
     pub fn clear(&mut self) {
         {
-            let mut header = self.header_mut();
+            let header = self.header_mut();
             header.transaction_hash.fill(0);
             header.transaction_len = 0;
         }
         // Clear the heap ptr.
-        Self::write_heap_offset(&self.account, 0);
+        Self::write_heap_offset(&mut self.account, 0);
         {
-            let mut buffer = self.buffer_mut();
+            let buffer = self.buffer_mut();
             buffer.fill(0);
         }
     }
@@ -131,11 +131,11 @@ impl<'a> Holder<'a> {
             .ok_or(Error::IntegerOverflow)?;
 
         {
-            let mut header = self.header_mut();
+            let header = self.header_mut();
             header.transaction_len = std::cmp::max(header.transaction_len, end);
         }
         {
-            let mut buffer = self.buffer_mut();
+            let buffer = self.buffer_mut();
             let Some(buffer) = buffer.get_mut(begin..end) else {
                 return Err(Error::HolderInsufficientSize(buffer.len(), end));
             };
@@ -152,11 +152,10 @@ impl<'a> Holder<'a> {
     }
 
     #[must_use]
-    pub fn transaction(&self) -> Ref<[u8]> {
+    pub fn transaction(&self) -> &[u8] {
         let len = self.transaction_len();
 
-        let buffer = self.buffer();
-        Ref::map(buffer, |b| &b[..len])
+        &self.buffer()[..len]
     }
 
     #[must_use]
@@ -208,17 +207,17 @@ impl<'a> Holder<'a> {
     /// Associated function, see `fn init_heap`.
     pub fn init_holder_heap(
         program_id: &Pubkey,
-        account: &mut AccountInfo,
+        account: &mut BorrowedAccountInfo,
         transaction_offset: usize,
     ) -> Result<()> {
         // Validation: check that the passed account is a variant of Holder: Holder, State or StateFinalized.
         // An additional owner check is happening inside the tag.
-        let tag = crate::account::tag(program_id, account)?;
+        let tag = crate::account::tag_borrowed(program_id, account)?;
         assert!(
             tag == TAG_HOLDER || tag == crate::account::TAG_STATE || tag == TAG_STATE_FINALIZED
         );
 
-        let data_ptr = account.data.borrow().as_ptr();
+        let data_ptr = account.data.as_ptr();
         // Validation: the Holder Account used as a persistent heap, must be first in the account list.
         assert_eq!(data_ptr as usize, STATE_ACCOUNT_DATA_ADDRESS);
 
@@ -269,22 +268,15 @@ impl<'a> Holder<'a> {
 
     /// # Safety
     /// Writes the offset of the heap object to a special memory cell.
-    fn write_heap_offset(account: &AccountInfo<'_>, offset: usize) {
+    fn write_heap_offset(account: &mut BorrowedAccountInfo<'_>, offset: usize) {
         #[allow(clippy::cast_ptr_alignment)]
         let heap_offset_memcell = account
             .data
-            .borrow_mut()
             .as_mut_ptr()
             .wrapping_add(HEAP_OFFSET_OFFSET)
             .cast::<usize>();
         unsafe {
             write_unaligned(heap_offset_memcell, offset);
         }
-    }
-
-    /// # Safety
-    /// Permanently deletes Holder account and all data in it
-    pub unsafe fn suicide(self, operator: &Operator) {
-        crate::account::delete(&self.account, operator);
     }
 }

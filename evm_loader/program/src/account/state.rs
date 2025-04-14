@@ -1,32 +1,29 @@
-use std::cell::{Ref, RefMut};
-use std::mem::{align_of, size_of, ManuallyDrop};
-use std::ptr::{addr_of, read_unaligned};
+use std::ops::Deref;
+use std::cell::{Ref, RefMut, RefCell};
+use std::mem::size_of;
+use std::ptr::addr_of;
 
 use crate::account_storage::AccountStorage;
-use crate::allocator::acc_allocator;
 use crate::config::DEFAULT_CHAIN_ID;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
-use crate::evm::tracing::EventListener;
 use crate::evm::Machine;
 use crate::executor::ExecutorStateData;
 use crate::types::boxx::{boxx, Boxx};
+use crate::types::vector::VectorSliceExt;
 use crate::types::{
-    read_raw_utils::{read_vec, ReconstructRaw},
-    AccessListTx, Address, DynamicFeeTx, LegacyTx, ScheduledTx, Transaction, TransactionPayload,
-    TreeMap, Vector,
+    read_raw_utils::read_vec,
+    Address, Transaction,
+    TreeMap, Vector, TrxView
 };
 
 use ethnum::U256;
 use solana_program::hash::Hash;
 use solana_program::system_program;
-use solana_program::{account_info::AccountInfo, instruction::AccountMeta, pubkey::Pubkey};
+use solana_program::{instruction::AccountMeta, account_info::AccountInfo, pubkey::Pubkey};
 
 use super::{
-    AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder, OperatorBalanceAccount,
-    StateFinalizedAccount, StorageCell, ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_BALANCE,
-    TAG_ACCOUNT_CONTRACT, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED,
-    TAG_STATE, TAG_STATE_FINALIZED, TAG_STORAGE_CELL,
+    AccountHeader, AccountsDB, BalanceAccount, BorrowedAccountInfo, ContractAccount, Holder, OperatorBalanceAccount, StateFinalizedAccount, StorageCell, TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED, TAG_STORAGE_CELL
 };
 
 #[derive(PartialEq, Eq)]
@@ -61,7 +58,7 @@ impl AccountRevision {
             let hash = solana_program::hash::hashv(&[
                 info.owner.as_ref(),
                 &info.lamports().to_le_bytes(),
-                &info.data.borrow(),
+                &info.data.deref().borrow(),
             ]);
 
             return AccountRevision::Hash(hash.to_bytes());
@@ -101,69 +98,231 @@ pub struct InterruptedState {
     pub lamports: u64,
 }
 
-/// Storage data account to store execution metainfo between steps for iterative execution
-#[repr(C)]
-struct Data {
-    pub owner: Pubkey,
-    pub transaction: Transaction,
-    /// Ethereum transaction caller address
-    pub origin: Address,
-    /// Stored revision
-    pub revisions: TreeMap<Pubkey, AccountRevision>,
-    /// Accounts that been read during the transaction
-    pub touched_accounts: TreeMap<Pubkey, u64>,
-    /// Ethereum transaction gas used and paid
-    pub gas_used: U256,
-    /// TODO: remove it, because not-used, but it will change the structure of holder
-    pub priority_fee_used: U256,
-    /// Steps executed in the transaction
-    pub steps_executed: u64,
-    /// State of `execute_external_instruction` at the Solana call interruption breakpoint
-    /// None if no Solana call interruption occurs
-    pub interrupted_state: Option<InterruptedState>,
-    /// Address of the tree account (present for scheduled transactions).
-    pub tree_account: Option<Pubkey>,
-}
 
-// Stores relative offsets for the corresponding objects as allocated by the AccountAllocator.
 #[allow(clippy::struct_field_names)]
 #[repr(C, packed)]
 pub struct Header {
-    pub executor_state_offset: usize,
-    pub evm_offset: usize,
-    pub data_offset: usize,
+    pub version_signature: usize,
+    // Are relative offsets for the corresponding objects as allocated by the AccountAllocator.
+    pub root_offset: isize,
+    pub serialized_tx: std::ops::Range<isize>,
 }
+
+impl Header {
+    fn valid_version_signature() -> usize {
+        0
+    }
+}
+
+/// Storage data account to store execution metainfo between steps for iterative execution
+#[repr(C)]
+#[derive(Default)]
+pub struct PlainData {
+    // We may want to extend the PlainData, so the first field
+    // indicates that some trailing fields could be filled with garbage
+    // and shouldn't be reused
+    pub layout_version: usize, // = 0 
+    pub owner: Pubkey,
+    /// Ethereum transaction caller address
+    pub origin: Address,
+    /// Address of the tree account (present for scheduled transactions).
+    pub tree_account: Option<Pubkey>,
+    pub tree_account_index: Option<u16>,
+    //pub tree_account_index: Option<u16>,
+    /// Ethereum transaction gas used and paid
+    pub gas_used: U256,
+
+    pub tx_hash: [u8; 32],
+    pub chain_id: Option<u64>, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L958
+    pub tx_type: u8, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L996
+
+    pub max_fee_per_gas: Option<U256>, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L1014,
+    pub max_priority_fee_per_gas: Option<U256>, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L1027
+
+    pub tx_target: Option<Address>,
+    pub payer: Address,
+    pub tx_nonce: u64,
+
+    pub value: U256,
+    pub gas_limit: U256,
+    pub gas_price: U256,
+
+    // (block_timestamp, block_number)
+    pub block_params: Option<(U256, U256)>,
+    /// Steps executed in the transaction
+    pub steps_executed: u64,
+    /// Ethereum transaction priority fee used and paid in tokens
+    pub priority_fee_used: U256,
+    pub sender: Option<Address>,
+    // fields for layout_version >= 1
+}
+
+impl TrxView for PlainData {
+    fn hash(&self) -> [u8; 32] {
+        self.tx_hash
+    }
+
+    fn gas_price(&self) -> U256 {
+        self.gas_price
+    }
+
+    fn chain_id(&self) -> Option<u64> {
+        self.chain_id
+    }
+    
+    fn is_scheduled_tx(&self) -> bool {
+        self.tx_type == Transaction::SCHEDULED_TX_TYPE
+    }
+
+    fn nonce(&self) -> u64 {
+        self.tx_nonce
+    }
+
+    fn gas_limit(&self) -> U256 {
+        self.gas_limit
+    }
+
+    fn get_payer(&self) -> Option<Address> {
+        Some(self.payer)
+    }
+
+    fn max_priority_fee_per_gas(&self) -> Option<U256> {
+        self.max_priority_fee_per_gas
+    }
+
+    fn tree_account_index(&self) -> Option<u16> {
+        self.tree_account_index
+    }
+
+    fn target(&self) -> Option<Address> {
+        self.tx_target
+    }
+
+    fn value(&self) -> U256 {
+        self.value
+    }
+
+    fn max_fee_per_gas(&self) -> Option<U256> {
+        self.max_fee_per_gas
+    }
+
+    fn sender(&self) -> Option<Address> {
+        self.sender
+    }
+}
+
+impl PlainData {
+    fn layout_version() -> usize {
+        0
+    }
+}
+
+#[repr(C)]
+pub struct Root {
+    pub plain_data: PlainData,
+    /// Stored revision
+    revisions: TreeMap<Pubkey, AccountRevision>,
+    /// Accounts that been read during the transaction    
+    pub touched_accounts: TreeMap<Pubkey, u64>,
+    /// State of `execute_external_instruction` at the Solana call interruption breakpoint
+    /// None if no Solana call interruption occurs
+    pub interrupted_state: Option<InterruptedState>,
+
+    pub executor_state: RefCell<Option<ExecutorStateData>>,
+    pub machine_state: RefCell<Option<Machine<crate::evm::tracing::NoopEventListener>>>,
+    
+    //pub alloc : SolanaAllocator
+}
+
 impl AccountHeader for Header {
-    const VERSION: u8 = 1;
+    const VERSION: u8 = 2;
 }
 
 pub struct StateAccount<'a> {
-    account: AccountInfo<'a>,
-    // ManuallyDrop to ensure Data is not dropped when StateAccount
-    // is being dropped (between iterations).
-    data: ManuallyDrop<Boxx<Data>>,
+    account: BorrowedAccountInfo<'a>,
+    root_ref: &'a mut Root,
 }
 
 type StateAccountCoreApiView = (
-    Transaction,
-    Pubkey,
-    Option<Pubkey>,
-    Address,
+    PlainData,
     Vec<Pubkey>,
-    u64,
-    (U256, U256),
+    Vec<u8> //tx rlp
 );
 
-const BUFFER_OFFSET: usize = ACCOUNT_PREFIX_LEN + size_of::<Header>();
+impl PlainData {
+    fn use_gas(&mut self, amount: U256) -> Result<U256> {
+        if amount == U256::ZERO {
+            return Ok(U256::ZERO);
+        }
+
+        let total_gas_used = self.gas_used.saturating_add(amount);
+        let gas_limit = self.gas_limit;
+
+        if total_gas_used > gas_limit {
+            return Err(Error::OutOfGas(gas_limit, total_gas_used));
+        }
+
+        self.gas_used = total_gas_used;
+
+        amount
+            .checked_mul(self.gas_price)
+            .ok_or(Error::IntegerOverflow)
+    }
+
+    #[must_use]
+    pub fn gas_available(&self) -> U256 {
+        self.gas_limit.saturating_sub(self.gas_used)
+    }
+
+    /// Use available gas and return it to the caller.
+    /// It's caller's responsibility to mint the unused gas tokens to the appropriate recipient.
+    pub fn materialize_unused_gas(&mut self) -> Result<U256> {
+        let unused_gas = self.gas_available();
+        let gas_fee_tokens = self.use_gas(unused_gas)?;
+
+        Ok(gas_fee_tokens)
+    }
+
+    pub fn consume_gas(
+        &mut self,
+        amount: U256,
+        receiver: Option<OperatorBalanceAccount>,
+    ) -> Result<()> {
+        let tokens = self.use_gas(amount)?;
+
+        if tokens == U256::ZERO {
+            return Ok(());
+        }
+
+        let mut operator_balance = receiver.ok_or(Error::OperatorBalanceMissing)?;
+
+        let trx_chain_id = self.chain_id.unwrap_or(DEFAULT_CHAIN_ID);
+        if operator_balance.chain_id() != trx_chain_id {
+            return Err(Error::OperatorBalanceInvalidChainId);
+        }
+
+        operator_balance.mint(tokens)
+    }
+
+    pub fn refund_unused_gas(&mut self, origin: &mut BalanceAccount) -> Result<()> {
+        let trx_chain_id = self.chain_id.unwrap_or(DEFAULT_CHAIN_ID);
+
+        assert!(origin.chain_id() == trx_chain_id);
+        assert!(origin.address() == self.origin);
+
+        let total_refund = self.materialize_unused_gas()?;
+
+        origin.mint(total_refund)
+    }
+}
 
 impl<'a> StateAccount<'a> {
-    #[must_use]
-    pub fn into_account(self) -> AccountInfo<'a> {
+    pub fn into_account(self) -> BorrowedAccountInfo<'a> {
         self.account
     }
 
-    fn validate_tag(program_id: &Pubkey, account: &AccountInfo<'a>) -> Result<()> {
-        let tag = super::tag(program_id, account)?;
+    fn validate_tag<'b>(program_id: &'b Pubkey, account: &'b BorrowedAccountInfo<'b>) -> Result<()> {
+        let tag = super::tag_borrowed(program_id, account)?;
 
         if tag == TAG_STATE
             || tag == TAG_SCHEDULED_STATE_FINALIZED
@@ -175,47 +334,41 @@ impl<'a> StateAccount<'a> {
         }
     }
 
-    pub fn from_account(program_id: &Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
-        Self::validate_tag(program_id, account)?;
+    pub fn from_account(program_id: &Pubkey, account: BorrowedAccountInfo<'a>) -> Result<Self> {
+        Self::validate_tag(program_id, &account)?;
 
-        let header = super::header::<Header>(account);
-        let data_ptr = unsafe {
-            // Data is more-strictly aligned, but it's safe because we previously initiated it at the exact address.
-            #[allow(clippy::cast_ptr_alignment)]
-            account
-                .data
-                .borrow()
-                .as_ptr()
-                .add(header.data_offset)
-                .cast::<Data>()
-                .cast_mut()
-        };
+        let offset = super::header_from_borrowed::<Header>(&account).root_offset;
+        let ptr = account.data.as_mut_ptr();
 
-        Ok(Self {
-            account: account.clone(),
-            data: ManuallyDrop::new(unsafe { Boxx::from_raw_in(data_ptr, acc_allocator()) }),
+        Ok(Self{
+            account: account,
+            root_ref: unsafe { &mut *(ptr.offset(offset) as *mut Root) }
         })
     }
 
-    pub fn new(
+    pub fn new<'b>(
         program_id: &Pubkey,
-        info: AccountInfo<'a>,
-        accounts: &AccountsDB<'a>,
+        info: BorrowedAccountInfo<'a>,
+        accounts: &AccountsDB<'b>,
         origin: Address,
-        transaction: Transaction,
+        transaction: &Transaction,
+        transaction_rlp: &[u8],
         tree_account: Option<Pubkey>,
-    ) -> Result<Self> {
-        let owner = match super::tag(program_id, &info)? {
+    ) -> Result<Self>
+    {
+        let (mut info, owner) = match super::tag_borrowed(program_id, &info)? {
             TAG_HOLDER => {
-                let holder = Holder::from_account(program_id, info.clone())?;
+                let holder = Holder::from_account(program_id, info)?;
                 holder.validate_owner(accounts.operator())?;
-                holder.owner()
+                let owner = holder.owner();
+                (holder.into_account(), owner)
             }
             TAG_STATE_FINALIZED => {
-                let finalized = StateFinalizedAccount::from_account(program_id, info.clone())?;
+                let finalized = StateFinalizedAccount::from_account(program_id, info)?;
                 finalized.validate_owner(accounts.operator())?;
-                finalized.validate_trx(&transaction)?;
-                finalized.owner()
+                finalized.validate_trx(transaction)?;
+                let owner = finalized.owner();
+                (finalized.into_account(), owner)
             }
             tag => return Err(Error::StorageAccountInvalidTag(*info.key, tag)),
         };
@@ -225,53 +378,72 @@ impl<'a> StateAccount<'a> {
             "Tree account should be present iff it's a scheduled transaction."
         );
 
-        let data = boxx(Data {
-            owner,
-            transaction,
-            origin,
+        super::set_tag_borrowed(program_id, &mut info, TAG_STATE, Header::VERSION)?;
+
+        let root = boxx(Root {
+            plain_data: PlainData {
+                layout_version: PlainData::layout_version(),
+                owner: owner.clone(),
+                origin: origin.clone(),
+                tree_account: tree_account,
+                gas_used: U256::ZERO,
+                tx_hash: transaction.hash(),
+                chain_id: transaction.chain_id(),
+                tx_type: transaction.tx_type(),
+                max_fee_per_gas: transaction.max_fee_per_gas(),
+                tx_target: transaction.target(),
+                payer: transaction.payer(origin.clone()),
+                tx_nonce: transaction.nonce(),
+                value: transaction.value(),
+                gas_limit: transaction.gas_limit(),
+                gas_price: transaction.gas_price(),
+                block_params: Some((U256::ZERO, U256::ZERO)),
+                steps_executed: 0_u64,
+                priority_fee_used: U256::ZERO,
+                max_priority_fee_per_gas: transaction.max_priority_fee_per_gas(),
+                tree_account_index: transaction.tree_account_index(),
+                sender: transaction.sender()
+            },
             revisions: TreeMap::new(),
             touched_accounts: TreeMap::new(),
-            gas_used: U256::ZERO,
-            priority_fee_used: U256::ZERO,
-            steps_executed: 0_u64,
             interrupted_state: None,
-            tree_account,
+            executor_state: None.into(),
+            machine_state: None.into()
         });
 
-        let data_offset = {
-            let account_data_ptr = info.data.borrow().as_ptr();
-            let data_obj_addr = addr_of!(*data).cast::<u8>();
-            let data_offset = unsafe { data_obj_addr.offset_from(account_data_ptr) };
-            #[allow(clippy::cast_sign_loss)]
-            let data_offset = data_offset as usize;
-            data_offset
-        };
+        let tx_rlp = transaction_rlp.to_vector();
 
-        super::set_tag(program_id, &info, TAG_STATE, Header::VERSION)?;
+        let account_data_ptr = info.data.as_ptr();
         {
             // Set header
-            let mut header = super::header_mut::<Header>(&info);
-            header.executor_state_offset = 0;
-            header.evm_offset = 0;
-            header.data_offset = data_offset;
+            let header = super::header_mut_from_borrowed::<Header>(&mut info);
+            header.version_signature = Header::valid_version_signature();
+            header.root_offset = unsafe { addr_of!(*root).cast::<u8>().offset_from(account_data_ptr) };
+
+            let (ptr, len, _) = tx_rlp.into_raw_parts();
+            let offset = unsafe { ptr.offset_from(account_data_ptr) };
+            header.serialized_tx = std::ops::Range::<isize> {
+                start: offset,
+                end: offset + (len as isize)
+            };
         }
 
         Ok(Self {
             account: info,
-            data: ManuallyDrop::new(data),
+            root_ref: unsafe { &mut *Boxx::into_raw(root) }
         })
     }
 
     pub fn restore_without_revision_check(
         program_id: &Pubkey,
-        info: &AccountInfo<'a>,
+        info: BorrowedAccountInfo<'a>,
     ) -> Result<Self> {
         Self::from_account(program_id, info)
     }
 
     pub fn restore(
         program_id: &Pubkey,
-        info: &AccountInfo<'a>,
+        info: BorrowedAccountInfo<'a>,
         accounts: &AccountsDB,
     ) -> Result<(Self, AccountsStatus)> {
         let mut state = Self::from_account(program_id, info)?;
@@ -283,8 +455,8 @@ impl<'a> StateAccount<'a> {
 
         if status == AccountsStatus::NeedRestart {
             // reset all accounts revisions
-            state.data.revisions.clear();
-            state.data.touched_accounts.clear();
+            state.root_ref.revisions.clear();
+            state.root_ref.touched_accounts.clear();
             state.set_interrupted_state(None);
         }
 
@@ -293,7 +465,7 @@ impl<'a> StateAccount<'a> {
 
     fn validate_revisions(&self, program_id: &Pubkey, accounts: &AccountsDB) -> AccountsStatus {
         let touched_accounts = self
-            .data
+            .root_ref
             .touched_accounts
             .iter()
             .filter_map(|(key, counter)| if counter >= &2 { Some(key) } else { None });
@@ -302,7 +474,7 @@ impl<'a> StateAccount<'a> {
             let account = accounts.get(pubkey);
 
             let account_revision = AccountRevision::new(program_id, account);
-            let stored_revision = &self.data.revisions[pubkey];
+            let stored_revision = &self.root_ref.revisions[pubkey];
 
             if stored_revision != &account_revision {
                 log_data(&[b"INVALID_REVISION", pubkey.as_ref()]);
@@ -314,7 +486,8 @@ impl<'a> StateAccount<'a> {
     }
 
     fn validate_timestamps(&self, program_id: &Pubkey, accounts: &AccountsDB) -> AccountsStatus {
-        let executor_state = self.read_executor_state();
+        let state = self.root_ref.executor_state.borrow();
+        let executor_state = state.as_ref().unwrap();
         let state_block_number: u64 = executor_state.block_params.number.as_u64();
 
         let timestamped_contracts = executor_state.timestamped_contracts.borrow();
@@ -345,14 +518,12 @@ impl<'a> StateAccount<'a> {
 
     pub fn cancel(self, program_id: &Pubkey) -> Result<()> {
         // Clear an executor and set the result as canceled
-        let mut executor_state = self.read_executor_state();
-        executor_state.cancel();
-
+        self.executor_state_mut().as_mut().unwrap().cancel();
         self.finalize_impl(program_id, TAG_SCHEDULED_STATE_CANCELLED)
     }
 
-    fn finalize_impl(self, program_id: &Pubkey, scheduled_transition_tag: u8) -> Result<()> {
-        super::validate_tag(program_id, &self.account, TAG_STATE)?;
+    fn finalize_impl(mut self, program_id: &Pubkey, scheduled_transition_tag: u8) -> Result<()> {
+        super::validate_tag_borrowed(program_id, &self.account, TAG_STATE)?;
 
         if self.has_tree_account() {
             debug_print!(
@@ -361,9 +532,9 @@ impl<'a> StateAccount<'a> {
                 scheduled_transition_tag
             );
             // Change the tag, leave all the data unchanged.
-            super::set_tag(
+            super::set_tag_borrowed(
                 program_id,
-                &self.account,
+                &mut self.account,
                 scheduled_transition_tag,
                 Header::VERSION,
             )?;
@@ -376,7 +547,7 @@ impl<'a> StateAccount<'a> {
     }
 
     pub fn finish_scheduled_tx(self, program_id: &Pubkey) -> Result<()> {
-        let tag = super::tag(program_id, &self.account)?;
+        let tag = super::tag_borrowed(program_id, &self.account)?;
         let is_finalized = tag == TAG_SCHEDULED_STATE_FINALIZED;
         let is_canceled = tag == TAG_SCHEDULED_STATE_CANCELLED;
         if !(is_finalized || is_canceled) {
@@ -396,19 +567,17 @@ impl<'a> StateAccount<'a> {
         &mut self,
         program_id: &Pubkey,
         accounts: &AccountsDB,
-        touched: &TreeMap<Pubkey, u64>,
     ) -> Result<()> {
-        for (key, counter) in touched {
-            self.data
+        for (key, counter) in self.root_ref.executor_state.borrow().as_ref().unwrap().touched_accounts.borrow().deref() {
+            self.root_ref
                 .touched_accounts
                 .update_or_insert(*key, counter, |v| {
                     v.checked_add(*counter).ok_or(Error::IntegerOverflow)
                 })?;
         }
 
-        let data: &mut Data = &mut self.data; // Explaining Borrow Checker that this is safe
-        let touched_accounts = &data.touched_accounts;
-        let revisions = &mut data.revisions;
+        let touched_accounts = &self.root_ref.touched_accounts;
+        let revisions = &mut self.root_ref.revisions;
 
         for (key, _) in touched_accounts {
             let account = accounts.get(key);
@@ -419,80 +588,44 @@ impl<'a> StateAccount<'a> {
     }
 
     pub fn accounts(&self) -> impl Iterator<Item = &Pubkey> {
-        self.data.revisions.keys()
-    }
-
-    #[must_use]
-    pub fn buffer(&self) -> Ref<[u8]> {
-        let data = self.account.try_borrow_data().unwrap();
-        Ref::map(data, |d| &d[BUFFER_OFFSET..])
-    }
-
-    #[must_use]
-    pub fn buffer_mut(&mut self) -> RefMut<[u8]> {
-        let data = self.account.data.borrow_mut();
-        RefMut::map(data, |d| &mut d[BUFFER_OFFSET..])
+        self.root_ref.revisions.keys()
     }
 
     #[must_use]
     pub fn owner(&self) -> Pubkey {
-        self.data.owner
-    }
-
-    #[must_use]
-    pub fn trx(&self) -> &Transaction {
-        &self.data.transaction
+        self.root_ref.plain_data.owner
     }
 
     #[must_use]
     pub fn trx_origin(&self) -> Address {
-        self.data.origin
+        self.root_ref.plain_data.origin
     }
 
     #[must_use]
     pub fn tree_account(&self) -> Option<Pubkey> {
-        self.data.tree_account
+        self.root_ref.plain_data.tree_account
     }
 
     fn has_tree_account(&self) -> bool {
-        self.data.tree_account.is_some()
+        self.root_ref.plain_data.tree_account.is_some()
     }
 
     #[must_use]
     pub fn trx_chain_id(&self, backend: &impl AccountStorage) -> u64 {
-        self.data
-            .transaction
-            .chain_id()
+        self.root_ref
+            .plain_data
+            .chain_id
             .unwrap_or_else(|| backend.default_chain_id())
     }
 
     #[must_use]
     pub fn gas_used(&self) -> U256 {
-        self.data.gas_used
+        self.root_ref.plain_data.gas_used
     }
 
     #[must_use]
     pub fn gas_available(&self) -> U256 {
-        self.trx().gas_limit().saturating_sub(self.gas_used())
-    }
-
-    fn use_gas(&mut self, amount: U256) -> Result<U256> {
-        if amount == U256::ZERO {
-            return Ok(U256::ZERO);
-        }
-
-        let total_gas_used = self.data.gas_used.saturating_add(amount);
-        let gas_limit = self.trx().gas_limit();
-
-        if total_gas_used > gas_limit {
-            return Err(Error::OutOfGas(gas_limit, total_gas_used));
-        }
-
-        self.data.gas_used = total_gas_used;
-
-        amount
-            .checked_mul(self.trx().gas_price())
-            .ok_or(Error::IntegerOverflow)
+        self.root_ref.plain_data.gas_limit.saturating_sub(self.gas_used())
     }
 
     pub fn consume_gas(
@@ -500,54 +633,32 @@ impl<'a> StateAccount<'a> {
         amount: U256,
         receiver: Option<OperatorBalanceAccount>,
     ) -> Result<()> {
-        let tokens = self.use_gas(amount)?;
-
-        if tokens == U256::ZERO {
-            return Ok(());
-        }
-
-        let mut operator_balance = receiver.ok_or(Error::OperatorBalanceMissing)?;
-
-        let trx_chain_id = self.trx().chain_id().unwrap_or(DEFAULT_CHAIN_ID);
-        if operator_balance.chain_id() != trx_chain_id {
-            return Err(Error::OperatorBalanceInvalidChainId);
-        }
-
-        operator_balance.mint(tokens)
+        self.root_ref.plain_data.consume_gas(amount, receiver)
     }
 
     pub fn refund_unused_gas(&mut self, origin: &mut BalanceAccount) -> Result<()> {
-        let trx_chain_id = self.trx().chain_id().unwrap_or(DEFAULT_CHAIN_ID);
-
-        assert!(origin.chain_id() == trx_chain_id);
-        assert!(origin.address() == self.trx_origin());
-
-        let total_refund = self.materialize_unused_gas()?;
-
-        origin.mint(total_refund)
+        self.root_ref.plain_data.refund_unused_gas(origin)
     }
 
     /// Use available gas and return it to the caller.
     /// It's caller's responsibility to mint the unused gas tokens to the appropriate recipient.
     pub fn materialize_unused_gas(&mut self) -> Result<U256> {
-        let unused_gas = self.gas_available();
-        let gas_fee_tokens = self.use_gas(unused_gas)?;
-
-        Ok(gas_fee_tokens)
+        self.root_ref.plain_data.materialize_unused_gas()
     }
 
     #[must_use]
     pub fn steps_executed(&self) -> u64 {
-        self.data.steps_executed
+        self.root_ref.plain_data.steps_executed
     }
 
     pub fn reset_steps_executed(&mut self) {
-        self.data.steps_executed = 0;
+        self.root_ref.plain_data.steps_executed = 0;
     }
 
     pub fn increment_steps_executed(&mut self, steps: u64) -> Result<()> {
-        self.data.steps_executed = self
-            .data
+        self.root_ref.plain_data.steps_executed = self
+            .root_ref
+            .plain_data
             .steps_executed
             .checked_add(steps)
             .ok_or(Error::IntegerOverflow)?;
@@ -557,88 +668,42 @@ impl<'a> StateAccount<'a> {
 
     #[must_use]
     pub fn interrupted_state(&self) -> Option<&InterruptedState> {
-        self.data.interrupted_state.as_ref()
+        self.root_ref.interrupted_state.as_ref()
     }
 
     pub fn set_interrupted_state(&mut self, state: Option<InterruptedState>) {
-        self.data.interrupted_state = state;
+        self.root_ref.interrupted_state = state;
+    }
+
+    pub fn trx(&self) -> &impl TrxView {
+        &self.root_ref.plain_data
     }
 }
 
 // Implementation of functional to save/restore persistent state of iterative transactions.
 impl StateAccount<'_> {
-    pub fn alloc_executor_state(&self, data: Boxx<ExecutorStateData>) {
-        let offset = self.leak_and_offset(data);
-        let mut header = super::header_mut::<Header>(&self.account);
-        header.executor_state_offset = offset;
+    pub fn executor_state(&self) -> Ref<Option<ExecutorStateData>> {
+        self.root_ref.executor_state.borrow()
     }
 
-    pub fn dealloc_executor_state(&self) {
-        unsafe { ManuallyDrop::drop(&mut self.read_executor_state()) };
-        let mut header = super::header_mut::<Header>(&self.account);
-        header.executor_state_offset = 0;
+    pub fn executor_state_mut(&self) -> RefMut<Option<ExecutorStateData>> {
+        self.root_ref.executor_state.borrow_mut()
     }
 
-    #[must_use]
-    pub fn read_executor_state(&self) -> ManuallyDrop<Boxx<ExecutorStateData>> {
-        let header = super::header::<Header>(&self.account);
-        self.map_obj(header.executor_state_offset)
+    pub fn evm(&self) -> Ref<Option<Machine<crate::evm::tracing::NoopEventListener>>> {
+        self.root_ref.machine_state.borrow()
     }
 
-    #[must_use]
-    pub fn is_executor_state_alloced(&self) -> bool {
-        super::header_mut::<Header>(&self.account).executor_state_offset != 0
+    pub fn evm_mut(&self) -> RefMut<Option<Machine<crate::evm::tracing::NoopEventListener>>> {
+        self.root_ref.machine_state.borrow_mut()
     }
 
-    pub fn alloc_evm<T: EventListener>(&self, evm: Boxx<Machine<T>>) {
-        let offset = self.leak_and_offset(evm);
-        let mut header = super::header_mut::<Header>(&self.account);
-        header.evm_offset = offset;
+    pub fn root_ref(&self) -> &Root {
+        self.root_ref
     }
 
-    pub fn dealloc_evm<T: EventListener>(&self) {
-        unsafe { ManuallyDrop::drop(&mut self.read_evm::<T>()) };
-        let mut header = super::header_mut::<Header>(&self.account);
-        header.evm_offset = 0;
-    }
-
-    #[must_use]
-    pub fn read_evm<T: EventListener>(&self) -> ManuallyDrop<Boxx<Machine<T>>> {
-        let header = super::header::<Header>(&self.account);
-        self.map_obj(header.evm_offset)
-    }
-
-    #[must_use]
-    pub fn is_evm_alloced(&self) -> bool {
-        super::header_mut::<Header>(&self.account).evm_offset != 0
-    }
-
-    /// Leak the Box's underlying data and returns offset from the account data start.
-    fn leak_and_offset<T>(&self, object: Boxx<T>) -> usize {
-        let data_ptr = self.account.data.borrow().as_ptr();
-        unsafe {
-            // allocator_api2 does not expose Box::leak (private associated fn).
-            // We avoid drop of persistent object by leaking via Box::into_raw.
-            let obj_addr = Boxx::into_raw(object).cast_const().cast::<u8>();
-
-            let offset = obj_addr.offset_from(data_ptr);
-            assert!(offset > 0);
-            #[allow(clippy::cast_sign_loss)]
-            let offset = offset as usize;
-            offset
-        }
-    }
-
-    fn map_obj<T>(&self, offset: usize) -> ManuallyDrop<Boxx<T>> {
-        assert!(offset > 0);
-        let data = self.account.data.borrow().as_ptr();
-        unsafe {
-            let ptr = data.add(offset).cast_mut();
-            assert_eq!(ptr.align_offset(align_of::<T>()), 0);
-            let data_ptr = ptr.cast::<T>();
-
-            ManuallyDrop::new(Boxx::from_raw_in(data_ptr, acc_allocator()))
-        }
+    pub fn root_ref_mut(&mut self) -> &mut Root {
+        self.root_ref
     }
 }
 
@@ -656,117 +721,60 @@ impl<'a> StateAccount<'a> {
         program_id: &Pubkey,
         account: &AccountInfo<'a>,
     ) -> Result<StateAccountCoreApiView> {
-        Self::validate_tag(program_id, account)?;
+        {
+            let mut data = account.try_borrow_mut_data()?;
+            Self::validate_tag(program_id, &BorrowedAccountInfo::new(account, &mut data))?;
+        }
 
-        let account_data_ptr = account.data.borrow().as_ptr();
+        let account_data_ptr = account.try_borrow_data()?.as_ptr();
 
-        let header = super::header::<Header>(account);
-        let memory_space_delta = {
-            account_data_ptr as isize
-                - isize::try_from(crate::allocator::STATE_ACCOUNT_DATA_ADDRESS)?
+        let (tx_start, tx_end, root_offset) = {
+            let header = super::header::<Header>(account);
+            (header.serialized_tx.start, header.serialized_tx.end, header.root_offset)
         };
+
+        let tx_rlp: Vec<u8> = account
+            .try_borrow_data()?
+            .as_ref()
+            [..tx_end as usize][tx_start as usize..]
+            .to_vec();
+
         // Pointer to the Data is needed to get pointers to the fields in a safe way (using addr_of!).
-        let data_ptr = unsafe {
+        let root_ptr: *const Root = unsafe {
             account_data_ptr
-                .add(header.data_offset)
-                .cast::<Data>()
-                .cast_mut()
+                .add(root_offset as usize)
+                .cast::<Root>()
+                .cast()
         };
 
-        unsafe {
-            // Reading full `Transaction`.
-            let transaction_ptr = addr_of!((*data_ptr).transaction);
-            // Memory layout for transaction payload is: tag of enum's variant (u8) followed by the variant value.
-            // Payload that follows enum tag can have offset due to alignment.
-            let tx_payload_enum_tag = addr_of!((*transaction_ptr).transaction).cast::<u8>();
-            let payload_ptr = tx_payload_enum_tag.add(1);
+        let mut plain = PlainData::default();
+        {
+            let plain_ref = &mut plain;
+            let dataref = account.try_borrow_data()?;
+            let dataslice: &[u8] = &dataref.as_ref()[root_offset as usize..][..size_of::<PlainData>()];
+            unsafe {
+                std::slice::from_raw_parts_mut((plain_ref as *mut PlainData).cast::<u8>(), dataslice.len())
+                    .copy_from_slice(dataslice)
+            }
+        }
 
-            let tx_payload = match read_unaligned(tx_payload_enum_tag) {
-                0 => {
-                    let legacy_payload_ptr =
-                        payload_ptr.wrapping_add(payload_ptr.align_offset(align_of::<LegacyTx>()));
-
-                    TransactionPayload::Legacy(LegacyTx::build(
-                        legacy_payload_ptr.cast::<LegacyTx>(),
-                        memory_space_delta,
-                    ))
-                }
-                1 => {
-                    let access_list_payload_ptr = payload_ptr
-                        .wrapping_add(payload_ptr.align_offset(align_of::<AccessListTx>()));
-
-                    TransactionPayload::AccessList(AccessListTx::build(
-                        access_list_payload_ptr.cast::<AccessListTx>(),
-                        memory_space_delta,
-                    ))
-                }
-                2 => {
-                    let dynamic_fee_payload_ptr = payload_ptr
-                        .wrapping_add(payload_ptr.align_offset(align_of::<DynamicFeeTx>()));
-
-                    TransactionPayload::DynamicFee(DynamicFeeTx::build(
-                        dynamic_fee_payload_ptr.cast::<DynamicFeeTx>(),
-                        memory_space_delta,
-                    ))
-                }
-                3 => {
-                    let scheduled_paylod_ptr = payload_ptr
-                        .wrapping_add(payload_ptr.align_offset(align_of::<ScheduledTx>()));
-
-                    TransactionPayload::Scheduled(ScheduledTx::build(
-                        scheduled_paylod_ptr.cast::<ScheduledTx>(),
-                        memory_space_delta,
-                    ))
-                }
-                _ => {
-                    return Err(Error::Custom(
-                        "Incorrect transaction payload type.".to_owned(),
-                    ));
-                }
+        if plain.layout_version != PlainData::layout_version() {
+            // we don't have a reliable way to reconstruct revisions
+            Ok((plain, Vec::<Pubkey>::new(), tx_rlp))
+        } else {
+            let memory_space_delta = {
+                account_data_ptr as isize
+                    - isize::try_from(crate::allocator::STATE_ACCOUNT_DATA_ADDRESS)?
             };
-
-            let byte_len = read_unaligned(addr_of!((*transaction_ptr).byte_len));
-            let hash = read_unaligned(addr_of!((*transaction_ptr).hash));
-            let signed_hash = read_unaligned(addr_of!((*transaction_ptr).signed_hash));
-            let tx = Transaction {
-                transaction: tx_payload,
-                byte_len,
-                hash,
-                signed_hash,
+            let accounts = unsafe {
+                // Hereby we read the TreeMap and rely on the fact that under the hood it's a Vector<(Pubkey, AccountRevision)>.
+                // In case the structure changes, it also requires adjustments.
+                read_vec::<(Pubkey, AccountRevision)>(addr_of!((*root_ptr).revisions).cast::<usize>(), memory_space_delta)
+                    .iter()
+                    .map(|(key, _)| *key)
+                    .collect()
             };
-
-            // Reading parts of `StateAccount`.
-            let owner = read_unaligned(addr_of!((*data_ptr).owner));
-            let tree_account = read_unaligned(addr_of!((*data_ptr).tree_account));
-            let origin = read_unaligned(addr_of!((*data_ptr).origin));
-            let keys_ptr = addr_of!((*data_ptr).revisions).cast::<usize>();
-
-            // Hereby we read the TreeMap and rely on the fact that under the hood it's a Vector<(Pubkey, AccountRevision)>.
-            // In case the structure changes, it also requires adjustments.
-            let accounts = read_vec::<(Pubkey, AccountRevision)>(keys_ptr, memory_space_delta)
-                .iter()
-                .map(|(key, _)| *key)
-                .collect();
-
-            let steps = read_unaligned(addr_of!((*data_ptr).steps_executed));
-
-            // Reading the Cache from ExecutorStateData
-            let executor_state_ptr = account_data_ptr
-                .add(header.executor_state_offset)
-                .cast::<ExecutorStateData>();
-
-            // Read block_params safely
-            let block_params = read_unaligned(addr_of!((*executor_state_ptr).block_params));
-
-            Ok((
-                tx,
-                owner,
-                tree_account,
-                origin,
-                accounts,
-                steps,
-                (block_params.timestamp, block_params.number),
-            ))
+            Ok((plain, accounts, tx_rlp))
         }
     }
 }

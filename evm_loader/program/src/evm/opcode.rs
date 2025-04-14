@@ -35,10 +35,10 @@ pub enum Action {
 }
 
 #[allow(clippy::unused_async)]
-impl<B: Database, T: EventListener> Machine<B, T> {
+impl<T: EventListener> Machine<T> {
     /// Unknown instruction
     #[maybe_async]
-    pub async fn opcode_unknown(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_unknown(&mut self, _backend: &mut impl Database) -> Result<Action> {
         Err(Error::UnknownOpcode(
             self.context.contract,
             self.execution_code[self.pc],
@@ -47,7 +47,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// (u)int256 addition modulo 2**256
     #[maybe_async]
-    pub async fn opcode_add(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_add(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
         let c = a.wrapping_add(b);
@@ -59,7 +59,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// (u)int256 multiplication modulo 2**256
     #[maybe_async]
-    pub async fn opcode_mul(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_mul(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
         let c = a.wrapping_mul(b);
@@ -71,7 +71,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// (u)int256 subtraction modulo 2**256
     #[maybe_async]
-    pub async fn opcode_sub(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_sub(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
         let c = a.wrapping_sub(b);
@@ -83,7 +83,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// uint256 division
     #[maybe_async]
-    pub async fn opcode_div(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_div(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
 
@@ -99,7 +99,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// int256 division
     #[maybe_async]
-    pub async fn opcode_sdiv(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_sdiv(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_i256()?;
         let b = self.stack.pop_i256()?;
 
@@ -116,7 +116,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// uint256 modulus
     #[maybe_async]
-    pub async fn opcode_mod(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_mod(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
 
@@ -132,7 +132,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// int256 modulus
     #[maybe_async]
-    pub async fn opcode_smod(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_smod(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_i256()?;
         let b = self.stack.pop_i256()?;
 
@@ -150,7 +150,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// (a + b) % m
     /// <https://stackoverflow.com/a/11249135>
     #[maybe_async]
-    pub async fn opcode_addmod(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_addmod(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
         let m = self.stack.pop_u256()?;
@@ -182,7 +182,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// (a * b) % m
     /// <https://stackoverflow.com/a/18680280>
     #[maybe_async]
-    pub async fn opcode_mulmod(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_mulmod(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let mut a = self.stack.pop_u256()?;
         let mut b = self.stack.pop_u256()?;
         let m = self.stack.pop_u256()?;
@@ -228,7 +228,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// uint256 exponentiation modulo 2**256
     /// a ** b
     #[maybe_async]
-    pub async fn opcode_exp(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_exp(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let mut a = self.stack.pop_u256()?;
         let mut b = self.stack.pop_u256()?;
 
@@ -258,7 +258,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// sign extends x from (b + 1) * 8 bits to 256 bits.
     #[maybe_async]
-    pub async fn opcode_signextend(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_signextend(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let b = self.stack.pop_u256()?;
         let x = self.stack.pop_u256()?;
 
@@ -284,7 +284,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// uint256 comparison
     /// a < b
     #[maybe_async]
-    pub async fn opcode_lt(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_lt(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
 
@@ -296,7 +296,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// uint256 comparison
     /// a > b
     #[maybe_async]
-    pub async fn opcode_gt(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_gt(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
 
@@ -308,7 +308,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// int256 comparison
     /// a < b
     #[maybe_async]
-    pub async fn opcode_slt(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_slt(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_i256()?;
         let b = self.stack.pop_i256()?;
         self.stack.push_bool(a < b)?;
@@ -319,7 +319,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// int256 comparison
     /// a > b
     #[maybe_async]
-    pub async fn opcode_sgt(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_sgt(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_i256()?;
         let b = self.stack.pop_i256()?;
         self.stack.push_bool(a > b)?;
@@ -330,7 +330,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// (u)int256 equality
     /// a == b
     #[maybe_async]
-    pub async fn opcode_eq(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_eq(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
 
@@ -342,7 +342,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// (u)int256 is zero
     /// a == 0
     #[maybe_async]
-    pub async fn opcode_iszero(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_iszero(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let result = {
             let a = self.stack.pop_array()?;
             a == &[0_u8; 32]
@@ -355,7 +355,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// 256-bit bitwise and
     #[maybe_async]
-    pub async fn opcode_and(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_and(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
 
@@ -366,7 +366,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// 256-bit bitwise or
     #[maybe_async]
-    pub async fn opcode_or(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_or(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
 
@@ -377,7 +377,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// 256-bit bitwise xor
     #[maybe_async]
-    pub async fn opcode_xor(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_xor(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         let b = self.stack.pop_u256()?;
 
@@ -388,7 +388,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// 256-bit bitwise not
     #[maybe_async]
-    pub async fn opcode_not(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_not(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let a = self.stack.pop_u256()?;
         self.stack.push_u256(!a)?;
 
@@ -397,7 +397,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// ith byte of (u)int256 x, counting from most significant byte
     #[maybe_async]
-    pub async fn opcode_byte(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_byte(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let result = {
             let i = self.stack.pop_u256()?;
             let x = self.stack.pop_array()?;
@@ -416,7 +416,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// 256-bit shift left
     #[maybe_async]
-    pub async fn opcode_shl(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_shl(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let shift = self.stack.pop_u256()?;
         let value = self.stack.pop_u256()?;
 
@@ -431,7 +431,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// 256-bit shift right
     #[maybe_async]
-    pub async fn opcode_shr(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_shr(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let shift = self.stack.pop_u256()?;
         let value = self.stack.pop_u256()?;
 
@@ -446,7 +446,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// arithmetic int256 shift right
     #[maybe_async]
-    pub async fn opcode_sar(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_sar(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let (shift, value) = {
             let shift = self.stack.pop_u256()?;
             let value = self.stack.pop_i256()?;
@@ -464,7 +464,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// hash = keccak256(memory[offset:offset+length])
     #[maybe_async]
-    pub async fn opcode_sha3(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_sha3(&mut self, _backend: &mut impl Database) -> Result<Action> {
         use solana_program::keccak::{hash, Hash};
 
         let offset = self.stack.pop_usize()?;
@@ -480,7 +480,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// address of the executing contract
     #[maybe_async]
-    pub async fn opcode_address(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_address(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_address(&self.context.contract)?;
 
         Ok(Action::Continue)
@@ -488,7 +488,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// address balance in wei
     #[maybe_async]
-    pub async fn opcode_balance(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_balance(&mut self, backend: &mut impl Database) -> Result<Action> {
         let balance = {
             let address = self.stack.pop_address()?;
             backend.balance(address, self.chain_id).await?
@@ -502,7 +502,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// transaction origin address
     /// tx.origin
     #[maybe_async]
-    pub async fn opcode_origin(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_origin(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_address(&self.origin)?;
 
         Ok(Action::Continue)
@@ -511,7 +511,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// message caller address
     /// msg.caller
     #[maybe_async]
-    pub async fn opcode_caller(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_caller(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_address(&self.context.caller)?;
 
         Ok(Action::Continue)
@@ -520,7 +520,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// message funds in wei
     /// msg.value
     #[maybe_async]
-    pub async fn opcode_callvalue(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_callvalue(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_u256(self.context.value)?;
 
         Ok(Action::Continue)
@@ -529,7 +529,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// reads a (u)int256 from message data
     /// msg.data[i:i+32]
     #[maybe_async]
-    pub async fn opcode_calldataload(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_calldataload(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let index = self.stack.pop_usize()?;
 
         if let Some(buffer) = self.call_data.get(index..index + 32) {
@@ -551,7 +551,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// message data length in bytes
     /// msg.data.size
     #[maybe_async]
-    pub async fn opcode_calldatasize(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_calldatasize(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_usize(self.call_data.len())?;
 
         Ok(Action::Continue)
@@ -559,7 +559,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// copy message data to memory
     #[maybe_async]
-    pub async fn opcode_calldatacopy(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_calldatacopy(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let memory_offset = self.stack.pop_usize()?;
         let data_offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
@@ -573,7 +573,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// length of the executing contract's code in bytes
     /// address(this).code.size
     #[maybe_async]
-    pub async fn opcode_codesize(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_codesize(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_usize(self.execution_code.len())?;
 
         Ok(Action::Continue)
@@ -581,7 +581,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// copy executing contract's bytecode
     #[maybe_async]
-    pub async fn opcode_codecopy(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_codecopy(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let memory_offset = self.stack.pop_usize()?;
         let data_offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
@@ -595,7 +595,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// gas price of the executing transaction, in wei per unit of gas
     /// tx.gasprice
     #[maybe_async]
-    pub async fn opcode_gasprice(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_gasprice(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_u256(self.gas_price)?;
 
         Ok(Action::Continue)
@@ -604,7 +604,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// length of the contract bytecode at addr, in bytes
     /// address(addr).code.size
     #[maybe_async]
-    pub async fn opcode_extcodesize(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_extcodesize(&mut self, backend: &mut impl Database) -> Result<Action> {
         let code_size = {
             let address = self.stack.pop_address()?;
             backend.code_size(address).await?
@@ -617,7 +617,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// copy contract's bytecode
     #[maybe_async]
-    pub async fn opcode_extcodecopy(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_extcodecopy(&mut self, backend: &mut impl Database) -> Result<Action> {
         let address = self.stack.pop_address()?;
         let memory_offset = self.stack.pop_usize()?;
         let data_offset = self.stack.pop_usize()?;
@@ -633,7 +633,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Byzantium hardfork, EIP-211: the size of the returned data from the last external call, in bytes
     #[maybe_async]
-    pub async fn opcode_returndatasize(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_returndatasize(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_usize(self.return_data.len())?;
 
         Ok(Action::Continue)
@@ -641,7 +641,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Byzantium hardfork, EIP-211: copy returned data
     #[maybe_async]
-    pub async fn opcode_returndatacopy(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_returndatacopy(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let memory_offset = self.stack.pop_usize()?;
         let data_offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
@@ -658,7 +658,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Constantinople hardfork, EIP-1052: hash of the contract bytecode at addr
     #[maybe_async]
-    pub async fn opcode_extcodehash(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_extcodehash(&mut self, backend: &mut impl Database) -> Result<Action> {
         let code_hash = {
             let address = self.stack.pop_address()?;
             backend.code_hash(address, self.chain_id).await?
@@ -672,7 +672,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// hash of the specific block, only valid for the 256 most recent blocks, excluding the current one
     /// Solana limits to 150 most recent blocks
     #[maybe_async]
-    pub async fn opcode_blockhash(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_blockhash(&mut self, backend: &mut impl Database) -> Result<Action> {
         let block_hash = {
             let block_number = self.stack.pop_u256()?;
 
@@ -687,7 +687,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// address of the current block's miner
     /// NOT SUPPORTED
     #[maybe_async]
-    pub async fn opcode_coinbase(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_coinbase(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_zero()?;
 
         Ok(Action::Continue)
@@ -695,7 +695,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// current block's Unix timestamp in seconds
     #[maybe_async]
-    pub async fn opcode_timestamp(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_timestamp(&mut self, backend: &mut impl Database) -> Result<Action> {
         let timestamp = backend.block_timestamp(self.context.contract)?;
 
         self.stack.push_u256(timestamp)?;
@@ -705,7 +705,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// current block's number
     #[maybe_async]
-    pub async fn opcode_number(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_number(&mut self, backend: &mut impl Database) -> Result<Action> {
         let block_number = backend.block_number(self.context.contract)?;
 
         self.stack.push_u256(block_number)?;
@@ -716,7 +716,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// current block's difficulty
     /// NOT SUPPORTED
     #[maybe_async]
-    pub async fn opcode_difficulty(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_difficulty(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_zero()?;
 
         Ok(Action::Continue)
@@ -725,7 +725,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// current block's gas limit
     /// NOT SUPPORTED
     #[maybe_async]
-    pub async fn opcode_gaslimit(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_gaslimit(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_u256(U256::MAX)?;
 
         Ok(Action::Continue)
@@ -733,7 +733,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Istanbul hardfork, EIP-1344: current network's chain id
     #[maybe_async]
-    pub async fn opcode_chainid(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_chainid(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let chain_id = self.chain_id.into();
 
         self.stack.push_u256(chain_id)?;
@@ -743,7 +743,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Istanbul hardfork, EIP-1884: balance of the executing contract in wei
     #[maybe_async]
-    pub async fn opcode_selfbalance(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_selfbalance(&mut self, backend: &mut impl Database) -> Result<Action> {
         let balance = backend
             .balance(self.context.contract, self.chain_id)
             .await?;
@@ -758,7 +758,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// `max_priority_fee_per_gas`.
     /// For details see priority_fee_txn_calculator.rs
     #[maybe_async]
-    pub async fn opcode_basefee(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_basefee(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_u256(self.gas_price)?;
 
         Ok(Action::Continue)
@@ -766,7 +766,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// pops a (u)int256 off the stack and discards it
     #[maybe_async]
-    pub async fn opcode_pop(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_pop(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.discard()?;
 
         Ok(Action::Continue)
@@ -774,7 +774,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// reads a (u)int256 from memory
     #[maybe_async]
-    pub async fn opcode_mload(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_mload(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let offset = self.stack.pop_usize()?;
         let value = self.memory.read_32(offset)?;
 
@@ -785,7 +785,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// writes a (u)int256 to memory
     #[maybe_async]
-    pub async fn opcode_mstore(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_mstore(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let offset = self.stack.pop_usize()?;
         let value = self.stack.pop_array()?;
 
@@ -796,7 +796,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// writes a uint8 to memory
     #[maybe_async]
-    pub async fn opcode_mstore8(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_mstore8(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let offset = self.stack.pop_usize()?;
         let value = self.stack.pop_array()?;
 
@@ -807,7 +807,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// copying memory areas
     #[maybe_async]
-    pub async fn opcode_mcopy(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_mcopy(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let target = self.stack.pop_usize()?;
         let source = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
@@ -819,7 +819,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// reads a (u)int256 from storage
     #[maybe_async]
-    pub async fn opcode_sload(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_sload(&mut self, backend: &mut impl Database) -> Result<Action> {
         let index = self.stack.pop_u256()?;
         let value = backend.storage(self.context.contract, index).await?;
 
@@ -830,7 +830,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// writes a (u)int256 to storage
     #[maybe_async]
-    pub async fn opcode_sstore(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_sstore(&mut self, backend: &mut impl Database) -> Result<Action> {
         if self.is_static {
             return Err(Error::StaticModeViolation(self.context.contract));
         }
@@ -847,7 +847,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// reads a (u)int256 from transient storage
     #[maybe_async]
-    pub async fn opcode_tload(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_tload(&mut self, backend: &mut impl Database) -> Result<Action> {
         let index = self.stack.pop_u256()?;
         let value = backend
             .transient_storage(self.context.contract, index)
@@ -860,7 +860,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// writes a (u)int256 to transient storage
     #[maybe_async]
-    pub async fn opcode_tstore(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_tstore(&mut self, backend: &mut impl Database) -> Result<Action> {
         if self.is_static {
             return Err(Error::StaticModeViolation(self.context.contract));
         }
@@ -875,7 +875,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// unconditional jump
     #[maybe_async]
-    pub async fn opcode_jump(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_jump(&mut self, _backend: &mut impl Database) -> Result<Action> {
         const JUMPDEST: u8 = 0x5B;
 
         let value = self.stack.pop_usize()?;
@@ -889,7 +889,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// conditional jump
     #[maybe_async]
-    pub async fn opcode_jumpi(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_jumpi(&mut self, _backend: &mut impl Database) -> Result<Action> {
         const JUMPDEST: u8 = 0x5B;
 
         let value = self.stack.pop_usize()?;
@@ -908,7 +908,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// program counter
     #[maybe_async]
-    pub async fn opcode_pc(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_pc(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_usize(self.pc)?;
 
         Ok(Action::Continue)
@@ -916,7 +916,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// memory size
     #[maybe_async]
-    pub async fn opcode_msize(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_msize(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_usize(self.memory.size())?;
 
         Ok(Action::Continue)
@@ -924,7 +924,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// remaining gas
     #[maybe_async]
-    pub async fn opcode_gas(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_gas(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_u256(self.gas_limit)?;
 
         Ok(Action::Continue)
@@ -932,13 +932,13 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// metadata to annotate possible jump destinations
     #[maybe_async]
-    pub async fn opcode_jumpdest(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_jumpdest(&mut self, _backend: &mut impl Database) -> Result<Action> {
         Ok(Action::Continue)
     }
 
     /// Place zero on stack
     #[maybe_async]
-    pub async fn opcode_push_0(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_push_0(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.push_zero()?;
 
         Ok(Action::Continue)
@@ -947,7 +947,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// Place 1 byte item on stack
     /// ~50% of contract bytecode are PUSH opcodes
     #[maybe_async]
-    pub async fn opcode_push_1(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_push_1(&mut self, _backend: &mut impl Database) -> Result<Action> {
         if self.execution_code.len() <= self.pc + 1 {
             return Err(Error::PushOutOfBounds(self.context.contract));
         }
@@ -961,7 +961,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Place 2-31 byte item on stack.
     #[maybe_async]
-    pub async fn opcode_push_2_31<const N: usize>(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_push_2_31<const N: usize>(&mut self, _backend: &mut impl Database) -> Result<Action> {
         if self.execution_code.len() <= self.pc + 1 + N {
             return Err(Error::PushOutOfBounds(self.context.contract));
         }
@@ -978,7 +978,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Place 32 byte item on stack
     #[maybe_async]
-    pub async fn opcode_push_32(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_push_32(&mut self, _backend: &mut impl Database) -> Result<Action> {
         if self.execution_code.len() <= self.pc + 1 + 32 {
             return Err(Error::PushOutOfBounds(self.context.contract));
         }
@@ -996,7 +996,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// Duplicate Nth stack item
     /// ~25% of contract bytecode are DUP and SWAP opcodes
     #[maybe_async]
-    pub async fn opcode_dup_1_16<const N: usize>(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_dup_1_16<const N: usize>(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.dup_1_16::<N>()?;
 
         Ok(Action::Continue)
@@ -1004,7 +1004,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Exchange 1st and (N+1)th stack item
     #[maybe_async]
-    pub async fn opcode_swap_1_16<const N: usize>(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_swap_1_16<const N: usize>(&mut self, _backend: &mut impl Database) -> Result<Action> {
         self.stack.swap_1_16::<N>()?;
 
         Ok(Action::Continue)
@@ -1012,7 +1012,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Append log record with N topics
     #[maybe_async]
-    pub async fn opcode_log_0_4<const N: usize>(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_log_0_4<const N: usize>(&mut self, backend: &mut impl Database) -> Result<Action> {
         let address = self.context.contract;
 
         if self.is_static {
@@ -1039,7 +1039,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Create a new account with associated code.
     #[maybe_async]
-    pub async fn opcode_create(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_create(&mut self, backend: &mut impl Database) -> Result<Action> {
         if self.is_static {
             return Err(Error::StaticModeViolation(self.context.contract));
         }
@@ -1063,7 +1063,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Constantinople harfork, EIP-1014: creates a create a new account with a deterministic address
     #[maybe_async]
-    pub async fn opcode_create2(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_create2(&mut self, backend: &mut impl Database) -> Result<Action> {
         if self.is_static {
             return Err(Error::StaticModeViolation(self.context.contract));
         }
@@ -1089,7 +1089,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         value: U256,
         offset: usize,
         length: usize,
-        backend: &mut B,
+        backend: &mut impl Database,
     ) -> Result<Action> {
         let chain_id = self.context.contract_chain_id;
 
@@ -1145,7 +1145,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Message-call into an account
     #[maybe_async]
-    pub async fn opcode_call(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_call(&mut self, backend: &mut impl Database) -> Result<Action> {
         let gas_limit = self.stack.pop_u256()?;
         let address = self.stack.pop_address()?;
         let value = self.stack.pop_u256()?;
@@ -1196,7 +1196,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Message-call into this account with an alternative account’s code
     #[maybe_async]
-    pub async fn opcode_callcode(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_callcode(&mut self, backend: &mut impl Database) -> Result<Action> {
         let gas_limit = self.stack.pop_u256()?;
         let address = self.stack.pop_address()?;
         let value = self.stack.pop_u256()?;
@@ -1247,7 +1247,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// Homestead hardfork, EIP-7: Message-call into this account with an alternative account’s code,
     /// but persisting the current values for sender and value
     #[maybe_async]
-    pub async fn opcode_delegatecall(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_delegatecall(&mut self, backend: &mut impl Database) -> Result<Action> {
         let gas_limit = self.stack.pop_u256()?;
         let address = self.stack.pop_address()?;
         let args_offset = self.stack.pop_usize()?;
@@ -1286,7 +1286,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     /// Byzantium hardfork, EIP-214: Static message-call into an account
     /// Disallowed contract creation, event emission, storage modification and contract destruction
     #[maybe_async]
-    pub async fn opcode_staticcall(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_staticcall(&mut self, backend: &mut impl Database) -> Result<Action> {
         let gas_limit = self.stack.pop_u256()?;
         let address = self.stack.pop_address()?;
         let args_offset = self.stack.pop_usize()?;
@@ -1333,7 +1333,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     #[maybe_async]
     async fn opcode_call_precompile_impl(
         &mut self,
-        backend: &mut B,
+        backend: &mut impl Database,
         address: &Address,
     ) -> Result<Action> {
         let result = match Self::precompile(address, &self.call_data).map(Ok) {
@@ -1355,7 +1355,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Halt execution returning output data
     #[maybe_async]
-    pub async fn opcode_return(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_return(&mut self, backend: &mut impl Database) -> Result<Action> {
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
@@ -1369,7 +1369,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     pub async fn opcode_return_impl(
         &mut self,
         return_data: Vector<u8>,
-        backend: &mut B,
+        backend: &mut impl Database,
     ) -> Result<Action> {
         if self.reason == Reason::Create {
             backend
@@ -1410,7 +1410,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Byzantium hardfork, EIP-140: Halt execution reverting state changes but returning data
     #[maybe_async]
-    pub async fn opcode_revert(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_revert(&mut self, backend: &mut impl Database) -> Result<Action> {
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
@@ -1423,7 +1423,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     pub async fn opcode_revert_impl(
         &mut self,
         return_data: Vector<u8>,
-        backend: &mut B,
+        backend: &mut impl Database,
     ) -> Result<Action> {
         log_data(&[b"EXIT", b"REVERT", &return_data]);
         backend.revert_snapshot();
@@ -1460,7 +1460,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Invalid instruction
     #[maybe_async]
-    pub async fn opcode_invalid(&mut self, _backend: &mut B) -> Result<Action> {
+    pub async fn opcode_invalid(&mut self, _backend: &mut impl Database) -> Result<Action> {
         Err(Error::InvalidOpcode(
             self.context.contract,
             self.execution_code[self.pc],
@@ -1469,7 +1469,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Halt execution, destroys the contract and send all funds to address
     #[maybe_async]
-    pub async fn opcode_sendall(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_sendall(&mut self, backend: &mut impl Database) -> Result<Action> {
         if self.is_static {
             return Err(Error::StaticModeViolation(self.context.contract));
         }
@@ -1511,7 +1511,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     /// Halts execution of the contract
     #[maybe_async]
-    pub async fn opcode_stop(&mut self, backend: &mut B) -> Result<Action> {
+    pub async fn opcode_stop(&mut self, backend: &mut impl Database) -> Result<Action> {
         backend.commit_snapshot();
         log_data(&[b"EXIT", b"STOP"]);
 

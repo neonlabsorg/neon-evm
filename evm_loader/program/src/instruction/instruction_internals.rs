@@ -19,7 +19,7 @@ use solana_program::instruction::Instruction;
 
 pub type SyncedEvmBackend<'a, 'r> = SyncedExecutorState<'r, ProgramAccountStorage<'a>>;
 pub type EvmBackend<'a, 'r> = ExecutorState<'r, ProgramAccountStorage<'a>>;
-pub type Evm<'a, 'r> = Machine<EvmBackend<'a, 'r>, NoopEventListener>;
+pub type Evm = Machine<NoopEventListener>;
 
 pub fn allocate_evm(
     account_storage: &mut ProgramAccountStorage<'_>,
@@ -29,7 +29,7 @@ pub fn allocate_evm(
 
     // Dealloc evm that was potentially alloced in previous iterations before the reset.
     if storage.is_evm_alloced() {
-        storage.dealloc_evm::<EvmBackend, NoopEventListener>();
+        storage.dealloc_evm::<NoopEventListener>();
     }
 
     // Dealloc executor state that was potentially alloced in previous iterations before the reset.
@@ -194,7 +194,7 @@ pub fn finalize_interrupted<'a>(
     accounts.apply_state_change(state_data.into_actions())?;
     let (exit_reason, steps_executed, _, _) = {
         let mut backend = SyncedExecutorState::new_with_state_data(&mut accounts, state_data);
-        let mut evm = storage.read_evm::<SyncedEvmBackend, NoopEventListener>();
+        let mut evm = storage.read_evm::<NoopEventListener>();
         let interrupted_state = storage
             .interrupted_state()
             .expect("storage.interrupted_state should be Some within finalize_interrupted context");

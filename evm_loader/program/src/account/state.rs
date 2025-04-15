@@ -7,7 +7,6 @@ use crate::allocator::acc_allocator;
 use crate::config::DEFAULT_CHAIN_ID;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
-use crate::evm::database::Database;
 use crate::evm::tracing::EventListener;
 use crate::evm::Machine;
 use crate::executor::ExecutorStateData;
@@ -624,20 +623,20 @@ impl<'a> StateAccount<'a> {
         super::header_mut::<Header>(&self.account).executor_state_offset != 0
     }
 
-    pub fn alloc_evm<B: Database, T: EventListener>(&self, evm: Boxx<Machine<B, T>>) {
+    pub fn alloc_evm<T: EventListener>(&self, evm: Boxx<Machine<T>>) {
         let offset = self.leak_and_offset(evm);
         let mut header = super::header_mut::<Header>(&self.account);
         header.evm_offset = offset;
     }
 
-    pub fn dealloc_evm<B: Database, T: EventListener>(&self) {
-        unsafe { ManuallyDrop::drop(&mut self.read_evm::<B, T>()) };
+    pub fn dealloc_evm<T: EventListener>(&self) {
+        unsafe { ManuallyDrop::drop(&mut self.read_evm::<T>()) };
         let mut header = super::header_mut::<Header>(&self.account);
         header.evm_offset = 0;
     }
 
     #[must_use]
-    pub fn read_evm<B: Database, T: EventListener>(&self) -> ManuallyDrop<Boxx<Machine<B, T>>> {
+    pub fn read_evm<T: EventListener>(&self) -> ManuallyDrop<Boxx<Machine<T>>> {
         let header = super::header::<Header>(&self.account);
         self.map_obj(header.evm_offset)
     }

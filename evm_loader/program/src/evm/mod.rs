@@ -6,7 +6,7 @@
 use crate::account::InterruptedState;
 use ethnum::U256;
 use maybe_async::maybe_async;
-use std::{fmt::Display, marker::PhantomData, mem::ManuallyDrop, ops::Range};
+use std::{fmt::Display, mem::ManuallyDrop, ops::Range};
 
 pub use buffer::Buffer;
 
@@ -174,7 +174,7 @@ pub struct Context {
 }
 
 #[repr(C)]
-pub struct Machine<B: Database, T: EventListener> {
+pub struct Machine<T: EventListener> {
     origin: Address,
     chain_id: u64,
     context: Context,
@@ -196,21 +196,19 @@ pub struct Machine<B: Database, T: EventListener> {
 
     parent: Option<Boxx<Self>>,
 
-    phantom: PhantomData<*const B>,
-
     tracer: Option<T>,
 }
 
 #[cfg(target_os = "solana")]
-impl<B: Database> Machine<B, NoopEventListener> {
-    fn reinit_buffer(buffer: &mut Buffer, backend: &B) {
+impl Machine<NoopEventListener> {
+    fn reinit_buffer(buffer: &mut Buffer, backend: &impl Database) {
         if let Some((key, range)) = buffer.uninit_data() {
             *buffer =
                 backend.map_solana_account(&key, |i| unsafe { Buffer::from_account(i, range) });
         }
     }
 
-    pub fn reinit(&mut self, backend: &B) {
+    pub fn reinit(&mut self, backend: &impl Database) {
         let mut machine = self;
         loop {
             Self::reinit_buffer(&mut machine.call_data, backend);
@@ -224,12 +222,12 @@ impl<B: Database> Machine<B, NoopEventListener> {
     }
 }
 
-impl<B: Database, T: EventListener> Machine<B, T> {
+impl<T: EventListener> Machine<T> {
     #[maybe_async]
     pub async fn new(
         trx: &Transaction,
         origin: Address,
-        backend: &mut B,
+        backend: &mut impl Database,
         tracer: Option<T>,
     ) -> Result<Self> {
         let trx_chain_id = trx.chain_id().unwrap_or_else(|| backend.default_chain_id());
@@ -255,7 +253,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         chain_id: u64,
         trx: &Transaction,
         origin: Address,
-        backend: &mut B,
+        backend: &mut impl Database,
         tracer: Option<T>,
     ) -> Result<Self> {
         assert!(trx.target().is_some());
@@ -292,7 +290,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             is_static: false,
             reason: Reason::Call,
             parent: None,
-            phantom: PhantomData,
             tracer,
         };
         begin_vm!(
@@ -316,7 +313,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
         chain_id: u64,
         trx: &Transaction,
         origin: Address,
-        backend: &mut B,
+        backend: &mut impl Database,
         tracer: Option<T>,
     ) -> Result<Self> {
         assert!(trx.target().is_none());
@@ -357,7 +354,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             execution_code: Buffer::from_slice(trx.call_data()),
             call_data: Buffer::empty(),
             parent: None,
-            phantom: PhantomData,
             tracer,
         };
         begin_vm!(
@@ -376,7 +372,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
     pub async fn execute(
         &mut self,
         step_limit: u64,
-        backend: &mut B,
+        backend: &mut impl Database,
     ) -> Result<(ExitStatus, u64, Option<u64>, Option<T>)> {
         let mut step = 0_u64;
         let mut step_call_solana: Option<u64> = None;
@@ -467,7 +463,6 @@ impl<B: Database, T: EventListener> Machine<B, T> {
             is_static: self.is_static,
             reason,
             parent: None,
-            phantom: PhantomData,
             tracer: self.tracer.take(),
         };
 
@@ -488,7 +483,7 @@ impl<B: Database, T: EventListener> Machine<B, T> {
 
     // backend and exit_status might not be used because end_vm! macros won't run on target_os is not solana
     #[allow(unused_variables)]
-    pub async fn end_vm(&mut self, backend: &B, exit_status: ExitStatus) -> Result<()> {
+    pub async fn end_vm(&mut self, backend: &impl Database, exit_status: ExitStatus) -> Result<()> {
         end_vm!(self, backend, exit_status);
         Ok(())
     }

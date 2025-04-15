@@ -1,5 +1,5 @@
 use crate::evm::tracing::EventListener;
-use crate::evm::{database::Database, Machine};
+use crate::evm::Machine;
 use crate::types::{Address, Vector};
 
 mod big_mod_exp;
@@ -57,7 +57,7 @@ pub fn is_precompile_address(address: &Address) -> bool {
         || *address == SYSTEM_ACCOUNT_BLAKE2F
 }
 
-impl<B: Database, T: EventListener> Machine<B, T> {
+impl<T: EventListener> Machine<T> {
     #[must_use]
     pub fn precompile(address: &Address, data: &[u8]) -> Option<Vector<u8>> {
         match *address {

@@ -1985,7 +1985,7 @@ dependencies = [
 
 [[package]]
 name = "evm-loader"
-version = "1.17.0-dev"
+version = "1.19.0-dev"
 dependencies = [
  "allocator-api2",
  "arrayref",
@@ -3703,7 +3703,7 @@ dependencies = [
 
 [[package]]
 name = "neon-api"
-version = "1.17.0-dev"
+version = "1.19.0-dev"
 dependencies = [
  "actix-request-identifier",
  "actix-web",
@@ -3726,7 +3726,7 @@ dependencies = [
 
 [[package]]
 name = "neon-cli"
-version = "1.17.0-dev"
+version = "1.19.0-dev"
 dependencies = [
  "build-info",
  "build-info-build",
@@ -3748,7 +3748,7 @@ dependencies = [
 
 [[package]]
 name = "neon-lib"
-version = "1.17.0-dev"
+version = "1.19.0-dev"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -3819,7 +3819,7 @@ dependencies = [
 
 [[package]]
 name = "neon-rpc"
-version = "1.17.0-dev"
+version = "1.19.0-dev"
 dependencies = [
  "actix-web",
  "build-info",

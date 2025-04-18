@@ -74,7 +74,8 @@ jobs:
     steps:
       - name: Set environment variables
         run: |
-          echo "EVM_LOADER_IMAGE=${{ env.DOCKERHUB_ORG_NAME }}/evm_loader:${{ needs.build-image.outputs.evm_sha_tag }}" >> $GITHUB_ENV
+          #echo "EVM_LOADER_IMAGE=${{ env.DOCKERHUB_ORG_NAME }}/evm_loader:${{ needs.build-image.outputs.evm_sha_tag }}" >> $GITHUB_ENV
+          echo "EVM_LOADER_IMAGE=${{ env.DOCKERHUB_ORG_NAME }}/evm_loader:latest" >> $GITHUB_ENV
           echo "NEON_TESTS_IMAGE=${{ env.DOCKERHUB_ORG_NAME }}/neon_tests:${{ needs.build-image.outputs.neon_test_tag }}" >> $GITHUB_ENV
           echo "PROJECT_NAME=neon-evm-${{ needs.build-image.outputs.evm_sha_tag }}-${{ github.run_number }}-${{ github.run_attempt }}" >> $GITHUB_ENV
           echo "NETWORK=docker_net" >> $GITHUB_ENV

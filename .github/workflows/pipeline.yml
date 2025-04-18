@@ -117,6 +117,11 @@ jobs:
         run: |
           docker exec ${{ env.TEST_CONTAINER_NAME }} python3 clickfile.py run evm --numprocesses 8 --network "${{ env.NETWORK }}"
 
+      - name: Get container logs
+        run: |
+          evm_container_name=$(docker ps --format "{{.Names}}" | grep ${{ env.PROJECT_NAME }} | grep solana)
+          docker logs $evm_container_name --tail 10000
+
       - name: "Generate allure report"
         if: always()
         uses: neonlabsorg/neon-tests/.github/actions/generate-allure-report@develop

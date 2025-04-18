@@ -108,6 +108,11 @@ jobs:
           TEST_CONTAINER_NAME=$(docker ps --format "{{.Names}}" | grep ${{ env.PROJECT_NAME }} | grep test)
           echo "TEST_CONTAINER_NAME=$TEST_CONTAINER_NAME" | tee -a $GITHUB_ENV
 
+      - name: Get container logs
+        run: |
+          evm_container_name=$(docker ps --format "{{.Names}}" | grep ${{ env.PROJECT_NAME }} | grep solana
+          docker logs $evm_container_name --tail 1000
+
       - name: Run tests
         run: |
           docker exec ${{ env.TEST_CONTAINER_NAME }} python3 clickfile.py run evm --numprocesses 8 --network "${{ env.NETWORK }}"

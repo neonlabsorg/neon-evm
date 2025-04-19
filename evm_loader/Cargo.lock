@@ -1993,7 +1993,6 @@ dependencies = [
  "bincode",
  "borsh 0.10.4",
  "borsh 1.5.3",
- "bytes",
  "cfg-if",
  "ethnum",
  "evm-loader-macro",
@@ -2001,21 +2000,18 @@ dependencies = [
  "linked_list_allocator",
  "log",
  "maybe-async",
- "memoffset",
  "mpl-token-metadata",
  "ripemd",
  "rlp",
  "serde",
- "serde_bytes",
  "solana-bn254",
  "solana-program",
- "solana-sdk",
+ "solana-sdk-ids",
  "spl-associated-token-account 6.0.0",
  "spl-token 7.0.0",
  "static_assertions",
  "strum 0.26.3",
  "thiserror 1.0.69",
- "tokio",
 ]
 
 [[package]]
@@ -6835,6 +6831,15 @@ dependencies = [
  "solana-transaction-error",
  "thiserror 1.0.69",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "solana-sdk-ids"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3fd3718f21f667ce3f721a2fd1716d31d4292db4f81d7162adaddd7a7cb28ebe"
+dependencies = [
+ "solana-pubkey",
 ]
 
 [[package]]

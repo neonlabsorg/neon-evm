@@ -20,6 +20,7 @@ solana-account-decoder = "=2.1.21"
 solana-program = { version = "=2.1.21", default-features = false }
 solana-bn254 = "=2.1.21"
 solana-sdk = "=2.1.21"
+solana-sdk-ids = "=0.0.3" # the last version available for < v2.2.x
 solana-program-runtime = "=2.1.21"
 solana-runtime = { version = "=2.1.21", features = ["dev-context-only-utils"] }
 solana-accounts-db = { version = "=2.1.21", default-features = false }

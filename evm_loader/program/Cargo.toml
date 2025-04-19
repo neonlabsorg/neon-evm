@@ -43,6 +43,7 @@ linked_list_allocator = { version = "0.10", default-features = false }
 evm-loader-macro = { path = "../program-macro" }
 solana-program.workspace = true
 solana-bn254.workspace = true
+solana-compute-budget-interface = {workspace = true, features = ["borsh"]}
 spl-token.workspace = true
 spl-associated-token-account.workspace = true
 mpl-token-metadata = { version = "5.1.0", default-features = false }
@@ -55,7 +56,6 @@ static_assertions = "1"
 borsh = "1.5.2"
 borsh010 = { version = "0.10.4", package = "borsh" }
 bincode = "1"
-serde_bytes = "0.11.15"
 serde = { version = "1.0.204", default-features = false, features = ["derive", "rc"] }
 ethnum.workspace = true
 cfg-if = { version = "1.0" }
@@ -64,16 +64,10 @@ strum = { version = "0.26.3", features = ["derive"] }
 maybe-async = "0.2.10"
 async-trait = { version = "0.1.81", optional = true }
 allocator-api2 = "0.2.16"
-memoffset = "0.9.1"
-bytes = "1.6.1"
 
 [target.'cfg(target_os = "solana")'.dependencies.maybe-async]
 version = "0.2.10"
 features = ["is_sync"]
-
-[dev-dependencies]
-tokio = { version = "1.39", features = ["full"] }
-solana-sdk.workspace = true
 
 [lib]
 crate-type = ["cdylib", "lib"]

@@ -109,6 +109,7 @@ jobs:
           echo "TEST_CONTAINER_NAME=$TEST_CONTAINER_NAME" | tee -a $GITHUB_ENV
 
       - name: Get container logs
+        if: always()
         run: |
           evm_container_name=$(docker ps --format "{{.Names}}" | grep ${{ env.PROJECT_NAME }} | grep solana)
           docker logs $evm_container_name --tail 1000
@@ -118,6 +119,7 @@ jobs:
           docker exec ${{ env.TEST_CONTAINER_NAME }} python3 clickfile.py run evm --numprocesses 8 --network "${{ env.NETWORK }}"
 
       - name: Get container logs
+        if: always()
         run: |
           evm_container_name=$(docker ps --format "{{.Names}}" | grep ${{ env.PROJECT_NAME }} | grep solana)
           docker logs $evm_container_name --tail 10000

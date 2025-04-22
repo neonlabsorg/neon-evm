@@ -13,7 +13,7 @@ use crate::types::EmulateRequest;
 
 pub async fn trace_transaction(
     rpc: &impl BuildConfigSimulator,
-    db_config: &Option<DbConfig>,
+    db_config: Option<&DbConfig>,
     program_id: &Pubkey,
     emulate_request: EmulateRequest,
 ) -> Result<(EmulateResponse, Option<Value>), NeonError> {

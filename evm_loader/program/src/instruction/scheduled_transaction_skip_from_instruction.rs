@@ -27,11 +27,7 @@ pub fn calculate_gas_for_skip(trx: &Transaction, mut gasometer: Gasometer) -> Re
     Ok(gas)
 }
 
-pub fn process<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
-    instruction: &[u8],
-) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Skip Scheduled Transaction from Instruction");
 
     let tree_index = u16::try_from(u32::from_le_bytes(*array_ref![instruction, 0, 4]))?;

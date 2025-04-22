@@ -59,7 +59,8 @@ impl Gasometer {
 
     pub fn record_write_to_holder(&mut self, trx: &Transaction) {
         let size: u64 = trx.rlp_len().try_into().expect("usize is 8 bytes");
-        let cost: u64 = ((size + (HOLDER_MSG_SIZE - 1)) / HOLDER_MSG_SIZE)
+        let cost: u64 = size
+            .div_ceil(HOLDER_MSG_SIZE)
             .saturating_mul(WRITE_TO_HOLDER_TRX_COST);
 
         self.gas = self.gas.saturating_add(cost);
@@ -73,8 +74,7 @@ impl Gasometer {
             return;
         }
 
-        let extend_count =
-            (accounts.len() + (ACCOUNTS_PER_ALT_EXTEND - 1)) / ACCOUNTS_PER_ALT_EXTEND;
+        let extend_count = accounts.len().div_ceil(ACCOUNTS_PER_ALT_EXTEND);
         // create_alt + extend_alt + deactivate_alt + close_alt
         let cost = (extend_count + 3) as u64 * LAMPORTS_PER_SIGNATURE;
 

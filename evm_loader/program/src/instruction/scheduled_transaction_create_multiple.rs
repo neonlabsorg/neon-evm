@@ -86,11 +86,7 @@ fn calculate_required_balance(init_data: &TreeInitializer) -> Result<U256> {
 }
 
 /// Execute Ethereum transaction in a single Solana transaction
-pub fn process<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
-    instruction: &[u8],
-) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Schedule Multiple Transactions");
 
     // Instruction data

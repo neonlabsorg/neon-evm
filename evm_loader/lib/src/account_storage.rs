@@ -121,7 +121,7 @@ impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         state_overrides: Option<AccountOverrides>,
         solana_overrides: Option<SolanaOverrides>,
         tx_chain_id: Option<u64>,
-    ) -> Result<EmulatorAccountStorage<T>, NeonError> {
+    ) -> Result<Self, NeonError> {
         trace!("backend::new");
 
         let clock = get_sysvar::<Clock>(rpc).await?;
@@ -180,7 +180,7 @@ impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         block_shift: u64,
         timestamp_shift: i64,
         tx_chain_id: Option<u64>,
-    ) -> Result<EmulatorAccountStorage<'rpc, T>, NeonError> {
+    ) -> Result<Self, NeonError> {
         let storage = Self {
             accounts: FrozenMap::new(),
             call_stack: vec![],
@@ -219,7 +219,7 @@ impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         state_overrides: Option<AccountOverrides>,
         solana_overrides: Option<SolanaOverrides>,
         tx_chain_id: Option<u64>,
-    ) -> Result<EmulatorAccountStorage<'rpc, T>, NeonError> {
+    ) -> Result<Self, NeonError> {
         let storage = Self::new(
             rpc,
             program_id,
@@ -237,7 +237,7 @@ impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
     }
 }
 
-impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
+impl<T: Rpc> EmulatorAccountStorage<'_, T> {
     async fn apply_balance_overrides(&self, target_chain_id: u64) -> NeonResult<()> {
         if let Some(state_overrides) = self.state_overrides.as_ref() {
             for (address, overrides) in state_overrides {
@@ -600,12 +600,12 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
     }
 
-    fn create_ethereum_balance(
-        &'a self,
+    fn create_ethereum_balance<'a>(
+        &self,
         account_data: &'a mut RefMut<AccountData>,
         address: Address,
         chain_id: u64,
-    ) -> evm_loader::error::Result<BalanceAccount> {
+    ) -> evm_loader::error::Result<BalanceAccount<'a>> {
         let required_len = BalanceAccount::required_account_size();
         account_data.assign(self.program_id)?;
         account_data.expand(required_len);
@@ -627,12 +627,12 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
     }
 
-    fn get_or_create_ethereum_balance(
-        &'a self,
+    fn get_or_create_ethereum_balance<'a>(
+        &self,
         account_data: &'a mut RefMut<AccountData>,
         address: Address,
         chain_id: u64,
-    ) -> evm_loader::error::Result<BalanceAccount> {
+    ) -> evm_loader::error::Result<BalanceAccount<'a>> {
         if account_data.is_empty() {
             self.create_ethereum_balance(account_data, address, chain_id)
         } else {
@@ -640,14 +640,14 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
     }
 
-    fn create_ethereum_contract(
-        &'a self,
+    fn create_ethereum_contract<'a>(
+        &self,
         account_data: &'a mut RefMut<AccountData>,
         address: Address,
         chain_id: u64,
         generation: u32,
         code: &[u8],
-    ) -> evm_loader::error::Result<ContractAccount> {
+    ) -> evm_loader::error::Result<ContractAccount<'a>> {
         self.mark_account(account_data.pubkey, true);
         let required_len = ContractAccount::required_account_size(code);
         account_data.assign(self.program_id)?;
@@ -664,10 +664,10 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         )
     }
 
-    fn create_ethereum_storage(
-        &'a self,
+    fn create_ethereum_storage<'a>(
+        &self,
         account_data: &'a mut RefMut<AccountData>,
-    ) -> evm_loader::error::Result<StorageCell> {
+    ) -> evm_loader::error::Result<StorageCell<'a>> {
         self.mark_account(account_data.pubkey, true);
         account_data.assign(self.program_id)?;
         account_data.expand(StorageCell::required_account_size(0));
@@ -676,10 +676,10 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         StorageCell::initialize(account_data.into_account_info(), &self.program_id)
     }
 
-    fn get_or_create_ethereum_storage(
-        &'a self,
+    fn get_or_create_ethereum_storage<'a>(
+        &self,
         account_data: &'a mut RefMut<AccountData>,
-    ) -> evm_loader::error::Result<StorageCell> {
+    ) -> evm_loader::error::Result<StorageCell<'a>> {
         if account_data.is_empty() {
             self.create_ethereum_storage(account_data)
         } else {
@@ -687,6 +687,7 @@ impl<'a, T: Rpc> EmulatorAccountStorage<'_, T> {
         }
     }
 
+    #[allow(clippy::needless_pass_by_ref_mut)]
     async fn mint(
         &mut self,
         address: Address,

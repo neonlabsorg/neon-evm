@@ -9,7 +9,7 @@ use crate::account_storage::{fake_operator, EmulatorAccountStorage};
 use super::{Rpc, SliceConfig};
 
 #[async_trait(?Send)]
-impl<'rpc, T: Rpc> Rpc for EmulatorAccountStorage<'rpc, T> {
+impl<T: Rpc> Rpc for EmulatorAccountStorage<'_, T> {
     async fn get_account_slice(
         &self,
         key: &Pubkey,

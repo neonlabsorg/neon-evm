@@ -1,22 +1,32 @@
 ARG DOCKERHUB_ORG_NAME
-# Install BPF SDK
-FROM rust:1.79.0 AS builder
+
+# Solana image
+FROM ubuntu:24.04 AS solana
+# install dependencies
+RUN apt-get update
+RUN apt-get upgrade -y
+RUN apt-get install -y libssl-dev libudev-dev pkg-config libprotobuf-dev protobuf-compiler curl bzip2
+# install solana cli
+ARG SOLANA_BPF_VERSION
+RUN sh -c "$(curl -sSfL https://release.anza.xyz/${SOLANA_BPF_VERSION}/install)"
+ENV PATH=${PATH}:/root/.local/share/solana/install/active_release/bin
+WORKDIR /opt
+
+# Builder image
+FROM solana AS rust-builder
+RUN apt-get install -y build-essential
+# install rust
+ARG RUST_VERSION
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain=${RUST_VERSION} -y
+ENV PATH=${PATH}:/root/.cargo/bin
 RUN rustup component add rustfmt
 RUN rustup component add clippy
 RUN cargo install rustfilt
-RUN apt-get update
-RUN apt-get install -y libssl-dev libudev-dev pkg-config libprotobuf-dev protobuf-compiler
-WORKDIR /opt
-ARG SOLANA_BPF_VERSION
-RUN sh -c "$(curl -sSfL https://release.anza.xyz/${SOLANA_BPF_VERSION}/install)" && \
-    /root/.local/share/solana/install/active_release/bin/sdk/sbf/scripts/install.sh
+# install solana-sdk
+RUN /root/.local/share/solana/install/active_release/bin/platform-tools-sdk/sbf/scripts/install.sh
 
-ENV PATH=${PATH}:/root/.local/share/solana/install/active_release/bin
-
-
+FROM rust-builder AS evm-builder
 # Build evm_loader
-FROM builder AS evm-loader-builder
-
 COPY .git /opt/neon-evm/.git
 COPY evm_loader /opt/neon-evm/evm_loader
 WORKDIR /opt/neon-evm/evm_loader
@@ -25,11 +35,11 @@ ENV NEON_REVISION=${REVISION}
 
 RUN cargo fmt --check && \
     cargo clippy --release \
-      --config 'patch.crates-io.ethnum.git="https://github.com/neonlabsorg/ethnum.git"'\
-      --config 'patch.crates-io.ethnum.branch="main"' && \
+        --config 'patch.crates-io.ethnum.git="https://github.com/neonlabsorg/ethnum.git"'\
+        --config 'patch.crates-io.ethnum.branch="main"' && \
     cargo build --release \
-      --config 'patch.crates-io.ethnum.git="https://github.com/neonlabsorg/ethnum.git"'\
-      --config 'patch.crates-io.ethnum.branch="main"' && \
+        --config 'patch.crates-io.ethnum.git="https://github.com/neonlabsorg/ethnum.git"'\
+        --config 'patch.crates-io.ethnum.branch="main"' && \
     cargo test --release && \
     cargo build-sbf --manifest-path program/Cargo.toml --features devnet && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet.so && \
     cargo build-sbf --manifest-path program/Cargo.toml --features devnet-2 && cp target/deploy/evm_loader.so target/deploy/evm_loader-devnet-2.so && \
@@ -46,19 +56,19 @@ RUN cargo fmt --check && \
 FROM ${DOCKERHUB_ORG_NAME}/neon_test_programs:latest AS neon_test_programs
 
 # Define solana-image that contains utility
-FROM builder AS base
+FROM solana AS base
 
 ARG MAINNET_SOLANA_URL
 RUN solana program dump metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s /opt/metaplex.so --url ${MAINNET_SOLANA_URL}
 
-COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader*.so /opt/
-COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader-dump.txt /opt/
-COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/release/neon-cli /opt/
-COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/release/neon-api /opt/
+COPY --from=evm-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader*.so /opt/
+COPY --from=evm-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader-dump.txt /opt/
+COPY --from=evm-builder /opt/neon-evm/evm_loader/target/release/neon-cli /opt/
+COPY --from=evm-builder /opt/neon-evm/evm_loader/target/release/neon-api /opt/
 
 COPY --from=neon_test_programs /opt/deploy/ /opt/deploy/
-COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/release/neon-rpc /opt/
-COPY --from=evm-loader-builder /opt/neon-evm/evm_loader/target/release/libneon_lib.so /opt/libs/current/
+COPY --from=evm-builder /opt/neon-evm/evm_loader/target/release/neon-rpc /opt/
+COPY --from=evm-builder /opt/neon-evm/evm_loader/target/release/libneon_lib.so /opt/libs/current/
 
 COPY ci/wait-for-solana.sh \
     ci/wait-for-neon.sh \

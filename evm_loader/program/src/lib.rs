@@ -9,7 +9,12 @@
     clippy::use_self,
     clippy::future_not_send
 )]
-#![allow(missing_docs, clippy::missing_panics_doc, clippy::missing_errors_doc)]
+#![allow(
+    missing_docs,
+    clippy::missing_panics_doc,
+    clippy::missing_errors_doc,
+    unexpected_cfgs
+)]
 
 solana_program::declare_id!(crate::config::PROGRAM_ID);
 

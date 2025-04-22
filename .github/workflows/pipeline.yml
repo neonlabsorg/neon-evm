@@ -116,7 +116,7 @@ jobs:
         if: always()
         run: |
           evm_container_name=$(docker ps --format "{{.Names}}" | grep ${{ env.PROJECT_NAME }} | grep solana)
-          docker logs $evm_container_name 2>&1 | pbzip2 -f > solana.log.bz2
+          docker logs $evm_container_name 2>&1 | gzip -f > solana.log.gz
       - uses: actions/upload-artifact@v4
         if: always()
         with:

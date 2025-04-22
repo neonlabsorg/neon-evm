@@ -121,7 +121,7 @@ jobs:
         if: always()
         with:
           name: Solana docker logs
-          path: solana.log.bz2
+          path: solana.log.gz
 
       - name: "Generate allure report"
         if: always()

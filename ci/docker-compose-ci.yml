@@ -91,6 +91,9 @@ services:
       - NEON_CORE_API_RPC_URL=http://neon_core_rpc:3100
     hostname: tests
     command: sleep infinity
+    depends_on:
+      solana:
+        condition: service_healthy
     networks:
       - net
 

@@ -73,6 +73,44 @@ macro_rules! opcode_table {
                 serializer.serialize_str(OPNAMES[self.0 as usize])
             }
         }
+
+        #[cfg(not(target_os = "solana"))]
+        impl<'de> serde::Deserialize<'de> for Opcode {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct OpcodeVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for OpcodeVisitor {
+                    type Value = Opcode;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                        write!(
+                            formatter,
+                            "one of opcodes like 'call', 'delegatecall' must be provided"
+                        )
+                    }
+
+                    fn visit_str<E>(self, v: &str) -> std::result::Result<Self::Value, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        for (pos, code) in OPNAMES.iter().enumerate() {
+                            if *code == v {
+                                return u8::try_from(pos).map(|c| Opcode(c)).map_err(
+                                    |e| serde::de::Error::custom(e.to_string())
+                                );
+                            }
+                        }
+
+                        Err(serde::de::Error::custom(format!("Invalid opcode: {:?}", v)))
+                    }
+                }
+
+                deserializer.deserialize_str(OpcodeVisitor)
+            }
+        }
     }
 }
 

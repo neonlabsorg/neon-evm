@@ -18,6 +18,12 @@ services:
         hard: 1048576
     entrypoint:
       /opt/solana-run-neon.sh
+    healthcheck:
+      test: [ CMD-SHELL, "./wait-for-neon.sh" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
     networks:
       - net
 

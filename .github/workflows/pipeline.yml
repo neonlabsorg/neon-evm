@@ -99,7 +99,7 @@ jobs:
 
       - name: Docker compose up
         run: |
-          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml up -d
+          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml up -d 
 
       - name: Get test container name
         id: get_container_name
@@ -111,6 +111,17 @@ jobs:
       - name: Run tests
         run: |
           docker exec ${{ env.TEST_CONTAINER_NAME }} python3 clickfile.py run evm --numprocesses 8 --network "${{ env.NETWORK }}"
+
+      - name: Get container logs
+        if: always()
+        run: |
+          evm_container_name=$(docker ps --format "{{.Names}}" | grep ${{ env.PROJECT_NAME }} | grep solana)
+          docker logs $evm_container_name 2>&1 | gzip -f > solana.log.gz
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Solana docker logs
+          path: solana.log.gz
 
       - name: "Generate allure report"
         if: always()

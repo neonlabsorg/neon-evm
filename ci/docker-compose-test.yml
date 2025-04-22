@@ -19,6 +19,12 @@ services:
       - "8003/udp"
     entrypoint:
       /opt/solana-run-neon.sh
+    healthcheck:
+      test: [ CMD-SHELL, "./wait-for-neon.sh" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
     networks:
       - net
 
@@ -79,10 +85,6 @@ services:
       - net
   tests:
     image: ${NEON_TESTS_IMAGE}
-    environment:
-      - SOLANA_URL=http://solana:8899
-      - NEON_CORE_API_URL=http://neon_api:8085/api
-      - NEON_CORE_API_RPC_URL=http://neon_core_rpc:3100
     hostname: tests
     command: sleep infinity
     networks:

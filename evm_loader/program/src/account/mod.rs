@@ -1,3 +1,5 @@
+#![allow(clippy::needless_pass_by_ref_mut)]
+
 use crate::error::{Error, Result};
 use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;

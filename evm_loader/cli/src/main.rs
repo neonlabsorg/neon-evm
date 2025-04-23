@@ -54,7 +54,7 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
             let request = read_tx_from_stdin()?;
             emulate::execute(
                 &rpc,
-                &config.db_config,
+                config.db_config.as_ref(),
                 &config.evm_loader,
                 request,
                 None::<TracerTypeEnum>,
@@ -64,7 +64,7 @@ async fn run(options: &ArgMatches<'_>) -> NeonCliResult {
         }
         ("trace", Some(_)) => {
             let request = read_tx_from_stdin()?;
-            trace::trace_transaction(&rpc, &config.db_config, &config.evm_loader, request)
+            trace::trace_transaction(&rpc, config.db_config.as_ref(), &config.evm_loader, request)
                 .await
                 .map(|trace| json!(trace))
         }

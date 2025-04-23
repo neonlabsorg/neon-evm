@@ -14,32 +14,32 @@ use solana_program::{
 };
 
 struct Accounts<'a> {
-    main_treasury: &'a AccountInfo<'a>,
-    program_data: &'a AccountInfo<'a>,
-    program_upgrade_auth: &'a AccountInfo<'a>,
+    main_treasury: AccountInfo<'a>,
+    program_data: AccountInfo<'a>,
+    program_upgrade_auth: AccountInfo<'a>,
     token_program: Token<'a>,
     system_program: System<'a>,
-    mint: &'a AccountInfo<'a>,
+    mint: AccountInfo<'a>,
     payer: Operator<'a>,
 }
 
 impl<'a> Accounts<'a> {
-    pub fn from_slice(accounts: &'a [AccountInfo<'a>]) -> Result<Accounts<'a>> {
+    pub fn from_slice(accounts: &[AccountInfo<'a>]) -> Result<Accounts<'a>> {
         Ok(Accounts {
-            main_treasury: &accounts[0],
-            program_data: &accounts[1],
-            program_upgrade_auth: &accounts[2],
+            main_treasury: accounts[0].clone(),
+            program_data: accounts[1].clone(),
+            program_upgrade_auth: accounts[2].clone(),
             token_program: Token::from_account(&accounts[3])?,
             system_program: System::from_account(&accounts[4])?,
-            mint: &accounts[5],
+            mint: accounts[5].clone(),
             payer: unsafe { Operator::from_account_not_whitelisted(&accounts[6]) }?,
         })
     }
 }
 
-fn get_program_upgrade_authority<'a>(
-    program_id: &'a Pubkey,
-    program_data: &'a AccountInfo<'a>,
+fn get_program_upgrade_authority(
+    program_id: &Pubkey,
+    program_data: &AccountInfo,
 ) -> Result<Pubkey> {
     let expected_program_data_key = bpf_loader_upgradeable::get_program_data_address(&program_id);
 
@@ -64,11 +64,7 @@ fn get_program_upgrade_authority<'a>(
     Ok(upgrade_authority)
 }
 
-pub fn process<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
-    _instruction: &[u8],
-) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Create Main Treasury");
 
     let accounts = Accounts::from_slice(accounts)?;
@@ -103,7 +99,7 @@ pub fn process<'a>(
     }
 
     let expected_upgrade_auth_key =
-        get_program_upgrade_authority(program_id, accounts.program_data)?;
+        get_program_upgrade_authority(program_id, &accounts.program_data)?;
     if *accounts.program_upgrade_auth.key != expected_upgrade_auth_key {
         return Err(Error::AccountInvalidKey(
             *accounts.program_upgrade_auth.key,
@@ -117,16 +113,16 @@ pub fn process<'a>(
     accounts.system_program.create_pda_account(
         &spl_token::id(),
         &accounts.payer,
-        accounts.main_treasury,
+        &accounts.main_treasury,
         &[TREASURY_POOL_SEED.as_bytes(), &[bump_seed]],
         spl_token::state::Account::LEN,
         &Rent::get()?,
     )?;
 
     accounts.token_program.create_account(
-        accounts.main_treasury,
-        accounts.mint,
-        accounts.program_upgrade_auth,
+        &accounts.main_treasury,
+        &accounts.mint,
+        &accounts.program_upgrade_auth,
     )?;
 
     Ok(())

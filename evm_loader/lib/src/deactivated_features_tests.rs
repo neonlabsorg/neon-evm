@@ -54,7 +54,7 @@ mod deactivated_features_tests {
         ) -> ClientResult<Vec<Option<Account>>> {
             let mut result: Vec<Option<Account>> = vec![];
 
-            for pubkey in pubkeys.iter() {
+            for pubkey in pubkeys {
                 let feature = self.features.get(pubkey);
 
                 match feature {
@@ -71,7 +71,7 @@ mod deactivated_features_tests {
                         {
                             result.push(Some(data.into()));
                         } else {
-                            result.push(None)
+                            result.push(None);
                         }
                     }
                     None => result.push(None),

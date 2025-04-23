@@ -120,7 +120,7 @@ fn init_overrides(emulate_request: &EmulateRequest) -> Overrides {
 
 pub async fn execute<T: Tracer>(
     rpc: &impl BuildConfigSimulator,
-    db_config: &Option<DbConfig>,
+    db_config: Option<&DbConfig>,
     program_id: &Pubkey,
     emulate_request: EmulateRequest,
     tracer: Option<T>,
@@ -141,7 +141,7 @@ pub async fn execute<T: Tracer>(
 }
 
 async fn create_rpc(
-    db_config: &Option<DbConfig>,
+    db_config: Option<&DbConfig>,
     block: u64,
     index: Option<u64>,
 ) -> NeonResult<RpcEnum> {
@@ -208,8 +208,8 @@ async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>
     Ok((storage, tx))
 }
 
-async fn increment_nonce<'rpc, T: Rpc + BuildConfigSimulator>(
-    storage: &mut EmulatorAccountStorage<'rpc, T>,
+async fn increment_nonce<T: Rpc + BuildConfigSimulator>(
+    storage: &mut EmulatorAccountStorage<'_, T>,
     origin: &Address,
     chain_id: u64,
 ) -> NeonResult<()> {
@@ -218,8 +218,8 @@ async fn increment_nonce<'rpc, T: Rpc + BuildConfigSimulator>(
     Ok(())
 }
 
-async fn transfer_gas_limit<'rpc, T: Rpc + BuildConfigSimulator>(
-    storage: &mut EmulatorAccountStorage<'rpc, T>,
+async fn transfer_gas_limit<T: Rpc + BuildConfigSimulator>(
+    storage: &mut EmulatorAccountStorage<'_, T>,
     tx: &Transaction,
     origin: &Address,
     chain_id: u64,
@@ -241,7 +241,7 @@ async fn calculate_response<T: Rpc + BuildConfigSimulator, Tr: Tracer>(
     exit_status: ExitStatus,
     storage: &EmulatorAccountStorage<'_, T>,
     tracer: Option<Tr>,
-    provide_account_info: &Option<AccountInfoLevel>,
+    provide_account_info: Option<AccountInfoLevel>,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     debug!("Execute done, result={exit_status:?}");
     debug!("{steps_executed} steps executed");
@@ -252,7 +252,7 @@ async fn calculate_response<T: Rpc + BuildConfigSimulator, Tr: Tracer>(
     let logs = storage.logs();
     let execute_status = storage.execute_status;
 
-    let steps_iterations = 1.max((steps_executed + (EVM_STEPS_MIN - 1)) / EVM_STEPS_MIN);
+    let steps_iterations = 1.max(steps_executed.div_ceil(EVM_STEPS_MIN));
 
     let begin_end_iterations = 2;
     let iterations: u64 = steps_iterations + begin_end_iterations + storage.realloc_iterations;
@@ -297,9 +297,9 @@ async fn calculate_response<T: Rpc + BuildConfigSimulator, Tr: Tracer>(
     Ok(result)
 }
 
-async fn emulate_trx<'rpc, T: Tracer>(
+async fn emulate_trx<T: Tracer>(
     emulate_request: &EmulateRequest,
-    db_config: &Option<DbConfig>,
+    db_config: Option<&DbConfig>,
     program_id: &Pubkey,
     step_limit: u64,
     tracer: Option<T>,
@@ -329,8 +329,8 @@ async fn emulate_trx<'rpc, T: Tracer>(
     emulate_trx_multiple_steps(db_config, program_id, tracer, emulate_request, step_limit).await
 }
 
-async fn emulate_trx_single_step<'rpc, T: Tracer>(
-    storage: &mut EmulatorAccountStorage<'rpc, impl BuildConfigSimulator>,
+async fn emulate_trx_single_step<T: Tracer>(
+    storage: &mut EmulatorAccountStorage<'_, impl BuildConfigSimulator>,
     tx: &Transaction,
     tracer: Option<T>,
     emulate_request: &EmulateRequest,
@@ -377,14 +377,14 @@ async fn emulate_trx_single_step<'rpc, T: Tracer>(
         exit_status,
         storage,
         tracer,
-        &emulate_request.provide_account_info,
+        emulate_request.provide_account_info,
     )
     .await
 }
 
-async fn prepare_origin<'rpc, T: Rpc + BuildConfigSimulator>(
+async fn prepare_origin<T: Rpc + BuildConfigSimulator>(
     origin: &Address,
-    storage: &mut EmulatorAccountStorage<'rpc, T>,
+    storage: &mut EmulatorAccountStorage<'_, T>,
     tx: &Transaction,
     chain_id: u64,
     increase_gas_limit: bool,
@@ -406,8 +406,8 @@ async fn prepare_origin<'rpc, T: Rpc + BuildConfigSimulator>(
     Ok(())
 }
 
-async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
-    db_config: &Option<DbConfig>,
+async fn emulate_trx_multiple_steps<T: Tracer>(
+    db_config: Option<&DbConfig>,
     program_id: &Pubkey,
     tracer: Option<T>,
     emulate_request: &EmulateRequest,
@@ -568,7 +568,7 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
         exit_status,
         &storage,
         tracer,
-        &emulate_request.provide_account_info,
+        emulate_request.provide_account_info,
     )
     .await
 }
@@ -576,12 +576,12 @@ async fn emulate_trx_multiple_steps<'rpc, T: Tracer>(
 async fn provide_account_data(
     storage: &EmulatorAccountStorage<'_, impl Rpc>,
     solana_accounts: &[SolanaAccount],
-    level: &AccountInfoLevel,
+    level: AccountInfoLevel,
 ) -> NeonResult<Vec<AccountData>> {
     let pubkeys = solana_accounts
         .iter()
         .filter_map(|v| {
-            if v.is_writable || AccountInfoLevel::Changed != *level {
+            if v.is_writable || AccountInfoLevel::Changed != level {
                 Some(v.pubkey)
             } else {
                 None

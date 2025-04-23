@@ -25,7 +25,7 @@ impl AccountHeader for Header {
 
 #[derive(Clone)]
 pub struct OperatorBalanceAccount<'a> {
-    account: &'a AccountInfo<'a>,
+    account: AccountInfo<'a>,
 }
 
 impl<'a> OperatorBalanceAccount<'a> {
@@ -34,15 +34,17 @@ impl<'a> OperatorBalanceAccount<'a> {
         ACCOUNT_PREFIX_LEN + size_of::<Header>()
     }
 
-    pub fn from_account(program_id: &Pubkey, account: &'a AccountInfo<'a>) -> Result<Self> {
+    pub fn from_account(program_id: &Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
         super::validate_tag(program_id, account, TAG_OPERATOR_BALANCE)?;
 
-        Ok(Self { account })
+        Ok(Self {
+            account: account.clone(),
+        })
     }
 
     pub fn try_from_account(
         program_id: &Pubkey,
-        account: &'a AccountInfo<'a>,
+        account: &AccountInfo<'a>,
     ) -> Result<Option<Self>> {
         if system_program::check_id(account.owner) {
             Ok(None)
@@ -55,7 +57,7 @@ impl<'a> OperatorBalanceAccount<'a> {
     pub fn create(
         address: Address,
         chain_id: u64,
-        account: &'a AccountInfo<'a>,
+        account: AccountInfo<'a>,
         operator: &Operator<'a>,
         system: &program::System<'a>,
         rent: &Rent,
@@ -68,7 +70,7 @@ impl<'a> OperatorBalanceAccount<'a> {
 
         // Already created. Return immidiately
         if !system_program::check_id(account.owner) {
-            let balance_account = Self::from_account(&crate::ID, account)?;
+            let balance_account = Self::from_account(&crate::ID, &account)?;
             assert_eq!(balance_account.address(), address);
             assert_eq!(balance_account.chain_id(), chain_id);
             assert_eq!(balance_account.owner(), *operator.key);
@@ -88,15 +90,15 @@ impl<'a> OperatorBalanceAccount<'a> {
         system.create_pda_account(
             &crate::ID,
             operator,
-            account,
+            &account,
             program_seeds,
             Self::required_account_size(),
             rent,
         )?;
 
-        super::set_tag(&crate::ID, account, TAG_OPERATOR_BALANCE, Header::VERSION)?;
+        super::set_tag(&crate::ID, &account, TAG_OPERATOR_BALANCE, Header::VERSION)?;
         {
-            let mut header = super::header_mut::<Header>(account);
+            let mut header = super::header_mut::<Header>(&account);
             header.owner = *operator.key;
             header.address = address;
             header.chain_id = chain_id;
@@ -113,25 +115,25 @@ impl<'a> OperatorBalanceAccount<'a> {
 
     #[must_use]
     pub fn address(&self) -> Address {
-        let header = super::header::<Header>(self.account);
+        let header = super::header::<Header>(&self.account);
         header.address
     }
 
     #[must_use]
     pub fn chain_id(&self) -> u64 {
-        let header = super::header::<Header>(self.account);
+        let header = super::header::<Header>(&self.account);
         header.chain_id
     }
 
     #[must_use]
     pub fn balance(&self) -> U256 {
-        let header = super::header::<Header>(self.account);
+        let header = super::header::<Header>(&self.account);
         header.balance
     }
 
     #[must_use]
     pub fn owner(&self) -> Pubkey {
-        let header = super::header::<Header>(self.account);
+        let header = super::header::<Header>(&self.account);
         header.owner
     }
 
@@ -169,7 +171,7 @@ impl<'a> OperatorBalanceAccount<'a> {
     }
 
     pub fn burn(&mut self, value: U256) -> Result<()> {
-        let mut header = super::header_mut::<Header>(self.account);
+        let mut header = super::header_mut::<Header>(&self.account);
 
         header.balance = header
             .balance
@@ -184,7 +186,7 @@ impl<'a> OperatorBalanceAccount<'a> {
     }
 
     pub fn mint(&mut self, value: U256) -> Result<()> {
-        let mut header = super::header_mut::<Header>(self.account);
+        let mut header = super::header_mut::<Header>(&self.account);
 
         header.balance = header
             .balance
@@ -199,7 +201,7 @@ impl<'a> OperatorBalanceAccount<'a> {
     pub unsafe fn suicide(self, operator: &Operator) {
         assert_eq!(self.balance(), U256::ZERO);
 
-        crate::account::delete(self.account, operator);
+        crate::account::delete(&self.account, operator);
     }
 }
 

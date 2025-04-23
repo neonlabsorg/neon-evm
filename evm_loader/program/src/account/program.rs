@@ -8,21 +8,21 @@ use solana_program::{rent::Rent, system_instruction};
 use std::convert::From;
 use std::ops::Deref;
 
-pub struct System<'a>(&'a AccountInfo<'a>);
+pub struct System<'a>(AccountInfo<'a>);
 
-impl<'a> From<&System<'a>> for &'a AccountInfo<'a> {
-    fn from(f: &System<'a>) -> Self {
-        f.0
+impl<'r, 'a> From<&'r System<'a>> for &'r AccountInfo<'a> {
+    fn from(f: &'r System<'a>) -> Self {
+        &f.0
     }
 }
 
 impl<'a> System<'a> {
-    pub fn from_account(info: &'a AccountInfo<'a>) -> Result<Self> {
+    pub fn from_account(info: &AccountInfo<'a>) -> Result<Self> {
         if !system_program::check_id(info.key) {
             return Err(Error::AccountInvalidKey(*info.key, system_program::ID));
         }
 
-        Ok(Self(info))
+        Ok(Self(info.clone()))
     }
 
     pub fn create_pda_account(
@@ -249,19 +249,19 @@ impl<'a> Deref for System<'a> {
     type Target = AccountInfo<'a>;
 
     fn deref(&self) -> &Self::Target {
-        self.0
+        &self.0
     }
 }
 
-pub struct Token<'a>(&'a AccountInfo<'a>);
+pub struct Token<'a>(AccountInfo<'a>);
 
 impl<'a> Token<'a> {
-    pub fn from_account(info: &'a AccountInfo<'a>) -> Result<Self> {
+    pub fn from_account(info: &AccountInfo<'a>) -> Result<Self> {
         if !spl_token::check_id(info.key) {
             return Err(Error::AccountInvalidKey(*info.key, spl_token::ID));
         }
 
-        Ok(Self(info))
+        Ok(Self(info.clone()))
     }
 
     pub fn create_account(
@@ -288,6 +288,6 @@ impl<'a> Deref for Token<'a> {
     type Target = AccountInfo<'a>;
 
     fn deref(&self) -> &Self::Target {
-        self.0
+        &self.0
     }
 }

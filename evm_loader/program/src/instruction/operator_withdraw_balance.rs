@@ -6,11 +6,7 @@ use crate::account::program::System;
 use crate::account::{AccountsDB, BalanceAccount, Operator, OperatorBalanceAccount};
 use crate::error::Result;
 
-pub fn process<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
-    _instruction: &[u8],
-) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Withdraw Operator Balance Account");
 
     let system = System::from_account(&accounts[0])?;

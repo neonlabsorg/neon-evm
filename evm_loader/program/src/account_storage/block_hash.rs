@@ -49,7 +49,7 @@ struct SlotHashesAccountProvider<'a> {
     data: &'a [u8],
 }
 
-impl<'a> SlotHashesProvider for SlotHashesAccountProvider<'a> {
+impl SlotHashesProvider for SlotHashesAccountProvider<'_> {
     fn fill_slot_hash_slice(&self, data: &mut [u8], sz: usize, offset: usize) {
         data.clone_from_slice(self.data[offset..][..sz].try_into().unwrap());
     }

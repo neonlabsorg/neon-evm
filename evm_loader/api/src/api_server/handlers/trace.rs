@@ -31,7 +31,7 @@ pub async fn trace(
     process_result(
         &trace_transaction(
             &rpc,
-            &state.config.db_config,
+            state.config.db_config.as_ref(),
             &state.config.evm_loader,
             trace_request.body,
         )

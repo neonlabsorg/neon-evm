@@ -4,24 +4,45 @@ use crate::types::vector::VectorVecExt;
 use crate::types::Vector;
 use crate::vector;
 
-fn _mod_exp_fast(base: U256, exponent: U256, modulus: U256) -> U256 {
-    if modulus == U256::ONE {
-        return U256::ZERO;
+/// Constant-time modular addition: (a + b) % m
+fn mod_add(a: U256, b: U256, m: U256) -> U256 {
+    assert!((m != U256::ZERO), "modulus cannot be zero");
+
+    let sum = a.overflowing_add(b);
+    let (sum, overflow) = sum;
+
+    if overflow || sum >= m {
+        sum.wrapping_sub(m)
+    } else {
+        sum
     }
+}
 
-    let mut result = U256::ONE;
-    let mut base = base % modulus;
-    let mut exponent = exponent;
+/// Constant-time modular multiplication: (a * b) % m
+fn mod_mul(a: U256, b: U256, m: U256) -> U256 {
+    assert!((m != U256::ZERO), "modulus cannot be zero");
 
-    while exponent > U256::ZERO {
-        if exponent % U256::new(2) == U256::ONE {
-            result = (result * base) % modulus;
+    // Compute a * b using checked_mul to detect overflow
+    let Some(product) = a.checked_mul(b) else {
+        // If multiplication overflows, we need to use a slower method
+        // This branch should theoretically never be taken for U256 when m is U256::MAX
+        // because a and b are both less than m (from mod_exp)
+        let mut res = U256::ZERO;
+        let mut a = a;
+        let mut b = b;
+
+        // This is a constant-time multiplication algorithm
+        for _ in 0..256 {
+            if (b & U256::ONE) == U256::ONE {
+                res = mod_add(res, a, m);
+            }
+            a = mod_add(a, a, m);
+            b >>= 1;
         }
-        exponent >>= 1;
-        base = (base * base) % modulus;
-    }
+        return res;
+    };
 
-    result
+    product % m
 }
 
 /// Constant-time modular exponentiation: computes b^e mod m without timing leaks
@@ -41,58 +62,15 @@ fn mod_exp(b: U256, e: U256, m: U256) -> U256 {
     for _ in 0..256 {
         // Check the least significant bit in constant time
         if (exponent & U256::ONE) == U256::ONE {
-            result = mul_mod(result, base, modulus);
+            result = mod_mul(result, base, modulus);
         }
-
         // Right shift exponent (divide by 2)
         exponent >>= 1;
-
         // Square the base
-        base = mul_mod(base, base, modulus);
+        base = mod_mul(base, base, modulus);
     }
 
     result
-}
-
-/// Constant-time modular multiplication: (a * b) % m
-fn mul_mod(a: U256, b: U256, m: U256) -> U256 {
-    assert!((m != U256::ZERO), "modulus cannot be zero");
-
-    // Compute a * b using checked_mul to detect overflow
-    let Some(product) = a.checked_mul(b) else {
-        // If multiplication overflows, we need to use a slower method
-        // This branch should theoretically never be taken for U256 when m is U256::MAX
-        // because a and b are both less than m (from mod_exp)
-        let mut res = U256::ZERO;
-        let mut a = a;
-        let mut b = b;
-
-        // This is a constant-time multiplication algorithm
-        for _ in 0..256 {
-            if (b & U256::ONE) == U256::ONE {
-                res = add_mod(res, a, m);
-            }
-            a = add_mod(a, a, m);
-            b >>= 1;
-        }
-        return res;
-    };
-
-    product % m
-}
-
-/// Constant-time modular addition: (a + b) % m
-fn add_mod(a: U256, b: U256, m: U256) -> U256 {
-    assert!((m != U256::ZERO), "modulus cannot be zero");
-
-    let sum = a.overflowing_add(b);
-    let (sum, overflow) = sum;
-
-    if overflow || sum >= m {
-        sum.wrapping_sub(m)
-    } else {
-        sum
-    }
 }
 
 fn u8_array_to_u256(bytes: &[u8]) -> U256 {

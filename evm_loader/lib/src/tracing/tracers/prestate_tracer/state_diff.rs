@@ -23,6 +23,7 @@ pub struct PrestateTracerAccount {
     pub storage: BTreeMap<H256, H256>,
 }
 
+#[allow(clippy::ref_option)]
 fn is_empty(bytes: &Option<Bytes>) -> bool {
     bytes.as_ref().map_or(true, |bytes| bytes.0.is_empty())
 }

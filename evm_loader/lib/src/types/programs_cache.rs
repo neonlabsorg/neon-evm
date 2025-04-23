@@ -25,7 +25,6 @@ pub struct KeyAccountCache {
 }
 impl KeyAccountCache {
     #[must_use]
-
     pub const fn new(addr: &Pubkey, slot: u64) -> Self {
         Self { addr: *addr, slot }
     }

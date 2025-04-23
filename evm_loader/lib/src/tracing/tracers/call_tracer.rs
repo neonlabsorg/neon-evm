@@ -138,10 +138,10 @@ fn format_revert_message(msg: &[u8]) -> String {
 
 fn get_panic_message(reason: ethnum::U256) -> String {
     let reason = reason.as_u64();
-    PANIC_REASONS
-        .get(&reason)
-        .map(|s| (*s).to_string())
-        .unwrap_or(format!("unknown panic code: {reason:#x}"))
+    PANIC_REASONS.get(&reason).map_or_else(
+        || format!("unknown panic code: {reason:#x}"),
+        |s| (*s).to_string(),
+    )
 }
 
 lazy_static! {

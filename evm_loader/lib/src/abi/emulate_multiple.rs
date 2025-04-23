@@ -13,5 +13,5 @@ pub async fn execute(
     let params: EmulateMultipleRequest =
         serde_json::from_str(params).map_err(|_| params_to_neon_error(params))?;
 
-    emulate_multiple::execute(rpc, &config.db_config, &config.evm_loader, params).await
+    emulate_multiple::execute(rpc, config.db_config.as_ref(), &config.evm_loader, params).await
 }

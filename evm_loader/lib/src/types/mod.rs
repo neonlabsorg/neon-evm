@@ -52,7 +52,7 @@ impl TracerDb {
         }
     }
 
-    pub async fn maybe_from_config(maybe_db_config: &Option<DbConfig>) -> Option<Self> {
+    pub async fn maybe_from_config(maybe_db_config: Option<&DbConfig>) -> Option<Self> {
         if let Some(db_config) = maybe_db_config {
             Some(Self::from_config(db_config).await)
         } else {
@@ -345,7 +345,7 @@ impl From<AccountSharedData> for SerializedAccount {
 }
 
 #[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AccountInfoLevel {
     Changed,
     All,

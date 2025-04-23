@@ -209,7 +209,7 @@ mod tests {
     }
 
     fn calc_gas_unit_cnt(cu_price: u64) -> u64 {
-        0.max(cu_price - 1) / BASE_COMPUTE_UNIT_PRICE_UNIT
+        cu_price.saturating_sub(1) / BASE_COMPUTE_UNIT_PRICE_UNIT
     }
 
     fn calc_iter_cnt(iter_cnt: u64) -> u64 {

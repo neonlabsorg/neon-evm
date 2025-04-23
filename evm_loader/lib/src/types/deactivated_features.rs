@@ -32,7 +32,7 @@ impl Default for DeactivatedFeaturesCache {
 }
 
 impl DeactivatedFeaturesCache {
-    pub fn should_update(&mut self) -> bool {
+    pub fn should_update(&self) -> bool {
         if self.rpc.is_some() {
             self.last_update + DEACTIVATED_FEATURES_PERIOD <= Instant::now()
         } else {

@@ -34,8 +34,9 @@ MAINNET_SOLANA_URL = os.environ.get("MAINNET_SOLANA_URL", "mainnet-beta")
 IMAGE_NAME = os.environ.get("IMAGE_NAME", "evm_loader")
 RUN_LINK_REPO = os.environ.get("RUN_LINK_REPO")
 DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
-SOLANA_NODE_VERSION = 'v2.1.15'
-SOLANA_BPF_VERSION = 'v2.1.15'
+SOLANA_NODE_VERSION = 'v2.2.11'
+SOLANA_BPF_VERSION = 'v2.2.11'
+RUST_VERSION = "1.84.1"
 
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 RELEASE_TAG_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.\d{1,2}"
@@ -125,7 +126,8 @@ def build_docker_image(evm_sha_tag):
     buildargs = {"REVISION": evm_sha_tag,
                  "SOLANA_BPF_VERSION": SOLANA_BPF_VERSION,
                  "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME,
-                 "MAINNET_SOLANA_URL": MAINNET_SOLANA_URL
+                 "MAINNET_SOLANA_URL": MAINNET_SOLANA_URL,
+                 "RUST_VERSION": RUST_VERSION,
                  }
 
     tag = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}:{evm_sha_tag}"

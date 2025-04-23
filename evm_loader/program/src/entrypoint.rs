@@ -12,9 +12,9 @@ use crate::{instruction, instruction::EvmInstruction};
 entrypoint!(process_instruction);
 
 #[cfg(feature = "emergency")]
-fn process_instruction<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
+fn process_instruction(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
     assert!(crate::check_id(program_id));
@@ -61,9 +61,9 @@ fn process_instruction<'a>(
 }
 
 #[cfg(not(feature = "emergency"))]
-fn process_instruction<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
+fn process_instruction(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
     use crate::error::Error;

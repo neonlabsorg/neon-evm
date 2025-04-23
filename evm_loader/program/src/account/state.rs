@@ -566,7 +566,7 @@ impl<'a> StateAccount<'a> {
 }
 
 // Implementation of functional to save/restore persistent state of iterative transactions.
-impl<'a> StateAccount<'a> {
+impl StateAccount<'_> {
     pub fn alloc_executor_state(&self, data: Boxx<ExecutorStateData>) {
         let offset = self.leak_and_offset(data);
         let mut header = super::header_mut::<Header>(&self.account);

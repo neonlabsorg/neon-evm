@@ -4,29 +4,25 @@ use solana_program::{account_info::AccountInfo, program_pack::Pack, pubkey::Pubk
 use std::ops::Deref;
 
 pub struct Treasury<'a> {
-    pub info: &'a AccountInfo<'a>,
+    pub info: AccountInfo<'a>,
     index: u32,
     bump_seed: u8,
 }
 
 pub struct MainTreasury<'a> {
-    info: &'a AccountInfo<'a>,
+    info: AccountInfo<'a>,
     bump_seed: u8,
 }
 
 impl<'a> Treasury<'a> {
-    pub fn from_account(
-        program_id: &Pubkey,
-        index: u32,
-        info: &'a AccountInfo<'a>,
-    ) -> Result<Self> {
+    pub fn from_account(program_id: &Pubkey, index: u32, info: &AccountInfo<'a>) -> Result<Self> {
         let (expected_key, bump_seed) = Treasury::address(program_id, index);
         if *info.key != expected_key {
             return Err(Error::AccountInvalidKey(*info.key, expected_key));
         }
 
         Ok(Self {
-            info,
+            info: info.clone(),
             index,
             bump_seed,
         })
@@ -52,12 +48,12 @@ impl<'a> Deref for Treasury<'a> {
     type Target = AccountInfo<'a>;
 
     fn deref(&self) -> &Self::Target {
-        self.info
+        &self.info
     }
 }
 
 impl<'a> MainTreasury<'a> {
-    pub fn from_account(program_id: &Pubkey, info: &'a AccountInfo<'a>) -> Result<Self> {
+    pub fn from_account(program_id: &Pubkey, info: &AccountInfo<'a>) -> Result<Self> {
         let (expected_key, bump_seed) = MainTreasury::address(program_id);
         if *info.key != expected_key {
             return Err(Error::AccountInvalidKey(*info.key, expected_key));
@@ -75,7 +71,10 @@ impl<'a> MainTreasury<'a> {
             )));
         }
 
-        Ok(Self { info, bump_seed })
+        Ok(Self {
+            info: info.clone(),
+            bump_seed,
+        })
     }
 
     #[must_use]
@@ -93,6 +92,6 @@ impl<'a> Deref for MainTreasury<'a> {
     type Target = AccountInfo<'a>;
 
     fn deref(&self) -> &Self::Target {
-        self.info
+        &self.info
     }
 }

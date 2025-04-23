@@ -15,7 +15,7 @@ pub async fn execute(
 
     emulate::execute(
         rpc,
-        &config.db_config,
+        config.db_config.as_ref(),
         &config.evm_loader,
         params.body,
         None::<TracerTypeEnum>,

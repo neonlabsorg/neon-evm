@@ -2,11 +2,7 @@ use crate::account::{Holder, Operator};
 use crate::error::Result;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-pub fn process<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
-    _instruction: &[u8],
-) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Delete Holder Account");
 
     let holder_info = accounts[0].clone();

@@ -223,7 +223,6 @@ impl StateDiffTracer {
     }
 
     /// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/native/prestate.go#L276>
-
     async fn lookup_account(
         &mut self,
         executor_state: &impl Database,
@@ -248,7 +247,6 @@ impl StateDiffTracer {
     }
 
     /// See <https://github.com/ethereum/go-ethereum/blob/master/eth/tracers/native/prestate.go#L292>
-
     async fn lookup_storage(
         &mut self,
         executor_state: &impl Database,

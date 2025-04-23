@@ -13,7 +13,7 @@ use super::{emulate::EmulateResponse, get_config::BuildConfigSimulator};
 
 pub async fn execute(
     rpc: &impl BuildConfigSimulator,
-    db_config: &Option<DbConfig>,
+    db_config: Option<&DbConfig>,
     program_id: &Pubkey,
     request: EmulateMultipleRequest,
 ) -> NeonResult<Vec<EmulateResponse>> {

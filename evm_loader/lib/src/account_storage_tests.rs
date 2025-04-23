@@ -443,7 +443,7 @@ impl Fixture {
     }
 }
 
-impl<'rpc, T: Rpc> EmulatorAccountStorage<'rpc, T> {
+impl<T: Rpc> EmulatorAccountStorage<'_, T> {
     pub fn verify_used_accounts(&self, expected: &[(Pubkey, bool)]) {
         let mut expected = expected.to_vec();
         expected.sort_by_key(|(k, _)| *k);
@@ -1050,7 +1050,7 @@ async fn test_storage_get_account_slice() {
     let slice_from = 2;
     let slice_size = 20;
     let test_key = Pubkey::new_unique();
-    let acc = Account::new(10, 1 * 1024 * 1024, &solana_sdk::sysvar::rent::id());
+    let acc = Account::new(10, 1024 * 1024, &solana_sdk::sysvar::rent::id());
 
     let account_tuple = (test_key, acc);
     let accounts_for_rpc = vec![account_tuple.clone()];

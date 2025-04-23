@@ -12,19 +12,15 @@ use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-pub fn process<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
-    instruction: &[u8],
-) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Begin or Continue Transaction from Account");
 
     process_inner(program_id, accounts, instruction, false)
 }
 
-pub fn process_inner<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
+pub fn process_inner(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
     instruction: &[u8],
     increase_gas_limit: bool,
 ) -> Result<()> {

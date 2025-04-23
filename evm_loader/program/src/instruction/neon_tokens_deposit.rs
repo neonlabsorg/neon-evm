@@ -15,21 +15,21 @@ struct Accounts<'a> {
     mint: token::Mint<'a>,
     source: token::State<'a>,
     pool: token::State<'a>,
-    balance_account: &'a AccountInfo<'a>,
-    contract_account: &'a AccountInfo<'a>,
+    balance_account: AccountInfo<'a>,
+    contract_account: AccountInfo<'a>,
     token_program: program::Token<'a>,
     operator: Operator<'a>,
     system_program: program::System<'a>,
 }
 
 impl<'a> Accounts<'a> {
-    pub fn from_slice(accounts: &'a [AccountInfo<'a>]) -> Result<Accounts<'a>> {
+    pub fn from_slice(accounts: &[AccountInfo<'a>]) -> Result<Accounts<'a>> {
         Ok(Accounts {
             mint: token::Mint::from_account(&accounts[0])?,
             source: token::State::from_account(&accounts[1])?,
             pool: token::State::from_account(&accounts[2])?,
-            balance_account: &accounts[3],
-            contract_account: &accounts[4],
+            balance_account: accounts[3].clone(),
+            contract_account: accounts[4].clone(),
             token_program: program::Token::from_account(&accounts[5])?,
             operator: unsafe { Operator::from_account_not_whitelisted(&accounts[6]) }?,
             system_program: program::System::from_account(&accounts[7])?,
@@ -37,11 +37,7 @@ impl<'a> Accounts<'a> {
     }
 }
 
-pub fn process<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
-    instruction: &[u8],
-) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Deposit");
 
     let parsed_accounts = Accounts::from_slice(accounts)?;

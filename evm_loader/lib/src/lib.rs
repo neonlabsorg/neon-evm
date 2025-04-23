@@ -5,7 +5,8 @@
     clippy::missing_errors_doc,
     clippy::missing_panics_doc,
     clippy::too_many_lines,
-    clippy::module_name_repetitions
+    clippy::module_name_repetitions,
+    clippy::used_underscore_items
 )]
 
 pub mod abi;

@@ -101,7 +101,7 @@ impl<B: AccountStorage> LogCollector for SyncedExecutorState<'_, B> {
 }
 
 #[maybe_async(?Send)]
-impl<'a, B: SyncedAccountStorage> Database for SyncedExecutorState<'a, B> {
+impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
     fn is_synced_state(&self) -> bool {
         true
     }

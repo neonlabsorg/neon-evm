@@ -33,7 +33,7 @@ pub async fn emulate_multiple(
     process_result(
         &EmulateMultipleCommand::execute(
             &rpc,
-            &state.config.db_config,
+            state.config.db_config.as_ref(),
             &state.config.evm_loader,
             request,
         )

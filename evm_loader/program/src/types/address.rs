@@ -156,7 +156,7 @@ impl<'de> Deserialize<'de> for Address {
     {
         struct AddressVisitor;
 
-        impl<'de> serde::de::Visitor<'de> for AddressVisitor {
+        impl serde::de::Visitor<'_> for AddressVisitor {
             type Value = Address;
 
             fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

@@ -57,7 +57,7 @@ impl AsRef<[u8]> for StorageKey {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransactionEnvelope {
     Legacy,
     AccessList,
@@ -340,6 +340,7 @@ impl rlp::Decodable for DynamicFeeTx {
 }
 
 /// A "shell" representation of `ScheduledTx` without the persistent Vectors.
+///
 /// Intended for use in cases when there's no heap account.
 /// TODO: rework the whole transaction to be able to use `ScheduledTx` when account heap is absent.
 #[derive(Debug)]
@@ -559,14 +560,14 @@ pub struct Transaction {
 
 impl Transaction {
     fn from_payload(
-        transaction_type: &Option<TransactionEnvelope>,
+        transaction_type: Option<TransactionEnvelope>,
         chain_id: Option<U256>,
         transaction_rlp: &rlp::Rlp,
         transaction: TransactionPayload,
     ) -> Result<Self, rlp::DecoderError> {
         use solana_program::keccak::{hash, hashv, Hash};
 
-        let (hash, signed_hash) = match *transaction_type {
+        let (hash, signed_hash) = match transaction_type {
             // Legacy transaction wrapped in envelope
             Some(TransactionEnvelope::Legacy) => {
                 let Hash(hash) = hashv(&[&[0x00], transaction_rlp.as_raw()]);
@@ -738,7 +739,7 @@ impl Transaction {
                 let chain_id = scheduled_tx.chain_id;
                 let tx = TransactionPayload::Scheduled(scheduled_tx);
                 Transaction::from_payload(
-                    &Some(TransactionEnvelope::Scheduled),
+                    Some(TransactionEnvelope::Scheduled),
                     Some(chain_id),
                     &rlp::Rlp::new(transaction),
                     tx,
@@ -765,7 +766,7 @@ impl Transaction {
                 let chain_id = legacy_tx.chain_id;
                 let tx = TransactionPayload::Legacy(legacy_tx);
                 Transaction::from_payload(
-                    &Some(TransactionEnvelope::Legacy),
+                    Some(TransactionEnvelope::Legacy),
                     chain_id,
                     &rlp::Rlp::new(transaction),
                     tx,
@@ -777,7 +778,7 @@ impl Transaction {
                 let chain_id = access_list_tx.chain_id;
                 let tx = TransactionPayload::AccessList(access_list_tx);
                 Transaction::from_payload(
-                    &Some(TransactionEnvelope::AccessList),
+                    Some(TransactionEnvelope::AccessList),
                     Some(chain_id),
                     &rlp::Rlp::new(transaction),
                     tx,
@@ -789,7 +790,7 @@ impl Transaction {
                 let chain_id = dynamic_fee_tx.chain_id;
                 let tx = TransactionPayload::DynamicFee(dynamic_fee_tx);
                 Transaction::from_payload(
-                    &Some(TransactionEnvelope::DynamicFee),
+                    Some(TransactionEnvelope::DynamicFee),
                     Some(chain_id),
                     &rlp::Rlp::new(transaction),
                     tx,
@@ -806,7 +807,7 @@ impl Transaction {
                 let legacy_tx = rlp::decode::<LegacyTx>(transaction).map_err(Error::from)?;
                 let chain_id = legacy_tx.chain_id;
                 let tx = TransactionPayload::Legacy(legacy_tx);
-                Transaction::from_payload(&None, chain_id, &rlp::Rlp::new(transaction), tx)?
+                Transaction::from_payload(None, chain_id, &rlp::Rlp::new(transaction), tx)?
             }
         };
 

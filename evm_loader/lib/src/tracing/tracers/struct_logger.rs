@@ -89,7 +89,7 @@ pub struct StructLogger {
 
 impl StructLogger {
     #[must_use]
-    pub fn new(config: TraceConfig, tx: &TxParams) -> Self {
+    pub const fn new(config: TraceConfig, tx: &TxParams) -> Self {
         Self {
             actual_gas_used: tx.actual_gas_used,
             config,

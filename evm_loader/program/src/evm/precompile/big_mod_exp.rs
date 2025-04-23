@@ -6,7 +6,7 @@ use crate::vector;
 
 /// Constant-time modular addition: (a + b) % m
 fn mod_add(a: U256, b: U256, m: U256) -> U256 {
-    assert!((m != U256::ZERO), "modulus cannot be zero");
+    assert_ne!(m, U256::ZERO, "modulus cannot be zero");
 
     let sum = a.overflowing_add(b);
     let (sum, overflow) = sum;
@@ -20,7 +20,7 @@ fn mod_add(a: U256, b: U256, m: U256) -> U256 {
 
 /// Constant-time modular multiplication: (a * b) % m
 fn mod_mul(a: U256, b: U256, m: U256) -> U256 {
-    assert!((m != U256::ZERO), "modulus cannot be zero");
+    assert_ne!(m, U256::ZERO, "modulus cannot be zero");
 
     // Compute a * b using checked_mul to detect overflow
     let Some(product) = a.checked_mul(b) else {

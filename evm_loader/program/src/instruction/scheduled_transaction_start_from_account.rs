@@ -1,5 +1,7 @@
 use crate::account::{
-    program, AccountsDB, BorrowedAccountInfo, Operator, OperatorBalanceAccount, OperatorBalanceValidator, StateAccount, TransactionTree, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED
+    program, AccountsDB, BorrowedAccountInfo, Operator, OperatorBalanceAccount,
+    OperatorBalanceValidator, StateAccount, TransactionTree, TAG_HOLDER,
+    TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::debug::log_data;
 use crate::error::{Error, Result};
@@ -36,7 +38,12 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     match tag {
         TAG_HOLDER => {
             let mut borrowed_data = holder.try_borrow_mut_data()?;
-            let (trx, tx_rlp) = holder_parse_trx(BorrowedAccountInfo::new(&holder, &mut borrowed_data), &operator, program_id, true)?;
+            let (trx, tx_rlp) = holder_parse_trx(
+                BorrowedAccountInfo::new(&holder, &mut borrowed_data),
+                &operator,
+                program_id,
+                true,
+            )?;
             let scheduled_trx = validate_scheduled_tx(&trx, tree_index)?;
 
             let origin = scheduled_trx.payer;

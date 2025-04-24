@@ -11,8 +11,9 @@ pub fn do_scheduled_start<'a, 'b>(
     mut storage: StateAccount<'b>,
     mut transaction_tree: TransactionTree<'a>,
     mut gasometer: Gasometer,
-) -> Result<()> 
-    where 'a: 'b
+) -> Result<()>
+where
+    'a: 'b,
 {
     debug_print!("do_scheduled_start");
 
@@ -43,14 +44,7 @@ pub fn do_scheduled_start<'a, 'b>(
     gasometer.record_scheduled_transaction_finish();
 
     allocate_evm(trx, &mut account_storage, &mut storage)?;
-    finalize(
-        0,
-        storage,
-        account_storage,
-        gasometer,
-        false,
-        None
-    )
+    finalize(0, storage, account_storage, gasometer, false, None)
 }
 
 pub fn validate_scheduled_tx<'a>(

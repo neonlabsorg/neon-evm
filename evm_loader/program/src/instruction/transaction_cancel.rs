@@ -1,17 +1,19 @@
 use std::cmp::min;
 
-use crate::account::{AccountsDB, BalanceAccount, BorrowedAccountInfo, Operator, OperatorBalanceAccount, StateAccount};
+use crate::account::{
+    AccountsDB, BalanceAccount, BorrowedAccountInfo, Operator, OperatorBalanceAccount, StateAccount,
+};
 use crate::config::{DEFAULT_CHAIN_ID, LAST_ITERATION_COST};
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 
 use crate::priority_gas_calculator::calc_priority_gas;
+use crate::types::TrxView;
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::rent::Rent;
 use solana_program::sysvar::Sysvar;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
-use crate::types::TrxView;
 
 pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Cancel Transaction");
@@ -30,7 +32,10 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let accounts_db = AccountsDB::new(&accounts[3..], operator, Some(operator_balance), None, None);
 
     let mut borrowed_data = storage_info.try_borrow_mut_data()?;
-    let storage = StateAccount::restore_without_revision_check(program_id, BorrowedAccountInfo::new(&storage_info, &mut borrowed_data))?;
+    let storage = StateAccount::restore_without_revision_check(
+        program_id,
+        BorrowedAccountInfo::new(&storage_info, &mut borrowed_data),
+    )?;
 
     validate(&storage, transaction_hash)?;
     execute(program_id, accounts_db, storage)

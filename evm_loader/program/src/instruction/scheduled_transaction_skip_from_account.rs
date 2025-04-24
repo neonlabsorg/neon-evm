@@ -1,4 +1,7 @@
-use crate::account::{BorrowedAccountInfo, Operator, OperatorBalanceAccount, OperatorBalanceValidator, TransactionTree};
+use crate::account::{
+    BorrowedAccountInfo, Operator, OperatorBalanceAccount, OperatorBalanceValidator,
+    TransactionTree,
+};
 use crate::debug::log_data;
 use crate::error::Result;
 use crate::gasometer::Gasometer;
@@ -19,7 +22,12 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let mut operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
 
     let mut borrowed_data = accounts[0].try_borrow_mut_data()?;
-    let (trx, _) = holder_parse_trx(BorrowedAccountInfo::new(&accounts[0], &mut borrowed_data), &operator, program_id, true)?;
+    let (trx, _) = holder_parse_trx(
+        BorrowedAccountInfo::new(&accounts[0], &mut borrowed_data),
+        &operator,
+        program_id,
+        true,
+    )?;
     let _ = validate_scheduled_tx(&trx, tree_index)?;
 
     operator_balance.validate_owner(&operator)?;

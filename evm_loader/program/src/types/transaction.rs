@@ -614,7 +614,7 @@ pub trait TrxView {
     fn payer(&self, origin: Address) -> Address {
         match self.get_payer() {
             Some(payer) => payer,
-            None => origin
+            None => origin,
         }
     }
 
@@ -656,7 +656,6 @@ impl TrxView for Transaction {
             }) => max_fee_per_gas,
         }
     }
-
 
     #[must_use]
     fn chain_id(&self) -> Option<u64> {
@@ -766,8 +765,8 @@ impl TrxView for Transaction {
 
     fn sender(&self) -> Option<Address> {
         match self.transaction {
-            TransactionPayload::Scheduled(ScheduledTx { sender, ..}) => sender,
-            _ => None
+            TransactionPayload::Scheduled(ScheduledTx { sender, .. }) => sender,
+            _ => None,
         }
     }
 }
@@ -946,15 +945,18 @@ impl Transaction {
 }
 
 impl Transaction {
-    pub fn parse_from_rlp(transaction: &[u8], check_is_scheduled: Option<bool>) -> Result<Self, Error> {
+    pub fn parse_from_rlp(
+        transaction: &[u8],
+        check_is_scheduled: Option<bool>,
+    ) -> Result<Self, Error> {
         let (transaction_type, transaction) = TransactionEnvelope::get_type(transaction);
- 
+
         match check_is_scheduled {
             Some(true) => {
                 if transaction_type != Some(TransactionEnvelope::Scheduled) {
                     panic_with_error!(Error::NotScheduledTransaction);
                 }
-            },
+            }
             Some(false) => {
                 if transaction_type == Some(TransactionEnvelope::Scheduled) {
                     panic_with_error!(Error::NotClassicTransaction);
@@ -1019,7 +1021,6 @@ impl Transaction {
         };
 
         Ok(tx)
-    
     }
 
     pub fn scheduled_from_rlp(transaction: &[u8]) -> Result<Self, Error> {

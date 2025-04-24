@@ -307,7 +307,8 @@ impl<'a> TransactionTree<'a> {
         }
 
         let tx_chain_id: u64 = tx.chain_id().ok_or(Error::TreeAccountTxInvalidData)?;
-        let (pubkey, _) = Self::find_address(&crate::ID, tx.get_payer().unwrap(), tx_chain_id, tx.nonce());
+        let (pubkey, _) =
+            Self::find_address(&crate::ID, tx.get_payer().unwrap(), tx_chain_id, tx.nonce());
         if &pubkey != self.account.key {
             return Err(Error::TreeAccountTxInvalidData);
         }

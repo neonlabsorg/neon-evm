@@ -1,5 +1,7 @@
 use crate::account::{
-    program, AccountsDB, AccountsStatus, BorrowedAccountInfo, Holder, Operator, OperatorBalanceAccount, OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED
+    program, AccountsDB, AccountsStatus, BorrowedAccountInfo, Holder, Operator,
+    OperatorBalanceAccount, OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER,
+    TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::debug::log_data;
 use crate::error::{Error, Result};
@@ -58,15 +60,25 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
             let mut gasometer = Gasometer::new(U256::ZERO, &operator)?;
             gasometer.record_address_lookup_table(accounts);
 
-            let storage =
-                StateAccount::new(program_id, borrowed_storage, &accounts_db, origin, &trx, message, None)?;
+            let storage = StateAccount::new(
+                program_id,
+                borrowed_storage,
+                &accounts_db,
+                origin,
+                &trx,
+                message,
+                None,
+            )?;
 
             do_begin(trx, accounts_db, storage, gasometer)
         }
         TAG_STATE => {
             let mut data = storage_info.try_borrow_mut_data()?;
-            let (storage, accounts_status) =
-                StateAccount::restore(program_id, BorrowedAccountInfo::new(&storage_info, &mut data), &accounts_db)?;
+            let (storage, accounts_status) = StateAccount::restore(
+                program_id,
+                BorrowedAccountInfo::new(&storage_info, &mut data),
+                &accounts_db,
+            )?;
 
             operator_balance.validate_transaction(storage.trx())?;
             let miner_address = operator_balance.miner(storage.trx_origin());

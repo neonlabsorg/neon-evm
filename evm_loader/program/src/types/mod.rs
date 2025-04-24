@@ -7,8 +7,8 @@ pub use transaction::ScheduledTx;
 pub use transaction::ScheduledTxShell;
 pub use transaction::StorageKey;
 pub use transaction::Transaction;
-pub use transaction::TrxView;
 pub use transaction::TransactionPayload;
+pub use transaction::TrxView;
 pub use tree_map::TreeMap;
 pub use vector::Vector;
 

@@ -1,6 +1,6 @@
-use std::ops::Deref;
-use std::cell::{Ref, RefMut, RefCell};
+use std::cell::{Ref, RefCell, RefMut};
 use std::mem::size_of;
+use std::ops::Deref;
 use std::ptr::addr_of;
 
 use crate::account_storage::AccountStorage;
@@ -11,19 +11,18 @@ use crate::evm::Machine;
 use crate::executor::ExecutorStateData;
 use crate::types::boxx::{boxx, Boxx};
 use crate::types::vector::VectorSliceExt;
-use crate::types::{
-    read_raw_utils::read_vec,
-    Address, Transaction,
-    TreeMap, Vector, TrxView
-};
+use crate::types::{read_raw_utils::read_vec, Address, Transaction, TreeMap, TrxView, Vector};
 
 use ethnum::U256;
 use solana_program::hash::Hash;
 use solana_program::system_program;
-use solana_program::{instruction::AccountMeta, account_info::AccountInfo, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, instruction::AccountMeta, pubkey::Pubkey};
 
 use super::{
-    AccountHeader, AccountsDB, BalanceAccount, BorrowedAccountInfo, ContractAccount, Holder, OperatorBalanceAccount, StateFinalizedAccount, StorageCell, TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED, TAG_STORAGE_CELL
+    AccountHeader, AccountsDB, BalanceAccount, BorrowedAccountInfo, ContractAccount, Holder,
+    OperatorBalanceAccount, StateFinalizedAccount, StorageCell, TAG_ACCOUNT_BALANCE,
+    TAG_ACCOUNT_CONTRACT, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED,
+    TAG_STATE, TAG_STATE_FINALIZED, TAG_STORAGE_CELL,
 };
 
 #[derive(PartialEq, Eq)]
@@ -98,7 +97,6 @@ pub struct InterruptedState {
     pub lamports: u64,
 }
 
-
 #[allow(clippy::struct_field_names)]
 #[repr(C, packed)]
 pub struct Header {
@@ -121,7 +119,7 @@ pub struct PlainData {
     // We may want to extend the PlainData, so the first field
     // indicates that some trailing fields could be filled with garbage
     // and shouldn't be reused
-    pub layout_version: usize, // = 0 
+    pub layout_version: usize, // = 0
     pub owner: Pubkey,
     /// Ethereum transaction caller address
     pub origin: Address,
@@ -169,7 +167,7 @@ impl TrxView for PlainData {
     fn chain_id(&self) -> Option<u64> {
         self.chain_id
     }
-    
+
     fn is_scheduled_tx(&self) -> bool {
         self.tx_type == Transaction::SCHEDULED_TX_TYPE
     }
@@ -230,7 +228,6 @@ pub struct Root {
 
     pub executor_state: RefCell<Option<ExecutorStateData>>,
     pub machine_state: RefCell<Option<Machine<crate::evm::tracing::NoopEventListener>>>,
-    
     //pub alloc : SolanaAllocator
 }
 
@@ -246,7 +243,7 @@ pub struct StateAccount<'a> {
 type StateAccountCoreApiView = (
     PlainData,
     Vec<Pubkey>,
-    Vec<u8> //tx rlp
+    Vec<u8>, //tx rlp
 );
 
 impl PlainData {
@@ -321,7 +318,10 @@ impl<'a> StateAccount<'a> {
         self.account
     }
 
-    fn validate_tag<'b>(program_id: &'b Pubkey, account: &'b BorrowedAccountInfo<'b>) -> Result<()> {
+    fn validate_tag<'b>(
+        program_id: &'b Pubkey,
+        account: &'b BorrowedAccountInfo<'b>,
+    ) -> Result<()> {
         let tag = super::tag_borrowed(program_id, account)?;
 
         if tag == TAG_STATE
@@ -340,9 +340,9 @@ impl<'a> StateAccount<'a> {
         let offset = super::header_from_borrowed::<Header>(&account).root_offset;
         let ptr = account.data.as_mut_ptr();
 
-        Ok(Self{
+        Ok(Self {
             account: account,
-            root_ref: unsafe { &mut *(ptr.offset(offset) as *mut Root) }
+            root_ref: unsafe { &mut *(ptr.offset(offset) as *mut Root) },
         })
     }
 
@@ -354,8 +354,7 @@ impl<'a> StateAccount<'a> {
         transaction: &Transaction,
         transaction_rlp: &[u8],
         tree_account: Option<Pubkey>,
-    ) -> Result<Self>
-    {
+    ) -> Result<Self> {
         let (mut info, owner) = match super::tag_borrowed(program_id, &info)? {
             TAG_HOLDER => {
                 let holder = Holder::from_account(program_id, info)?;
@@ -402,13 +401,13 @@ impl<'a> StateAccount<'a> {
                 priority_fee_used: U256::ZERO,
                 max_priority_fee_per_gas: transaction.max_priority_fee_per_gas(),
                 tree_account_index: transaction.tree_account_index(),
-                sender: transaction.sender()
+                sender: transaction.sender(),
             },
             revisions: TreeMap::new(),
             touched_accounts: TreeMap::new(),
             interrupted_state: None,
             executor_state: None.into(),
-            machine_state: None.into()
+            machine_state: None.into(),
         });
 
         let tx_rlp = transaction_rlp.to_vector();
@@ -418,19 +417,20 @@ impl<'a> StateAccount<'a> {
             // Set header
             let header = super::header_mut_from_borrowed::<Header>(&mut info);
             header.version_signature = Header::valid_version_signature();
-            header.root_offset = unsafe { addr_of!(*root).cast::<u8>().offset_from(account_data_ptr) };
+            header.root_offset =
+                unsafe { addr_of!(*root).cast::<u8>().offset_from(account_data_ptr) };
 
             let (ptr, len, _) = tx_rlp.into_raw_parts();
             let offset = unsafe { ptr.offset_from(account_data_ptr) };
             header.serialized_tx = std::ops::Range::<isize> {
                 start: offset,
-                end: offset + (len as isize)
+                end: offset + (len as isize),
             };
         }
 
         Ok(Self {
             account: info,
-            root_ref: unsafe { &mut *Boxx::into_raw(root) }
+            root_ref: unsafe { &mut *Boxx::into_raw(root) },
         })
     }
 
@@ -568,7 +568,16 @@ impl<'a> StateAccount<'a> {
         program_id: &Pubkey,
         accounts: &AccountsDB,
     ) -> Result<()> {
-        for (key, counter) in self.root_ref.executor_state.borrow().as_ref().unwrap().touched_accounts.borrow().deref() {
+        for (key, counter) in self
+            .root_ref
+            .executor_state
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .touched_accounts
+            .borrow()
+            .deref()
+        {
             self.root_ref
                 .touched_accounts
                 .update_or_insert(*key, counter, |v| {
@@ -625,7 +634,10 @@ impl<'a> StateAccount<'a> {
 
     #[must_use]
     pub fn gas_available(&self) -> U256 {
-        self.root_ref.plain_data.gas_limit.saturating_sub(self.gas_used())
+        self.root_ref
+            .plain_data
+            .gas_limit
+            .saturating_sub(self.gas_used())
     }
 
     pub fn consume_gas(
@@ -730,14 +742,15 @@ impl<'a> StateAccount<'a> {
 
         let (tx_start, tx_end, root_offset) = {
             let header = super::header::<Header>(account);
-            (header.serialized_tx.start, header.serialized_tx.end, header.root_offset)
+            (
+                header.serialized_tx.start,
+                header.serialized_tx.end,
+                header.root_offset,
+            )
         };
 
-        let tx_rlp: Vec<u8> = account
-            .try_borrow_data()?
-            .as_ref()
-            [..tx_end as usize][tx_start as usize..]
-            .to_vec();
+        let tx_rlp: Vec<u8> =
+            account.try_borrow_data()?.as_ref()[..tx_end as usize][tx_start as usize..].to_vec();
 
         // Pointer to the Data is needed to get pointers to the fields in a safe way (using addr_of!).
         let root_ptr: *const Root = unsafe {
@@ -751,10 +764,14 @@ impl<'a> StateAccount<'a> {
         {
             let plain_ref = &mut plain;
             let dataref = account.try_borrow_data()?;
-            let dataslice: &[u8] = &dataref.as_ref()[root_offset as usize..][..size_of::<PlainData>()];
+            let dataslice: &[u8] =
+                &dataref.as_ref()[root_offset as usize..][..size_of::<PlainData>()];
             unsafe {
-                std::slice::from_raw_parts_mut((plain_ref as *mut PlainData).cast::<u8>(), dataslice.len())
-                    .copy_from_slice(dataslice)
+                std::slice::from_raw_parts_mut(
+                    (plain_ref as *mut PlainData).cast::<u8>(),
+                    dataslice.len(),
+                )
+                .copy_from_slice(dataslice)
             }
         }
 
@@ -769,10 +786,13 @@ impl<'a> StateAccount<'a> {
             let accounts = unsafe {
                 // Hereby we read the TreeMap and rely on the fact that under the hood it's a Vector<(Pubkey, AccountRevision)>.
                 // In case the structure changes, it also requires adjustments.
-                read_vec::<(Pubkey, AccountRevision)>(addr_of!((*root_ptr).revisions).cast::<usize>(), memory_space_delta)
-                    .iter()
-                    .map(|(key, _)| *key)
-                    .collect()
+                read_vec::<(Pubkey, AccountRevision)>(
+                    addr_of!((*root_ptr).revisions).cast::<usize>(),
+                    memory_space_delta,
+                )
+                .iter()
+                .map(|(key, _)| *key)
+                .collect()
             };
             Ok((plain, accounts, tx_rlp))
         }

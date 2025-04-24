@@ -35,7 +35,8 @@ pub fn allocate_evm(
 
     let mut state_data = storage.executor_state_mut();
     *state_data = Some(ExecutorStateData::new(account_storage));
-    let mut evm_backend = ExecutorState::new(account_storage, state_data.deref_mut().as_mut().unwrap());
+    let mut evm_backend =
+        ExecutorState::new(account_storage, state_data.deref_mut().as_mut().unwrap());
     storage.evm_mut().replace(Evm::new_from_tx(
         trx,
         storage.trx_origin(),
@@ -56,7 +57,8 @@ pub fn reinit_evm(
 
         let mut state_data = storage.executor_state_mut();
         *state_data = Some(ExecutorStateData::new(account_storage));
-        let mut evm_backend = ExecutorState::new(account_storage, state_data.deref_mut().as_mut().unwrap());
+        let mut evm_backend =
+            ExecutorState::new(account_storage, state_data.deref_mut().as_mut().unwrap());
         let evm = storage.evm_mut().take();
         storage.evm_mut().replace(Evm::new_from_machine(
             evm.unwrap(),
@@ -69,7 +71,8 @@ pub fn reinit_evm(
         let mut state_data = storage.executor_state_mut();
         let mut evm = storage.evm_mut();
 
-        let evm_backend = ExecutorState::new(account_storage, state_data.deref_mut().as_mut().unwrap());
+        let evm_backend =
+            ExecutorState::new(account_storage, state_data.deref_mut().as_mut().unwrap());
         evm.as_mut().unwrap().reinit(&evm_backend);
     };
     Ok(())
@@ -132,21 +135,23 @@ pub fn finalize<'a, 'b: 'a, 'c>(
 
     if {
         let root = storage.root_ref_mut();
-        let mut executor_state = root.executor_state.borrow_mut(); 
+        let mut executor_state = root.executor_state.borrow_mut();
 
         let (storage_header, status) = {
-            let (execution_result, _, timestamped_contracts) = executor_state.as_mut().unwrap().deconstruct();
-            let status = if let Some((status, actions)) = provided_execution_result.or(execution_result) {
-                if apply_state && accounts.allocate(actions)? == AllocateResult::Ready {
-                    accounts.apply_state_change(actions)?;
-                    accounts.update_timestamped_contracts(timestamped_contracts.keys())?;
-                    Some(status)
+            let (execution_result, _, timestamped_contracts) =
+                executor_state.as_mut().unwrap().deconstruct();
+            let status =
+                if let Some((status, actions)) = provided_execution_result.or(execution_result) {
+                    if apply_state && accounts.allocate(actions)? == AllocateResult::Ready {
+                        accounts.apply_state_change(actions)?;
+                        accounts.update_timestamped_contracts(timestamped_contracts.keys())?;
+                        Some(status)
+                    } else {
+                        None
+                    }
                 } else {
                     None
-                }
-            } else {
-                None
-            };
+                };
             (&mut root.plain_data, status)
         };
 
@@ -173,7 +178,6 @@ pub fn finalize<'a, 'b: 'a, 'c>(
 
                 storage_header.refund_unused_gas(&mut origin)?;
             }
-
 
             true
         } else {
@@ -230,7 +234,7 @@ pub fn finalize_interrupted<'a, 'b: 'a>(
         accounts,
         gasometer,
         true,
-        Some((&exit_reason, &no_actions))
+        Some((&exit_reason, &no_actions)),
     )
 }
 

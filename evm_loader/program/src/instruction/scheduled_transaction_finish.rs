@@ -2,7 +2,8 @@ use std::cell::RefMut;
 use std::ops::DerefMut;
 
 use crate::account::{
-    BorrowedAccountInfo, Operator, OperatorBalanceAccount, OperatorBalanceValidator, StateAccount, TransactionTree
+    BorrowedAccountInfo, Operator, OperatorBalanceAccount, OperatorBalanceValidator, StateAccount,
+    TransactionTree,
 };
 use crate::config::TREE_ACCOUNT_FINISH_TRANSACTION_GAS;
 use crate::debug::log_data;
@@ -16,14 +17,16 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Finalize Scheduled Transaction");
 
-
     let mut transaction_tree = TransactionTree::from_account(&program_id, accounts[1].clone())?;
     let operator = Operator::from_account(&accounts[2])?;
     let mut operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
 
     let storage_key = accounts[0].key;
     let mut borrowed_data = accounts[0].try_borrow_mut_data()?;
-    let mut state = StateAccount::restore_without_revision_check(program_id, BorrowedAccountInfo::new(&accounts[0], &mut borrowed_data))?;
+    let mut state = StateAccount::restore_without_revision_check(
+        program_id,
+        BorrowedAccountInfo::new(&accounts[0], &mut borrowed_data),
+    )?;
     let trx = state.trx();
 
     operator_balance.validate_owner(&operator)?;
@@ -35,9 +38,17 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8
 
     {
         let root = state.root_ref_mut();
-        let mut executor_state = RefMut::map(root.executor_state.borrow_mut(), |state| state.as_mut().unwrap());
+        let mut executor_state = RefMut::map(root.executor_state.borrow_mut(), |state| {
+            state.as_mut().unwrap()
+        });
         // Validate.
-        let (index, exit_status) = validate(&root.plain_data, executor_state.deref_mut(), &transaction_tree, root.plain_data.tree_account.as_ref(), storage_key)?;
+        let (index, exit_status) = validate(
+            &root.plain_data,
+            executor_state.deref_mut(),
+            &transaction_tree,
+            root.plain_data.tree_account.as_ref(),
+            storage_key,
+        )?;
 
         // Handle gas, transaction costs to operator, refund into tree account.
         const GAS: U256 = U256::new(TREE_ACCOUNT_FINISH_TRANSACTION_GAS as u128);
@@ -63,7 +74,7 @@ fn validate<'b>(
     executor_state: &'b mut ExecutorStateData,
     tree: &TransactionTree,
     tree_account: Option<&Pubkey>,
-    state_key: &Pubkey 
+    state_key: &Pubkey,
 ) -> Result<(u16, &'b ExitStatus)> {
     // Validate if it's a scheduled transaction at all.
     if !trx.is_scheduled_tx() {
@@ -83,6 +94,9 @@ fn validate<'b>(
     }
 
     let index = trx.tree_account_index().unwrap();
-    let exit_status = executor_state.exit_status.as_ref().ok_or(Error::ScheduledTxNoExitStatus(*state_key))?;
+    let exit_status = executor_state
+        .exit_status
+        .as_ref()
+        .ok_or(Error::ScheduledTxNoExitStatus(*state_key))?;
     Ok((index, &exit_status))
 }

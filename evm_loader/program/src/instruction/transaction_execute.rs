@@ -22,12 +22,15 @@ pub fn execute(
 
     trx.validate(origin, &account_storage, None)?;
 
-    account_storage.origin(origin, trx.deref())?.increment_nonce()?;
+    account_storage
+        .origin(origin, trx.deref())?
+        .increment_nonce()?;
 
     let (exit_reason, steps_executed) = {
         let mut backend = ExecutorState::new(&mut account_storage, &mut backend_data);
 
-        let mut evm = Machine::new_from_tx(trx.deref(), origin, &mut backend, None::<NoopEventListener>)?;
+        let mut evm =
+            Machine::new_from_tx(trx.deref(), origin, &mut backend, None::<NoopEventListener>)?;
         let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
 
         (result, steps_executed)
@@ -67,12 +70,15 @@ pub fn execute_with_solana_call(
 
     trx.validate(origin, &account_storage, None)?;
 
-    account_storage.origin(origin, trx.deref())?.increment_nonce()?;
+    account_storage
+        .origin(origin, trx.deref())?
+        .increment_nonce()?;
 
     let (exit_reason, steps_executed) = {
         let mut backend = SyncedExecutorState::new(&mut account_storage);
 
-        let mut evm = Machine::new_from_tx(trx.deref(), origin, &mut backend, None::<NoopEventListener>)?;
+        let mut evm =
+            Machine::new_from_tx(trx.deref(), origin, &mut backend, None::<NoopEventListener>)?;
         let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
 
         (result, steps_executed)

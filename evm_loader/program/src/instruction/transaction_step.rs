@@ -8,10 +8,10 @@ use crate::error::{Error, Result};
 use crate::evm::ExitStatus;
 use crate::executor::ExecutorState;
 use crate::gasometer::Gasometer;
-use crate::types::{Transaction, TrxView};
 use crate::instruction::instruction_internals::{
     allocate_evm, finalize, finalize_interrupted, reinit_evm,
 };
+use crate::types::{Transaction, TrxView};
 
 pub fn do_begin<'b, 'a: 'b>(
     tx: Transaction,
@@ -44,14 +44,7 @@ pub fn do_begin<'b, 'a: 'b>(
     // TODO for scheduled transactions, evm should be created with origin:=payer.
     allocate_evm(&tx, &mut account_storage, &mut storage)?;
 
-    finalize(
-        0,
-        storage,
-        account_storage,
-        gasometer,
-        true,
-        None
-    )
+    finalize(0, storage, account_storage, gasometer, true, None)
 }
 
 pub fn do_continue<'b, 'a: 'b>(
@@ -78,9 +71,11 @@ pub fn do_continue<'b, 'a: 'b>(
         return finalize_interrupted(storage, account_storage, gasometer);
     }
 
-    let steps_executed= {
+    let steps_executed = {
         let root = storage.root_ref_mut();
-        let mut state_data = RefMut::map(root.executor_state.borrow_mut(), |opt| opt.as_mut().unwrap());
+        let mut state_data = RefMut::map(root.executor_state.borrow_mut(), |opt| {
+            opt.as_mut().unwrap()
+        });
         let mut evm = RefMut::map(root.machine_state.borrow_mut(), |opt| opt.as_mut().unwrap());
 
         let mut backend = ExecutorState::new(&mut account_storage, &mut state_data);
@@ -106,6 +101,6 @@ pub fn do_continue<'b, 'a: 'b>(
         account_storage,
         gasometer,
         steps_executed > EVM_STEPS_LAST_ITERATION_MAX,
-        None
+        None,
     )
 }

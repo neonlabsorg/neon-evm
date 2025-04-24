@@ -9,7 +9,9 @@ use crate::allocator::STATE_ACCOUNT_DATA_ADDRESS;
 use crate::error::{Error, Result};
 use crate::types::{Transaction, TrxView};
 
-use super::{AccountHeader, BorrowedAccountInfo, Operator, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_HOLDER};
+use super::{
+    AccountHeader, BorrowedAccountInfo, Operator, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_HOLDER,
+};
 
 /// Ethereum holder data account
 #[repr(C, packed)]

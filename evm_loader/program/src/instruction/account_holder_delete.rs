@@ -10,12 +10,13 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8
 
     {
         let mut data = holder_info.try_borrow_mut_data()?;
-        let holder = Holder::from_account(program_id, BorrowedAccountInfo::new(&holder_info, &mut data))?;
+        let holder = Holder::from_account(
+            program_id,
+            BorrowedAccountInfo::new(&holder_info, &mut data),
+        )?;
         holder.validate_owner(&operator)?;
     }
-    unsafe {
-        delete(&holder_info, &operator)
-    }
+    unsafe { delete(&holder_info, &operator) }
 
     Ok(())
 }

@@ -34,7 +34,12 @@ impl<'a> StateFinalizedAccount<'a> {
 
         let mut account = state.into_account();
 
-        super::set_tag_borrowed(program_id, &mut account, TAG_STATE_FINALIZED, Header::VERSION)?;
+        super::set_tag_borrowed(
+            program_id,
+            &mut account,
+            TAG_STATE_FINALIZED,
+            Header::VERSION,
+        )?;
         {
             let header = super::header_mut_from_borrowed::<Header>(&mut account);
             header.owner = owner;

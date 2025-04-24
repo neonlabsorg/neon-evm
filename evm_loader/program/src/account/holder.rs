@@ -44,6 +44,7 @@ const_assert!(HEAP_PTR_OFFSET >= size_of::<crate::account::state::Header>());
 const_assert!(HEAP_PTR_OFFSET >= size_of::<crate::account::state_finalized::Header>());
 
 impl<'a> Holder<'a> {
+    #[must_use]
     pub fn into_account(self) -> BorrowedAccountInfo<'a> {
         self.account
     }
@@ -92,8 +93,7 @@ impl<'a> Holder<'a> {
     where
         F: FnOnce(&mut Header),
     {
-        let mut header = self.header_mut();
-        f(&mut header);
+        f(self.header_mut());
     }
 
     fn header(&self) -> &Header {

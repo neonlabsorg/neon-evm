@@ -102,8 +102,8 @@ pub struct InterruptedState {
 pub struct Header {
     pub version_signature: usize,
     // Are relative offsets for the corresponding objects as allocated by the AccountAllocator.
-    pub root_offset: isize,
-    pub serialized_tx: std::ops::Range<isize>,
+    pub root_offset: usize,
+    pub serialized_tx: std::ops::Range<usize>,
 }
 
 impl Header {
@@ -314,6 +314,7 @@ impl PlainData {
 }
 
 impl<'a> StateAccount<'a> {
+    #[must_use]
     pub fn into_account(self) -> BorrowedAccountInfo<'a> {
         self.account
     }
@@ -334,6 +335,8 @@ impl<'a> StateAccount<'a> {
         }
     }
 
+    // allocator should have provided a properly aligned pointer
+    #[allow(clippy::cast_ptr_alignment)]
     pub fn from_account(program_id: &Pubkey, account: BorrowedAccountInfo<'a>) -> Result<Self> {
         Self::validate_tag(program_id, &account)?;
 
@@ -341,11 +344,12 @@ impl<'a> StateAccount<'a> {
         let ptr = account.data.as_mut_ptr();
 
         Ok(Self {
-            account: account,
-            root_ref: unsafe { &mut *(ptr.offset(offset) as *mut Root) },
+            account,
+            root_ref: unsafe { &mut *ptr.offset(offset.try_into().unwrap()).cast::<Root>() },
         })
     }
 
+    #[allow(clippy::cast_sign_loss)]
     pub fn new<'b>(
         program_id: &Pubkey,
         info: BorrowedAccountInfo<'a>,
@@ -382,16 +386,16 @@ impl<'a> StateAccount<'a> {
         let root = boxx(Root {
             plain_data: PlainData {
                 layout_version: PlainData::layout_version(),
-                owner: owner.clone(),
-                origin: origin.clone(),
-                tree_account: tree_account,
+                owner,
+                origin,
+                tree_account,
                 gas_used: U256::ZERO,
                 tx_hash: transaction.hash(),
                 chain_id: transaction.chain_id(),
                 tx_type: transaction.tx_type(),
                 max_fee_per_gas: transaction.max_fee_per_gas(),
                 tx_target: transaction.target(),
-                payer: transaction.payer(origin.clone()),
+                payer: transaction.payer(origin),
                 tx_nonce: transaction.nonce(),
                 value: transaction.value(),
                 gas_limit: transaction.gas_limit(),
@@ -418,13 +422,15 @@ impl<'a> StateAccount<'a> {
             let header = super::header_mut_from_borrowed::<Header>(&mut info);
             header.version_signature = Header::valid_version_signature();
             header.root_offset =
-                unsafe { addr_of!(*root).cast::<u8>().offset_from(account_data_ptr) };
+                unsafe { addr_of!(*root).cast::<u8>().offset_from(account_data_ptr) } as usize;
 
             let (ptr, len, _) = tx_rlp.into_raw_parts();
-            let offset = unsafe { ptr.offset_from(account_data_ptr) };
-            header.serialized_tx = std::ops::Range::<isize> {
-                start: offset,
-                end: offset + (len as isize),
+
+            let start = unsafe { ptr.offset_from(account_data_ptr) } as usize;
+            let end = start + len;
+            header.serialized_tx = std::ops::Range::<usize> {
+                start,
+                end,
             };
         }
 
@@ -568,7 +574,7 @@ impl<'a> StateAccount<'a> {
         program_id: &Pubkey,
         accounts: &AccountsDB,
     ) -> Result<()> {
-        for (key, counter) in self
+        for (key, counter) in &*self
             .root_ref
             .executor_state
             .borrow()
@@ -576,7 +582,6 @@ impl<'a> StateAccount<'a> {
             .unwrap()
             .touched_accounts
             .borrow()
-            .deref()
         {
             self.root_ref
                 .touched_accounts
@@ -687,6 +692,7 @@ impl<'a> StateAccount<'a> {
         self.root_ref.interrupted_state = state;
     }
 
+    #[must_use]
     pub fn trx(&self) -> &impl TrxView {
         &self.root_ref.plain_data
     }
@@ -694,26 +700,32 @@ impl<'a> StateAccount<'a> {
 
 // Implementation of functional to save/restore persistent state of iterative transactions.
 impl StateAccount<'_> {
+    #[must_use]
     pub fn executor_state(&self) -> Ref<Option<ExecutorStateData>> {
         self.root_ref.executor_state.borrow()
     }
 
+    #[must_use]
     pub fn executor_state_mut(&self) -> RefMut<Option<ExecutorStateData>> {
         self.root_ref.executor_state.borrow_mut()
     }
 
+    #[must_use]
     pub fn evm(&self) -> Ref<Option<Machine<crate::evm::tracing::NoopEventListener>>> {
         self.root_ref.machine_state.borrow()
     }
 
+    #[must_use]
     pub fn evm_mut(&self) -> RefMut<Option<Machine<crate::evm::tracing::NoopEventListener>>> {
         self.root_ref.machine_state.borrow_mut()
     }
 
+    #[must_use]
     pub fn root_ref(&self) -> &Root {
         self.root_ref
     }
 
+    #[must_use]
     pub fn root_ref_mut(&mut self) -> &mut Root {
         self.root_ref
     }
@@ -750,12 +762,12 @@ impl<'a> StateAccount<'a> {
         };
 
         let tx_rlp: Vec<u8> =
-            account.try_borrow_data()?.as_ref()[..tx_end as usize][tx_start as usize..].to_vec();
+            account.try_borrow_data()?.as_ref()[..tx_end][tx_start..].to_vec();
 
         // Pointer to the Data is needed to get pointers to the fields in a safe way (using addr_of!).
         let root_ptr: *const Root = unsafe {
             account_data_ptr
-                .add(root_offset as usize)
+                .add(root_offset)
                 .cast::<Root>()
                 .cast()
         };
@@ -765,20 +777,17 @@ impl<'a> StateAccount<'a> {
             let plain_ref = &mut plain;
             let dataref = account.try_borrow_data()?;
             let dataslice: &[u8] =
-                &dataref.as_ref()[root_offset as usize..][..size_of::<PlainData>()];
+                &dataref.as_ref()[root_offset..][..size_of::<PlainData>()];
             unsafe {
                 std::slice::from_raw_parts_mut(
-                    (plain_ref as *mut PlainData).cast::<u8>(),
+                    std::ptr::from_mut::<PlainData>(plain_ref).cast::<u8>(),
                     dataslice.len(),
                 )
-                .copy_from_slice(dataslice)
+                .copy_from_slice(dataslice);
             }
         }
 
-        if plain.layout_version != PlainData::layout_version() {
-            // we don't have a reliable way to reconstruct revisions
-            Ok((plain, Vec::<Pubkey>::new(), tx_rlp))
-        } else {
+        if plain.layout_version == PlainData::layout_version() {
             let memory_space_delta = {
                 account_data_ptr as isize
                     - isize::try_from(crate::allocator::STATE_ACCOUNT_DATA_ADDRESS)?
@@ -795,6 +804,9 @@ impl<'a> StateAccount<'a> {
                 .collect()
             };
             Ok((plain, accounts, tx_rlp))
+        } else {
+            // we don't have a reliable way to reconstruct revisions
+            Ok((plain, Vec::<Pubkey>::new(), tx_rlp))
         }
     }
 }

@@ -21,6 +21,7 @@ pub struct StateFinalizedAccount<'a> {
 }
 
 impl<'a> StateFinalizedAccount<'a> {
+    #[must_use]
     pub fn into_account(self) -> BorrowedAccountInfo<'a> {
         self.account
     }
@@ -70,8 +71,7 @@ impl<'a> StateFinalizedAccount<'a> {
     where
         F: FnOnce(&mut Header),
     {
-        let mut header = self.header_mut();
-        f(&mut header);
+        f(self.header_mut());
     }
 
     #[must_use]

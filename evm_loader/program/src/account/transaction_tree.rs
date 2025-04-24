@@ -327,7 +327,7 @@ impl<'a> TransactionTree<'a> {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        if Some(node.sender) != tx.sender().or(tx.get_payer()) {
+        if Some(node.sender) != tx.sender().or_else(|| tx.get_payer()) {
             return Err(Error::TreeAccountTxInvalidData);
         }
 

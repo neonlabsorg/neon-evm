@@ -4,10 +4,7 @@ use crate::error::{Error, Result};
 use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
-use std::{
-    cell::{Ref, RefMut},
-    ops::DerefMut,
-};
+use std::cell::{Ref, RefMut};
 
 pub use crate::{account_storage::FAKE_OPERATOR, config::ACCOUNT_SEED_VERSION};
 
@@ -69,12 +66,13 @@ pub struct BorrowedAccountInfo<'a> {
 impl<'a> BorrowedAccountInfo<'a> {
     pub fn new<'b: 'a>(info: &'a AccountInfo<'b>, data: &'a mut RefMut<&'b mut [u8]>) -> Self {
         BorrowedAccountInfo::<'a> {
-            data: data.deref_mut(),
+            data,
             key: info.key,
             owner: info.owner,
         }
     }
 
+    #[must_use]
     pub fn data_len(&self) -> usize {
         self.data.len()
     }
@@ -108,7 +106,7 @@ fn section_from_borrowed<'r, T>(account: &'r BorrowedAccountInfo<'_>, offset: us
 }
 
 #[inline]
-fn section_mut_from_slice<'r, T>(data: &'r mut [u8], offset: usize) -> &'r mut T {
+fn section_mut_from_slice<T>(data: &mut [u8], offset: usize) -> &mut T {
     let begin = offset;
     let end = begin + std::mem::size_of::<T>();
 

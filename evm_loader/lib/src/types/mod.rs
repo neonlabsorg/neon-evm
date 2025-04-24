@@ -34,6 +34,7 @@ use solana_sdk::signature::Signature;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::HashMap;
 use DbConfig::{ChDbConfig, RocksDbConfig};
+use evm_loader::types::TrxView;
 
 pub type DbResult<T> = Result<T, anyhow::Error>;
 

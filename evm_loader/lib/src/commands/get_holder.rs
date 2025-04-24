@@ -78,13 +78,13 @@ impl GetHolderResponse {
     }
 }
 
-pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHolderResponse> {
+pub fn read_holder(program_id: &Pubkey, info: &AccountInfo) -> NeonResult<GetHolderResponse> {
     let data_len = info.data_len();
 
-    match evm_loader::account::tag(program_id, &info)? {
+    match evm_loader::account::tag(program_id, info)? {
         TAG_HOLDER => {
             let mut data = info.try_borrow_mut_data()?;
-            let holder = Holder::from_account(program_id, BorrowedAccountInfo::new(&info, &mut data))?;
+            let holder = Holder::from_account(program_id, BorrowedAccountInfo::new(info, &mut data))?;
 
             Ok(GetHolderResponse {
                 status: Status::Holder,
@@ -99,7 +99,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
         }
         TAG_STATE_FINALIZED => {
             let mut data = info.try_borrow_mut_data()?;
-            let state = StateFinalizedAccount::from_account(program_id, BorrowedAccountInfo::new(&info, &mut data))?;
+            let state = StateFinalizedAccount::from_account(program_id, BorrowedAccountInfo::new(info, &mut data))?;
 
             Ok(GetHolderResponse {
                 status: Status::Finalized,
@@ -124,7 +124,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
             // StateAccount::from_account doesn't work here because state contains heap
             // and transaction inside state account has been allocated via this heap.
             // Data should be read by pointers with offsets.
-            let (plain, accounts, tx_rlp) = StateAccount::get_state_account_view(program_id, &info)?;
+            let (plain, accounts, tx_rlp) = StateAccount::get_state_account_view(program_id, info)?;
             let tx = Transaction::parse_from_rlp(tx_rlp.as_slice(), None)?;
 
             let tx_params = TxParams::from_transaction(plain.origin, &tx);
@@ -161,5 +161,5 @@ pub async fn execute(
     };
 
     let info = account_info(&address, &mut account);
-    Ok(read_holder(program_id, info).unwrap_or_else(GetHolderResponse::error))
+    Ok(read_holder(program_id, &info).unwrap_or_else(GetHolderResponse::error))
 }

@@ -562,6 +562,7 @@ pub trait TrxView {
 
     fn nonce(&self) -> u64;
 
+    #[allow(async_fn_in_trait)]
     #[maybe_async]
     async fn validate(
         &self,
@@ -612,10 +613,7 @@ pub trait TrxView {
 
     #[must_use]
     fn payer(&self, origin: Address) -> Address {
-        match self.get_payer() {
-            Some(payer) => payer,
-            None => origin,
-        }
+        self.get_payer().map_or(origin, |payer| payer)
     }
 
     fn max_priority_fee_per_gas(&self) -> Option<U256>;
@@ -1112,6 +1110,7 @@ impl Transaction {
         }
     }
 
+    #[must_use]
     pub fn access_list(&self) -> Option<&Vector<(Address, Vector<StorageKey>)>> {
         match &self.transaction {
             TransactionPayload::AccessList(AccessListTx { access_list, .. })

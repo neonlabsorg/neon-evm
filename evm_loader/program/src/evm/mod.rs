@@ -237,7 +237,7 @@ impl<T: EventListener> Machine<T> {
             origin,
             backend,
             tracer,
-        )
+        ).await
     }
 
     #[maybe_async]
@@ -248,11 +248,11 @@ impl<T: EventListener> Machine<T> {
         backend: &mut impl Database,
         tracer: Option<T>,
     ) -> Result<Self> {
-        Self::new(trx_view, self.call_data, origin, backend, tracer)
+        Self::new(trx_view, self.call_data, origin, backend, tracer).await
     }
 
     #[maybe_async]
-    pub fn new(
+    pub async fn new(
         trx: &impl TrxView,
         call_data: Buffer,
         origin: Address,
@@ -311,7 +311,7 @@ impl<T: EventListener> Machine<T> {
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
             execution_code,
-            call_data: call_data,
+            call_data,
             return_data: Buffer::empty(),
             return_range: 0..0,
             stack: Stack::new(),

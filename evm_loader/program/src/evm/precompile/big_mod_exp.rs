@@ -1,91 +1,28 @@
-use ethnum::U256;
-
+use crate::evm::U256;
 use crate::types::vector::VectorVecExt;
 use crate::types::Vector;
 use crate::vector;
 
-/// Constant-time modular addition: (a + b) % m
-fn mod_add(a: U256, b: U256, m: U256) -> U256 {
-    assert_ne!(m, U256::ZERO, "modulus cannot be zero");
-
-    let sum = a.overflowing_add(b);
-    let (sum, overflow) = sum;
-
-    if overflow || sum >= m {
-        sum.wrapping_sub(m)
-    } else {
-        sum
-    }
-}
-
-/// Constant-time modular multiplication: (a * b) % m
-fn mod_mul(a: U256, b: U256, m: U256) -> U256 {
-    assert_ne!(m, U256::ZERO, "modulus cannot be zero");
-
-    // Compute a * b using checked_mul to detect overflow
-    let Some(product) = a.checked_mul(b) else {
-        // If multiplication overflows, we need to use a slower method
-        // This branch should theoretically never be taken for U256 when m is U256::MAX
-        // because a and b are both less than m (from mod_exp)
-        let mut res = U256::ZERO;
-        let mut a = a;
-        let mut b = b;
-
-        // This is a constant-time multiplication algorithm
-        for _ in 0..256 {
-            if (b & U256::ONE) == U256::ONE {
-                res = mod_add(res, a, m);
-            }
-            a = mod_add(a, a, m);
-            b >>= 1;
-        }
-        return res;
+fn mod_exp(base: &[u8], exponent: &[u8], modulus: &[u8]) -> Vec<u8> {
+    use {
+        num_bigint::BigUint,
+        num_traits::{One, Zero},
     };
 
-    product % m
-}
+    let modulus_len = modulus.len();
+    let base = BigUint::from_bytes_be(base);
+    let exponent = BigUint::from_bytes_be(exponent);
+    let modulus = BigUint::from_bytes_be(modulus);
 
-/// Constant-time modular exponentiation: computes b^e mod m without timing leaks
-fn mod_exp(b: U256, e: U256, m: U256) -> U256 {
-    if m == U256::ONE {
-        return U256::ZERO;
+    if modulus.is_zero() || modulus.is_one() {
+        return vec![0_u8; modulus_len];
     }
 
-    let mut result = U256::ONE;
-    let mut base = b % m;
-    let mut exponent = e;
-
-    // Work with a copy of the modulus that we can modify
-    let modulus = m;
-
-    // Constant-time loop - always runs for 256 iterations
-    for _ in 0..256 {
-        // Check the least significant bit in constant time
-        if (exponent & U256::ONE) == U256::ONE {
-            result = mod_mul(result, base, modulus);
-        }
-        // Right shift exponent (divide by 2)
-        exponent >>= 1;
-        // Square the base
-        base = mod_mul(base, base, modulus);
-    }
-
-    result
-}
-
-fn u8_array_to_u256(bytes: &[u8]) -> U256 {
-    // Ensure the slice is not longer than 32 bytes (U256's size)
-    assert!(bytes.len() <= 32, "Input slice is too large for U256");
-
-    // Create a 32-byte buffer initialized with zeros
-    let mut buffer = [0u8; 32];
-
-    // Copy the input bytes into the buffer (right-aligned)
-    let start = 32 - bytes.len();
-    buffer[start..].copy_from_slice(bytes);
-
-    // Convert the buffer into U256 (big-endian)
-    U256::from_be_bytes(buffer)
+    let ret_int = base.modpow(&exponent, &modulus);
+    let ret_int = ret_int.to_bytes_be();
+    let mut return_value = vec![0_u8; modulus_len.saturating_sub(ret_int.len())];
+    return_value.extend(ret_int);
+    return_value
 }
 
 #[must_use]
@@ -117,12 +54,7 @@ pub fn big_mod_exp(input: &[u8]) -> Vector<u8> {
     let (mod_val, _) = rest.split_at(mod_len);
 
     if (base_len <= 32) && (exp_len <= 32) && (mod_len <= 32) {
-        let base_u256 = u8_array_to_u256(base_val);
-        let exp_u256 = u8_array_to_u256(exp_val);
-        let mod_u256 = u8_array_to_u256(mod_val);
-
-        let result = mod_exp(base_u256, exp_u256, mod_u256);
-        return result.to_be_bytes().to_vec().into_vector();
+        return mod_exp(base_val, exp_val, mod_val).into_vector();
     }
 
     solana_program::big_mod_exp::big_mod_exp(base_val, exp_val, mod_val).into_vector()

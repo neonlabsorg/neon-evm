@@ -66,6 +66,8 @@ async-trait = { version = "0.1.81", optional = true }
 allocator-api2 = "0.2.16"
 memoffset = "0.9.1"
 bytes = "1.6.1"
+num-bigint = "0.4.6"
+num-traits = "0.2.19"
 
 [target.'cfg(target_os = "solana")'.dependencies.maybe-async]
 version = "0.2.10"

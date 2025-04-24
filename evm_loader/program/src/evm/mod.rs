@@ -237,7 +237,8 @@ impl<T: EventListener> Machine<T> {
             origin,
             backend,
             tracer,
-        ).await
+        )
+        .await
     }
 
     #[maybe_async]

@@ -1,7 +1,9 @@
 use ethnum::U256;
 use evm_loader::{
     account::{
-        BorrowedAccountInfo, Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED
+        BorrowedAccountInfo, Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER,
+        TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE,
+        TAG_STATE_FINALIZED,
     },
     types::{Address, Transaction},
 };
@@ -84,7 +86,8 @@ pub fn read_holder(program_id: &Pubkey, info: &AccountInfo) -> NeonResult<GetHol
     match evm_loader::account::tag(program_id, info)? {
         TAG_HOLDER => {
             let mut data = info.try_borrow_mut_data()?;
-            let holder = Holder::from_account(program_id, BorrowedAccountInfo::new(info, &mut data))?;
+            let holder =
+                Holder::from_account(program_id, BorrowedAccountInfo::new(info, &mut data))?;
 
             Ok(GetHolderResponse {
                 status: Status::Holder,
@@ -99,7 +102,10 @@ pub fn read_holder(program_id: &Pubkey, info: &AccountInfo) -> NeonResult<GetHol
         }
         TAG_STATE_FINALIZED => {
             let mut data = info.try_borrow_mut_data()?;
-            let state = StateFinalizedAccount::from_account(program_id, BorrowedAccountInfo::new(info, &mut data))?;
+            let state = StateFinalizedAccount::from_account(
+                program_id,
+                BorrowedAccountInfo::new(info, &mut data),
+            )?;
 
             Ok(GetHolderResponse {
                 status: Status::Finalized,

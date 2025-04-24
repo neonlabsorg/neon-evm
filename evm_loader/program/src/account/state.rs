@@ -428,10 +428,7 @@ impl<'a> StateAccount<'a> {
 
             let start = unsafe { ptr.offset_from(account_data_ptr) } as usize;
             let end = start + len;
-            header.serialized_tx = std::ops::Range::<usize> {
-                start,
-                end,
-            };
+            header.serialized_tx = std::ops::Range::<usize> { start, end };
         }
 
         Ok(Self {
@@ -761,23 +758,17 @@ impl<'a> StateAccount<'a> {
             )
         };
 
-        let tx_rlp: Vec<u8> =
-            account.try_borrow_data()?.as_ref()[..tx_end][tx_start..].to_vec();
+        let tx_rlp: Vec<u8> = account.try_borrow_data()?.as_ref()[..tx_end][tx_start..].to_vec();
 
         // Pointer to the Data is needed to get pointers to the fields in a safe way (using addr_of!).
-        let root_ptr: *const Root = unsafe {
-            account_data_ptr
-                .add(root_offset)
-                .cast::<Root>()
-                .cast()
-        };
+        let root_ptr: *const Root =
+            unsafe { account_data_ptr.add(root_offset).cast::<Root>().cast() };
 
         let mut plain = PlainData::default();
         {
             let plain_ref = &mut plain;
             let dataref = account.try_borrow_data()?;
-            let dataslice: &[u8] =
-                &dataref.as_ref()[root_offset..][..size_of::<PlainData>()];
+            let dataslice: &[u8] = &dataref.as_ref()[root_offset..][..size_of::<PlainData>()];
             unsafe {
                 std::slice::from_raw_parts_mut(
                     std::ptr::from_mut::<PlainData>(plain_ref).cast::<u8>(),

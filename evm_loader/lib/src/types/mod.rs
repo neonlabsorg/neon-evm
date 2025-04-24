@@ -30,11 +30,11 @@ use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
 use solana_sdk::account::{AccountSharedData, ReadableAccount};
 
 use crate::rpc::SliceConfig;
+use evm_loader::types::TrxView;
 use solana_sdk::signature::Signature;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::HashMap;
 use DbConfig::{ChDbConfig, RocksDbConfig};
-use evm_loader::types::TrxView;
 
 pub type DbResult<T> = Result<T, anyhow::Error>;
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -euox pipefail
 
 : ${EVM_LOADER:=$(solana address -k evm_loader-keypair.json)}
 : ${SOLANA_URL:?is not set}

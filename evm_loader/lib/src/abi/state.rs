@@ -13,7 +13,7 @@ impl State {
     #[must_use]
     pub async fn new(config: APIOptions) -> Self {
         Self {
-            tracer_db: TracerDb::maybe_from_config(&config.db_config).await,
+            tracer_db: TracerDb::maybe_from_config(config.db_config.as_ref()).await,
             rpc_client: CloneRpcClient::new_from_api_config(&config),
             config,
         }

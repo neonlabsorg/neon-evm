@@ -121,18 +121,14 @@ pub fn payment_from_signer<'a>(
         lamports = lamports + 1;
     }
 
-    system.transfer(signer, pool.info, lamports.try_into()?)?;
+    system.transfer(signer, &pool.info, lamports.try_into()?)?;
     tree.mint(lamports * 1_000_000_000)?;
 
     Ok(())
 }
 
 /// Execute Ethereum transaction in a single Solana transaction
-pub fn process<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
-    instruction: &[u8],
-) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Schedule Transaction");
 
     // Instruction data

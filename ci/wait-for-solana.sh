@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -euox pipefail
 
 function check_solana() {
   local DATA='{"jsonrpc":"2.0","id":1,"method":"getHealth"}'
@@ -28,5 +28,6 @@ else
   done
 fi
 
+cat test-ledger/validator.log
 echo "unable to connect to solana cluster localhost"
 exit 1

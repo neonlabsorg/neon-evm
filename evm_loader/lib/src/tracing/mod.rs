@@ -45,11 +45,9 @@ impl AccountOverride {
             (Some(_), Some(_)) => {
                 panic!("Account has both `state` and `stateDiff` overrides")
             }
-            (Some(state), None) => {
-                return state
-                    .get(&H256::from(index.to_be_bytes()))
-                    .map(|value| value.to_fixed_bytes())
-            }
+            (Some(state), None) => state
+                .get(&H256::from(index.to_be_bytes()))
+                .map(|value| value.to_fixed_bytes()),
             (None, Some(state_diff)) => state_diff
                 .get(&H256::from(index.to_be_bytes()))
                 .map(|v| v.to_fixed_bytes()),

@@ -3300,6 +3300,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonrpsee-types"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66df7256371c45621b3b7d2fb23aea923d577616b9c0e9c0b950a6ea5c2be0ca"
+dependencies = [
+ "http 1.2.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "jsonrpsee-ws-client"
 version = "0.20.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3843,7 +3855,7 @@ dependencies = [
  "build-info-build",
  "jsonrpsee-core 0.22.5",
  "jsonrpsee-http-client",
- "jsonrpsee-types 0.22.5",
+ "jsonrpsee-types 0.25.1",
  "neon-lib",
  "serde",
  "serde_json",

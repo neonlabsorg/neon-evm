@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-set -em
+set -emx
+ulimit -n 100000
 
 NEON_BIN=/opt
 

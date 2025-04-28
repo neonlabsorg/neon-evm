@@ -2,13 +2,10 @@ use crate::evm::U256;
 use crate::types::vector::VectorVecExt;
 use crate::types::Vector;
 use crate::vector;
+use num_bigint::BigUint;
+use num_traits::{One, Zero};
 
-fn mod_exp(base: &[u8], exponent: &[u8], modulus: &[u8]) -> Vec<u8> {
-    use {
-        num_bigint::BigUint,
-        num_traits::{One, Zero},
-    };
-
+fn big_uint_mod_exp(base: &[u8], exponent: &[u8], modulus: &[u8]) -> Vec<u8> {
     let modulus_len = modulus.len();
     let base = BigUint::from_bytes_be(base);
     let exponent = BigUint::from_bytes_be(exponent);
@@ -53,9 +50,5 @@ pub fn big_mod_exp(input: &[u8]) -> Vector<u8> {
     let (exp_val, rest) = rest.split_at(exp_len);
     let (mod_val, _) = rest.split_at(mod_len);
 
-    if (base_len <= 32) && (exp_len <= 32) && (mod_len <= 32) {
-        return mod_exp(base_val, exp_val, mod_val).into_vector();
-    }
-
-    solana_program::big_mod_exp::big_mod_exp(base_val, exp_val, mod_val).into_vector()
+    big_uint_mod_exp(base_val, exp_val, mod_val).into_vector()
 }

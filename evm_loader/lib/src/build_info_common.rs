@@ -66,10 +66,12 @@ impl From<&BuildInfo> for SlimBuildInfo {
 }
 
 impl SlimBuildInfo {
-    pub fn version(&self) -> &Version {
+    #[must_use]
+    pub const fn version(&self) -> &Version {
         &self.crate_info.version
     }
 
+    #[must_use]
     pub fn commit_id(&self) -> &str {
         &self.version_control.commit_id
     }

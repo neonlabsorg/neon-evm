@@ -147,7 +147,7 @@ pub fn read_holder(program_id: &Pubkey, info: &AccountInfo) -> NeonResult<GetHol
                 chain_id: plain.chain_id,
                 origin: Some(plain.origin),
                 tree_account: plain.tree_account,
-                block_params: plain.block_params,
+                block_params: Some(plain.block_params),
                 accounts: Some(accounts),
                 steps_executed: plain.steps_executed,
             })

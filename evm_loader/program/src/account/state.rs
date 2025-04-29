@@ -8,7 +8,7 @@ use crate::config::DEFAULT_CHAIN_ID;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::evm::Machine;
-use crate::executor::ExecutorStateData;
+use crate::executor::{BlockParams, ExecutorStateData};
 use crate::types::boxx::{boxx, Boxx};
 use crate::types::vector::VectorSliceExt;
 use crate::types::{read_raw_utils::read_vec, Address, Transaction, TreeMap, TrxView, Vector};
@@ -146,7 +146,7 @@ pub struct PlainData {
     pub gas_price: U256,
 
     // (block_timestamp, block_number)
-    pub block_params: Option<(U256, U256)>,
+    pub block_params: (U256, U256),
     /// Steps executed in the transaction
     pub steps_executed: u64,
     /// Ethereum transaction priority fee used and paid in tokens
@@ -400,7 +400,7 @@ impl<'a> StateAccount<'a> {
                 value: transaction.value(),
                 gas_limit: transaction.gas_limit(),
                 gas_price: transaction.gas_price(),
-                block_params: Some((U256::ZERO, U256::ZERO)),
+                block_params: (U256::ZERO, U256::ZERO),
                 steps_executed: 0_u64,
                 priority_fee_used: U256::ZERO,
                 max_priority_fee_per_gas: transaction.max_priority_fee_per_gas(),
@@ -486,6 +486,11 @@ impl<'a> StateAccount<'a> {
         }
 
         AccountsStatus::Ok
+    }
+
+    pub fn publish_block_params(&mut self) {
+        let BlockParams{ number, timestamp } = self.executor_state().as_ref().unwrap().block_params.clone();
+        self.root_ref.plain_data.block_params = (timestamp, number);
     }
 
     fn validate_timestamps(&self, program_id: &Pubkey, accounts: &AccountsDB) -> AccountsStatus {

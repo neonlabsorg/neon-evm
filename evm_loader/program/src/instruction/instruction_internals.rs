@@ -123,6 +123,7 @@ pub fn finalize<'a, 'b: 'a, 'c>(
 
     storage.update_touched_accounts(accounts.program_id(), accounts.db())?;
     storage.increment_steps_executed(steps_executed)?;
+    storage.publish_block_params();
     log_data(&[
         b"STEPS",
         &steps_executed.to_le_bytes(),

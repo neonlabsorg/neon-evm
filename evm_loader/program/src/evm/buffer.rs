@@ -37,8 +37,8 @@ impl core::cmp::PartialEq for Buffer {
 impl Buffer {
     pub fn is_owned(&self) -> bool {
         match &self.inner {
-           Inner::Owned{..} => true,
-           Inner::Account{..} => false
+            Inner::Owned { .. } => true,
+            Inner::Account { .. } => false,
         }
     }
 

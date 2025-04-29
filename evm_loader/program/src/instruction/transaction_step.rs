@@ -100,7 +100,7 @@ pub fn do_continue<'b, 'a: 'b>(
         storage,
         account_storage,
         gasometer,
-        steps_executed > EVM_STEPS_LAST_ITERATION_MAX,
+        steps_executed <= EVM_STEPS_LAST_ITERATION_MAX,
         None,
     )
 }

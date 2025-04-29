@@ -249,6 +249,7 @@ impl<T: EventListener> Machine<T> {
         backend: &mut impl Database,
         tracer: Option<T>,
     ) -> Result<Self> {
+        assert!(self.call_data.is_owned());
         Self::new(trx_view, self.call_data, origin, backend, tracer).await
     }
 

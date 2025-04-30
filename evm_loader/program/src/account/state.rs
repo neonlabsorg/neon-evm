@@ -794,7 +794,6 @@ impl<'a> StateAccount<'a> {
 
         let tx_rlp: Vec<u8> = account.try_borrow_data()?.as_ref()[..tx_end][tx_start..].to_vec();
 
-        // Pointer to the Data is needed to get pointers to the fields in a safe way (using addr_of!).
         let root_ptr: *const Root =
             unsafe { account_data_ptr.add(root_offset).cast::<Root>().cast() };
 

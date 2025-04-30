@@ -135,8 +135,6 @@ pub fn read_holder(program_id: &Pubkey, info: &AccountInfo) -> NeonResult<GetHol
 
             let tx_params = TxParams::from_transaction(plain.origin, &tx);
 
-            let (block_ts, block_num) = plain.block_params;
-
             Ok(GetHolderResponse {
                 status,
                 len: Some(data_len),
@@ -144,12 +142,12 @@ pub fn read_holder(program_id: &Pubkey, info: &AccountInfo) -> NeonResult<GetHol
                 tx: Some(plain.tx_hash),
                 tx_data: Some(tx_params),
                 tx_type: Some(plain.tx_type),
-                max_fee_per_gas: plain.max_fee_per_gas.map(Into::into),
-                max_priority_fee_per_gas: plain.max_priority_fee_per_gas.map(Into::into),
+                max_fee_per_gas: plain.max_fee_per_gas,
+                max_priority_fee_per_gas: plain.max_priority_fee_per_gas,
                 chain_id: plain.chain_id,
                 origin: Some(plain.origin),
                 tree_account: plain.tree_account,
-                block_params: Some((block_ts.into(), block_num.into())),
+                block_params: Some(plain.block_params),
                 accounts: Some(accounts),
                 steps_executed: plain.steps_executed,
             })

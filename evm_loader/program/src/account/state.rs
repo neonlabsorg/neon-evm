@@ -1,5 +1,5 @@
 use std::cell::{Ref, RefCell, RefMut};
-use std::mem::{offset_of, size_of};
+use std::mem::size_of;
 use std::ops::Deref;
 use std::ptr::addr_of;
 
@@ -17,7 +17,6 @@ use ethnum::U256;
 use solana_program::hash::Hash;
 use solana_program::system_program;
 use solana_program::{account_info::AccountInfo, instruction::AccountMeta, pubkey::Pubkey};
-use static_assertions::const_assert_eq;
 
 use super::{
     AccountHeader, AccountsDB, BalanceAccount, BorrowedAccountInfo, ContractAccount, Holder,
@@ -113,24 +112,6 @@ impl Header {
     }
 }
 
-/// Packed u256 wrapper.
-#[derive(Clone, Copy, Default, Eq, Hash, PartialEq)]
-#[repr(transparent)]
-pub struct PackedU256(pub [u8; 32]);
-
-impl From<U256> for PackedU256 {
-    fn from(value: U256) -> Self {
-        PackedU256(value.to_le_bytes())
-    }
-}
-
-impl From<PackedU256> for U256 {
-    fn from(val: PackedU256) -> Self {
-        let PackedU256(arr) = val;
-        U256::from_le_bytes(arr)
-    }
-}
-
 /// Storage data account to store execution metainfo between steps for iterative execution
 #[repr(C)]
 #[derive(Default)]
@@ -147,29 +128,29 @@ pub struct PlainData {
     pub tree_account_index: Option<u16>,
     //pub tree_account_index: Option<u16>,
     /// Ethereum transaction gas used and paid
-    pub gas_used: PackedU256,
+    pub gas_used: U256,
 
     pub tx_hash: [u8; 32],
     pub chain_id: Option<u64>, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L958
     pub tx_type: u8, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L996
 
-    pub max_fee_per_gas: Option<PackedU256>, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L1014,
-    pub max_priority_fee_per_gas: Option<PackedU256>, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L1027
+    pub max_fee_per_gas: Option<U256>, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L1014,
+    pub max_priority_fee_per_gas: Option<U256>, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L1027
 
     pub tx_target: Option<Address>,
     pub payer: Address,
     pub tx_nonce: u64,
 
-    pub value: PackedU256,
-    pub gas_limit: PackedU256,
-    pub gas_price: PackedU256,
+    pub value: U256,
+    pub gas_limit: U256,
+    pub gas_price: U256,
 
     // (block_timestamp, block_number)
-    pub block_params: (PackedU256, PackedU256),
+    pub block_params: (U256, U256),
     /// Steps executed in the transaction
     pub steps_executed: u64,
     /// Ethereum transaction priority fee used and paid in tokens
-    pub priority_fee_used: PackedU256,
+    pub priority_fee_used: U256,
     pub sender: Option<Address>,
     // fields for layout_version >= 1
 }
@@ -180,7 +161,7 @@ impl TrxView for PlainData {
     }
 
     fn gas_price(&self) -> U256 {
-        self.gas_price.into()
+        self.gas_price
     }
 
     fn chain_id(&self) -> Option<u64> {
@@ -196,7 +177,7 @@ impl TrxView for PlainData {
     }
 
     fn gas_limit(&self) -> U256 {
-        self.gas_limit.into()
+        self.gas_limit
     }
 
     fn get_payer(&self) -> Option<Address> {
@@ -204,7 +185,7 @@ impl TrxView for PlainData {
     }
 
     fn max_priority_fee_per_gas(&self) -> Option<U256> {
-        self.max_priority_fee_per_gas.map(Into::into)
+        self.max_priority_fee_per_gas
     }
 
     fn tree_account_index(&self) -> Option<u16> {
@@ -216,11 +197,11 @@ impl TrxView for PlainData {
     }
 
     fn value(&self) -> U256 {
-        self.value.into()
+        self.value
     }
 
     fn max_fee_per_gas(&self) -> Option<U256> {
-        self.max_fee_per_gas.map(Into::into)
+        self.max_fee_per_gas
     }
 
     fn sender(&self) -> Option<Address> {
@@ -250,11 +231,6 @@ pub struct Root {
     //pub alloc : SolanaAllocator
 }
 
-// to be sure that solana and x86 size/alignment match
-const_assert_eq!(std::mem::align_of::<PlainData>(), 0x8);
-const_assert_eq!(std::mem::size_of::<PlainData>(), 0x210);
-const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x210);
-
 impl AccountHeader for Header {
     const VERSION: u8 = 2;
 }
@@ -271,32 +247,28 @@ type StateAccountCoreApiView = (
 );
 
 impl PlainData {
-    fn gas_used(&self) -> U256 {
-        self.gas_used.into()
-    }
-
     fn use_gas(&mut self, amount: U256) -> Result<U256> {
         if amount == U256::ZERO {
             return Ok(U256::ZERO);
         }
 
-        let total_gas_used = self.gas_used().saturating_add(amount);
-        let gas_limit = self.gas_limit();
+        let total_gas_used = self.gas_used.saturating_add(amount);
+        let gas_limit = self.gas_limit;
 
         if total_gas_used > gas_limit {
-            return Err(Error::OutOfGas(self.gas_limit(), total_gas_used));
+            return Err(Error::OutOfGas(gas_limit, total_gas_used));
         }
 
-        self.gas_used = total_gas_used.into();
+        self.gas_used = total_gas_used;
 
         amount
-            .checked_mul(self.gas_price())
+            .checked_mul(self.gas_price)
             .ok_or(Error::IntegerOverflow)
     }
 
     #[must_use]
     pub fn gas_available(&self) -> U256 {
-        self.gas_limit().saturating_sub(self.gas_used())
+        self.gas_limit.saturating_sub(self.gas_used)
     }
 
     /// Use available gas and return it to the caller.
@@ -417,21 +389,21 @@ impl<'a> StateAccount<'a> {
                 owner,
                 origin,
                 tree_account,
-                gas_used: U256::ZERO.into(),
+                gas_used: U256::ZERO,
                 tx_hash: transaction.hash(),
                 chain_id: transaction.chain_id(),
                 tx_type: transaction.tx_type(),
-                max_fee_per_gas: transaction.max_fee_per_gas().map(Into::into),
+                max_fee_per_gas: transaction.max_fee_per_gas(),
                 tx_target: transaction.target(),
                 payer: transaction.payer(origin),
                 tx_nonce: transaction.nonce(),
-                value: transaction.value().into(),
-                gas_limit: transaction.gas_limit().into(),
-                gas_price: transaction.gas_price().into(),
-                block_params: (U256::ZERO.into(), U256::ZERO.into()),
+                value: transaction.value(),
+                gas_limit: transaction.gas_limit(),
+                gas_price: transaction.gas_price(),
+                block_params: (U256::ZERO, U256::ZERO),
                 steps_executed: 0_u64,
-                priority_fee_used: U256::ZERO.into(),
-                max_priority_fee_per_gas: transaction.max_priority_fee_per_gas().map(Into::into),
+                priority_fee_used: U256::ZERO,
+                max_priority_fee_per_gas: transaction.max_priority_fee_per_gas(),
                 tree_account_index: transaction.tree_account_index(),
                 sender: transaction.sender(),
             },
@@ -517,9 +489,8 @@ impl<'a> StateAccount<'a> {
     }
 
     pub fn publish_block_params(&mut self) {
-        let BlockParams { number, timestamp } =
-            self.executor_state().as_ref().unwrap().block_params;
-        self.root_ref.plain_data.block_params = (timestamp.into(), number.into());
+        let BlockParams{ number, timestamp } = self.executor_state().as_ref().unwrap().block_params.clone();
+        self.root_ref.plain_data.block_params = (timestamp, number);
     }
 
     fn validate_timestamps(&self, program_id: &Pubkey, accounts: &AccountsDB) -> AccountsStatus {
@@ -665,14 +636,14 @@ impl<'a> StateAccount<'a> {
 
     #[must_use]
     pub fn gas_used(&self) -> U256 {
-        self.root_ref.plain_data.gas_used()
+        self.root_ref.plain_data.gas_used
     }
 
     #[must_use]
     pub fn gas_available(&self) -> U256 {
         self.root_ref
             .plain_data
-            .gas_limit()
+            .gas_limit
             .saturating_sub(self.gas_used())
     }
 
@@ -820,10 +791,7 @@ impl<'a> StateAccount<'a> {
                 // Hereby we read the TreeMap and rely on the fact that under the hood it's a Vector<(Pubkey, AccountRevision)>.
                 // In case the structure changes, it also requires adjustments.
                 read_vec::<(Pubkey, AccountRevision)>(
-                    (root_ptr
-                        .cast::<u8>()
-                        .offset(offset_of!(Root, revisions).try_into()?))
-                    .cast::<usize>(),
+                    addr_of!((*root_ptr).revisions).cast::<usize>(),
                     memory_space_delta,
                 )
                 .iter()

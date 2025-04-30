@@ -495,7 +495,8 @@ impl<'a> StateAccount<'a> {
     }
 
     pub fn publish_block_params(&mut self) {
-        let BlockParams{ number, timestamp } = self.executor_state().as_ref().unwrap().block_params.clone();
+        let BlockParams { number, timestamp } =
+            self.executor_state().as_ref().unwrap().block_params;
         self.root_ref.plain_data.block_params = (timestamp, number);
     }
 

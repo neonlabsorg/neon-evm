@@ -17,6 +17,7 @@ use ethnum::U256;
 use solana_program::hash::Hash;
 use solana_program::system_program;
 use solana_program::{account_info::AccountInfo, instruction::AccountMeta, pubkey::Pubkey};
+use static_assertions::const_assert_eq;
 
 use super::{
     AccountHeader, AccountsDB, BalanceAccount, BorrowedAccountInfo, ContractAccount, Holder,
@@ -230,6 +231,11 @@ pub struct Root {
     pub machine_state: RefCell<Option<Machine<crate::evm::tracing::NoopEventListener>>>,
     //pub alloc : SolanaAllocator
 }
+
+// to be sure that solana and x86 size/alignment match
+const_assert_eq!(std::mem::align_of::<PlainData>(), 0x8);
+const_assert_eq!(std::mem::size_of::<PlainData>(), 0x228);
+const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x228);
 
 impl AccountHeader for Header {
     const VERSION: u8 = 2;

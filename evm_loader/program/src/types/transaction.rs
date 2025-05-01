@@ -550,8 +550,6 @@ pub enum TransactionPayload {
 }
 
 pub trait TrxView {
-    fn sender(&self) -> Option<Address>;
-
     fn hash(&self) -> [u8; 32];
 
     fn gas_price(&self) -> U256;
@@ -671,13 +669,6 @@ impl TrxView for Transaction {
             | TransactionPayload::AccessList(AccessListTx { value, .. })
             | TransactionPayload::DynamicFee(DynamicFeeTx { value, .. })
             | TransactionPayload::Scheduled(ScheduledTx { value, .. }) => value,
-        }
-    }
-
-    fn sender(&self) -> Option<Address> {
-        match self.transaction {
-            TransactionPayload::Scheduled(ScheduledTx { sender, .. }) => sender,
-            _ => None,
         }
     }
 }
@@ -889,6 +880,14 @@ impl Transaction {
                 max_priority_fee_per_gas,
                 ..
             }) => Some(max_priority_fee_per_gas),
+        }
+    }
+
+    #[must_use]
+    pub fn sender(&self) -> Option<Address> {
+        match self.transaction {
+            TransactionPayload::Scheduled(ScheduledTx { sender, .. }) => sender,
+            _ => None,
         }
     }
 }

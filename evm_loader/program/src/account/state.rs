@@ -145,7 +145,6 @@ pub struct PlainData {
     pub block_params: (U256, U256),
     /// Steps executed in the transaction
     pub steps_executed: u64,
-    pub sender: Option<Address>,
     // fields for layout_version >= 1
 }
 
@@ -185,10 +184,6 @@ impl TrxView for PlainData {
     fn value(&self) -> U256 {
         self.value
     }
-
-    fn sender(&self) -> Option<Address> {
-        self.sender
-    }
 }
 
 impl PlainData {
@@ -215,8 +210,8 @@ pub struct Root {
 
 // to be sure that solana and x86 size/alignment match
 const_assert_eq!(std::mem::align_of::<PlainData>(), 0x8);
-const_assert_eq!(std::mem::size_of::<PlainData>(), 0x198);
-const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x198);
+const_assert_eq!(std::mem::size_of::<PlainData>(), 0x180);
+const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x180);
 
 impl AccountHeader for Header {
     const VERSION: u8 = 2;
@@ -391,7 +386,6 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                 block_params: (U256::ZERO, U256::ZERO),
                 steps_executed: 0_u64,
                 tree_account_index: transaction.tree_account_index(),
-                sender: transaction.sender(),
             },
             revisions: TreeMap::new(),
             touched_accounts: TreeMap::new(),

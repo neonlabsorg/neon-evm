@@ -425,25 +425,26 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
 
         let tx_rlp = transaction_rlp.to_vector();
 
-        let account_data_ptr = info.try_borrow_data()?.as_ptr();
-        {
-            // Set header
-            let mut header = super::header_mut::<Header>(info);
-            header.version_signature = Header::valid_version_signature();
-            header.root_offset =
-                unsafe { addr_of!(*root).cast::<u8>().offset_from(account_data_ptr) } as usize;
-
-            let (ptr, len, _) = tx_rlp.into_raw_parts();
-
-            let start = unsafe { ptr.offset_from(account_data_ptr) } as usize;
-            let end = start + len;
-            header.serialized_tx = std::ops::Range::<usize> { start, end };
-        }
-
         Ok(Self {
             account: info,
-            root_ref: RefMut::map(info.try_borrow_mut_data()?, |_| unsafe {
-                &mut *Boxx::into_raw(root)
+            root_ref: RefMut::map(info.try_borrow_mut_data()?, |data| {
+                let account_data_ptr = data.as_ptr();
+                {
+                    // Set header
+                    let mut header = super::header_mut::<Header>(info);
+                    header.version_signature = Header::valid_version_signature();
+                    header.root_offset =
+                        unsafe { addr_of!(*root).cast::<u8>().offset_from(account_data_ptr) }
+                            as usize;
+
+                    let (ptr, len, _) = tx_rlp.into_raw_parts();
+
+                    let start = unsafe { ptr.offset_from(account_data_ptr) } as usize;
+                    let end = start + len;
+                    header.serialized_tx = std::ops::Range::<usize> { start, end };
+                }
+
+                unsafe { &mut *Boxx::into_raw(root) }
             }),
         })
     }

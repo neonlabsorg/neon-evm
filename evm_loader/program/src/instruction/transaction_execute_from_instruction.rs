@@ -17,7 +17,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
     let messsage = &instruction[4..];
 
-    let mut holder = Holder::from_account(program_id, &accounts[0])?;
+    let holder = Holder::from_account(program_id, &accounts[0])?;
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1])? };
     let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
     let operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;

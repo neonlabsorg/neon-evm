@@ -20,7 +20,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let messsage = &instruction[4..];
 
     let holder = accounts[0].clone();
-    let mut holder = Holder::from_account(program_id, &holder)?;
+    let holder = Holder::from_account(program_id, &holder)?;
 
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1])? };
     let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;

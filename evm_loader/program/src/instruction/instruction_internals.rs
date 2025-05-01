@@ -78,12 +78,12 @@ pub fn reinit_evm(
 }
 
 pub fn holder_parse_trx(
-    info: &AccountInfo<'_>,
+    info: &AccountInfo,
     operator: &Operator,
     program_id: &Pubkey,
     is_scheduled: bool,
 ) -> Result<(Transaction, Vec<u8>)> {
-    let mut holder = Holder::from_account(program_id, info)?;
+    let holder = Holder::from_account(program_id, info)?;
 
     // We have to initialize the heap before creating Transaction object, but since
     // transaction's rlp itself is stored in the holder account, we have two options:
@@ -110,10 +110,10 @@ pub fn holder_parse_trx(
     Ok((trx, transaction_rlp_copy))
 }
 
-pub fn finalize<'a, 'b: 'a, 'c>(
+pub fn finalize(
     steps_executed: u64,
     mut storage: StateAccount,
-    mut accounts: ProgramAccountStorage<'b>,
+    mut accounts: ProgramAccountStorage,
     mut gasometer: Gasometer,
     apply_state: bool,
     provided_execution_result: Option<(&ExitStatus, &Vector<Action>)>,
@@ -190,9 +190,9 @@ pub fn finalize<'a, 'b: 'a, 'c>(
     Ok(())
 }
 
-pub fn finalize_interrupted<'a, 'b: 'a>(
-    storage: StateAccount<'a, 'b>,
-    mut accounts: ProgramAccountStorage<'b>,
+pub fn finalize_interrupted(
+    storage: StateAccount,
+    mut accounts: ProgramAccountStorage,
     gasometer: Gasometer,
 ) -> Result<()> {
     debug_print!("finalize_interrupted");

@@ -37,12 +37,7 @@ impl<'local, 'sol> StateFinalizedAccount<'local, 'sol> {
 
         let account = state.into_account();
 
-        super::set_tag(
-            program_id,
-            account,
-            TAG_STATE_FINALIZED,
-            Header::VERSION,
-        )?;
+        super::set_tag(program_id, account, TAG_STATE_FINALIZED, Header::VERSION)?;
         {
             let mut header = super::header_mut::<Header>(account);
             header.owner = owner;

@@ -343,7 +343,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
     pub fn from_account(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<Self> {
         Self::validate_tag(program_id, account)?;
 
-        let offset = super::header::<Header>(&account).root_offset;
+        let offset = super::header::<Header>(account).root_offset;
         let mem: RefMut<&mut [u8]> = account.try_borrow_mut_data()?;
         //let ptr = account.data.as_mut_ptr();
 
@@ -368,7 +368,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         transaction_rlp: &[u8],
         tree_account: Option<Pubkey>,
     ) -> Result<Self> {
-        let (mut info, owner) = match super::tag(program_id, info)? {
+        let (info, owner) = match super::tag(program_id, info)? {
             TAG_HOLDER => {
                 let holder = Holder::from_account(program_id, info)?;
                 holder.validate_owner(accounts.operator())?;
@@ -428,7 +428,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         let account_data_ptr = info.try_borrow_data()?.as_ptr();
         {
             // Set header
-            let mut header = super::header_mut::<Header>(&mut info);
+            let mut header = super::header_mut::<Header>(info);
             header.version_signature = Header::valid_version_signature();
             header.root_offset =
                 unsafe { addr_of!(*root).cast::<u8>().offset_from(account_data_ptr) } as usize;
@@ -543,7 +543,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
     }
 
     fn finalize_impl(self, program_id: &Pubkey, scheduled_transition_tag: u8) -> Result<()> {
-        super::validate_tag(program_id, &self.account, TAG_STATE)?;
+        super::validate_tag(program_id, self.account, TAG_STATE)?;
 
         if self.has_tree_account() {
             debug_print!(
@@ -567,7 +567,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
     }
 
     pub fn finish_scheduled_tx(self, program_id: &Pubkey) -> Result<()> {
-        let tag = super::tag(program_id, &self.account)?;
+        let tag = super::tag(program_id, self.account)?;
         let is_finalized = tag == TAG_SCHEDULED_STATE_FINALIZED;
         let is_canceled = tag == TAG_SCHEDULED_STATE_CANCELLED;
         if !(is_finalized || is_canceled) {
@@ -711,7 +711,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
 }
 
 // Implementation of functional to save/restore persistent state of iterative transactions.
-impl<'local, 'sol> StateAccount<'local, 'sol> {
+impl StateAccount<'_, '_> {
     #[must_use]
     pub fn executor_state(&self) -> Ref<Option<ExecutorStateData>> {
         self.root_ref.executor_state.borrow()
@@ -734,12 +734,12 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
 
     #[must_use]
     pub fn root_ref(&self) -> &Root {
-        &*self.root_ref
+        &self.root_ref
     }
 
     #[must_use]
     pub fn root_ref_mut(&mut self) -> &mut Root {
-        &mut *self.root_ref
+        &mut self.root_ref
     }
 }
 

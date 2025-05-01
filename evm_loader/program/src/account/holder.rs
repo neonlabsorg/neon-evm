@@ -50,7 +50,7 @@ impl<'local, 'sol> Holder<'local, 'sol> {
     }
 
     pub fn from_account(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<Self> {
-        match super::tag(program_id, &account)? {
+        match super::tag(program_id, account)? {
             TAG_STATE_FINALIZED => {
                 super::set_tag(program_id, account, TAG_HOLDER, Header::VERSION)?;
 
@@ -100,8 +100,8 @@ impl<'local, 'sol> Holder<'local, 'sol> {
         super::section(self.account, HEADER_OFFSET)
     }
 
-    fn header_mut(&mut self) -> RefMut<Header> {
-        super::section_mut(&mut self.account, HEADER_OFFSET)
+    fn header_mut(&self) -> RefMut<Header> {
+        super::section_mut(self.account, HEADER_OFFSET)
     }
 
     fn buffer(&self) -> Ref<[u8]> {
@@ -121,7 +121,7 @@ impl<'local, 'sol> Holder<'local, 'sol> {
             header.transaction_len = 0;
         }
         // Clear the heap ptr.
-        Self::write_heap_offset(&self.account, 0);
+        Self::write_heap_offset(self.account, 0);
         {
             let mut buffer = self.buffer_mut();
             buffer.fill(0);
@@ -204,9 +204,9 @@ impl<'local, 'sol> Holder<'local, 'sol> {
     /// Initializes the heap using the whole account data space.
     /// Also, writes the offset of the heap object into the separate field in the header.
     /// After this, the persistent objects can be allocated into the account data.
-    pub fn init_heap(&mut self, transaction_offset: usize) -> Result<()> {
+    pub fn init_heap(&self, transaction_offset: usize) -> Result<()> {
         // For this case, the account.owner is already validated to be equal to program id.
-        Self::init_holder_heap(self.account.owner, &mut self.account, transaction_offset)
+        Self::init_holder_heap(self.account.owner, self.account, transaction_offset)
     }
 
     /// Associated function, see `fn init_heap`.

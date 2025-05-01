@@ -92,6 +92,7 @@ impl<'a> ProgramAccountStorage<'a> {
     pub fn apply_state_change(&mut self, actions: &[Action]) -> Result<()> {
         debug_print!("Applies begin");
 
+        let mut balance = HashMap::with_capacity(16);
         let mut storage = HashMap::with_capacity(16);
 
         for action in actions {
@@ -102,21 +103,33 @@ impl<'a> ProgramAccountStorage<'a> {
                     chain_id,
                     value,
                 } => {
-                    let mut source = self.balance_account(*source, *chain_id)?;
-                    let mut target = self.create_balance_account(*target, *chain_id)?;
+                    if *value == U256::ZERO {
+                        continue;
+                    }
+                    let mut source_acc = self.balance_account(*source, *chain_id)?;
+                    let mut target_acc = self.create_balance_account(*target, *chain_id)?;
 
-                    source.increment_revision(&self.rent, &self.accounts)?;
-                    target.increment_revision(&self.rent, &self.accounts)?;
+                    balance
+                        .entry((source, chain_id))
+                        .or_insert_with(|| source_acc.balance());
+                    balance
+                        .entry((target, chain_id))
+                        .or_insert_with(|| target_acc.balance());
 
-                    source.transfer(&mut target, *value)?;
+                    source_acc.transfer(&mut target_acc, *value)?;
                 }
                 Action::Burn {
                     source,
                     chain_id,
                     value,
                 } => {
+                    if *value == U256::ZERO {
+                        continue;
+                    }
                     let mut account = self.create_balance_account(*source, *chain_id)?;
-                    account.increment_revision(&self.rent, &self.accounts)?;
+                    balance
+                        .entry((source, chain_id))
+                        .or_insert_with(|| account.balance());
                     account.burn(*value)?;
                 }
                 Action::EvmSetStorage {
@@ -192,7 +205,7 @@ impl<'a> ProgramAccountStorage<'a> {
                 }
             }
         }
-
+        self.apply_balance(balance)?;
         self.apply_storage(storage)?;
 
         debug_print!("Applies done");
@@ -200,12 +213,22 @@ impl<'a> ProgramAccountStorage<'a> {
         Ok(())
     }
 
+    fn apply_balance(&mut self, balance: HashMap<(&Address, &u64), U256>) -> Result<()> {
+        for ((address, chain_id), balance) in balance {
+            let mut account = self.create_balance_account(*address, *chain_id)?;
+            if account.balance() != balance {
+                account.increment_revision(&self.rent, &self.accounts)?;
+            }
+        }
+        Ok({})
+    }
+
     fn apply_storage(&mut self, storage: HashMap<Address, HashMap<U256, [u8; 32]>>) -> Result<()> {
         const STATIC_STORAGE_LIMIT: U256 = U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128);
 
         for (address, storage) in storage {
             let mut contract: Option<ContractAccount> = None;
-
+            let mut contract_updated = false;
             let mut infinite_values: HashMap<U256, HashMap<u8, [u8; 32]>> =
                 HashMap::with_capacity(storage.len());
 
@@ -218,7 +241,10 @@ impl<'a> ProgramAccountStorage<'a> {
 
                     // Static Storage - Write into contract account
                     let index: usize = index.as_usize();
-                    contract.set_storage_value(index, &value);
+                    if value != contract.storage_value(index) {
+                        contract.set_storage_value(index, &value);
+                        contract_updated = true;
+                    }
                 } else {
                     // Infinite Storage - Write into separate account
                     let subindex = (index & 0xFF).as_u8();
@@ -232,7 +258,9 @@ impl<'a> ProgramAccountStorage<'a> {
             }
 
             if let Some(mut contract) = contract {
-                contract.increment_revision(&self.rent, &self.accounts)?;
+                if contract_updated {
+                    contract.increment_revision(&self.rent, &self.accounts)?;
+                }
             }
 
             for (index, values) in infinite_values {
@@ -268,12 +296,18 @@ impl<'a> ProgramAccountStorage<'a> {
                     }
                 } else {
                     let mut storage = StorageCell::from_account(&crate::ID, account.clone())?;
+                    let mut storage_updated = false;
                     for (subindex, value) in values {
-                        storage.update(subindex, &value)?;
+                        if storage.get(subindex) != value {
+                            storage.update(subindex, &value)?;
+                            storage_updated = true;
+                        }
                     }
 
                     storage.sync_lamports(&self.rent, &self.accounts)?;
-                    storage.increment_revision(&self.rent, &self.accounts)?;
+                    if storage_updated {
+                        storage.increment_revision(&self.rent, &self.accounts)?;
+                    }
                 };
             }
         }

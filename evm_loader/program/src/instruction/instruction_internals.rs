@@ -29,9 +29,7 @@ pub fn allocate_evm(
     storage.reset_steps_executed();
 
     // Dealloc evm that was potentially alloced in previous iterations before the reset.
-    if storage.evm().is_some() {
-        storage.evm_mut().take();
-    }
+    storage.evm_mut().take();
 
     let mut state_data = storage.executor_state_mut();
     *state_data = Some(ExecutorStateData::new(account_storage));

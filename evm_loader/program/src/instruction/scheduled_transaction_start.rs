@@ -21,15 +21,13 @@ where
 
     let origin = storage.trx_origin();
 
-    storage
-        .trx()
-        .validate(origin, &account_storage, Some(&transaction_tree))?;
+    trx.validate(origin, &account_storage, Some(&transaction_tree))?;
 
-    transaction_tree.start_transaction(storage.trx())?;
+    transaction_tree.start_transaction(trx)?;
 
     // Increment origin's nonce only once for the whole execution tree.
-    let mut origin_account = account_storage.origin(origin, storage.trx())?;
-    if origin_account.nonce() == storage.trx().nonce() {
+    let mut origin_account = account_storage.origin(origin, trx)?;
+    if origin_account.nonce() == trx.nonce() {
         origin_account.increment_revision(account_storage.rent(), account_storage.db())?;
         origin_account.increment_nonce()?;
     }
@@ -37,7 +35,7 @@ where
     // Burn `gas_limit` tokens from the tree account.
     // Later we will mint them to the operator.
     // Remaining tokens are returned back to the tree account in the last iteration.
-    let gas_limit_in_tokens = storage.trx().gas_limit_in_tokens()?;
+    let gas_limit_in_tokens = trx.gas_limit_in_tokens()?;
     transaction_tree.burn(gas_limit_in_tokens)?;
 
     // record gas for the future finish

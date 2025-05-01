@@ -25,20 +25,20 @@ pub fn do_begin<'b, 'a: 'b>(
 
     let origin = storage.trx_origin();
 
-    storage.trx().validate(origin, &account_storage, None)?;
+    tx.validate(origin, &account_storage, None)?;
 
     // Increment origin nonce in the first iteration
     // This allows us to run multiple iterative transactions from the same sender in parallel
     // These transactions are guaranteed to start in a correct sequence
     // BUT they finalize in an undefined order
-    let mut origin_account = account_storage.origin(origin, storage.trx())?;
+    let mut origin_account = account_storage.origin(origin, &tx)?;
     origin_account.increment_revision(account_storage.rent(), account_storage.db())?;
     origin_account.increment_nonce()?;
 
     // Burn `gas_limit` tokens from the origin account.
     // Later we will mint them to the operator.
     // Remaining tokens are returned to the origin in the last iteration.
-    let gas_limit_in_tokens = storage.trx().gas_limit_in_tokens()?;
+    let gas_limit_in_tokens = tx.gas_limit_in_tokens()?;
     origin_account.burn(gas_limit_in_tokens)?;
 
     // TODO for scheduled transactions, evm should be created with origin:=payer.

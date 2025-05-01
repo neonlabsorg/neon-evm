@@ -562,45 +562,6 @@ pub trait TrxView {
 
     fn nonce(&self) -> u64;
 
-    #[allow(async_fn_in_trait)]
-    #[maybe_async]
-    async fn validate(
-        &self,
-        origin: Address,
-        backend: &impl AccountStorage,
-        tree: Option<&TransactionTree<'_>>,
-    ) -> Result<(), crate::error::Error> {
-        let chain_id = self
-            .chain_id()
-            .unwrap_or_else(|| backend.default_chain_id());
-
-        if !backend.is_valid_chain_id(chain_id) {
-            return Err(Error::InvalidChainId(chain_id));
-        }
-
-        if tree.is_some() != self.is_scheduled_tx() {
-            return Err(Error::TreeAccountTxInvalidType);
-        }
-
-        // Nonce validation is slightly different for classic and scheduled transactions.
-        //
-        // Classic transactions:
-        // origin's nonce should be equal to txn's nonce because it's validated during
-        // the first iteration and then incremented.
-        //
-        // Scheduled transactions:
-        // payer's nonce (origin) validated only for the first transaction in the tree
-        let origin_nonce = backend.nonce(origin, chain_id).await;
-
-        let validate_nonce = tree.map_or(true, TransactionTree::is_not_started);
-        if validate_nonce && (origin_nonce != self.nonce()) {
-            let error = Error::InvalidTransactionNonce(origin, origin_nonce, self.nonce());
-            return Err(error);
-        }
-
-        Ok(())
-    }
-
     fn gas_limit_in_tokens(&self) -> Result<U256, Error> {
         self.gas_price()
             .checked_mul(self.gas_limit())
@@ -1140,6 +1101,45 @@ impl Transaction {
                 *gas_limit = gas_limit.saturating_mul(gas_multiplier);
             }
         }
+    }
+
+    #[allow(async_fn_in_trait)]
+    #[maybe_async]
+    pub async fn validate(
+        &self,
+        origin: Address,
+        backend: &impl AccountStorage,
+        tree: Option<&TransactionTree<'_>>,
+    ) -> Result<(), crate::error::Error> {
+        let chain_id = self
+            .chain_id()
+            .unwrap_or_else(|| backend.default_chain_id());
+
+        if !backend.is_valid_chain_id(chain_id) {
+            return Err(Error::InvalidChainId(chain_id));
+        }
+
+        if tree.is_some() != self.is_scheduled_tx() {
+            return Err(Error::TreeAccountTxInvalidType);
+        }
+
+        // Nonce validation is slightly different for classic and scheduled transactions.
+        //
+        // Classic transactions:
+        // origin's nonce should be equal to txn's nonce because it's validated during
+        // the first iteration and then incremented.
+        //
+        // Scheduled transactions:
+        // payer's nonce (origin) validated only for the first transaction in the tree
+        let origin_nonce = backend.nonce(origin, chain_id).await;
+
+        let validate_nonce = tree.map_or(true, TransactionTree::is_not_started);
+        if validate_nonce && (origin_nonce != self.nonce()) {
+            let error = Error::InvalidTransactionNonce(origin, origin_nonce, self.nonce());
+            return Err(error);
+        }
+
+        Ok(())
     }
 }
 

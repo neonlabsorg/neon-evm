@@ -16,7 +16,7 @@ use crate::types::{Transaction, TrxView};
 pub fn do_begin<'b, 'a: 'b>(
     tx: Transaction,
     accounts: AccountsDB<'a>,
-    mut storage: StateAccount<'b>,
+    mut storage: StateAccount<'b, 'a>,
     gasometer: Gasometer,
 ) -> Result<()> {
     debug_print!("do_begin");
@@ -50,7 +50,7 @@ pub fn do_begin<'b, 'a: 'b>(
 pub fn do_continue<'b, 'a: 'b>(
     step_count: u64,
     accounts: AccountsDB<'a>,
-    mut storage: StateAccount<'b>,
+    mut storage: StateAccount<'b, 'a>,
     gasometer: Gasometer,
     reset: bool,
 ) -> Result<()> {

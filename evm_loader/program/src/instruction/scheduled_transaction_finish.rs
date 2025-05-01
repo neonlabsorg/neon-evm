@@ -2,8 +2,7 @@ use std::cell::RefMut;
 use std::ops::DerefMut;
 
 use crate::account::{
-    BorrowedAccountInfo, Operator, OperatorBalanceAccount, OperatorBalanceValidator, StateAccount,
-    TransactionTree,
+    Operator, OperatorBalanceAccount, OperatorBalanceValidator, StateAccount, TransactionTree,
 };
 use crate::config::TREE_ACCOUNT_FINISH_TRANSACTION_GAS;
 use crate::debug::log_data;
@@ -22,11 +21,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8
     let mut operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
 
     let storage_key = accounts[0].key;
-    let mut borrowed_data = accounts[0].try_borrow_mut_data()?;
-    let mut state = StateAccount::restore_without_revision_check(
-        program_id,
-        BorrowedAccountInfo::new(&accounts[0], &mut borrowed_data),
-    )?;
+    let mut state = StateAccount::restore_without_revision_check(program_id, &accounts[0])?;
     let trx = state.trx();
 
     operator_balance.validate_owner(&operator)?;

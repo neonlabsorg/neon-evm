@@ -1,6 +1,5 @@
 use crate::account::{
-    BorrowedAccountInfo, Holder, Operator, OperatorBalanceAccount, OperatorBalanceValidator,
-    TransactionTree,
+    Holder, Operator, OperatorBalanceAccount, OperatorBalanceValidator, TransactionTree,
 };
 use crate::debug::log_data;
 use crate::error::{Error, Result};
@@ -34,11 +33,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let tree_index = u16::try_from(u32::from_le_bytes(*array_ref![instruction, 0, 4]))?;
     let message = &instruction[4..];
 
-    let mut borrowed_data = accounts[0].try_borrow_mut_data()?;
-    let mut holder = Holder::from_account(
-        program_id,
-        BorrowedAccountInfo::new(&accounts[0], &mut borrowed_data),
-    )?;
+    let mut holder = Holder::from_account(program_id, &accounts[0])?;
     let mut transaction_tree = TransactionTree::from_account(&program_id, accounts[1].clone())?;
     let operator = Operator::from_account(&accounts[2])?;
     let mut operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;

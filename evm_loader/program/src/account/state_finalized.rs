@@ -1,9 +1,11 @@
-use super::{AccountHeader, BorrowedAccountInfo, Operator, StateAccount, TAG_STATE_FINALIZED};
+use std::cell::{Ref, RefMut};
+
+use super::{AccountHeader, Operator, StateAccount, TAG_STATE_FINALIZED};
 use crate::{
     error::{Error, Result},
     types::{Transaction, TrxView},
 };
-use solana_program::pubkey::Pubkey;
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 /// Storage data account to store execution metainfo between steps for iterative execution
 #[repr(C, packed)]
@@ -16,33 +18,33 @@ impl AccountHeader for Header {
     const VERSION: u8 = 0;
 }
 
-pub struct StateFinalizedAccount<'a> {
-    account: BorrowedAccountInfo<'a>,
+pub struct StateFinalizedAccount<'local, 'sol> {
+    account: &'local AccountInfo<'sol>,
 }
 
-impl<'a> StateFinalizedAccount<'a> {
+impl<'local, 'sol> StateFinalizedAccount<'local, 'sol> {
     #[must_use]
-    pub fn into_account(self) -> BorrowedAccountInfo<'a> {
+    pub fn into_account(self) -> &'local AccountInfo<'sol> {
         self.account
     }
 
-    pub fn convert_from_state<'s>(
+    pub fn convert_from_state(
         program_id: &Pubkey,
-        state: StateAccount<'s>,
-    ) -> Result<BorrowedAccountInfo<'s>> {
+        state: StateAccount<'local, 'sol>,
+    ) -> Result<&'local AccountInfo<'sol>> {
         let owner = state.owner();
         let transaction_hash = state.trx().hash();
 
-        let mut account = state.into_account();
+        let account = state.into_account();
 
-        super::set_tag_borrowed(
+        super::set_tag(
             program_id,
-            &mut account,
+            account,
             TAG_STATE_FINALIZED,
             Header::VERSION,
         )?;
         {
-            let header = super::header_mut_from_borrowed::<Header>(&mut account);
+            let mut header = super::header_mut::<Header>(account);
             header.owner = owner;
             header.transaction_hash = transaction_hash;
         }
@@ -50,26 +52,26 @@ impl<'a> StateFinalizedAccount<'a> {
         Ok(account)
     }
 
-    pub fn from_account(program_id: &Pubkey, account: BorrowedAccountInfo<'a>) -> Result<Self> {
-        super::validate_tag_borrowed(program_id, &account, TAG_STATE_FINALIZED)?;
+    pub fn from_account(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<Self> {
+        super::validate_tag(program_id, account, TAG_STATE_FINALIZED)?;
         Ok(Self { account })
     }
 
     #[inline]
     #[must_use]
-    fn header(&self) -> &Header {
-        super::header_from_borrowed(&self.account)
+    fn header(&self) -> Ref<Header> {
+        super::header(self.account)
     }
 
     #[inline]
     #[must_use]
-    fn header_mut(&mut self) -> &mut Header {
-        super::header_mut_from_borrowed(&mut self.account)
+    fn header_mut(&self) -> RefMut<Header> {
+        super::header_mut(self.account)
     }
 
     pub fn update<F>(&mut self, f: F)
     where
-        F: FnOnce(&mut Header),
+        F: FnOnce(RefMut<Header>),
     {
         f(self.header_mut());
     }

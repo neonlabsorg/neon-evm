@@ -20,10 +20,10 @@ use solana_program::{account_info::AccountInfo, instruction::AccountMeta, pubkey
 use static_assertions::const_assert_eq;
 
 use super::{
-    AccountHeader, AccountsDB, BalanceAccount, BorrowedAccountInfo, ContractAccount, Holder,
-    OperatorBalanceAccount, StateFinalizedAccount, StorageCell, TAG_ACCOUNT_BALANCE,
-    TAG_ACCOUNT_CONTRACT, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED,
-    TAG_STATE, TAG_STATE_FINALIZED, TAG_STORAGE_CELL,
+    AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder, OperatorBalanceAccount,
+    StateFinalizedAccount, StorageCell, TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT, TAG_HOLDER,
+    TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
+    TAG_STORAGE_CELL,
 };
 
 #[derive(PartialEq, Eq)]
@@ -241,9 +241,9 @@ impl AccountHeader for Header {
     const VERSION: u8 = 2;
 }
 
-pub struct StateAccount<'a> {
-    account: BorrowedAccountInfo<'a>,
-    root_ref: &'a mut Root,
+pub struct StateAccount<'local, 'sol> {
+    account: &'local AccountInfo<'sol>,
+    root_ref: RefMut<'local, Root>,
 }
 
 type StateAccountCoreApiView = (
@@ -319,17 +319,14 @@ impl PlainData {
     }
 }
 
-impl<'a> StateAccount<'a> {
+impl<'local, 'sol> StateAccount<'local, 'sol> {
     #[must_use]
-    pub fn into_account(self) -> BorrowedAccountInfo<'a> {
+    pub fn into_account(self) -> &'local AccountInfo<'sol> {
         self.account
     }
 
-    fn validate_tag<'b>(
-        program_id: &'b Pubkey,
-        account: &'b BorrowedAccountInfo<'b>,
-    ) -> Result<()> {
-        let tag = super::tag_borrowed(program_id, account)?;
+    fn validate_tag<'b>(program_id: &'b Pubkey, account: &'b AccountInfo<'sol>) -> Result<()> {
+        let tag = super::tag(program_id, account)?;
 
         if tag == TAG_STATE
             || tag == TAG_SCHEDULED_STATE_FINALIZED
@@ -343,29 +340,35 @@ impl<'a> StateAccount<'a> {
 
     // allocator should have provided a properly aligned pointer
     #[allow(clippy::cast_ptr_alignment)]
-    pub fn from_account(program_id: &Pubkey, account: BorrowedAccountInfo<'a>) -> Result<Self> {
-        Self::validate_tag(program_id, &account)?;
+    pub fn from_account(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<Self> {
+        Self::validate_tag(program_id, account)?;
 
-        let offset = super::header_from_borrowed::<Header>(&account).root_offset;
-        let ptr = account.data.as_mut_ptr();
+        let offset = super::header::<Header>(&account).root_offset;
+        let mem: RefMut<&mut [u8]> = account.try_borrow_mut_data()?;
+        //let ptr = account.data.as_mut_ptr();
 
         Ok(Self {
             account,
-            root_ref: unsafe { &mut *ptr.offset(offset.try_into().unwrap()).cast::<Root>() },
+            root_ref: RefMut::map(mem, |data| unsafe {
+                &mut *(data
+                    .as_mut_ptr()
+                    .offset(offset.try_into().unwrap())
+                    .cast::<Root>())
+            }),
         })
     }
 
     #[allow(clippy::cast_sign_loss)]
-    pub fn new<'b>(
+    pub fn new(
         program_id: &Pubkey,
-        info: BorrowedAccountInfo<'a>,
-        accounts: &AccountsDB<'b>,
+        info: &'local AccountInfo<'sol>,
+        accounts: &AccountsDB<'sol>,
         origin: Address,
         transaction: &Transaction,
         transaction_rlp: &[u8],
         tree_account: Option<Pubkey>,
     ) -> Result<Self> {
-        let (mut info, owner) = match super::tag_borrowed(program_id, &info)? {
+        let (mut info, owner) = match super::tag(program_id, info)? {
             TAG_HOLDER => {
                 let holder = Holder::from_account(program_id, info)?;
                 holder.validate_owner(accounts.operator())?;
@@ -387,7 +390,7 @@ impl<'a> StateAccount<'a> {
             "Tree account should be present iff it's a scheduled transaction."
         );
 
-        super::set_tag_borrowed(program_id, &mut info, TAG_STATE, Header::VERSION)?;
+        super::set_tag(program_id, info, TAG_STATE, Header::VERSION)?;
 
         let root = boxx(Root {
             plain_data: PlainData {
@@ -422,10 +425,10 @@ impl<'a> StateAccount<'a> {
 
         let tx_rlp = transaction_rlp.to_vector();
 
-        let account_data_ptr = info.data.as_ptr();
+        let account_data_ptr = info.try_borrow_data()?.as_ptr();
         {
             // Set header
-            let header = super::header_mut_from_borrowed::<Header>(&mut info);
+            let mut header = super::header_mut::<Header>(&mut info);
             header.version_signature = Header::valid_version_signature();
             header.root_offset =
                 unsafe { addr_of!(*root).cast::<u8>().offset_from(account_data_ptr) } as usize;
@@ -439,20 +442,22 @@ impl<'a> StateAccount<'a> {
 
         Ok(Self {
             account: info,
-            root_ref: unsafe { &mut *Boxx::into_raw(root) },
+            root_ref: RefMut::map(info.try_borrow_mut_data()?, |_| unsafe {
+                &mut *Boxx::into_raw(root)
+            }),
         })
     }
 
     pub fn restore_without_revision_check(
         program_id: &Pubkey,
-        info: BorrowedAccountInfo<'a>,
+        info: &'local AccountInfo<'sol>,
     ) -> Result<Self> {
         Self::from_account(program_id, info)
     }
 
     pub fn restore(
         program_id: &Pubkey,
-        info: BorrowedAccountInfo<'a>,
+        info: &'local AccountInfo<'sol>,
         accounts: &AccountsDB,
     ) -> Result<(Self, AccountsStatus)> {
         let mut state = Self::from_account(program_id, info)?;
@@ -537,8 +542,8 @@ impl<'a> StateAccount<'a> {
         self.finalize_impl(program_id, TAG_SCHEDULED_STATE_CANCELLED)
     }
 
-    fn finalize_impl(mut self, program_id: &Pubkey, scheduled_transition_tag: u8) -> Result<()> {
-        super::validate_tag_borrowed(program_id, &self.account, TAG_STATE)?;
+    fn finalize_impl(self, program_id: &Pubkey, scheduled_transition_tag: u8) -> Result<()> {
+        super::validate_tag(program_id, &self.account, TAG_STATE)?;
 
         if self.has_tree_account() {
             debug_print!(
@@ -547,9 +552,9 @@ impl<'a> StateAccount<'a> {
                 scheduled_transition_tag
             );
             // Change the tag, leave all the data unchanged.
-            super::set_tag_borrowed(
+            super::set_tag(
                 program_id,
-                &mut self.account,
+                self.account,
                 scheduled_transition_tag,
                 Header::VERSION,
             )?;
@@ -562,7 +567,7 @@ impl<'a> StateAccount<'a> {
     }
 
     pub fn finish_scheduled_tx(self, program_id: &Pubkey) -> Result<()> {
-        let tag = super::tag_borrowed(program_id, &self.account)?;
+        let tag = super::tag(program_id, &self.account)?;
         let is_finalized = tag == TAG_SCHEDULED_STATE_FINALIZED;
         let is_canceled = tag == TAG_SCHEDULED_STATE_CANCELLED;
         if !(is_finalized || is_canceled) {
@@ -583,8 +588,8 @@ impl<'a> StateAccount<'a> {
         program_id: &Pubkey,
         accounts: &AccountsDB,
     ) -> Result<()> {
-        for (key, counter) in &*self
-            .root_ref
+        let root = self.root_ref_mut();
+        for (key, counter) in &*root
             .executor_state
             .borrow()
             .as_ref()
@@ -592,15 +597,13 @@ impl<'a> StateAccount<'a> {
             .touched_accounts
             .borrow()
         {
-            self.root_ref
-                .touched_accounts
-                .update_or_insert(*key, counter, |v| {
-                    v.checked_add(*counter).ok_or(Error::IntegerOverflow)
-                })?;
+            root.touched_accounts.update_or_insert(*key, counter, |v| {
+                v.checked_add(*counter).ok_or(Error::IntegerOverflow)
+            })?;
         }
 
-        let touched_accounts = &self.root_ref.touched_accounts;
-        let revisions = &mut self.root_ref.revisions;
+        let touched_accounts = &root.touched_accounts;
+        let revisions = &mut root.revisions;
 
         for (key, _) in touched_accounts {
             let account = accounts.get(key);
@@ -708,7 +711,7 @@ impl<'a> StateAccount<'a> {
 }
 
 // Implementation of functional to save/restore persistent state of iterative transactions.
-impl StateAccount<'_> {
+impl<'local, 'sol> StateAccount<'local, 'sol> {
     #[must_use]
     pub fn executor_state(&self) -> Ref<Option<ExecutorStateData>> {
         self.root_ref.executor_state.borrow()
@@ -731,16 +734,16 @@ impl StateAccount<'_> {
 
     #[must_use]
     pub fn root_ref(&self) -> &Root {
-        self.root_ref
+        &*self.root_ref
     }
 
     #[must_use]
     pub fn root_ref_mut(&mut self) -> &mut Root {
-        self.root_ref
+        &mut *self.root_ref
     }
 }
 
-impl<'a> StateAccount<'a> {
+impl<'local, 'sol> StateAccount<'local, 'sol> {
     /// Implementation to squeeze bits of information from the state account.
     /// N.B.
     /// 1. `StateAccount` contains objects and pointers allocated by the state account allocator, so reading
@@ -752,12 +755,9 @@ impl<'a> StateAccount<'a> {
     #[allow(clippy::cast_ptr_alignment)]
     pub fn get_state_account_view(
         program_id: &Pubkey,
-        account: &AccountInfo<'a>,
+        account: &'local AccountInfo<'sol>,
     ) -> Result<StateAccountCoreApiView> {
-        {
-            let mut data = account.try_borrow_mut_data()?;
-            Self::validate_tag(program_id, &BorrowedAccountInfo::new(account, &mut data))?;
-        }
+        Self::validate_tag(program_id, account)?;
 
         let account_data_ptr = account.try_borrow_data()?.as_ptr();
 

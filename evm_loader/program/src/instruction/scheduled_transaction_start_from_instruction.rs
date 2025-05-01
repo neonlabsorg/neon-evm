@@ -1,7 +1,7 @@
 use crate::account::{
-    program, AccountsDB, BorrowedAccountInfo, Holder, Operator, OperatorBalanceAccount,
-    OperatorBalanceValidator, StateAccount, TransactionTree, TAG_HOLDER,
-    TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
+    program, AccountsDB, Holder, Operator, OperatorBalanceAccount, OperatorBalanceValidator,
+    StateAccount, TransactionTree, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
+    TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::debug::log_data;
 use crate::error::{Error, Result};
@@ -39,9 +39,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     match tag {
         TAG_HOLDER | TAG_STATE_FINALIZED => {
             // TODO clarify how it works with STATE_FINALIZED.
-            let mut data = holder.try_borrow_mut_data()?;
-            let mut borrowed_holder = BorrowedAccountInfo::new(&holder, &mut data);
-            Holder::init_holder_heap(program_id, &mut borrowed_holder, 0)?;
+            Holder::init_holder_heap(program_id, &holder, 0)?;
             let trx = Transaction::scheduled_from_rlp(message)?;
 
             let scheduled_trx = validate_scheduled_tx(&trx, tree_index)?;
@@ -59,7 +57,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
 
             let storage = StateAccount::new(
                 program_id,
-                borrowed_holder,
+                &holder,
                 &accounts_db,
                 origin,
                 &trx,

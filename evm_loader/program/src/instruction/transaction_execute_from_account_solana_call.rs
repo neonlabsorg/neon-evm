@@ -1,8 +1,8 @@
 use std::ops::Deref;
 
 use crate::account::{
-    program, AccountsDB, BorrowedAccountInfo, Holder, Operator, OperatorBalanceAccount,
-    OperatorBalanceValidator, Treasury,
+    program, AccountsDB, Holder, Operator, OperatorBalanceAccount, OperatorBalanceValidator,
+    Treasury,
 };
 use crate::debug::log_data;
 use crate::error::Result;
@@ -18,11 +18,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
 
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
 
-    let mut borrowed_data = accounts[0].try_borrow_mut_data()?;
-    let mut holder = Holder::from_account(
-        program_id,
-        BorrowedAccountInfo::new(&accounts[0], &mut borrowed_data),
-    )?;
+    let mut holder = Holder::from_account(program_id, &accounts[0])?;
 
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1])? };
     let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;

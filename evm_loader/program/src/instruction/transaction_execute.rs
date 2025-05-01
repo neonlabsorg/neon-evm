@@ -22,15 +22,12 @@ pub fn execute(
 
     trx.validate(origin, &account_storage, None)?;
 
-    account_storage
-        .origin(origin, &trx)?
-        .increment_nonce()?;
+    account_storage.origin(origin, &trx)?.increment_nonce()?;
 
     let (exit_reason, steps_executed) = {
         let mut backend = ExecutorState::new(&mut account_storage, &mut backend_data);
 
-        let mut evm =
-            Machine::new_from_tx(&trx, origin, &mut backend, None::<NoopEventListener>)?;
+        let mut evm = Machine::new_from_tx(&trx, origin, &mut backend, None::<NoopEventListener>)?;
         let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
 
         (result, steps_executed)

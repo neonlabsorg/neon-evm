@@ -1,7 +1,7 @@
 use crate::account::{
-    program, AccountsDB, AccountsStatus, BorrowedAccountInfo, Holder, Operator,
-    OperatorBalanceAccount, OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER,
-    TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
+    program, AccountsDB, AccountsStatus, Holder, Operator, OperatorBalanceAccount,
+    OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
+    TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::debug::log_data;
 use crate::error::{Error, Result};
@@ -40,13 +40,10 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let tag = crate::account::tag(program_id, &storage_info)?;
     match tag {
         TAG_HOLDER | TAG_STATE_FINALIZED => {
-            let mut data = storage_info.try_borrow_mut_data()?;
-            let mut borrowed_storage = BorrowedAccountInfo::new(&storage_info, &mut data);
-
             // Holder's method (fn init_heap) transforms TAG_STATE_FINALIZED into HOLDER
             // and it breaks the logic (of throwing StorageAccountFinalized error).
             // In this case, an associated function is used instead.
-            Holder::init_holder_heap(program_id, &mut borrowed_storage, 0)?;
+            Holder::init_holder_heap(program_id, &storage_info, 0)?;
 
             let trx = Transaction::from_rlp(message)?;
             let origin = trx.recover_caller_address()?;
@@ -62,7 +59,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
 
             let storage = StateAccount::new(
                 program_id,
-                borrowed_storage,
+                &storage_info,
                 &accounts_db,
                 origin,
                 &trx,
@@ -73,12 +70,8 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
             do_begin(trx, accounts_db, storage, gasometer)
         }
         TAG_STATE => {
-            let mut data = storage_info.try_borrow_mut_data()?;
-            let (storage, accounts_status) = StateAccount::restore(
-                program_id,
-                BorrowedAccountInfo::new(&storage_info, &mut data),
-                &accounts_db,
-            )?;
+            let (storage, accounts_status) =
+                StateAccount::restore(program_id, &storage_info, &accounts_db)?;
 
             operator_balance.validate_transaction(storage.trx())?;
             let miner_address = operator_balance.miner(storage.trx_origin());

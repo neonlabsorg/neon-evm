@@ -8,7 +8,7 @@ use crate::types::{ScheduledTx, Transaction, TrxView};
 pub fn do_scheduled_start<'a, 'b>(
     trx: &Transaction,
     accounts: AccountsDB<'a>,
-    mut storage: StateAccount<'b>,
+    mut storage: StateAccount<'b, 'a>,
     mut transaction_tree: TransactionTree<'a>,
     mut gasometer: Gasometer,
 ) -> Result<()>

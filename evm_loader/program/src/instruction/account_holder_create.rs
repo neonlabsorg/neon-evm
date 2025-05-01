@@ -1,4 +1,4 @@
-use crate::account::{BorrowedAccountInfo, Holder, Operator};
+use crate::account::{Holder, Operator};
 use crate::error::Result;
 use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
@@ -13,9 +13,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let seed_bytes = instruction[8..8 + seed_len].to_vec();
     let seed = std::str::from_utf8(&seed_bytes)?;
 
-    let mut data = holder.try_borrow_mut_data()?;
-    let borrowed_info = BorrowedAccountInfo::new(&holder, &mut data);
-    Holder::create(program_id, borrowed_info, seed, &operator)?;
+    Holder::create(program_id, &holder, seed, &operator)?;
 
     Ok(())
 }

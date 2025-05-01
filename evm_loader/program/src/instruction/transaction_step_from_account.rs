@@ -1,5 +1,5 @@
 use crate::account::{
-    program, AccountsDB, AccountsStatus, BorrowedAccountInfo, Operator, OperatorBalanceAccount,
+    program, AccountsDB, AccountsStatus, Operator, OperatorBalanceAccount,
     OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
     TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
 };
@@ -48,13 +48,8 @@ pub fn process_inner(
     let tag = crate::account::tag(program_id, &holder_or_storage)?;
     match tag {
         TAG_HOLDER => {
-            let mut borrowed_data = holder_or_storage.try_borrow_mut_data()?;
-            let (mut trx, tx_rlp) = holder_parse_trx(
-                BorrowedAccountInfo::new(&holder_or_storage, &mut borrowed_data),
-                &operator,
-                program_id,
-                false,
-            )?;
+            let (mut trx, tx_rlp) =
+                holder_parse_trx(&holder_or_storage, &operator, program_id, false)?;
             let origin = trx.recover_caller_address()?;
 
             operator_balance.validate_transaction(&trx)?;
@@ -74,7 +69,7 @@ pub fn process_inner(
 
             let storage = StateAccount::new(
                 program_id,
-                BorrowedAccountInfo::new(&holder_or_storage, &mut borrowed_data),
+                &holder_or_storage,
                 &accounts_db,
                 origin,
                 &trx,
@@ -85,12 +80,8 @@ pub fn process_inner(
             do_begin(trx, accounts_db, storage, gasometer)
         }
         TAG_STATE => {
-            let mut borrowed_data = holder_or_storage.try_borrow_mut_data()?;
-            let (storage, accounts_status) = StateAccount::restore(
-                program_id,
-                BorrowedAccountInfo::new(&holder_or_storage, &mut borrowed_data),
-                &accounts_db,
-            )?;
+            let (storage, accounts_status) =
+                StateAccount::restore(program_id, &holder_or_storage, &accounts_db)?;
 
             operator_balance.validate_transaction(storage.trx())?;
             let miner_address = operator_balance.miner(storage.trx_origin());

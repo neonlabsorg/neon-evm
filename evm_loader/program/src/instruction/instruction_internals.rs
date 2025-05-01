@@ -1,8 +1,9 @@
 use std::ops::DerefMut;
 
+use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 
-use crate::account::{AllocateResult, BorrowedAccountInfo, Holder, Operator, StateAccount};
+use crate::account::{AllocateResult, Holder, Operator, StateAccount};
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::allocator::acc_allocator;
 use crate::debug::log_data;
@@ -23,8 +24,8 @@ pub type Evm = Machine<NoopEventListener>;
 
 pub fn allocate_evm(
     trx: &Transaction,
-    account_storage: &mut ProgramAccountStorage<'_>,
-    storage: &mut StateAccount<'_>,
+    account_storage: &mut ProgramAccountStorage,
+    storage: &mut StateAccount,
 ) -> Result<()> {
     storage.reset_steps_executed();
 
@@ -46,8 +47,8 @@ pub fn allocate_evm(
 }
 
 pub fn reinit_evm(
-    account_storage: &mut ProgramAccountStorage<'_>,
-    storage: &mut StateAccount<'_>,
+    account_storage: &mut ProgramAccountStorage,
+    storage: &mut StateAccount,
     reallocate: bool,
 ) -> Result<()> {
     if reallocate {
@@ -77,7 +78,7 @@ pub fn reinit_evm(
 }
 
 pub fn holder_parse_trx(
-    info: BorrowedAccountInfo<'_>,
+    info: &AccountInfo<'_>,
     operator: &Operator,
     program_id: &Pubkey,
     is_scheduled: bool,
@@ -111,7 +112,7 @@ pub fn holder_parse_trx(
 
 pub fn finalize<'a, 'b: 'a, 'c>(
     steps_executed: u64,
-    mut storage: StateAccount<'a>,
+    mut storage: StateAccount,
     mut accounts: ProgramAccountStorage<'b>,
     mut gasometer: Gasometer,
     apply_state: bool,
@@ -190,7 +191,7 @@ pub fn finalize<'a, 'b: 'a, 'c>(
 }
 
 pub fn finalize_interrupted<'a, 'b: 'a>(
-    storage: StateAccount<'a>,
+    storage: StateAccount<'a, 'b>,
     mut accounts: ProgramAccountStorage<'b>,
     gasometer: Gasometer,
 ) -> Result<()> {

@@ -1,8 +1,6 @@
 use std::cmp::min;
 
-use crate::account::{
-    AccountsDB, BalanceAccount, BorrowedAccountInfo, Operator, OperatorBalanceAccount, StateAccount,
-};
+use crate::account::{AccountsDB, BalanceAccount, Operator, OperatorBalanceAccount, StateAccount};
 use crate::config::{DEFAULT_CHAIN_ID, LAST_ITERATION_COST};
 use crate::debug::log_data;
 use crate::error::{Error, Result};
@@ -31,11 +29,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
 
     let accounts_db = AccountsDB::new(&accounts[3..], operator, Some(operator_balance), None, None);
 
-    let mut borrowed_data = storage_info.try_borrow_mut_data()?;
-    let storage = StateAccount::restore_without_revision_check(
-        program_id,
-        BorrowedAccountInfo::new(&storage_info, &mut borrowed_data),
-    )?;
+    let storage = StateAccount::restore_without_revision_check(program_id, &storage_info)?;
 
     validate(&storage, transaction_hash)?;
     execute(program_id, accounts_db, storage)
@@ -52,11 +46,7 @@ fn validate(storage: &StateAccount, transaction_hash: &[u8; 32]) -> Result<()> {
     Ok(())
 }
 
-fn execute<'a, 'b>(
-    program_id: &Pubkey,
-    accounts: AccountsDB<'a>,
-    mut storage: StateAccount<'b>,
-) -> Result<()> {
+fn execute(program_id: &Pubkey, accounts: AccountsDB, mut storage: StateAccount) -> Result<()> {
     let trx = storage.trx();
     let trx_chain_id = trx.chain_id().unwrap_or(DEFAULT_CHAIN_ID);
     let priority_gas = calc_priority_gas(trx)?;

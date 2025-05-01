@@ -2001,6 +2001,8 @@ dependencies = [
  "log",
  "maybe-async",
  "mpl-token-metadata",
+ "num-bigint 0.4.6",
+ "num-traits",
  "ripemd",
  "rlp",
  "serde",

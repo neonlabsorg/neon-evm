@@ -570,13 +570,6 @@ pub trait TrxView {
 
     fn gas_limit(&self) -> U256;
 
-    fn get_payer(&self) -> Option<Address>;
-
-    #[must_use]
-    fn payer(&self, origin: Address) -> Address {
-        self.get_payer().map_or(origin, |payer| payer)
-    }
-
     fn max_priority_fee_per_gas(&self) -> Option<U256>;
 
     fn tree_account_index(&self) -> Option<u16>;
@@ -653,15 +646,6 @@ impl TrxView for Transaction {
             | TransactionPayload::AccessList(AccessListTx { gas_limit, .. })
             | TransactionPayload::DynamicFee(DynamicFeeTx { gas_limit, .. })
             | TransactionPayload::Scheduled(ScheduledTx { gas_limit, .. }) => gas_limit,
-        }
-    }
-
-    fn get_payer(&self) -> Option<Address> {
-        match self.transaction {
-            TransactionPayload::Legacy(_)
-            | TransactionPayload::AccessList(_)
-            | TransactionPayload::DynamicFee(_) => None,
-            TransactionPayload::Scheduled(ScheduledTx { payer, .. }) => Some(payer),
         }
     }
 
@@ -900,6 +884,16 @@ impl Transaction {
         let hash = solana_program::keccak::hashv(&[&header, middle, &trailer]).to_bytes();
 
         Ok(hash)
+    }
+
+    #[must_use]
+    pub fn payer(&self, origin: Address) -> Address {
+        match self.transaction {
+            TransactionPayload::Legacy(_)
+            | TransactionPayload::AccessList(_)
+            | TransactionPayload::DynamicFee(_) => origin,
+            TransactionPayload::Scheduled(ScheduledTx { payer, .. }) => payer,
+        }
     }
 }
 

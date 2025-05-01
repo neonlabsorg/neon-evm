@@ -139,7 +139,6 @@ pub struct PlainData {
     pub max_priority_fee_per_gas: Option<U256>, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L1027
 
     pub tx_target: Option<Address>,
-    pub payer: Address,
     pub tx_nonce: u64,
 
     pub value: U256,
@@ -179,10 +178,6 @@ impl TrxView for PlainData {
 
     fn gas_limit(&self) -> U256 {
         self.gas_limit
-    }
-
-    fn get_payer(&self) -> Option<Address> {
-        Some(self.payer)
     }
 
     fn max_priority_fee_per_gas(&self) -> Option<U256> {
@@ -234,8 +229,8 @@ pub struct Root {
 
 // to be sure that solana and x86 size/alignment match
 const_assert_eq!(std::mem::align_of::<PlainData>(), 0x8);
-const_assert_eq!(std::mem::size_of::<PlainData>(), 0x228);
-const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x228);
+const_assert_eq!(std::mem::size_of::<PlainData>(), 0x210);
+const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x210);
 
 impl AccountHeader for Header {
     const VERSION: u8 = 2;
@@ -404,7 +399,6 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                 tx_type: transaction.tx_type(),
                 max_fee_per_gas: transaction.max_fee_per_gas(),
                 tx_target: transaction.target(),
-                payer: transaction.payer(origin),
                 tx_nonce: transaction.nonce(),
                 value: transaction.value(),
                 gas_limit: transaction.gas_limit(),

@@ -12,7 +12,7 @@ use crate::config::{
 };
 use crate::error::{Error, Result};
 use crate::evm::ExitStatus;
-use crate::types::{Address, Transaction, TrxView};
+use crate::types::{Address, Transaction, TransactionPayload};
 use ethnum::U256;
 use solana_program::{
     account_info::AccountInfo, clock::Clock, pubkey::Pubkey, rent::Rent, system_program,
@@ -299,16 +299,15 @@ impl<'a> TransactionTree<'a> {
         unsafe { super::delete_with_treasury(&self.account, treasury) }
     }
 
-    fn validate_transaction(&self, tx: &impl TrxView) -> Result<u16> {
-        let hash = tx.hash();
+    fn validate_transaction(&self, tx: &Transaction) -> Result<u16> {
+        let hash = tx.hash;
 
-        if !tx.is_scheduled_tx() {
+        let TransactionPayload::Scheduled(tx) = &tx.transaction else {
             return Err(Error::TreeAccountTxInvalidType);
-        }
+        };
 
-        let tx_chain_id: u64 = tx.chain_id().ok_or(Error::TreeAccountTxInvalidData)?;
-        let (pubkey, _) =
-            Self::find_address(&crate::ID, tx.get_payer().unwrap(), tx_chain_id, tx.nonce());
+        let tx_chain_id: u64 = tx.chain_id.try_into()?;
+        let (pubkey, _) = Self::find_address(&crate::ID, tx.payer, tx_chain_id, tx.nonce);
         if &pubkey != self.account.key {
             return Err(Error::TreeAccountTxInvalidData);
         }
@@ -317,54 +316,53 @@ impl<'a> TransactionTree<'a> {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        let tree_account_index = tx.tree_account_index().unwrap();
-        if tree_account_index as usize >= self.nodes().len() {
+        if tx.index as usize >= self.nodes().len() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        let node = self.node(tree_account_index);
+        let node = self.node(tx.index);
         if node.transaction_hash != hash {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        if Some(node.sender) != tx.sender().or_else(|| tx.get_payer()) {
+        if node.sender != tx.sender.unwrap_or(tx.payer) {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
         let gas_limit = node.gas_limit; // Copy from unaligned
-        if gas_limit != tx.gas_limit() {
+        if gas_limit != tx.gas_limit {
             return Err(Error::TreeAccountTxInvalidData);
         }
         let value = node.value;
-        if value != tx.value() {
+        if value != tx.value {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        if tx.get_payer() != Some(self.payer()) {
+        if tx.payer != self.payer() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        if tx.max_fee_per_gas() != Some(self.max_fee_per_gas()) {
+        if tx.max_fee_per_gas != self.max_fee_per_gas() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        if tx.max_priority_fee_per_gas() != Some(self.max_priority_fee_per_gas()) {
+        if tx.max_priority_fee_per_gas != self.max_priority_fee_per_gas() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
         // We don't support intents at the moment
-        //if tx.intent.is_some() {
-        //    return Err(Error::TreeAccountTxInvalidData);
-        //}
+        if tx.intent.is_some() {
+            return Err(Error::TreeAccountTxInvalidData);
+        }
 
-        //if !tx.intent_call_data.is_empty() {
-        //    return Err(Error::TreeAccountTxInvalidData);
-        //}
+        if !tx.intent_call_data.is_empty() {
+            return Err(Error::TreeAccountTxInvalidData);
+        }
 
-        Ok(tree_account_index)
+        Ok(tx.index)
     }
 
-    pub fn start_transaction(&mut self, tx: &impl TrxView) -> Result<()> {
+    pub fn start_transaction(&mut self, tx: &Transaction) -> Result<()> {
         let index = self.validate_transaction(tx)?;
         let mut node = self.node_mut(index);
 

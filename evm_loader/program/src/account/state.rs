@@ -127,7 +127,6 @@ pub struct PlainData {
     /// Address of the tree account (present for scheduled transactions).
     pub tree_account: Option<Pubkey>,
     pub tree_account_index: Option<u16>,
-    //pub tree_account_index: Option<u16>,
     /// Ethereum transaction gas used and paid
     pub gas_used: U256,
 
@@ -146,8 +145,6 @@ pub struct PlainData {
     pub block_params: (U256, U256),
     /// Steps executed in the transaction
     pub steps_executed: u64,
-    /// Ethereum transaction priority fee used and paid in tokens
-    pub priority_fee_used: U256,
     pub sender: Option<Address>,
     // fields for layout_version >= 1
 }
@@ -218,8 +215,8 @@ pub struct Root {
 
 // to be sure that solana and x86 size/alignment match
 const_assert_eq!(std::mem::align_of::<PlainData>(), 0x8);
-const_assert_eq!(std::mem::size_of::<PlainData>(), 0x1B8);
-const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x1B8);
+const_assert_eq!(std::mem::size_of::<PlainData>(), 0x198);
+const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x198);
 
 impl AccountHeader for Header {
     const VERSION: u8 = 2;
@@ -393,7 +390,6 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                 gas_price: transaction.gas_price(),
                 block_params: (U256::ZERO, U256::ZERO),
                 steps_executed: 0_u64,
-                priority_fee_used: U256::ZERO,
                 tree_account_index: transaction.tree_account_index(),
                 sender: transaction.sender(),
             },

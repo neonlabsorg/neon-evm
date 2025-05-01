@@ -135,9 +135,6 @@ pub struct PlainData {
     pub chain_id: Option<u64>, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L958
     pub tx_type: u8, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L996
 
-    pub max_fee_per_gas: Option<U256>, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L1014,
-    pub max_priority_fee_per_gas: Option<U256>, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L1027
-
     pub tx_target: Option<Address>,
     pub tx_nonce: u64,
 
@@ -180,10 +177,6 @@ impl TrxView for PlainData {
         self.gas_limit
     }
 
-    fn max_priority_fee_per_gas(&self) -> Option<U256> {
-        self.max_priority_fee_per_gas
-    }
-
     fn tree_account_index(&self) -> Option<u16> {
         self.tree_account_index
     }
@@ -194,10 +187,6 @@ impl TrxView for PlainData {
 
     fn value(&self) -> U256 {
         self.value
-    }
-
-    fn max_fee_per_gas(&self) -> Option<U256> {
-        self.max_fee_per_gas
     }
 
     fn sender(&self) -> Option<Address> {
@@ -229,8 +218,8 @@ pub struct Root {
 
 // to be sure that solana and x86 size/alignment match
 const_assert_eq!(std::mem::align_of::<PlainData>(), 0x8);
-const_assert_eq!(std::mem::size_of::<PlainData>(), 0x210);
-const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x210);
+const_assert_eq!(std::mem::size_of::<PlainData>(), 0x1B8);
+const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x1B8);
 
 impl AccountHeader for Header {
     const VERSION: u8 = 2;
@@ -397,7 +386,6 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                 tx_hash: transaction.hash(),
                 chain_id: transaction.chain_id(),
                 tx_type: transaction.tx_type(),
-                max_fee_per_gas: transaction.max_fee_per_gas(),
                 tx_target: transaction.target(),
                 tx_nonce: transaction.nonce(),
                 value: transaction.value(),
@@ -406,7 +394,6 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                 block_params: (U256::ZERO, U256::ZERO),
                 steps_executed: 0_u64,
                 priority_fee_used: U256::ZERO,
-                max_priority_fee_per_gas: transaction.max_priority_fee_per_gas(),
                 tree_account_index: transaction.tree_account_index(),
                 sender: transaction.sender(),
             },

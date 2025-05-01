@@ -570,15 +570,11 @@ pub trait TrxView {
 
     fn gas_limit(&self) -> U256;
 
-    fn max_priority_fee_per_gas(&self) -> Option<U256>;
-
     fn tree_account_index(&self) -> Option<u16>;
 
     fn target(&self) -> Option<Address>;
 
     fn value(&self) -> U256;
-
-    fn max_fee_per_gas(&self) -> Option<U256>;
 }
 
 #[derive(Debug)]
@@ -650,21 +646,6 @@ impl TrxView for Transaction {
     }
 
     #[must_use]
-    fn max_priority_fee_per_gas(&self) -> Option<U256> {
-        match self.transaction {
-            TransactionPayload::Legacy(_) | TransactionPayload::AccessList(_) => None,
-            TransactionPayload::DynamicFee(DynamicFeeTx {
-                max_priority_fee_per_gas,
-                ..
-            })
-            | TransactionPayload::Scheduled(ScheduledTx {
-                max_priority_fee_per_gas,
-                ..
-            }) => Some(max_priority_fee_per_gas),
-        }
-    }
-
-    #[must_use]
     fn tree_account_index(&self) -> Option<u16> {
         match &self.transaction {
             TransactionPayload::AccessList(_)
@@ -690,19 +671,6 @@ impl TrxView for Transaction {
             | TransactionPayload::AccessList(AccessListTx { value, .. })
             | TransactionPayload::DynamicFee(DynamicFeeTx { value, .. })
             | TransactionPayload::Scheduled(ScheduledTx { value, .. }) => value,
-        }
-    }
-
-    #[must_use]
-    fn max_fee_per_gas(&self) -> Option<U256> {
-        match self.transaction {
-            TransactionPayload::Legacy(_) | TransactionPayload::AccessList(_) => None,
-            TransactionPayload::DynamicFee(DynamicFeeTx {
-                max_fee_per_gas, ..
-            })
-            | TransactionPayload::Scheduled(ScheduledTx {
-                max_fee_per_gas, ..
-            }) => Some(max_fee_per_gas),
         }
     }
 
@@ -893,6 +861,34 @@ impl Transaction {
             | TransactionPayload::AccessList(_)
             | TransactionPayload::DynamicFee(_) => origin,
             TransactionPayload::Scheduled(ScheduledTx { payer, .. }) => payer,
+        }
+    }
+
+    #[must_use]
+    pub fn max_fee_per_gas(&self) -> Option<U256> {
+        match self.transaction {
+            TransactionPayload::Legacy(_) | TransactionPayload::AccessList(_) => None,
+            TransactionPayload::DynamicFee(DynamicFeeTx {
+                max_fee_per_gas, ..
+            })
+            | TransactionPayload::Scheduled(ScheduledTx {
+                max_fee_per_gas, ..
+            }) => Some(max_fee_per_gas),
+        }
+    }
+
+    #[must_use]
+    pub fn max_priority_fee_per_gas(&self) -> Option<U256> {
+        match self.transaction {
+            TransactionPayload::Legacy(_) | TransactionPayload::AccessList(_) => None,
+            TransactionPayload::DynamicFee(DynamicFeeTx {
+                max_priority_fee_per_gas,
+                ..
+            })
+            | TransactionPayload::Scheduled(ScheduledTx {
+                max_priority_fee_per_gas,
+                ..
+            }) => Some(max_priority_fee_per_gas),
         }
     }
 }

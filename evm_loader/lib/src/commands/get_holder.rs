@@ -4,7 +4,7 @@ use evm_loader::{
         Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
         TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
     },
-    types::{Address, Transaction},
+    types::{Address, Transaction, TrxView},
 };
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
@@ -135,9 +135,9 @@ pub fn read_holder(program_id: &Pubkey, info: &AccountInfo) -> NeonResult<GetHol
                 tx: Some(plain.tx_hash),
                 tx_data: Some(tx_params),
                 tx_type: Some(plain.tx_type),
-                max_fee_per_gas: plain.max_fee_per_gas,
-                max_priority_fee_per_gas: plain.max_priority_fee_per_gas,
-                chain_id: plain.chain_id,
+                max_fee_per_gas: tx.max_fee_per_gas(),
+                max_priority_fee_per_gas: tx.max_priority_fee_per_gas(),
+                chain_id: tx.chain_id(),
                 origin: Some(plain.origin),
                 tree_account: plain.tree_account,
                 block_params: Some(plain.block_params),

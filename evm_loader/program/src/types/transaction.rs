@@ -568,8 +568,6 @@ pub trait TrxView {
 
     fn gas_limit(&self) -> U256;
 
-    fn tree_account_index(&self) -> Option<u16>;
-
     fn target(&self) -> Option<Address>;
 
     fn value(&self) -> U256;
@@ -640,16 +638,6 @@ impl TrxView for Transaction {
             | TransactionPayload::AccessList(AccessListTx { gas_limit, .. })
             | TransactionPayload::DynamicFee(DynamicFeeTx { gas_limit, .. })
             | TransactionPayload::Scheduled(ScheduledTx { gas_limit, .. }) => gas_limit,
-        }
-    }
-
-    #[must_use]
-    fn tree_account_index(&self) -> Option<u16> {
-        match &self.transaction {
-            TransactionPayload::AccessList(_)
-            | TransactionPayload::DynamicFee(_)
-            | TransactionPayload::Legacy(_) => None,
-            TransactionPayload::Scheduled(ScheduledTx { index, .. }) => Some(*index),
         }
     }
 
@@ -888,6 +876,16 @@ impl Transaction {
         match self.transaction {
             TransactionPayload::Scheduled(ScheduledTx { sender, .. }) => sender,
             _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn tree_account_index(&self) -> Option<u16> {
+        match &self.transaction {
+            TransactionPayload::AccessList(_)
+            | TransactionPayload::DynamicFee(_)
+            | TransactionPayload::Legacy(_) => None,
+            TransactionPayload::Scheduled(ScheduledTx { index, .. }) => Some(*index),
         }
     }
 }

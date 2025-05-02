@@ -413,9 +413,10 @@ impl<'a> TransactionTree<'a> {
         Ok(())
     }
 
-    pub fn end_transaction(&mut self, index: u16, result: &ExitStatus) -> Result<()> {
+    pub fn end_transaction(&mut self, hash: [u8; 32], result: &ExitStatus) -> Result<()> {
         use solana_program::keccak::{hash as keccak256, Hash};
 
+        let index = self.find_node(hash)?;
         let mut node = self.node_mut(index);
 
         if node.status != Status::InProgress {

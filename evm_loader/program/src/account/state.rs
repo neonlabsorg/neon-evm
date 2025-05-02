@@ -126,7 +126,6 @@ pub struct PlainData {
     pub origin: Address,
     /// Address of the tree account (present for scheduled transactions).
     pub tree_account: Option<Pubkey>,
-    pub tree_account_index: Option<u16>,
     /// Ethereum transaction gas used and paid
     pub gas_used: U256,
 
@@ -172,10 +171,6 @@ impl TrxView for PlainData {
         self.gas_limit
     }
 
-    fn tree_account_index(&self) -> Option<u16> {
-        self.tree_account_index
-    }
-
     fn target(&self) -> Option<Address> {
         self.tx_target
     }
@@ -209,8 +204,8 @@ pub struct Root {
 
 // to be sure that solana and x86 size/alignment match
 const_assert_eq!(std::mem::align_of::<PlainData>(), 0x8);
-const_assert_eq!(std::mem::size_of::<PlainData>(), 0x180);
-const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x180);
+const_assert_eq!(std::mem::size_of::<PlainData>(), 0x178);
+const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x178);
 
 impl AccountHeader for Header {
     const VERSION: u8 = 2;
@@ -384,7 +379,6 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                 gas_price: transaction.gas_price(),
                 block_params: (U256::ZERO, U256::ZERO),
                 steps_executed: 0_u64,
-                tree_account_index: transaction.tree_account_index(),
             },
             revisions: TreeMap::new(),
             touched_accounts: TreeMap::new(),

@@ -37,7 +37,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8
             state.as_mut().unwrap()
         });
         // Validate.
-        let (index, exit_status) = validate(
+        let exit_status = validate(
             &root.plain_data,
             executor_state.deref_mut(),
             &transaction_tree,
@@ -56,7 +56,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8
         transaction_tree.mint(refund)?;
 
         // Finalize.
-        transaction_tree.end_transaction(index, exit_status)?;
+        transaction_tree.end_transaction(root.plain_data.hash(), exit_status)?;
     };
 
     state.finish_scheduled_tx(program_id)?;
@@ -70,7 +70,7 @@ fn validate<'b>(
     tree: &TransactionTree,
     tree_account: Option<&Pubkey>,
     state_key: &Pubkey,
-) -> Result<(u16, &'b ExitStatus)> {
+) -> Result<&'b ExitStatus> {
     // Validate if it's a scheduled transaction at all.
     if !trx.is_scheduled_tx() {
         return Err(Error::NotScheduledTransaction);
@@ -88,10 +88,9 @@ fn validate<'b>(
         ));
     }
 
-    let index = trx.tree_account_index().unwrap();
     let exit_status = executor_state
         .exit_status
         .as_ref()
         .ok_or(Error::ScheduledTxNoExitStatus(*state_key))?;
-    Ok((index, &exit_status))
+    Ok(&exit_status)
 }

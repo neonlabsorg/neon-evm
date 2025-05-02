@@ -108,6 +108,11 @@ fn header_mut<'r, T: AccountHeader>(account: &'r AccountInfo<'_>) -> RefMut<'r, 
     section_mut(account, ACCOUNT_PREFIX_LEN)
 }
 
+#[inline]
+fn header_mut_from_slice<T: AccountHeader>(account: &mut [u8]) -> &mut T {
+    section_mut_from_slice(account, ACCOUNT_PREFIX_LEN)
+}
+
 fn expand_header<'a, From: AccountHeader, To: AccountHeader>(
     account: &AccountInfo<'a>,
     rent: &Rent,

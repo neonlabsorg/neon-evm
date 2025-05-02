@@ -220,6 +220,8 @@ impl AccountHeader for Header {
 pub struct StateAccount<'local, 'sol> {
     account: &'local AccountInfo<'sol>,
     root_ref: RefMut<'local, Root>,
+
+    tag: u8,
 }
 
 type StateAccountCoreApiView = (
@@ -301,27 +303,25 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         self.account
     }
 
-    fn validate_tag<'b>(program_id: &'b Pubkey, account: &'b AccountInfo<'sol>) -> Result<()> {
-        let tag = super::tag(program_id, account)?;
-
+    fn validate_tag(account_key: &Pubkey, tag: u8) -> Result<()> {
         if tag == TAG_STATE
             || tag == TAG_SCHEDULED_STATE_FINALIZED
             || tag == TAG_SCHEDULED_STATE_CANCELLED
         {
             Ok(())
         } else {
-            Err(Error::StorageAccountInvalidTag(*account.key, tag))
+            Err(Error::StorageAccountInvalidTag(*account_key, tag))
         }
     }
 
     // allocator should have provided a properly aligned pointer
     #[allow(clippy::cast_ptr_alignment)]
     pub fn from_account(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<Self> {
-        Self::validate_tag(program_id, account)?;
+        let tag = super::tag(program_id, account)?;
+        Self::validate_tag(account.key, tag)?;
 
         let offset = super::header::<Header>(account).root_offset;
         let mem: RefMut<&mut [u8]> = account.try_borrow_mut_data()?;
-        //let ptr = account.data.as_mut_ptr();
 
         Ok(Self {
             account,
@@ -331,6 +331,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                     .offset(offset.try_into().unwrap())
                     .cast::<Root>())
             }),
+            tag,
         })
     }
 
@@ -402,7 +403,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                 let account_data_ptr = data.as_ptr();
                 {
                     // Set header
-                    let mut header = super::header_mut::<Header>(info);
+                    let header = super::header_mut_from_slice::<Header>(data);
                     header.version_signature = Header::valid_version_signature();
                     header.root_offset =
                         unsafe { addr_of!(*root).cast::<u8>().offset_from(account_data_ptr) }
@@ -417,6 +418,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
 
                 unsafe { &mut *Boxx::into_raw(root) }
             }),
+            tag: TAG_STATE,
         })
     }
 
@@ -515,7 +517,9 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
     }
 
     fn finalize_impl(self, program_id: &Pubkey, scheduled_transition_tag: u8) -> Result<()> {
-        super::validate_tag(program_id, self.account, TAG_STATE)?;
+        if self.tag != TAG_STATE {
+            return Err(Error::AccountInvalidTag(*self.account.key, self.tag));
+        }
 
         if self.has_tree_account() {
             debug_print!(
@@ -523,6 +527,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                 self.account.key,
                 scheduled_transition_tag
             );
+            drop(self.root_ref);
             // Change the tag, leave all the data unchanged.
             super::set_tag(
                 program_id,
@@ -539,11 +544,10 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
     }
 
     pub fn finish_scheduled_tx(self, program_id: &Pubkey) -> Result<()> {
-        let tag = super::tag(program_id, self.account)?;
-        let is_finalized = tag == TAG_SCHEDULED_STATE_FINALIZED;
-        let is_canceled = tag == TAG_SCHEDULED_STATE_CANCELLED;
+        let is_finalized = self.tag == TAG_SCHEDULED_STATE_FINALIZED;
+        let is_canceled = self.tag == TAG_SCHEDULED_STATE_CANCELLED;
         if !(is_finalized || is_canceled) {
-            return Err(Error::StorageAccountInvalidTag(*self.account.key, tag));
+            return Err(Error::StorageAccountInvalidTag(*self.account.key, self.tag));
         }
 
         debug_print!(
@@ -729,7 +733,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         program_id: &Pubkey,
         account: &'local AccountInfo<'sol>,
     ) -> Result<StateAccountCoreApiView> {
-        Self::validate_tag(program_id, account)?;
+        Self::validate_tag(account.key, super::tag(program_id, account)?)?;
 
         let account_data_ptr = account.try_borrow_data()?.as_ptr();
 

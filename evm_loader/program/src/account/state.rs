@@ -132,7 +132,6 @@ pub struct PlainData {
 
     pub tx_hash: [u8; 32],
     pub chain_id: Option<u64>, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L958
-    pub tx_type: u8, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L996
 
     pub tx_target: Option<Address>,
     pub tx_nonce: u64,
@@ -162,7 +161,7 @@ impl TrxView for PlainData {
     }
 
     fn is_scheduled_tx(&self) -> bool {
-        self.tx_type == Transaction::SCHEDULED_TX_TYPE
+        self.tree_account.is_some()
     }
 
     fn nonce(&self) -> u64 {
@@ -378,7 +377,6 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                 gas_used: U256::ZERO,
                 tx_hash: transaction.hash(),
                 chain_id: transaction.chain_id(),
-                tx_type: transaction.tx_type(),
                 tx_target: transaction.target(),
                 tx_nonce: transaction.nonce(),
                 value: transaction.value(),
@@ -527,7 +525,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                 self.account.key,
                 scheduled_transition_tag
             );
-            drop(self.root_ref);
+            std::mem::drop(self.root_ref);
             // Change the tag, leave all the data unchanged.
             super::set_tag(
                 program_id,

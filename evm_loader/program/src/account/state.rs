@@ -692,8 +692,22 @@ impl StateAccount<'_, '_> {
     }
 
     #[must_use]
+    pub fn executor_state_ref(&self) -> Ref<ExecutorStateData> {
+        Ref::map(self.root_ref.executor_state.borrow(), |x| {
+            x.as_ref().unwrap()
+        })
+    }
+
+    #[must_use]
     pub fn executor_state_mut(&self) -> RefMut<Option<ExecutorStateData>> {
         self.root_ref.executor_state.borrow_mut()
+    }
+
+    #[must_use]
+    pub fn executor_state_mut_ref(&self) -> RefMut<ExecutorStateData> {
+        RefMut::map(self.root_ref.executor_state.borrow_mut(), |x| {
+            x.as_mut().unwrap()
+        })
     }
 
     #[must_use]
@@ -702,8 +716,22 @@ impl StateAccount<'_, '_> {
     }
 
     #[must_use]
+    pub fn evm_ref(&self) -> Ref<Machine<crate::evm::tracing::NoopEventListener>> {
+        Ref::map(self.root_ref.machine_state.borrow(), |x| {
+            x.as_ref().unwrap()
+        })
+    }
+
+    #[must_use]
     pub fn evm_mut(&self) -> RefMut<Option<Machine<crate::evm::tracing::NoopEventListener>>> {
         self.root_ref.machine_state.borrow_mut()
+    }
+
+    #[must_use]
+    pub fn evm_mut_ref(&self) -> RefMut<Machine<crate::evm::tracing::NoopEventListener>> {
+        RefMut::map(self.root_ref.machine_state.borrow_mut(), |x| {
+            x.as_mut().unwrap()
+        })
     }
 
     #[must_use]

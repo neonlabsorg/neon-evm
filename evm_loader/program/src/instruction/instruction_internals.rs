@@ -67,12 +67,11 @@ pub fn reinit_evm(
             None,
         )?);
     } else {
-        let mut state_data = storage.executor_state_mut();
-        let mut evm = storage.evm_mut();
+        let mut state_data = storage.executor_state_mut_ref();
+        let mut evm = storage.evm_mut_ref();
 
-        let evm_backend =
-            ExecutorState::new(account_storage, state_data.deref_mut().as_mut().unwrap());
-        evm.as_mut().unwrap().reinit(&evm_backend);
+        let evm_backend = ExecutorState::new(account_storage, state_data.deref_mut());
+        evm.reinit(&evm_backend);
     };
     Ok(())
 }

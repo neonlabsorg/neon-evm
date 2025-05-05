@@ -2,7 +2,7 @@ use std::mem::size_of;
 
 use crate::{
     error::{Error, Result},
-    types::{Address, Transaction},
+    types::{Address, Transaction, TrxView},
 };
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, system_program};
@@ -212,7 +212,7 @@ pub trait OperatorBalanceValidator {
     }
 
     fn validate_owner(&self, operator: &Operator) -> Result<()>;
-    fn validate_transaction(&self, trx: &Transaction) -> Result<()>;
+    fn validate_transaction(&self, trx: &impl TrxView) -> Result<()>;
 
     fn miner(&self, origin: Address) -> Address;
 }
@@ -223,7 +223,7 @@ impl OperatorBalanceValidator for Option<OperatorBalanceAccount<'_>> {
         balance.validate_owner(operator)
     }
 
-    fn validate_transaction(&self, trx: &Transaction) -> Result<()> {
+    fn validate_transaction(&self, trx: &impl TrxView) -> Result<()> {
         if self.is_none() && (trx.gas_price() != U256::ZERO) {
             return Err(Error::OperatorBalanceMissing);
         }

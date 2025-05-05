@@ -9,7 +9,7 @@ use std::ptr::write_unaligned;
 use crate::account::TAG_STATE_FINALIZED;
 use crate::allocator::STATE_ACCOUNT_DATA_ADDRESS;
 use crate::error::{Error, Result};
-use crate::types::Transaction;
+use crate::types::{Transaction, TrxView};
 
 use super::{AccountHeader, Operator, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_HOLDER};
 
@@ -25,8 +25,8 @@ impl AccountHeader for Header {
     const VERSION: u8 = 0;
 }
 
-pub struct Holder<'a> {
-    account: AccountInfo<'a>,
+pub struct Holder<'local, 'sol> {
+    account: &'local AccountInfo<'sol>,
 }
 
 // Offset of the memory cell that denotes pointer to the heap from the start of the header.
@@ -43,11 +43,16 @@ const_assert!(HEAP_PTR_OFFSET >= size_of::<Header>());
 const_assert!(HEAP_PTR_OFFSET >= size_of::<crate::account::state::Header>());
 const_assert!(HEAP_PTR_OFFSET >= size_of::<crate::account::state_finalized::Header>());
 
-impl<'a> Holder<'a> {
-    pub fn from_account(program_id: &Pubkey, account: AccountInfo<'a>) -> Result<Self> {
-        match super::tag(program_id, &account)? {
+impl<'local, 'sol> Holder<'local, 'sol> {
+    #[must_use]
+    pub fn into_account(self) -> &'local AccountInfo<'sol> {
+        self.account
+    }
+
+    pub fn from_account(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<Self> {
+        match super::tag(program_id, account)? {
             TAG_STATE_FINALIZED => {
-                super::set_tag(program_id, &account, TAG_HOLDER, Header::VERSION)?;
+                super::set_tag(program_id, account, TAG_HOLDER, Header::VERSION)?;
 
                 let mut holder = Self { account };
                 holder.clear();
@@ -61,7 +66,7 @@ impl<'a> Holder<'a> {
 
     pub fn create(
         program_id: &Pubkey,
-        account: AccountInfo<'a>,
+        account: &'local AccountInfo<'sol>,
         seed: &str,
         operator: &Operator,
     ) -> Result<Self> {
@@ -74,8 +79,8 @@ impl<'a> Holder<'a> {
             return Err(Error::AccountInvalidKey(*account.key, key));
         }
 
-        super::validate_tag(program_id, &account, TAG_EMPTY)?;
-        super::set_tag(&crate::ID, &account, TAG_HOLDER, Header::VERSION)?;
+        super::validate_tag(program_id, account, TAG_EMPTY)?;
+        super::set_tag(&crate::ID, account, TAG_HOLDER, Header::VERSION)?;
 
         let mut holder = Self::from_account(program_id, account)?;
         holder.header_mut().owner = *operator.key;
@@ -86,18 +91,17 @@ impl<'a> Holder<'a> {
 
     pub fn update<F>(&mut self, f: F)
     where
-        F: FnOnce(&mut Header),
+        F: FnOnce(RefMut<Header>),
     {
-        let mut header = self.header_mut();
-        f(&mut header);
+        f(self.header_mut());
     }
 
     fn header(&self) -> Ref<Header> {
-        super::section(&self.account, HEADER_OFFSET)
+        super::section(self.account, HEADER_OFFSET)
     }
 
-    fn header_mut(&mut self) -> RefMut<Header> {
-        super::section_mut(&self.account, HEADER_OFFSET)
+    fn header_mut(&self) -> RefMut<Header> {
+        super::section_mut(self.account, HEADER_OFFSET)
     }
 
     fn buffer(&self) -> Ref<[u8]> {
@@ -117,7 +121,7 @@ impl<'a> Holder<'a> {
             header.transaction_len = 0;
         }
         // Clear the heap ptr.
-        Self::write_heap_offset(&self.account, 0);
+        Self::write_heap_offset(self.account, 0);
         {
             let mut buffer = self.buffer_mut();
             buffer.fill(0);
@@ -200,15 +204,15 @@ impl<'a> Holder<'a> {
     /// Initializes the heap using the whole account data space.
     /// Also, writes the offset of the heap object into the separate field in the header.
     /// After this, the persistent objects can be allocated into the account data.
-    pub fn init_heap(&mut self, transaction_offset: usize) -> Result<()> {
+    pub fn init_heap(&self, transaction_offset: usize) -> Result<()> {
         // For this case, the account.owner is already validated to be equal to program id.
-        Self::init_holder_heap(self.account.owner, &mut self.account, transaction_offset)
+        Self::init_holder_heap(self.account.owner, self.account, transaction_offset)
     }
 
     /// Associated function, see `fn init_heap`.
     pub fn init_holder_heap(
         program_id: &Pubkey,
-        account: &mut AccountInfo,
+        account: &AccountInfo,
         transaction_offset: usize,
     ) -> Result<()> {
         // Validation: check that the passed account is a variant of Holder: Holder, State or StateFinalized.
@@ -280,11 +284,5 @@ impl<'a> Holder<'a> {
         unsafe {
             write_unaligned(heap_offset_memcell, offset);
         }
-    }
-
-    /// # Safety
-    /// Permanently deletes Holder account and all data in it
-    pub unsafe fn suicide(self, operator: &Operator) {
-        crate::account::delete(&self.account, operator);
     }
 }

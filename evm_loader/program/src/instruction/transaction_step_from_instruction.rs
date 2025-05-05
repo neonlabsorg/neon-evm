@@ -7,7 +7,7 @@ use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
 use crate::instruction::transaction_step::{do_begin, do_continue};
-use crate::types::Transaction;
+use crate::types::{Transaction, TrxView};
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
@@ -43,7 +43,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
             // Holder's method (fn init_heap) transforms TAG_STATE_FINALIZED into HOLDER
             // and it breaks the logic (of throwing StorageAccountFinalized error).
             // In this case, an associated function is used instead.
-            Holder::init_holder_heap(program_id, &mut storage_info.clone(), 0)?;
+            Holder::init_holder_heap(program_id, &storage_info, 0)?;
 
             let trx = Transaction::from_rlp(message)?;
             let origin = trx.recover_caller_address()?;
@@ -57,10 +57,17 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
             let mut gasometer = Gasometer::new(U256::ZERO, &operator)?;
             gasometer.record_address_lookup_table(accounts);
 
-            let storage =
-                StateAccount::new(program_id, storage_info, &accounts_db, origin, trx, None)?;
+            let storage = StateAccount::new(
+                program_id,
+                &storage_info,
+                &accounts_db,
+                origin,
+                &trx,
+                message,
+                None,
+            )?;
 
-            do_begin(accounts_db, storage, gasometer)
+            do_begin(trx, accounts_db, storage, gasometer)
         }
         TAG_STATE => {
             let (storage, accounts_status) =

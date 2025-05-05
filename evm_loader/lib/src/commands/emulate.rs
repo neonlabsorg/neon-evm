@@ -20,7 +20,7 @@ use crate::{
 use ethnum::U256;
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::error::build_revert_message;
-use evm_loader::types::{Address, Transaction};
+use evm_loader::types::{Address, Transaction, TrxView};
 use evm_loader::{
     config::{
         EVM_STEPS_MIN, GAS_LIMIT_MULTIPLIER_NO_CHAINID, LAMPORTS_PER_SIGNATURE, PAYMENT_TO_TREASURE,
@@ -340,7 +340,7 @@ async fn emulate_trx_single_step<T: Tracer>(
 
     let (exit_status, steps_executed, step_on_solana, tracer, timestamped_contracts) = {
         let mut backend = SyncedExecutorState::new(storage);
-        let mut evm = match Machine::new(tx, origin, &mut backend, tracer).await {
+        let mut evm = match Machine::new_from_tx(tx, origin, &mut backend, tracer).await {
             Ok(evm) => evm,
             Err(e) => {
                 error!("EVM creation failed {e:?}");
@@ -465,7 +465,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
     let (exit_status, steps_executed, step_on_solana, tracer, timestamped_contracts) = {
         let mut backend = SyncedExecutorState::new(&mut storage);
 
-        let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
+        let mut evm = match Machine::new_from_tx(&tx, origin, &mut backend, tracer).await {
             Ok(evm) => evm,
             Err(e) => {
                 error!("EVM creation failed {e:?}");
@@ -501,7 +501,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
                 }
 
                 backend = SyncedExecutorState::new(&mut storage);
-                evm = match Machine::new(&tx, origin, &mut backend, tracer_result).await {
+                evm = match Machine::new_from_tx(&tx, origin, &mut backend, tracer_result).await {
                     Ok(evm) => evm,
                     Err(e) => {
                         error!("EVM creation failed {e:?}");

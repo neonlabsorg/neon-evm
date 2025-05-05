@@ -13,7 +13,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let seed_bytes = instruction[8..8 + seed_len].to_vec();
     let seed = std::str::from_utf8(&seed_bytes)?;
 
-    Holder::create(program_id, holder, seed, &operator)?;
+    Holder::create(program_id, &holder, seed, &operator)?;
 
     Ok(())
 }

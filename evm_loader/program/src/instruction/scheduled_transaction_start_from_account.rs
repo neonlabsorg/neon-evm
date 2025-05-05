@@ -37,7 +37,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
 
     match tag {
         TAG_HOLDER => {
-            let trx = holder_parse_trx(holder.clone(), &operator, program_id, true)?;
+            let (trx, tx_rlp) = holder_parse_trx(&holder, &operator, program_id, true)?;
             let scheduled_trx = validate_scheduled_tx(&trx, tree_index)?;
 
             let origin = scheduled_trx.payer;
@@ -54,14 +54,15 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
 
             let storage = StateAccount::new(
                 program_id,
-                holder,
+                &holder,
                 &accounts_db,
                 origin,
-                trx,
+                &trx,
+                tx_rlp.as_slice(),
                 Some(*transaction_tree.info().key),
             )?;
 
-            do_scheduled_start(accounts_db, storage, transaction_tree, gasometer)
+            do_scheduled_start(&trx, accounts_db, storage, transaction_tree, gasometer)
         }
         TAG_STATE => Err(Error::ScheduledTxAlreadyInProgress(*holder.key)),
         TAG_STATE_FINALIZED | TAG_SCHEDULED_STATE_FINALIZED | TAG_SCHEDULED_STATE_CANCELLED => {

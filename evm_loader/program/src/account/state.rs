@@ -309,6 +309,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         }
     }
 
+    #[must_use]
     pub fn trx_rlp(&self) -> &[u8] {
         self.trx_rlp
     }
@@ -326,7 +327,11 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
 
         let (offset, tx_ptr, tx_len) = {
             let header_ref = super::header::<Header>(account);
-            (header_ref.root_offset, unsafe {data_ptr.offset(header_ref.serialized_tx.start.try_into()?) }, header_ref.serialized_tx.end - header_ref.serialized_tx.start)
+            (
+                header_ref.root_offset,
+                unsafe { data_ptr.offset(header_ref.serialized_tx.start.try_into()?) },
+                header_ref.serialized_tx.end - header_ref.serialized_tx.start,
+            )
         };
 
         let mem: RefMut<&mut [u8]> = account.try_borrow_mut_data()?;
@@ -339,7 +344,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                     .offset(offset.try_into().unwrap())
                     .cast::<Root>())
             }),
-            trx_rlp: unsafe {&*slice_from_raw_parts(tx_ptr, tx_len)},
+            trx_rlp: unsafe { &*slice_from_raw_parts(tx_ptr, tx_len) },
             tag,
         })
     }
@@ -424,7 +429,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
 
                 unsafe { &mut *Boxx::into_raw(root) }
             }),
-            trx_rlp: unsafe {&*slice_from_raw_parts(ptr, len)},
+            trx_rlp: unsafe { &*slice_from_raw_parts(ptr, len) },
             tag: TAG_STATE,
         })
     }

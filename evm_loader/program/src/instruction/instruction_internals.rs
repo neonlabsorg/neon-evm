@@ -36,12 +36,9 @@ pub fn allocate_evm(
     *state_data = Some(ExecutorStateData::new(account_storage));
     let mut evm_backend =
         ExecutorState::new(account_storage, state_data.deref_mut().as_mut().unwrap());
-    storage.evm_mut().replace(Evm::new(
-        trx,
-        storage.trx_origin(),
-        &mut evm_backend,
-        None,
-    )?);
+    storage
+        .evm_mut()
+        .replace(Evm::new(trx, storage.trx_origin(), &mut evm_backend, None)?);
 
     Ok(())
 }

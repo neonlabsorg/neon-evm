@@ -241,11 +241,10 @@ impl<T: EventListener> Machine<T> {
             ));
         }
 
-        let call_data = Buffer::from_slice(trx.call_data());
         if trx.target().is_some() {
-            Self::new_call(trx_chain_id, trx, call_data, origin, backend, tracer).await
+            Self::new_call(trx_chain_id, trx, origin, backend, tracer).await
         } else {
-            Self::new_create(trx_chain_id, trx, call_data, origin, backend, tracer).await
+            Self::new_create(trx_chain_id, trx, origin, backend, tracer).await
         }
     }
 
@@ -253,8 +252,7 @@ impl<T: EventListener> Machine<T> {
     #[maybe_async]
     async fn new_call(
         chain_id: u64,
-        trx: &impl TrxView,
-        call_data: Buffer,
+        trx: &Transaction,
         origin: Address,
         backend: &mut impl Database,
         tracer: Option<T>,
@@ -284,7 +282,7 @@ impl<T: EventListener> Machine<T> {
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
             execution_code,
-            call_data,
+            call_data: Buffer::from_slice(trx.call_data()),
             return_data: Buffer::empty(),
             return_range: 0..0,
             stack: Stack::new(),
@@ -314,8 +312,7 @@ impl<T: EventListener> Machine<T> {
     #[maybe_async]
     async fn new_create(
         chain_id: u64,
-        trx: &impl TrxView,
-        call_data: Buffer,
+        trx: &Transaction,
         origin: Address,
         backend: &mut impl Database,
         tracer: Option<T>,
@@ -355,7 +352,7 @@ impl<T: EventListener> Machine<T> {
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,
-            execution_code: call_data,
+            execution_code: Buffer::from_slice(trx.call_data()),
             call_data: Buffer::empty(),
             parent: None,
             tracer,

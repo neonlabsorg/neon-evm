@@ -225,38 +225,8 @@ impl Machine<NoopEventListener> {
 
 impl<T: EventListener> Machine<T> {
     #[maybe_async]
-    pub async fn new_from_tx(
-        trx: &Transaction,
-        origin: Address,
-        backend: &mut impl Database,
-        tracer: Option<T>,
-    ) -> Result<Self> {
-        Self::new(
-            trx,
-            Buffer::from_slice(trx.call_data()),
-            origin,
-            backend,
-            tracer,
-        )
-        .await
-    }
-
-    #[maybe_async]
-    pub async fn new_from_machine(
-        self,
-        trx_view: &impl TrxView,
-        origin: Address,
-        backend: &mut impl Database,
-        tracer: Option<T>,
-    ) -> Result<Self> {
-        assert!(self.call_data.is_owned());
-        Self::new(trx_view, self.call_data, origin, backend, tracer).await
-    }
-
-    #[maybe_async]
     pub async fn new(
-        trx: &impl TrxView,
-        call_data: Buffer,
+        trx: &Transaction,
         origin: Address,
         backend: &mut impl Database,
         tracer: Option<T>,
@@ -271,6 +241,7 @@ impl<T: EventListener> Machine<T> {
             ));
         }
 
+        let call_data = Buffer::from_slice(trx.call_data());
         if trx.target().is_some() {
             Self::new_call(trx_chain_id, trx, call_data, origin, backend, tracer).await
         } else {

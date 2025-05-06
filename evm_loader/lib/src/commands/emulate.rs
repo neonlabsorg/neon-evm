@@ -478,7 +478,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
         let mut step_on_solana = None;
         let mut tracer_result: Option<T> = evm.take_tracer();
         for execution_step in &execution_map.steps {
-            if execution_step.is_reset || execution_step.is_cancel {
+            if execution_step.is_reset {
                 drop(evm);
                 drop(backend);
                 drop(storage);
@@ -512,12 +512,28 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
             }
 
             if execution_step.is_cancel {
-                evm.set_tracer(tracer_result);
+                drop(evm);
+                drop(backend);
+                drop(storage);
+                drop(rpc);
 
-                evm.end_vm(&backend, ExitStatus::Cancel).await?;
+                steps_executed = 0u64;
                 exit_status = ExitStatus::Cancel;
 
-                tracer_result = evm.take_tracer();
+                rpc = create_rpc(db_config, execution_step.block, execution_step.index).await?;
+                (storage, _) = initialize_storage_and_transaction(
+                    program_id,
+                    emulate_request,
+                    &rpc,
+                    overrides.clone(),
+                )
+                .await?;
+                backend = SyncedExecutorState::new(&mut storage);
+
+                if let Some(ref mut tracer) = tracer_result {
+                    tracer.cancel(&emulate_request.tx);
+                }
+
                 break;
             }
 

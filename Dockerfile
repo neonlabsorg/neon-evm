@@ -59,4 +59,5 @@ COPY ci/keys/ /opt/keys
 
 ENV PATH=${PATH}:/opt
 WORKDIR /opt
+
 ENTRYPOINT [ "/opt/solana-run-neon.sh" ]

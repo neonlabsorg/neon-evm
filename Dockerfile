@@ -1,37 +1,16 @@
 ARG DOCKERHUB_ORG_NAME
+ARG BASE_IMAGE_TAG
 
-# Solana image
-FROM ubuntu:24.04 AS solana
-# install dependencies
-RUN apt-get update
-RUN apt-get upgrade -y
-RUN apt-get install -y libssl-dev libudev-dev pkg-config libprotobuf-dev protobuf-compiler curl bzip2
-# install solana cli
-ARG SOLANA_BPF_VERSION
-RUN sh -c "$(curl -sSfL https://release.anza.xyz/${SOLANA_BPF_VERSION}/install)"
-ENV PATH=${PATH}:/root/.local/share/solana/install/active_release/bin
-WORKDIR /opt
+# Evm base image
+FROM ${DOCKERHUB_ORG_NAME}:evm_loader_base:${BASE_IMAGE_TAG} AS solana
 
-# Builder image
-FROM solana AS rust-builder
-RUN apt-get install -y build-essential
-# install rust
-ARG RUST_VERSION
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain=${RUST_VERSION} -y
-ENV PATH=${PATH}:/root/.cargo/bin
-RUN rustup component add rustfmt
-RUN rustup component add clippy
-RUN cargo install rustfilt
-# install solana-sdk
-RUN /root/.local/share/solana/install/active_release/bin/platform-tools-sdk/sbf/scripts/install.sh
-
-FROM rust-builder AS evm-builder
-# Build evm_loader
 COPY .git /opt/neon-evm/.git
 COPY evm_loader /opt/neon-evm/evm_loader
 WORKDIR /opt/neon-evm/evm_loader
 ARG REVISION
 ENV NEON_REVISION=${REVISION}
+
+FROM solana AS evm-builder
 
 RUN cargo fmt --check && \
     cargo clippy --release \
@@ -53,22 +32,13 @@ RUN cargo fmt --check && \
     cargo build-sbf --manifest-path program/Cargo.toml --features rollup && cp target/deploy/evm_loader.so target/deploy/evm_loader-rollup.so && \
     cargo build-sbf --manifest-path program/Cargo.toml --features ci --dump
 
-
-# Add neon_test_invoke_program to the genesis
-FROM ${DOCKERHUB_ORG_NAME}/neon_test_programs:latest AS neon_test_programs
-
-# Define solana-image that contains utility
 FROM solana AS base
-
-ARG MAINNET_SOLANA_URL
-RUN solana program dump metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s /opt/metaplex.so --url ${MAINNET_SOLANA_URL}
 
 COPY --from=evm-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader*.so /opt/
 COPY --from=evm-builder /opt/neon-evm/evm_loader/target/deploy/evm_loader-dump.txt /opt/
 COPY --from=evm-builder /opt/neon-evm/evm_loader/target/release/neon-cli /opt/
 COPY --from=evm-builder /opt/neon-evm/evm_loader/target/release/neon-api /opt/
 
-COPY --from=neon_test_programs /opt/deploy/ /opt/deploy/
 COPY --from=evm-builder /opt/neon-evm/evm_loader/target/release/neon-rpc /opt/
 COPY --from=evm-builder /opt/neon-evm/evm_loader/target/release/libneon_lib.so /opt/libs/current/
 

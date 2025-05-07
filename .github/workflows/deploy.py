@@ -147,7 +147,7 @@ def build_docker_image(evm_sha_tag, base_image_tag):
 
 @cli.command(name="build_base_docker_image")
 @click.option('--evm_sha_tag')
-def build_base_docker_image(image_tag):
+def build_base_docker_image(evm_sha_tag):
     docker_client.pull(f"{DOCKERHUB_ORG_NAME}/neon_test_programs:latest")
     buildargs = {"SOLANA_BPF_VERSION": SOLANA_BPF_VERSION,
                  "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME,
@@ -155,7 +155,7 @@ def build_base_docker_image(image_tag):
                  "RUST_VERSION": RUST_VERSION,
                  }
 
-    tag = f"{DOCKERHUB_ORG_NAME}/{BASE_IMAGE_NAME}:{image_tag}"
+    tag = f"{DOCKERHUB_ORG_NAME}/{BASE_IMAGE_NAME}:{evm_sha_tag}"
     click.echo("start build")
     output = docker_client.build(tag=tag, dockerfile="Dockerfile_base", buildargs=buildargs, path="./", decode=True)
     process_output(output)

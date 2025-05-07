@@ -40,7 +40,7 @@ jobs:
           echo "evm_sha_tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
       - name: Build docker base image
         run: |
-          python3 ./.github/workflows/deploy.py build_docker_base_image \
+          python3 ./.github/workflows/deploy.py build_base_docker_image \
           --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }}
       - name: Finalize image
         run: |

@@ -2,7 +2,7 @@ ARG DOCKERHUB_ORG_NAME
 ARG BASE_IMAGE_TAG
 
 # Evm base image
-FROM ${DOCKERHUB_ORG_NAME}:evm_loader_base:${BASE_IMAGE_TAG} AS solana
+FROM ${DOCKERHUB_ORG_NAME}/evm_loader_base:${BASE_IMAGE_TAG} AS solana
 
 COPY .git /opt/neon-evm/.git
 COPY evm_loader /opt/neon-evm/evm_loader

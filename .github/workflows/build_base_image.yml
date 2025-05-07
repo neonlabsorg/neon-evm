@@ -1,7 +1,6 @@
 name: Build base image
 on:
   workflow_dispatch:
-  push:
 
 env:
   DHUBU: ${{secrets.DHUBU}}

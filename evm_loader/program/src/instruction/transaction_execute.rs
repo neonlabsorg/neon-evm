@@ -74,8 +74,7 @@ pub fn execute_with_solana_call(
     let (exit_reason, steps_executed) = {
         let mut backend = SyncedExecutorState::new(&mut account_storage);
 
-        let mut evm =
-            Machine::new(trx.deref(), origin, &mut backend, None::<NoopEventListener>)?;
+        let mut evm = Machine::new(trx.deref(), origin, &mut backend, None::<NoopEventListener>)?;
         let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
 
         (result, steps_executed)

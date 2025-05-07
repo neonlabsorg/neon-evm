@@ -1,7 +1,7 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::mem::size_of;
 use std::ops::Deref;
-use std::ptr::addr_of;
+use std::ptr::{addr_of, slice_from_raw_parts};
 
 use crate::account_storage::AccountStorage;
 use crate::config::DEFAULT_CHAIN_ID;
@@ -214,6 +214,7 @@ impl AccountHeader for Header {
 pub struct StateAccount<'local, 'sol> {
     account: &'local AccountInfo<'sol>,
     root_ref: RefMut<'local, Root>,
+    trx_rlp: &'local [u8],
 
     tag: u8,
 }
@@ -308,13 +309,31 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         }
     }
 
+    #[must_use]
+    pub fn trx_rlp(&self) -> &[u8] {
+        self.trx_rlp
+    }
+
     // allocator should have provided a properly aligned pointer
     #[allow(clippy::cast_ptr_alignment)]
     pub fn from_account(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<Self> {
         let tag = super::tag(program_id, account)?;
         Self::validate_tag(account.key, tag)?;
 
-        let offset = super::header::<Header>(account).root_offset;
+        let data_ptr = {
+            let data_ref = account.try_borrow_mut_data()?;
+            data_ref.as_ptr()
+        };
+
+        let (offset, tx_ptr, tx_len) = {
+            let header_ref = super::header::<Header>(account);
+            (
+                header_ref.root_offset,
+                unsafe { data_ptr.offset(header_ref.serialized_tx.start.try_into()?) },
+                header_ref.serialized_tx.end - header_ref.serialized_tx.start,
+            )
+        };
+
         let mem: RefMut<&mut [u8]> = account.try_borrow_mut_data()?;
 
         Ok(Self {
@@ -325,6 +344,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                     .offset(offset.try_into().unwrap())
                     .cast::<Root>())
             }),
+            trx_rlp: unsafe { &*slice_from_raw_parts(tx_ptr, tx_len) },
             tag,
         })
     }
@@ -388,6 +408,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         });
 
         let tx_rlp = transaction_rlp.to_vector();
+        let (ptr, len, _) = tx_rlp.into_raw_parts();
 
         Ok(Self {
             account: info,
@@ -401,8 +422,6 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                         unsafe { addr_of!(*root).cast::<u8>().offset_from(account_data_ptr) }
                             as usize;
 
-                    let (ptr, len, _) = tx_rlp.into_raw_parts();
-
                     let start = unsafe { ptr.offset_from(account_data_ptr) } as usize;
                     let end = start + len;
                     header.serialized_tx = std::ops::Range::<usize> { start, end };
@@ -410,6 +429,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
 
                 unsafe { &mut *Boxx::into_raw(root) }
             }),
+            trx_rlp: unsafe { &*slice_from_raw_parts(ptr, len) },
             tag: TAG_STATE,
         })
     }

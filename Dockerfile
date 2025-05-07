@@ -58,5 +58,5 @@ COPY ci/operator-keypairs/id2.json /root/.config/solana/id2.json
 COPY ci/keys/ /opt/keys
 
 ENV PATH=${PATH}:/opt
-
+WORKDIR /opt
 ENTRYPOINT [ "/opt/solana-run-neon.sh" ]

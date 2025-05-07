@@ -16,9 +16,6 @@ concurrency:
 jobs:
   build-base-image:
     runs-on: ["self-hosted", "k8s-prod"]
-    outputs:
-      evm_base_image_tag: ${{ steps.tags.outputs.evm_base_image_tag }}
-      evm_sha_tag: ${{ steps.tags.outputs.evm_sha_tag }}
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -46,4 +43,4 @@ jobs:
         run: |
           python3 ./.github/workflows/deploy.py finalize_base_image \
           --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }} \
-          --evm_tag=${{ steps.tags.outputs.evm_base_image_tag }}
+          --final_tag=${{ steps.tags.outputs.evm_base_image_tag }}

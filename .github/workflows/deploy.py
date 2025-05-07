@@ -186,7 +186,7 @@ def finalize_image(evm_sha_tag, evm_tag):
 
 @cli.command(name="finalize_base_image")
 @click.option('--evm_sha_tag')
-@click.option('--evm_tag')
+@click.option('--final_tag')
 def finalize_base_image(evm_sha_tag, final_tag):
     image = f"{DOCKERHUB_ORG_NAME}/{BASE_IMAGE_NAME}"
     if re.match(RELEASE_TAG_TEMPLATE, final_tag) is not None or final_tag == "latest":

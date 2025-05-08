@@ -5,7 +5,7 @@ use crate::account::{
 use crate::debug::log_data;
 use crate::error::Result;
 use crate::gasometer::Gasometer;
-use crate::types::{boxx::boxx, Transaction};
+use crate::types::{Transaction, TrxView};
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
@@ -17,7 +17,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
     let messsage = &instruction[4..];
 
-    let mut holder = Holder::from_account(program_id, accounts[0].clone())?;
+    let holder = Holder::from_account(program_id, &accounts[0])?;
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1])? };
     let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
     let operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
@@ -26,7 +26,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     holder.validate_owner(&operator)?;
     holder.init_heap(0)?;
 
-    let trx = boxx(Transaction::from_rlp(messsage)?);
+    let trx = Transaction::from_rlp(messsage)?;
     let origin = trx.recover_caller_address()?;
 
     operator_balance.validate_owner(&operator)?;

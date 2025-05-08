@@ -14,7 +14,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let holder_info = accounts[0].clone();
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1]) }?;
 
-    let mut holder = Holder::from_account(program_id, holder_info)?;
+    let mut holder = Holder::from_account(program_id, &holder_info)?;
     holder.validate_owner(&operator)?;
     holder.update_transaction_hash(transaction_hash);
 

@@ -20,7 +20,7 @@ use crate::{
 use ethnum::U256;
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::error::build_revert_message;
-use evm_loader::types::{Address, Transaction};
+use evm_loader::types::{Address, Transaction, TrxView};
 use evm_loader::{
     config::{
         EVM_STEPS_MIN, GAS_LIMIT_MULTIPLIER_NO_CHAINID, LAMPORTS_PER_SIGNATURE, PAYMENT_TO_TREASURE,

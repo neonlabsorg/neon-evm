@@ -1,6 +1,9 @@
+import json
+import os
+
 import click
 import requests
-import os
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 
 
 class GithubClient():
@@ -49,7 +52,10 @@ class GithubClient():
         else:
             return False
 
+    @retry(stop=stop_after_attempt(3), wait=wait_fixed(5),
+           retry=retry_if_exception_type((requests.exceptions.RequestException, json.JSONDecodeError)))
     def get_proxy_run_info(self, id):
         response = requests.get(
             f"{self.proxy_endpoint}/actions/runs/{id}", headers=self.headers)
+        response.raise_for_status()
         return response.json()

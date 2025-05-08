@@ -4,6 +4,7 @@
 #![allow(clippy::future_not_send)]
 
 use crate::account::InterruptedState;
+use crate::types::TrxView;
 use ethnum::U256;
 use maybe_async::maybe_async;
 use std::{fmt::Display, mem::ManuallyDrop, ops::Range};

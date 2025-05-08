@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use crate::account::{AccountsDB, AllocateResult};
 use crate::account_storage::ProgramAccountStorage;
 use crate::debug::log_data;
@@ -7,12 +9,12 @@ use crate::evm::Machine;
 use crate::executor::{ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
 use crate::instruction::instruction_internals::log_return_value;
-use crate::types::{boxx::Boxx, Address, Transaction};
+use crate::types::{boxx::Boxx, Address, Transaction, TrxView};
 
 pub fn execute(
     accounts: AccountsDB<'_>,
     gasometer: Gasometer,
-    trx: Boxx<Transaction>,
+    trx: Transaction,
     origin: Address,
 ) -> Result<()> {
     let mut account_storage = ProgramAccountStorage::new(accounts)?;
@@ -65,12 +67,14 @@ pub fn execute_with_solana_call(
 
     trx.validate(origin, &account_storage, None)?;
 
-    account_storage.origin(origin, &trx)?.increment_nonce()?;
+    account_storage
+        .origin(origin, trx.deref())?
+        .increment_nonce()?;
 
     let (exit_reason, steps_executed) = {
         let mut backend = SyncedExecutorState::new(&mut account_storage);
 
-        let mut evm = Machine::new(&trx, origin, &mut backend, None::<NoopEventListener>)?;
+        let mut evm = Machine::new(trx.deref(), origin, &mut backend, None::<NoopEventListener>)?;
         let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
 
         (result, steps_executed)

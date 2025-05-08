@@ -5,7 +5,7 @@ use crate::account::{
 };
 use crate::account_storage::ProgramAccountStorage;
 use crate::error::Result;
-use crate::types::{Address, Transaction};
+use crate::types::{Address, TrxView};
 use ethnum::U256;
 use solana_program::{clock::Clock, rent::Rent, sysvar::Sysvar};
 
@@ -75,7 +75,7 @@ impl<'a> ProgramAccountStorage<'a> {
     pub fn origin(
         &self,
         address: Address,
-        transaction: &Transaction,
+        transaction: &impl TrxView,
     ) -> Result<BalanceAccount<'a>> {
         let chain_id = transaction
             .chain_id()

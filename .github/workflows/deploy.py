@@ -43,7 +43,6 @@ VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 RELEASE_TAG_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.\d{1,2}"
 
 docker_client = docker.APIClient()
-docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
 
 NEON_TEST_IMAGE_NAME = "neon_tests"
 
@@ -168,6 +167,7 @@ def build_base_docker_image(evm_sha_tag):
 @click.option('--evm_tag')
 def publish_image(evm_sha_tag, evm_tag):
     image = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}"
+    docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
     push_image_with_tag(image, evm_sha_tag, evm_sha_tag)
     # latest and version tags will ne pushed only on the finalizing step
     if evm_tag != "latest" and re.match(RELEASE_TAG_TEMPLATE, evm_tag) is None:
@@ -179,6 +179,7 @@ def publish_image(evm_sha_tag, evm_tag):
 @click.option('--evm_tag')
 def finalize_image(evm_sha_tag, evm_tag):
     image = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}"
+    docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
     docker_client.pull(f"{image}:{evm_sha_tag}")
     if re.match(RELEASE_TAG_TEMPLATE, evm_tag) is not None or evm_tag == "latest":
         push_image_with_tag(evm_sha_tag, evm_tag)
@@ -191,6 +192,7 @@ def finalize_image(evm_sha_tag, evm_tag):
 @click.option('--final_tag')
 def finalize_base_image(evm_sha_tag, final_tag):
     image = f"{DOCKERHUB_ORG_NAME}/{BASE_IMAGE_NAME}"
+    docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
     if re.match(RELEASE_TAG_TEMPLATE, final_tag) is not None or final_tag == "latest":
         push_image_with_tag(image, evm_sha_tag, final_tag)
     else:

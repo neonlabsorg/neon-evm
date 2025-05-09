@@ -32,7 +32,7 @@ DOCKER_USER = os.environ.get("DHUBU")
 DOCKER_PASSWORD = os.environ.get("DHUBP")
 MAINNET_SOLANA_URL = os.environ.get("MAINNET_SOLANA_URL", "mainnet-beta")
 IMAGE_NAME = os.environ.get("IMAGE_NAME", "evm_loader")
-BASE_IMAGE_NAME = os.environ.get("IMAGE_NAME", "evm_loader_base")
+BASE_IMAGE_NAME = os.environ.get("BASE_IMAGE_NAME", "evm_loader_base")
 RUN_LINK_REPO = os.environ.get("RUN_LINK_REPO")
 DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
 SOLANA_NODE_VERSION = 'v2.2.11'
@@ -43,6 +43,8 @@ VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 RELEASE_TAG_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.\d{1,2}"
 
 docker_client = docker.APIClient()
+docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
+
 NEON_TEST_IMAGE_NAME = "neon_tests"
 
 PROXY_ENDPOINT = os.environ.get("PROXY_ENDPOINT")
@@ -167,7 +169,7 @@ def build_base_docker_image(evm_sha_tag):
 def publish_image(evm_sha_tag, evm_tag):
     image = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}"
     push_image_with_tag(image, evm_sha_tag, evm_sha_tag)
-    # push latest and version tags only on the finalizing step
+    # latest and version tags will ne pushed only on the finalizing step
     if evm_tag != "latest" and re.match(RELEASE_TAG_TEMPLATE, evm_tag) is None:
         push_image_with_tag(image, evm_sha_tag, evm_tag)
 
@@ -196,7 +198,6 @@ def finalize_base_image(evm_sha_tag, final_tag):
 
 
 def push_image_with_tag(image, sha, tag):
-    docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
     docker_client.tag(f"{image}:{sha}", f"{image}:{tag}")
     out = docker_client.push(f"{image}:{tag}", decode=True, stream=True)
     process_output(out)

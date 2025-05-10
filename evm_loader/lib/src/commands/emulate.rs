@@ -56,7 +56,9 @@ pub struct EmulateResponse {
     pub result: Vec<u8>,
     pub steps_executed: u64,
     pub used_gas: u64,
+    pub storage_gas: u64,
     pub iterations: u64,
+    pub realloc_iterations: u64,
     pub solana_accounts: Vec<SolanaAccount>,
     pub logs: Vec<Log>,
     pub accounts_data: Option<Vec<AccountData>>,
@@ -82,7 +84,9 @@ impl EmulateResponse {
             result: exit_status.into_result().unwrap_or_default(),
             steps_executed: 0,
             used_gas: 0,
+            storage_gas: 0,
             iterations: 0,
+            realloc_iterations: 0,
             solana_accounts: vec![],
             logs: platform.logs().to_vec(),
             accounts_data: None,
@@ -263,7 +267,8 @@ async fn calculate_response(
     let steps_iterations = 1.max(steps_executed.div_ceil(EVM_STEPS_MIN));
 
     let begin_end_iterations = 2;
-    let iterations: u64 = steps_iterations + begin_end_iterations + platform.realloc_iterations();
+    let realloc_iterations = platform.realloc_iterations();
+    let iterations: u64 = steps_iterations + begin_end_iterations + realloc_iterations;
     let iterations_gas = iterations * LAMPORTS_PER_SIGNATURE;
     let treasury_gas = iterations * PAYMENT_TO_TREASURE;
     let storage_gas = platform.required_lamports().await?;
@@ -285,9 +290,11 @@ async fn calculate_response(
         is_timestamp_number_used: platform.is_clock_used(),
         steps_executed,
         used_gas,
+        storage_gas,
         solana_accounts,
         result: exit_status.into_result().unwrap_or_default(),
         iterations,
+        realloc_iterations,
         logs: platform.logs().to_vec(),
         accounts_data,
     };

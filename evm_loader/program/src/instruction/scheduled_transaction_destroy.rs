@@ -1,3 +1,4 @@
+use crate::debug::log_data;
 use crate::{
     account::{BalanceAccount, Operator, TransactionTree, Treasury},
     error::{Error, Result},
@@ -15,6 +16,8 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let mut neon_account = BalanceAccount::from_account(program_id, accounts[1].clone())?;
     let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
     let mut tree = TransactionTree::from_account(&crate::ID, accounts[3].clone())?;
+
+    log_data(&[b"ROOT_HASH", &tree.root_trx_hash()]);
 
     if neon_account.address() != tree.payer() {
         return Err(Error::TreeAccountInvalidPayer);

@@ -49,6 +49,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let miner_address = operator_balance.miner(transaction_tree.payer());
 
     log_data(&[b"HASH", &trx.hash]);
+    log_data(&[b"ROOT_HASH", &transaction_tree.root_trx_hash()]);
     log_data(&[b"MINER", miner_address.as_bytes()]);
 
     transaction_tree.skip_transaction(&trx)?;

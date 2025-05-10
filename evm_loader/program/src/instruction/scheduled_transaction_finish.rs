@@ -18,6 +18,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8
     let trx = state.trx();
 
     log_data(&[b"HASH", &trx.hash]);
+    log_data(&[b"ROOT_HASH", &transaction_tree.root_trx_hash()]);
 
     // Validate.
     let (index, exit_status) = validate(&mut executor_state, &state, trx, &transaction_tree)?;

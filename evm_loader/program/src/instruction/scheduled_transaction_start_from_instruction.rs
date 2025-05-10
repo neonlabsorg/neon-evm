@@ -50,6 +50,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
             let miner_address = operator_balance.miner(origin);
 
             log_data(&[b"HASH", &trx.hash]);
+            log_data(&[b"ROOT_HASH", &transaction_tree.root_trx_hash()]);
             log_data(&[b"MINER", miner_address.as_bytes()]);
 
             let mut gasometer = Gasometer::new(U256::ZERO, &operator)?;

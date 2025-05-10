@@ -18,6 +18,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8
     // because the heap layout could change between transactions
 
     log_data(&[b"HASH", tx_hash.as_ref()]);
+    log_data(&[b"ROOT_HASH", &tree.root_trx_hash()]);
 
     let Some(expected_tree_pubkey) = root.plain_data.tree_account else {
         return Err(Error::NotScheduledTransaction);

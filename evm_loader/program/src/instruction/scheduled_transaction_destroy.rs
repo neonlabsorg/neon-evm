@@ -1,3 +1,4 @@
+use crate::debug::log_data;
 use crate::{
     account::{Operator, TransactionTree, Treasury},
     error::Result,
@@ -16,6 +17,8 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     // let mut payer = BalanceAccount::from_account_info(program_id, &accounts[1])?;
     let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
     let mut tree = TransactionTree::from_account_info(program_id, &accounts[3])?;
+
+    log_data(&[b"ROOT_HASH", &tree.root_trx_hash()]);
 
     let mut solana = Solana::new(accounts, operator.clone(), None)?;
     let mut payer = solana.create_balance(tree.payer(), tree.chain_id())?;

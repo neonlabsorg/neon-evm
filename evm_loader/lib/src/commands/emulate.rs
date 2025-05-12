@@ -522,7 +522,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
             }
 
             match exit_status {
-                ExitStatus::Return(_) | ExitStatus::Stop => {
+                ExitStatus::Return(_) | ExitStatus::Stop | ExitStatus::Revert(_) => {
                     if execution_step.steps == 0 {
                         // skipping empty instructions
                         continue;

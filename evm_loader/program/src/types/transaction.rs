@@ -1118,7 +1118,7 @@ impl Transaction {
         //
         // Scheduled transactions:
         // payer's nonce (origin) validated only for the first transaction in the tree
-        let origin_nonce = backend.nonce(origin, chain_id).await;
+        let origin_nonce = backend.nonce(origin, chain_id).await?;
 
         let validate_nonce = tree.map_or(true, TransactionTree::is_not_started);
         if validate_nonce && (origin_nonce != self.nonce()) {

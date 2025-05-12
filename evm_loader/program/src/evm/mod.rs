@@ -412,6 +412,7 @@ impl<T: EventListener> Machine<T> {
 
                 let opcode_result = match self.execute_opcode(backend, opcode).await {
                     Ok(result) => result,
+                    Err(Error::FatalError(message)) => return Err(Error::FatalError(message)),
                     Err(e) => {
                         let message = build_revert_message(&e.to_string());
                         self.opcode_revert_impl(message, backend).await?

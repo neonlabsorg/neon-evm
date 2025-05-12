@@ -393,7 +393,7 @@ async fn prepare_origin<T: Rpc + BuildConfigSimulator>(
     if is_skd_transaction {
         // Increment origin's nonce only once for the whole execution tree.
         let tx_nonce = tx.nonce();
-        let origin_nonce = storage.nonce(*origin, chain_id).await;
+        let origin_nonce = storage.nonce(*origin, chain_id).await?;
 
         if origin_nonce == tx_nonce {
             increment_nonce(storage, origin, chain_id).await?;

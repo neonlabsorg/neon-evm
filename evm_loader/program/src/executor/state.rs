@@ -131,7 +131,7 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
 
     #[maybe_async]
     async fn balance_internal(&self, from_address: Address, from_chain_id: u64) -> Result<U256> {
-        let mut balance = self.backend.balance(from_address, from_chain_id).await;
+        let mut balance = self.backend.balance(from_address, from_chain_id).await?;
 
         for action in &self.data.actions {
             match action {
@@ -228,12 +228,11 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
     }
 
     async fn solana_user_address(&self, address: Address) -> Result<Option<Pubkey>> {
-        let pubkey = self.backend.solana_user_address(address).await;
-        Ok(pubkey)
+        self.backend.solana_user_address(address).await
     }
 
     async fn nonce(&self, from_address: Address, from_chain_id: u64) -> Result<u64> {
-        let mut nonce = self.backend.nonce(from_address, from_chain_id).await;
+        let mut nonce = self.backend.nonce(from_address, from_chain_id).await?;
         let mut increment = 0_u64;
 
         for action in &self.data.actions {

@@ -119,23 +119,19 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
     }
 
     async fn solana_user_address(&self, address: Address) -> Result<Option<Pubkey>> {
-        let pubkey = self.backend.solana_user_address(address).await;
-        Ok(pubkey)
+        self.backend.solana_user_address(address).await
     }
 
     async fn nonce(&self, from_address: Address, from_chain_id: u64) -> Result<u64> {
-        let nonce = self.backend.nonce(from_address, from_chain_id).await;
-        Ok(nonce)
+        self.backend.nonce(from_address, from_chain_id).await
     }
 
     async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()> {
-        self.backend.increment_nonce(address, chain_id).await?;
-        Ok(())
+        self.backend.increment_nonce(address, chain_id).await
     }
 
     async fn balance(&self, from_address: Address, from_chain_id: u64) -> Result<U256> {
-        let balance = self.backend.balance(from_address, from_chain_id).await;
-        Ok(balance)
+        self.backend.balance(from_address, from_chain_id).await
     }
 
     async fn transfer(

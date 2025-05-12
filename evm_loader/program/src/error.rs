@@ -34,6 +34,9 @@ pub enum Error {
     #[error("Error: {0}")]
     Custom(String),
 
+    #[error("Fatal Error: {0}")]
+    FatalError(String),
+
     #[error("Solana Program Error: {0}")]
     ProgramError(
         #[from]

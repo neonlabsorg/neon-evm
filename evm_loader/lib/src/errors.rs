@@ -122,6 +122,8 @@ pub enum NeonError {
     StrumParseError(#[from] strum::ParseError),
     #[error("Solana Simulator error {0:?}")]
     SolanaSimulatorError(#[from] crate::solana_simulator::Error),
+    #[error("Too many Accounts in Storage: {0} out of {1}")]
+    TooManyAccounts(usize, usize),
 }
 
 impl NeonError {
@@ -168,6 +170,7 @@ impl NeonError {
             NeonError::StrumParseError(_) => 264,
             NeonError::SolanaSimulatorError(_) => 265,
             NeonError::RocksDb(_) => 266,
+            NeonError::TooManyAccounts(_, _) => 267,
         }
     }
 }

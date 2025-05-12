@@ -469,6 +469,10 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         address: Address,
         chain_id: u64,
     ) -> NeonResult<&RefCell<AccountData>> {
+        if self.accounts.len() > 128 {
+            return Err(NeonError::TooManyAccounts(self.accounts.len(), 128));
+        }
+
         let (pubkey, _) = address.find_balance_address(self.program_id(), chain_id);
 
         if let Some(account) = self.accounts.get(&pubkey) {
@@ -507,6 +511,10 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
     }
 
     async fn get_contract_account(&self, address: Address) -> NeonResult<&RefCell<AccountData>> {
+        if self.accounts.len() > 128 {
+            return Err(NeonError::TooManyAccounts(self.accounts.len(), 128));
+        }
+
         let (pubkey, _) = address.find_solana_address(self.program_id());
 
         if let Some(account) = self.accounts.get(&pubkey) {
@@ -524,6 +532,10 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         address: Address,
         index: U256,
     ) -> NeonResult<&RefCell<AccountData>> {
+        if self.accounts.len() > 128 {
+            return Err(NeonError::TooManyAccounts(self.accounts.len(), 128));
+        }
+
         let (base, _) = address.find_solana_address(self.program_id());
         let cell_address = StorageCellAddress::new(self.program_id(), &base, &index);
         let cell_pubkey = *cell_address.pubkey();
@@ -836,6 +848,14 @@ impl<T: Rpc> LogCollector for EmulatorAccountStorage<'_, T> {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
+fn map_neon_error(e: NeonError) -> EvmLoaderError {
+    match e {
+        NeonError::TooManyAccounts(_, _) => EvmLoaderError::FatalError(e.to_string()),
+        _ => EvmLoaderError::Custom(e.to_string()),
+    }
+}
+
 #[async_trait(?Send)]
 impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
     fn program_id(&self) -> &Pubkey {
@@ -892,7 +912,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         panic!("Error querying account {} from Solana", slot_hashes::ID)
     }
 
-    async fn nonce(&self, address: Address, chain_id: u64) -> u64 {
+    async fn nonce(&self, address: Address, chain_id: u64) -> evm_loader::error::Result<u64> {
         info!("nonce {address}  {chain_id}");
 
         self.ethereum_balance_map_or(
@@ -902,10 +922,10 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
             |account: &BalanceAccount| account.nonce(),
         )
         .await
-        .unwrap()
+        .map_err(map_neon_error)
     }
 
-    async fn balance(&self, address: Address, chain_id: u64) -> U256 {
+    async fn balance(&self, address: Address, chain_id: u64) -> evm_loader::error::Result<U256> {
         info!("balance {address} {chain_id}");
 
         self.ethereum_balance_map_or(
@@ -915,10 +935,13 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
             |account: &BalanceAccount| account.balance(),
         )
         .await
-        .unwrap()
+        .map_err(map_neon_error)
     }
 
-    async fn solana_user_address(&self, address: Address) -> Option<Pubkey> {
+    async fn solana_user_address(
+        &self,
+        address: Address,
+    ) -> evm_loader::error::Result<Option<Pubkey>> {
         info!("solana_user_address {address}");
 
         self.ethereum_balance_map_or(
@@ -928,7 +951,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
             |account: &BalanceAccount| account.solana_address(),
         )
         .await
-        .unwrap()
+        .map_err(map_neon_error)
     }
 
     fn is_valid_chain_id(&self, chain_id: u64) -> bool {
@@ -1068,11 +1091,6 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         let info = account_data.into_account_info();
         action(&info)
     }
-}
-
-#[allow(clippy::needless_pass_by_value)]
-fn map_neon_error(e: NeonError) -> EvmLoaderError {
-    EvmLoaderError::Custom(e.to_string())
 }
 
 #[async_trait(?Send)]

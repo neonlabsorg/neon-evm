@@ -181,7 +181,7 @@ impl TxParams {
         let chain_id = self.chain_id.unwrap_or_else(|| backend.default_chain_id());
 
         let from = self.from.address();
-        let origin_nonce = backend.nonce(from, chain_id).await;
+        let origin_nonce = backend.nonce(from, chain_id).await.unwrap_or(0u64);
         let nonce = self.nonce.unwrap_or(origin_nonce);
         let max_fee_per_gas = self.max_fee_per_gas.unwrap_or(U256::ZERO);
 

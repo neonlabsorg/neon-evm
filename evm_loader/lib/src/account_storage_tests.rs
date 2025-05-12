@@ -131,8 +131,8 @@ async fn get_overriden_nonce_and_balance(
         .await;
 
     (
-        storage.nonce(address, nonce_chain_id).await,
-        storage.balance(address, nonce_chain_id).await,
+        storage.nonce(address, nonce_chain_id).await.unwrap(),
+        storage.balance(address, nonce_chain_id).await.unwrap(),
     )
 }
 
@@ -477,10 +477,19 @@ async fn test_read_balance_missing_account() {
     let storage = fixture.build_account_storage().await;
 
     assert_eq!(
-        storage.balance(MISSING_ADDRESS, LEGACY_CHAIN_ID).await,
+        storage
+            .balance(MISSING_ADDRESS, LEGACY_CHAIN_ID)
+            .await
+            .unwrap(),
         U256::ZERO
     );
-    assert_eq!(storage.nonce(MISSING_ADDRESS, LEGACY_CHAIN_ID).await, 0);
+    assert_eq!(
+        storage
+            .nonce(MISSING_ADDRESS, LEGACY_CHAIN_ID)
+            .await
+            .unwrap(),
+        0u64
+    );
 
     storage.verify_used_accounts(&[
         (
@@ -499,10 +508,19 @@ async fn test_read_balance_missing_account_extra_chain() {
     let storage = fixture.build_account_storage().await;
 
     assert_eq!(
-        storage.balance(MISSING_ADDRESS, EXTRA_CHAIN_ID).await,
+        storage
+            .balance(MISSING_ADDRESS, EXTRA_CHAIN_ID)
+            .await
+            .unwrap(),
         U256::ZERO
     );
-    assert_eq!(storage.nonce(MISSING_ADDRESS, EXTRA_CHAIN_ID).await, 0);
+    assert_eq!(
+        storage
+            .nonce(MISSING_ADDRESS, EXTRA_CHAIN_ID)
+            .await
+            .unwrap(),
+        0u64
+    );
 
     storage.verify_used_accounts(&[(
         fixture.balance_pubkey(MISSING_ADDRESS, EXTRA_CHAIN_ID),
@@ -519,10 +537,13 @@ async fn test_read_balance_actual_account() {
 
     let acc = &ACTUAL_BALANCE;
     assert_eq!(
-        storage.balance(acc.address, acc.chain_id).await,
+        storage.balance(acc.address, acc.chain_id).await.unwrap(),
         acc.balance
     );
-    assert_eq!(storage.nonce(acc.address, acc.chain_id).await, acc.nonce);
+    assert_eq!(
+        storage.nonce(acc.address, acc.chain_id).await.unwrap(),
+        acc.nonce
+    );
 
     storage.verify_used_accounts(&[(fixture.balance_pubkey(acc.address, acc.chain_id), false)]);
     storage.verify_upgrade_rent(0, 0);
@@ -537,10 +558,13 @@ async fn test_read_balance_actual_account_extra_chain() {
     let acc = &ACTUAL_BALANCE2;
     assert_eq!(acc.chain_id, EXTRA_CHAIN_ID);
     assert_eq!(
-        storage.balance(acc.address, acc.chain_id).await,
+        storage.balance(acc.address, acc.chain_id).await.unwrap(),
         acc.balance
     );
-    assert_eq!(storage.nonce(acc.address, acc.chain_id).await, acc.nonce);
+    assert_eq!(
+        storage.nonce(acc.address, acc.chain_id).await.unwrap(),
+        acc.nonce
+    );
 
     storage.verify_used_accounts(&[(fixture.balance_pubkey(acc.address, acc.chain_id), false)]);
     storage.verify_upgrade_rent(0, 0);
@@ -572,11 +596,14 @@ async fn test_modify_actual_and_missing_account() {
     storage.verify_regular_rent(fixture.balance_rent(), 0);
 
     assert_eq!(
-        storage.balance(from.address, from.chain_id).await,
+        storage.balance(from.address, from.chain_id).await.unwrap(),
         from.balance - amount
     );
     assert_eq!(
-        storage.balance(MISSING_ADDRESS, LEGACY_CHAIN_ID).await,
+        storage
+            .balance(MISSING_ADDRESS, LEGACY_CHAIN_ID)
+            .await
+            .unwrap(),
         amount
     );
 }
@@ -602,11 +629,14 @@ async fn test_modify_actual_and_missing_account_extra_chain() {
     storage.verify_regular_rent(fixture.balance_rent(), 0);
 
     assert_eq!(
-        storage.balance(from.address, from.chain_id).await,
+        storage.balance(from.address, from.chain_id).await.unwrap(),
         from.balance - amount
     );
     assert_eq!(
-        storage.balance(MISSING_ADDRESS, from.chain_id).await,
+        storage
+            .balance(MISSING_ADDRESS, from.chain_id)
+            .await
+            .unwrap(),
         amount
     );
 }

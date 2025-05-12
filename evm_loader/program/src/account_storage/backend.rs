@@ -81,19 +81,22 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
         super::block_hash::find_slot_hash(slot)
     }
 
-    fn nonce(&self, address: Address, chain_id: u64) -> u64 {
-        self.balance_account(address, chain_id)
-            .map_or(0_u64, |a| a.nonce())
+    fn nonce(&self, address: Address, chain_id: u64) -> Result<u64> {
+        Ok(self
+            .balance_account(address, chain_id)
+            .map_or(0_u64, |a| a.nonce()))
     }
 
-    fn balance(&self, address: Address, chain_id: u64) -> U256 {
-        self.balance_account(address, chain_id)
-            .map_or(U256::ZERO, |a| a.balance())
+    fn balance(&self, address: Address, chain_id: u64) -> Result<U256> {
+        Ok(self
+            .balance_account(address, chain_id)
+            .map_or(U256::ZERO, |a| a.balance()))
     }
 
-    fn solana_user_address(&self, address: Address) -> Option<Pubkey> {
-        self.balance_account(address, crate::config::SOL_CHAIN_ID)
-            .map_or(None, |a| a.solana_address())
+    fn solana_user_address(&self, address: Address) -> Result<Option<Pubkey>> {
+        Ok(self
+            .balance_account(address, crate::config::SOL_CHAIN_ID)
+            .map_or(None, |a| a.solana_address()))
     }
 
     fn is_valid_chain_id(&self, chain_id: u64) -> bool {

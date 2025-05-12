@@ -51,7 +51,6 @@ COPY ci/wait-for-solana.sh \
     ci/evm_loader-keypair.json \
     /opt/
 
-COPY solidity/ /opt/solidity
 COPY ci/operator-keypairs/ /opt/operator-keypairs
 COPY ci/operator-keypairs/id.json /root/.config/solana/id.json
 COPY ci/operator-keypairs/id2.json /root/.config/solana/id2.json

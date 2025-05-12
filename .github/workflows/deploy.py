@@ -38,6 +38,7 @@ DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
 SOLANA_NODE_VERSION = 'v2.2.11'
 SOLANA_BPF_VERSION = 'v2.2.11'
 RUST_VERSION = "1.84.1"
+EVM_BASE_IMAGE_TAG = "latest"
 
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 RELEASE_TAG_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.\d{1,2}"
@@ -114,16 +115,8 @@ def specify_image_tags(git_ref,
     else:
         neon_test_tag = "latest"
 
-    # evm_base_image_tag
-    if re.match(VERSION_BRANCH_TEMPLATE, evm_tag) is not None or is_evm_release:
-        evm_base_image_tag = re.sub(r'\.[0-9]*$', '.x', evm_tag)
-    elif evm_pr_version_branch:
-        evm_base_image_tag = evm_pr_version_branch
-    else:
-        evm_base_image_tag = "latest"
-
     env = dict(evm_tag=evm_tag,
-               evm_base_image_tag=evm_base_image_tag,
+               evm_base_image_tag=EVM_BASE_IMAGE_TAG,
                evm_pr_version_branch=evm_pr_version_branch,
                is_evm_release=is_evm_release,
                neon_test_tag=neon_test_tag)
@@ -132,11 +125,10 @@ def specify_image_tags(git_ref,
 
 @cli.command(name="build_docker_image")
 @click.option('--evm_sha_tag')
-@click.option('--base_image_tag')
-def build_docker_image(evm_sha_tag, base_image_tag):
-    docker_client.pull(f"{DOCKERHUB_ORG_NAME}/{BASE_IMAGE_NAME}:{base_image_tag}")
+def build_docker_image(evm_sha_tag):
+    docker_client.pull(f"{DOCKERHUB_ORG_NAME}/{BASE_IMAGE_NAME}:{EVM_BASE_IMAGE_TAG}")
     buildargs = {"REVISION": evm_sha_tag,
-                 "BASE_IMAGE_TAG": base_image_tag,
+                 "BASE_IMAGE_TAG": EVM_BASE_IMAGE_TAG,
                  "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME
                  }
 
@@ -189,14 +181,11 @@ def finalize_image(evm_sha_tag, evm_tag):
 
 @cli.command(name="finalize_base_image")
 @click.option('--evm_sha_tag')
-@click.option('--final_tag')
-def finalize_base_image(evm_sha_tag, final_tag):
+def finalize_base_image(evm_sha_tag):
     image = f"{DOCKERHUB_ORG_NAME}/{BASE_IMAGE_NAME}"
     docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
-    if re.match(RELEASE_TAG_TEMPLATE, final_tag) is not None or final_tag == "latest":
-        push_image_with_tag(image, evm_sha_tag, final_tag)
-    else:
-        click.echo(f"Nothing to finalize, the tag {final_tag} is not version tag or latest")
+    click.echo(f"Pulling base image {image}:{EVM_BASE_IMAGE_TAG}")
+    push_image_with_tag(image, evm_sha_tag, EVM_BASE_IMAGE_TAG)
 
 
 def push_image_with_tag(image, sha, tag):

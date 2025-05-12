@@ -14,7 +14,6 @@ on:
 env:
   DHUBU: ${{secrets.DHUBU}}
   DHUBP: ${{secrets.DHUBP}}
-  DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
   MAINNET_SOLANA_URL: ${{secrets.MAINNET_SOLANA_URL}}
   PROXY_ENDPOINT: "https://api.github.com/repos/${{ github.repository_owner }}/neon-proxy.py"
   NEON_TESTS_ENDPOINT: ${{vars.NEON_TESTS_ENDPOINT}}
@@ -36,7 +35,6 @@ jobs:
       evm_pr_version_branch: ${{ steps.tags.outputs.evm_pr_version_branch }}
       is_evm_release: ${{ steps.tags.outputs.is_evm_release }}
       neon_test_tag: ${{ steps.tags.outputs.neon_test_tag }}
-      evm_base_image_tag: ${{ steps.tags.outputs.evm_base_image_tag }}
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -59,11 +57,10 @@ jobs:
           echo "evm_pr_version_branch=${{ env.EVM_PR_VERSION_BRANCH }}" >> "$GITHUB_OUTPUT"
           echo "is_evm_release=${{ env.IS_EVM_RELEASE }}" >> "$GITHUB_OUTPUT"
           echo "neon_test_tag=${{ env.NEON_TEST_TAG }}" >> "$GITHUB_OUTPUT"
-          echo "evm_base_image_tag=${{ env.EVM_BASE_IMAGE_TAG }}" >> "$GITHUB_OUTPUT"
       - name: build docker image
         run: |
           python3 ./.github/workflows/deploy.py build_docker_image \
-          --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }} --base_image_tag=${{ steps.tags.outputs.evm_base_image_tag }}
+          --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }}
       - name: publish image
         run: |
           python3 ./.github/workflows/deploy.py publish_image \

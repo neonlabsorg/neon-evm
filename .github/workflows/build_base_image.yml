@@ -1,11 +1,11 @@
 name: Build base image
 on:
   workflow_dispatch:
+  push:
 
 env:
   DHUBU: ${{secrets.DHUBU}}
   DHUBP: ${{secrets.DHUBP}}
-  DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
   MAINNET_SOLANA_URL: ${{secrets.MAINNET_SOLANA_URL}}
   DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
 
@@ -32,7 +32,6 @@ jobs:
       - name: Set outputs
         id: tags
         run: |
-          echo "evm_base_image_tag=${{ env.EVM_BASE_IMAGE_TAG }}" >> "$GITHUB_OUTPUT"
           echo "evm_sha_tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
       - name: Build docker base image
         run: |
@@ -41,5 +40,4 @@ jobs:
       - name: Finalize image
         run: |
           python3 ./.github/workflows/deploy.py finalize_base_image \
-          --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }} \
-          --final_tag=${{ steps.tags.outputs.evm_base_image_tag }}
+          --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }}

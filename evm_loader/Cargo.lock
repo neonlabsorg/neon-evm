@@ -1993,6 +1993,8 @@ dependencies = [
  "bincode",
  "borsh 0.10.4",
  "borsh 1.5.3",
+ "build-info",
+ "build-info-build",
  "cfg-if",
  "ethnum",
  "evm-loader-macro",

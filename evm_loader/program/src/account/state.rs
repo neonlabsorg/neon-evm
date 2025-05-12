@@ -98,18 +98,23 @@ pub struct InterruptedState {
     pub lamports: u64,
 }
 
+type VersionSignature = [u8; 40];
+
 #[allow(clippy::struct_field_names)]
 #[repr(C, packed)]
 pub struct Header {
-    pub version_signature: usize,
+    pub version_signature: VersionSignature,
     // Are relative offsets for the corresponding objects as allocated by the AccountAllocator.
     pub root_offset: usize,
     pub serialized_tx: std::ops::Range<usize>,
 }
 
 impl Header {
-    fn valid_version_signature() -> usize {
-        0
+    fn valid_version_signature() -> VersionSignature {
+        let mut result: VersionSignature = [0; 40];
+        let state = env!("STATE_SIGNATURE").as_bytes();
+        result[..state.len()].copy_from_slice(state);
+        result
     }
 }
 
@@ -292,6 +297,11 @@ impl PlainData {
     }
 }
 
+enum RestoreResult<'local, 'sol> {
+    State(StateAccount<'local, 'sol>),
+    NeedReallocate{trx_rlp: &'local [u8], header: PlainData}
+}
+
 impl<'local, 'sol> StateAccount<'local, 'sol> {
     #[must_use]
     pub fn into_account(self) -> &'local AccountInfo<'sol> {
@@ -314,9 +324,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         self.trx_rlp
     }
 
-    // allocator should have provided a properly aligned pointer
-    #[allow(clippy::cast_ptr_alignment)]
-    pub fn from_account(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<Self> {
+    pub fn recover_tx_rlp(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<&'local [u8]> {
         let tag = super::tag(program_id, account)?;
         Self::validate_tag(account.key, tag)?;
 
@@ -325,18 +333,57 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
             data_ref.as_ptr()
         };
 
-        let (offset, tx_ptr, tx_len) = {
+        let (tx_ptr, tx_len) = {
             let header_ref = super::header::<Header>(account);
             (
-                header_ref.root_offset,
                 unsafe { data_ptr.offset(header_ref.serialized_tx.start.try_into()?) },
                 header_ref.serialized_tx.end - header_ref.serialized_tx.start,
             )
         };
 
+        Ok(unsafe { &*slice_from_raw_parts(tx_ptr, tx_len) })
+    }
+
+    fn recover_plain_header(account: &'local AccountInfo<'sol>) -> Result<PlainData> {
+        let root_offset = super::header::<Header>(account).root_offset;
+
+        let mut plain = PlainData::default();
+        {
+            let plain_ref = &mut plain;
+            let dataref = account.try_borrow_data()?;
+            let dataslice: &[u8] = &dataref.as_ref()[root_offset..][..size_of::<PlainData>()];
+            unsafe {
+                std::slice::from_raw_parts_mut(
+                    std::ptr::from_mut::<PlainData>(plain_ref).cast::<u8>(),
+                    dataslice.len(),
+                )
+                .copy_from_slice(dataslice);
+            }
+        }
+
+        Ok(plain)
+    }
+
+    // allocator should have provided a properly aligned pointer
+    #[allow(clippy::cast_ptr_alignment)]
+    fn from_account(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<RestoreResult<'local, 'sol>> {
+        let tag = super::tag(program_id, account)?;
+        Self::validate_tag(account.key, tag)?;
+
+        let (offset, need_restart) = {
+            let header = super::header::<Header>(account);
+            (header.root_offset, header.version_signature != Header::valid_version_signature())
+        };
+
+        let trx_rlp = Self::recover_tx_rlp(program_id, account)?;
+
+        if need_restart {
+            return Ok(RestoreResult::NeedReallocate{trx_rlp, header: Self::recover_plain_header(account)?});
+        }
+
         let mem: RefMut<&mut [u8]> = account.try_borrow_mut_data()?;
 
-        Ok(Self {
+        Ok(RestoreResult::State(Self {
             account,
             root_ref: RefMut::map(mem, |data| unsafe {
                 &mut *(data
@@ -344,9 +391,9 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                     .offset(offset.try_into().unwrap())
                     .cast::<Root>())
             }),
-            trx_rlp: unsafe { &*slice_from_raw_parts(tx_ptr, tx_len) },
+            trx_rlp,
             tag,
-        })
+        }))
     }
 
     #[allow(clippy::cast_sign_loss)]
@@ -444,9 +491,15 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
     pub fn restore(
         program_id: &Pubkey,
         info: &'local AccountInfo<'sol>,
-        accounts: &AccountsDB,
+        accounts: &AccountsDB<'sol>,
     ) -> Result<(Self, AccountsStatus)> {
-        let mut state = Self::from_account(program_id, info)?;
+        let mut state = match Self::from_account(program_id, info)? {
+            RestoreResult::State(state) => state,
+            RestoreResult::NeedReallocate{trx_rlp, header} => {
+                let transaction = Transaction::parse_from_rlp(trx_rlp, None)?;
+                return Ok((Self::new(program_id, info, accounts, header.origin, &transaction, trx_rlp, header.tree_account)?, AccountsStatus::NeedRestart));
+            }
+        };
 
         let mut status = state.validate_revisions(program_id, accounts);
         if status == AccountsStatus::Ok {
@@ -791,19 +844,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         let root_ptr: *const Root =
             unsafe { account_data_ptr.add(root_offset).cast::<Root>().cast() };
 
-        let mut plain = PlainData::default();
-        {
-            let plain_ref = &mut plain;
-            let dataref = account.try_borrow_data()?;
-            let dataslice: &[u8] = &dataref.as_ref()[root_offset..][..size_of::<PlainData>()];
-            unsafe {
-                std::slice::from_raw_parts_mut(
-                    std::ptr::from_mut::<PlainData>(plain_ref).cast::<u8>(),
-                    dataslice.len(),
-                )
-                .copy_from_slice(dataslice);
-            }
-        }
+        let plain = Self::recover_plain_header(account)?;
 
         if plain.layout_version == PlainData::layout_version() {
             let memory_space_delta = {

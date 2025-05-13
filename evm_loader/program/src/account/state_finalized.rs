@@ -1,6 +1,6 @@
 use std::cell::{Ref, RefMut};
 
-use super::{AccountHeader, Operator, StateAccount, TAG_STATE_FINALIZED};
+use super::{AccountHeader, Operator, PlainStateHeader, StateAccount, TAG_STATE_FINALIZED};
 use crate::{
     error::{Error, Result},
     types::{Transaction, TrxView},
@@ -26,6 +26,24 @@ impl<'local, 'sol> StateFinalizedAccount<'local, 'sol> {
     #[must_use]
     pub fn into_account(self) -> &'local AccountInfo<'sol> {
         self.account
+    }
+
+    pub fn make(
+        program_id: &Pubkey,
+        header: &PlainStateHeader,
+        account: &'local AccountInfo<'sol>,
+    ) -> Result<&'local AccountInfo<'sol>> {
+        let owner = header.owner;
+        let transaction_hash = header.hash();
+
+        super::set_tag(program_id, account, TAG_STATE_FINALIZED, Header::VERSION)?;
+        {
+            let mut header = super::header_mut::<Header>(account);
+            header.owner = owner;
+            header.transaction_hash = transaction_hash;
+        }
+
+        Ok(account)
     }
 
     pub fn convert_from_state(

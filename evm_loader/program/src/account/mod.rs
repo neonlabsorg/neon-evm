@@ -14,7 +14,10 @@ pub use ether_storage::{Cell, Header as StorageCellHeader, StorageCell, StorageC
 pub use holder::{Header as HolderHeader, Holder};
 pub use operator::Operator;
 pub use operator_balance::{OperatorBalanceAccount, OperatorBalanceValidator};
-pub use state::{AccountsStatus, InterruptedInstruction, InterruptedState, StateAccount};
+pub use state::{
+    AccountsStatus, InterruptedInstruction, InterruptedState, PlainData as PlainStateHeader,
+    StateAccount,
+};
 pub use state_finalized::{Header as StateFinalizedHeader, StateFinalizedAccount};
 pub use transaction_tree::{
     NodeInitializer, Status as TransactionTreeNodeStatus, TransactionTree, TreeInitializer,

@@ -189,6 +189,60 @@ impl PlainData {
     fn layout_version() -> usize {
         0
     }
+
+    pub fn cancel(&self, program_id: &Pubkey, account: &AccountInfo) -> Result<()> {
+        // Clear an executor and set the result as canceled
+        self.finalize_impl(program_id, TAG_SCHEDULED_STATE_CANCELLED, account)
+    }
+
+    fn finalize_impl(
+        &self,
+        program_id: &Pubkey,
+        scheduled_transition_tag: u8,
+        account: &AccountInfo,
+    ) -> Result<()> {
+        let tag = super::tag(program_id, account)?;
+        if tag != TAG_STATE {
+            return Err(Error::AccountInvalidTag(*account.key, tag));
+        }
+
+        if self.tree_account.is_some() {
+            debug_print!(
+                "Pre-finalize State {} into {} for scheduled transaction",
+                self.account.key,
+                scheduled_transition_tag
+            );
+            // Change the tag, leave all the data unchanged.
+            super::set_tag(
+                program_id,
+                account,
+                scheduled_transition_tag,
+                Header::VERSION,
+            )?;
+        } else {
+            debug_print!("Finalize State {}", self.account.key);
+            StateFinalizedAccount::make(program_id, self, account)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn finish_scheduled_tx(&self, program_id: &Pubkey, account: &AccountInfo) -> Result<()> {
+        let tag = super::tag(program_id, account)?;
+        let is_finalized = tag == TAG_SCHEDULED_STATE_FINALIZED;
+        let is_canceled = tag == TAG_SCHEDULED_STATE_CANCELLED;
+        if !(is_finalized || is_canceled) {
+            return Err(Error::StorageAccountInvalidTag(*account.key, tag));
+        }
+
+        debug_print!(
+            "Finalize State {} for scheduled transaction",
+            self.account.key
+        );
+        StateFinalizedAccount::make(program_id, self, account)?;
+
+        Ok(())
+    }
 }
 
 #[repr(C)]
@@ -299,7 +353,10 @@ impl PlainData {
 
 enum RestoreResult<'local, 'sol> {
     State(StateAccount<'local, 'sol>),
-    NeedReallocate{trx_rlp: &'local [u8], header: PlainData}
+    NeedReallocate {
+        trx_rlp: &'local [u8],
+        header: PlainData,
+    },
 }
 
 impl<'local, 'sol> StateAccount<'local, 'sol> {
@@ -324,7 +381,10 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         self.trx_rlp
     }
 
-    pub fn recover_tx_rlp(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<&'local [u8]> {
+    pub fn recover_tx_rlp(
+        program_id: &Pubkey,
+        account: &'local AccountInfo<'sol>,
+    ) -> Result<&'local [u8]> {
         let tag = super::tag(program_id, account)?;
         Self::validate_tag(account.key, tag)?;
 
@@ -344,7 +404,13 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         Ok(unsafe { &*slice_from_raw_parts(tx_ptr, tx_len) })
     }
 
-    fn recover_plain_header(account: &'local AccountInfo<'sol>) -> Result<PlainData> {
+    pub fn recover_plain_header(
+        program_id: &Pubkey,
+        account: &'local AccountInfo<'sol>,
+    ) -> Result<PlainData> {
+        let tag = super::tag(program_id, account)?;
+        Self::validate_tag(account.key, tag)?;
+
         let root_offset = super::header::<Header>(account).root_offset;
 
         let mut plain = PlainData::default();
@@ -360,25 +426,37 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                 .copy_from_slice(dataslice);
             }
         }
+        if plain.layout_version != PlainData::layout_version() {
+            // clear or default corresponding fields
+        }
 
         Ok(plain)
     }
 
     // allocator should have provided a properly aligned pointer
     #[allow(clippy::cast_ptr_alignment)]
-    fn from_account(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<RestoreResult<'local, 'sol>> {
+    fn from_account(
+        program_id: &Pubkey,
+        account: &'local AccountInfo<'sol>,
+    ) -> Result<RestoreResult<'local, 'sol>> {
         let tag = super::tag(program_id, account)?;
         Self::validate_tag(account.key, tag)?;
 
         let (offset, need_restart) = {
             let header = super::header::<Header>(account);
-            (header.root_offset, header.version_signature != Header::valid_version_signature())
+            (
+                header.root_offset,
+                header.version_signature != Header::valid_version_signature(),
+            )
         };
 
         let trx_rlp = Self::recover_tx_rlp(program_id, account)?;
 
         if need_restart {
-            return Ok(RestoreResult::NeedReallocate{trx_rlp, header: Self::recover_plain_header(account)?});
+            return Ok(RestoreResult::NeedReallocate {
+                trx_rlp,
+                header: Self::recover_plain_header(program_id, account)?,
+            });
         }
 
         let mem: RefMut<&mut [u8]> = account.try_borrow_mut_data()?;
@@ -481,23 +559,28 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         })
     }
 
-    pub fn restore_without_revision_check(
-        program_id: &Pubkey,
-        info: &'local AccountInfo<'sol>,
-    ) -> Result<Self> {
-        Self::from_account(program_id, info)
-    }
-
     pub fn restore(
         program_id: &Pubkey,
         info: &'local AccountInfo<'sol>,
         accounts: &AccountsDB<'sol>,
-    ) -> Result<(Self, AccountsStatus)> {
+    ) -> Result<(Self, AccountsStatus, Option<Transaction>)> {
         let mut state = match Self::from_account(program_id, info)? {
             RestoreResult::State(state) => state,
-            RestoreResult::NeedReallocate{trx_rlp, header} => {
+            RestoreResult::NeedReallocate { trx_rlp, header } => {
                 let transaction = Transaction::parse_from_rlp(trx_rlp, None)?;
-                return Ok((Self::new(program_id, info, accounts, header.origin, &transaction, trx_rlp, header.tree_account)?, AccountsStatus::NeedRestart));
+                return Ok((
+                    Self::new(
+                        program_id,
+                        info,
+                        accounts,
+                        header.origin,
+                        &transaction,
+                        trx_rlp,
+                        header.tree_account,
+                    )?,
+                    AccountsStatus::NeedRestart,
+                    Some(transaction),
+                ));
             }
         };
 
@@ -513,7 +596,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
             state.set_interrupted_state(None);
         }
 
-        Ok((state, status))
+        Ok((state, status, None))
     }
 
     fn validate_revisions(&self, program_id: &Pubkey, accounts: &AccountsDB) -> AccountsStatus {
@@ -538,7 +621,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         AccountsStatus::Ok
     }
 
-    pub fn publish_block_params(&mut self) {
+    pub fn finalize_step(&mut self) {
         let BlockParams { number, timestamp } =
             self.executor_state().as_ref().unwrap().block_params;
         self.root_ref.plain_data.block_params = (timestamp, number);
@@ -573,12 +656,6 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
 
     pub fn finalize(self, program_id: &Pubkey) -> Result<()> {
         self.finalize_impl(program_id, TAG_SCHEDULED_STATE_FINALIZED)
-    }
-
-    pub fn cancel(self, program_id: &Pubkey) -> Result<()> {
-        // Clear an executor and set the result as canceled
-        self.executor_state_mut().as_mut().unwrap().cancel();
-        self.finalize_impl(program_id, TAG_SCHEDULED_STATE_CANCELLED)
     }
 
     fn finalize_impl(self, program_id: &Pubkey, scheduled_transition_tag: u8) -> Result<()> {
@@ -844,7 +921,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         let root_ptr: *const Root =
             unsafe { account_data_ptr.add(root_offset).cast::<Root>().cast() };
 
-        let plain = Self::recover_plain_header(account)?;
+        let plain = Self::recover_plain_header(program_id, account)?;
 
         if plain.layout_version == PlainData::layout_version() {
             let memory_space_delta = {

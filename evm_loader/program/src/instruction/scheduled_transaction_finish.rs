@@ -1,6 +1,3 @@
-use std::cell::RefMut;
-use std::ops::DerefMut;
-
 use crate::account::{
     Operator, OperatorBalanceAccount, OperatorBalanceValidator, StateAccount, TransactionTree,
 };
@@ -20,28 +17,24 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8
     let operator = Operator::from_account(&accounts[2])?;
     let mut operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
 
+    let storage_account = &accounts[0];
     let storage_key = accounts[0].key;
-    let mut state = StateAccount::restore_without_revision_check(program_id, &accounts[0])?;
-    let trx = state.trx();
+    let header = StateAccount::recover_plain_header(program_id, storage_account)?;
 
     operator_balance.validate_owner(&operator)?;
-    operator_balance.validate_transaction(trx)?;
-    let miner_address = operator_balance.miner(state.trx_origin());
+    operator_balance.validate_transaction(&header)?;
+    let miner_address = operator_balance.miner(header.origin);
 
-    log_data(&[b"HASH", &trx.hash()]);
+    log_data(&[b"HASH", &header.hash()]);
     log_data(&[b"MINER", miner_address.as_bytes()]);
 
     {
-        let root = state.root_ref_mut();
-        let mut executor_state = RefMut::map(root.executor_state.borrow_mut(), |state| {
-            state.as_mut().unwrap()
-        });
         // Validate.
         let exit_status = validate(
-            &root.plain_data,
+            &header,
             executor_state.deref_mut(),
             &transaction_tree,
-            root.plain_data.tree_account.as_ref(),
+            header.tree_account.as_ref(),
             storage_key,
         )?;
 
@@ -52,14 +45,14 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8
             operator_balance.mint(GAS)?;
         }
 
-        let refund = root.plain_data.materialize_unused_gas()?;
+        let refund = header.materialize_unused_gas()?;
         transaction_tree.mint(refund)?;
 
         // Finalize.
-        transaction_tree.end_transaction(root.plain_data.hash(), exit_status)?;
+        transaction_tree.end_transaction(header.hash(), exit_status)?;
     };
 
-    state.finish_scheduled_tx(program_id)?;
+    header.finish_scheduled_tx(program_id, storage_account);
 
     Ok(())
 }

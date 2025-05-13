@@ -70,7 +70,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
             do_begin(trx, accounts_db, storage, gasometer)
         }
         TAG_STATE => {
-            let (storage, accounts_status) =
+            let (storage, accounts_status, parsed_tx) =
                 StateAccount::restore(program_id, &storage_info, &accounts_db)?;
 
             operator_balance.validate_transaction(storage.trx())?;
@@ -82,7 +82,14 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
             let gasometer = Gasometer::new(storage.gas_used(), &operator)?;
 
             let reset = accounts_status != AccountsStatus::Ok;
-            do_continue(step_count, accounts_db, storage, gasometer, reset)
+            do_continue(
+                step_count,
+                accounts_db,
+                storage,
+                gasometer,
+                reset,
+                parsed_tx,
+            )
         }
         TAG_SCHEDULED_STATE_CANCELLED | TAG_SCHEDULED_STATE_FINALIZED => {
             Err(Error::ScheduledTxAlreadyComplete(*storage_info.key))

@@ -16,6 +16,7 @@ pub struct NetSpecificConfig {
     pub operators_whitelist: Vec<String>,
     pub neon_chain_id: u64,
     pub sol_chain_id: u64,
+    pub transaction_accounts_limit: usize,
     pub neon_token_mint: String,
     pub chains: Vec<Chain>,
     pub no_update_tracking_owners: Vec<String>,
@@ -73,6 +74,16 @@ impl Parse for NetSpecificConfig {
                 sol_chain_id = Some(c.id);
             }
         }
+        let mut transaction_accounts_limit: usize = 128;
+        if root["transaction_accounts_limit"].as_str().is_some() {
+            let value = root["transaction_accounts_limit"]
+                .as_str()
+                .unwrap()
+                .parse::<usize>();
+            if value.is_ok() {
+                transaction_accounts_limit = value.unwrap();
+            }
+        }
 
         Ok(Self {
             program_id,
@@ -82,6 +93,7 @@ impl Parse for NetSpecificConfig {
             neon_token_mint: neon_token_mint.unwrap(),
             chains,
             no_update_tracking_owners,
+            transaction_accounts_limit,
         })
     }
 }

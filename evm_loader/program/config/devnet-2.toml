@@ -1,5 +1,7 @@
 program_id = "6ojZUjyXiKSEvaEo5DBs4JuhANytxZwuAvNPogzLYrZH"
 
+transaction_accounts_limit = 128
+
 no_update_tracking_owners = [
     "HEvSKofvBgfaexv23kMabbYqxasxU3mQ4ibBMEmJWHny",  # Chainlink oracle
     "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ",   # Pyth oracle

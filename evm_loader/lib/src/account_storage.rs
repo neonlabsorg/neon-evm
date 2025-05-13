@@ -11,7 +11,7 @@ pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use evm_loader::{
     account::{BalanceAccount, ContractAccount, StorageCell, StorageCellAddress},
     account_storage::{find_slot_hash_provided, FAKE_OPERATOR},
-    config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
+    config::{STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT, TRANSACTION_ACCOUNTS_LIMIT},
     error::Error as EvmLoaderError,
     executor::OwnedAccountInfo,
     types::{vector::VectorVecExt, Address, Vector},
@@ -469,8 +469,11 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         address: Address,
         chain_id: u64,
     ) -> NeonResult<&RefCell<AccountData>> {
-        if self.accounts.len() > 128 {
-            return Err(NeonError::TooManyAccounts(self.accounts.len(), 128));
+        if self.accounts.len() > TRANSACTION_ACCOUNTS_LIMIT {
+            return Err(NeonError::TooManyAccounts(
+                self.accounts.len(),
+                TRANSACTION_ACCOUNTS_LIMIT,
+            ));
         }
 
         let (pubkey, _) = address.find_balance_address(self.program_id(), chain_id);
@@ -511,8 +514,11 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
     }
 
     async fn get_contract_account(&self, address: Address) -> NeonResult<&RefCell<AccountData>> {
-        if self.accounts.len() > 128 {
-            return Err(NeonError::TooManyAccounts(self.accounts.len(), 128));
+        if self.accounts.len() > TRANSACTION_ACCOUNTS_LIMIT {
+            return Err(NeonError::TooManyAccounts(
+                self.accounts.len(),
+                TRANSACTION_ACCOUNTS_LIMIT,
+            ));
         }
 
         let (pubkey, _) = address.find_solana_address(self.program_id());
@@ -532,8 +538,11 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         address: Address,
         index: U256,
     ) -> NeonResult<&RefCell<AccountData>> {
-        if self.accounts.len() > 128 {
-            return Err(NeonError::TooManyAccounts(self.accounts.len(), 128));
+        if self.accounts.len() > TRANSACTION_ACCOUNTS_LIMIT {
+            return Err(NeonError::TooManyAccounts(
+                self.accounts.len(),
+                TRANSACTION_ACCOUNTS_LIMIT,
+            ));
         }
 
         let (base, _) = address.find_solana_address(self.program_id());

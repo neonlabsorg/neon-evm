@@ -1,0 +1,43 @@
+ARG DOCKERHUB_ORG_NAME
+# Solana image
+FROM ubuntu:24.04 AS solana
+# install dependencies
+RUN apt-get update
+RUN apt-get upgrade -y
+RUN apt-get install -y libssl-dev libudev-dev pkg-config libprotobuf-dev protobuf-compiler curl bzip2
+# install solana cli
+ARG SOLANA_BPF_VERSION
+RUN sh -c "$(curl -sSfL https://release.anza.xyz/${SOLANA_BPF_VERSION}/install)"
+ENV PATH=${PATH}:/root/.local/share/solana/install/active_release/bin
+WORKDIR /opt
+
+# Builder image
+#FROM solana AS rust-builder
+RUN apt-get install -y build-essential
+# install rust
+ARG RUST_VERSION
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain=${RUST_VERSION} -y
+ENV PATH=${PATH}:/root/.cargo/bin
+RUN rustup component add rustfmt
+RUN rustup component add clippy
+RUN cargo install rustfilt
+# install solana-sdk
+RUN /root/.local/share/solana/install/active_release/bin/platform-tools-sdk/sbf/scripts/install.sh
+
+# Add neon_test_invoke_program to the genesis
+FROM ${DOCKERHUB_ORG_NAME}/neon_test_programs:latest AS neon_test_programs
+
+# Define solana-image that contains utility
+FROM solana AS base
+COPY --from=neon_test_programs /opt/deploy/ /opt/deploy/
+
+ARG MAINNET_SOLANA_URL
+RUN solana program dump metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s /opt/metaplex.so --url ${MAINNET_SOLANA_URL}
+
+# pyth accounts for test purposes
+RUN solana account 7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE --output-file /opt/pyth_sol.json --output json-compact --url ${MAINNET_SOLANA_URL}
+RUN solana account F2VfCymdNQiCa8Vyg5E7BwEv9UPwfm8cVN6eqQLqXiGo --output-file /opt/pyth_neon.json --output json-compact --url ${MAINNET_SOLANA_URL}
+RUN solana account 42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC --output-file /opt/pyth_eth.json --output json-compact --url ${MAINNET_SOLANA_URL}
+RUN solana account 42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC --output-file /opt/pyth_usdc.json --output json-compact --url ${MAINNET_SOLANA_URL}
+RUN solana account HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM --output-file /opt/pyth_usdt.json --output json-compact --url ${MAINNET_SOLANA_URL}
+RUN solana account 6dM4TqWyWJsbx7obrdLcviBkTafD5E8av61zfU6jq57X --output-file /opt/wsol.json --output json-compact --url ${MAINNET_SOLANA_URL}

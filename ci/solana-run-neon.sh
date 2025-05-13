@@ -26,21 +26,6 @@ PUTH_USDC_PATH=${NEON_BIN}/pyth_usdc.json
 PUTH_USDT_PATH=${NEON_BIN}/pyth_usdt.json
 WSOL_PATH=${NEON_BIN}/wsol.json
 
-if [ -n "$DEVNET_SOLANA_URL" ]; then
-    url=$DEVNET_SOLANA_URL
-    echo "DEVNET_SOLANA_URL variable found."
-else
-    url=mainnet-beta
-    echo "DEVNET_SOLANA_URL variable not found. Pyth accounts will be fetched from mainnet."
-fi
-
-solana account 7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE --output-file pyth_sol.json --output json-compact --url ${url}
-solana account F2VfCymdNQiCa8Vyg5E7BwEv9UPwfm8cVN6eqQLqXiGo --output-file pyth_neon.json --output json-compact --url ${url}
-solana account 42amVS4KgzR9rA28tkVYqVXjq9Qa8dcZQMbH5EYFX6XC --output-file pyth_eth.json --output json-compact --url ${url}
-solana account Dpw1EAVrSB1ibxiDQyTAW6Zip3J4Btk2x4SgApQCeFbX --output-file pyth_usdc.json --output json-compact --url ${url}
-solana account HT2PLQBcG5EiCcNSaMHAjSgd9F98ecpATbk4Sk5oYuM --output-file pyth_usdt.json --output json-compact --url ${url}
-solana account 6dM4TqWyWJsbx7obrdLcviBkTafD5E8av61zfU6jq57X --output-file wsol.json --output json-compact --url ${url}
-
 VALIDATOR_ARGS=(
   --reset
   --warp-slot 1

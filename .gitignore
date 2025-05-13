@@ -13,6 +13,4 @@ hfuzz_target
 hfuzz_workspace
 **/*.so
 *.code-workspace
-evm_loader/solidity/artifacts
-evm_loader/solidity/cache
 test-ledger

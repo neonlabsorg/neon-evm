@@ -32,16 +32,19 @@ DOCKER_USER = os.environ.get("DHUBU")
 DOCKER_PASSWORD = os.environ.get("DHUBP")
 MAINNET_SOLANA_URL = os.environ.get("MAINNET_SOLANA_URL", "mainnet-beta")
 IMAGE_NAME = os.environ.get("IMAGE_NAME", "evm_loader")
+BASE_IMAGE_NAME = os.environ.get("BASE_IMAGE_NAME", "evm_loader_base")
 RUN_LINK_REPO = os.environ.get("RUN_LINK_REPO")
 DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
 SOLANA_NODE_VERSION = 'v2.2.11'
 SOLANA_BPF_VERSION = 'v2.2.11'
 RUST_VERSION = "1.84.1"
+EVM_BASE_IMAGE_TAG = "latest"
 
 VERSION_BRANCH_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.x.*"
 RELEASE_TAG_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.\d{1,2}"
 
 docker_client = docker.APIClient()
+
 NEON_TEST_IMAGE_NAME = "neon_tests"
 
 PROXY_ENDPOINT = os.environ.get("PROXY_ENDPOINT")
@@ -113,6 +116,7 @@ def specify_image_tags(git_ref,
         neon_test_tag = "latest"
 
     env = dict(evm_tag=evm_tag,
+               evm_base_image_tag=EVM_BASE_IMAGE_TAG,
                evm_pr_version_branch=evm_pr_version_branch,
                is_evm_release=is_evm_release,
                neon_test_tag=neon_test_tag)
@@ -122,12 +126,10 @@ def specify_image_tags(git_ref,
 @cli.command(name="build_docker_image")
 @click.option('--evm_sha_tag')
 def build_docker_image(evm_sha_tag):
-    docker_client.pull(f"{DOCKERHUB_ORG_NAME}/neon_test_programs:latest")
+    docker_client.pull(f"{DOCKERHUB_ORG_NAME}/{BASE_IMAGE_NAME}:{EVM_BASE_IMAGE_TAG}")
     buildargs = {"REVISION": evm_sha_tag,
-                 "SOLANA_BPF_VERSION": SOLANA_BPF_VERSION,
-                 "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME,
-                 "MAINNET_SOLANA_URL": MAINNET_SOLANA_URL,
-                 "RUST_VERSION": RUST_VERSION,
+                 "BASE_IMAGE_TAG": EVM_BASE_IMAGE_TAG,
+                 "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME
                  }
 
     tag = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}:{evm_sha_tag}"
@@ -136,14 +138,32 @@ def build_docker_image(evm_sha_tag):
     process_output(output)
 
 
+@cli.command(name="build_base_docker_image")
+@click.option('--evm_sha_tag')
+def build_base_docker_image(evm_sha_tag):
+    docker_client.pull(f"{DOCKERHUB_ORG_NAME}/neon_test_programs:latest")
+    buildargs = {"SOLANA_BPF_VERSION": SOLANA_BPF_VERSION,
+                 "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME,
+                 "MAINNET_SOLANA_URL": MAINNET_SOLANA_URL,
+                 "RUST_VERSION": RUST_VERSION,
+                 }
+
+    tag = f"{DOCKERHUB_ORG_NAME}/{BASE_IMAGE_NAME}:{evm_sha_tag}"
+    click.echo("start build")
+    output = docker_client.build(tag=tag, dockerfile="Dockerfile_base", buildargs=buildargs, path="./", decode=True)
+    process_output(output)
+
+
 @cli.command(name="publish_image")
 @click.option('--evm_sha_tag')
 @click.option('--evm_tag')
 def publish_image(evm_sha_tag, evm_tag):
-    push_image_with_tag(evm_sha_tag, evm_sha_tag)
-    # push latest and version tags only on the finalizing step
+    image = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}"
+    docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
+    push_image_with_tag(image, evm_sha_tag, evm_sha_tag)
+    # latest and version tags will ne pushed only on the finalizing step
     if evm_tag != "latest" and re.match(RELEASE_TAG_TEMPLATE, evm_tag) is None:
-        push_image_with_tag(evm_sha_tag, evm_tag)
+        push_image_with_tag(image, evm_sha_tag, evm_tag)
 
 
 @cli.command(name="finalize_image")
@@ -151,6 +171,7 @@ def publish_image(evm_sha_tag, evm_tag):
 @click.option('--evm_tag')
 def finalize_image(evm_sha_tag, evm_tag):
     image = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}"
+    docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
     docker_client.pull(f"{image}:{evm_sha_tag}")
     if re.match(RELEASE_TAG_TEMPLATE, evm_tag) is not None or evm_tag == "latest":
         push_image_with_tag(evm_sha_tag, evm_tag)
@@ -158,9 +179,16 @@ def finalize_image(evm_sha_tag, evm_tag):
         click.echo(f"Nothing to finalize, the tag {evm_tag} is not version tag or latest")
 
 
-def push_image_with_tag(sha, tag):
-    image = f"{DOCKERHUB_ORG_NAME}/{IMAGE_NAME}"
+@cli.command(name="finalize_base_image")
+@click.option('--evm_sha_tag')
+def finalize_base_image(evm_sha_tag):
+    image = f"{DOCKERHUB_ORG_NAME}/{BASE_IMAGE_NAME}"
     docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
+    click.echo(f"Pulling base image {image}:{EVM_BASE_IMAGE_TAG}")
+    push_image_with_tag(image, evm_sha_tag, EVM_BASE_IMAGE_TAG)
+
+
+def push_image_with_tag(image, sha, tag):
     docker_client.tag(f"{image}:{sha}", f"{image}:{tag}")
     out = docker_client.push(f"{image}:{tag}", decode=True, stream=True)
     process_output(out)

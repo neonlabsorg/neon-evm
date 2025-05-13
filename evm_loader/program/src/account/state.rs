@@ -570,7 +570,9 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         let mut state = match Self::from_account(program_id, info)? {
             RestoreResult::State(state) => state,
             RestoreResult::NeedReallocate { trx_rlp, header } => {
-                let transaction = Transaction::parse_from_rlp(trx_rlp, None)?;
+                let trx_rlp = trx_rlp.to_vec();
+                let transaction = Transaction::parse_from_rlp(trx_rlp.as_slice(), None)?;
+                Holder::init_holder_heap(program_id, info, 0)?;
                 return Ok((
                     Self::new(
                         program_id,
@@ -578,7 +580,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                         accounts,
                         header.origin,
                         &transaction,
-                        trx_rlp,
+                        trx_rlp.as_slice(),
                         header.tree_account,
                     )?,
                     AccountsStatus::NeedRestart,

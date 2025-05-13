@@ -4,8 +4,6 @@ use crate::account::{
 use crate::config::TREE_ACCOUNT_FINISH_TRANSACTION_GAS;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
-use crate::evm::ExitStatus;
-use crate::executor::ExecutorStateData;
 use crate::types::TrxView;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
@@ -19,7 +17,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8
 
     let storage_account = &accounts[0];
     let storage_key = accounts[0].key;
-    let header = StateAccount::recover_plain_header(program_id, storage_account)?;
+    let mut header = StateAccount::recover_plain_header(program_id, storage_account)?;
 
     operator_balance.validate_owner(&operator)?;
     operator_balance.validate_transaction(&header)?;
@@ -30,13 +28,13 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8
 
     {
         // Validate.
-        let exit_status = validate(
-            &header,
-            executor_state.deref_mut(),
-            &transaction_tree,
-            header.tree_account.as_ref(),
-            storage_key,
-        )?;
+        validate(&header, &transaction_tree, header.tree_account.as_ref())?;
+
+        let exit_status = header
+            .tx_exit_status
+            .as_ref()
+            .ok_or(Error::ScheduledTxNoExitStatus(*storage_key))?
+            .clone();
 
         // Handle gas, transaction costs to operator, refund into tree account.
         const GAS: U256 = U256::new(TREE_ACCOUNT_FINISH_TRANSACTION_GAS as u128);
@@ -52,18 +50,16 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8
         transaction_tree.end_transaction(header.hash(), exit_status)?;
     };
 
-    header.finish_scheduled_tx(program_id, storage_account);
+    header.finish_scheduled_tx(program_id, storage_account)?;
 
     Ok(())
 }
 
 fn validate<'b>(
     trx: &impl TrxView,
-    executor_state: &'b mut ExecutorStateData,
     tree: &TransactionTree,
     tree_account: Option<&Pubkey>,
-    state_key: &Pubkey,
-) -> Result<&'b ExitStatus> {
+) -> Result<()> {
     // Validate if it's a scheduled transaction at all.
     if !trx.is_scheduled_tx() {
         return Err(Error::NotScheduledTransaction);
@@ -81,9 +77,5 @@ fn validate<'b>(
         ));
     }
 
-    let exit_status = executor_state
-        .exit_status
-        .as_ref()
-        .ok_or(Error::ScheduledTxNoExitStatus(*state_key))?;
-    Ok(&exit_status)
+    Ok(())
 }

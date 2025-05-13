@@ -21,9 +21,9 @@ use static_assertions::const_assert_eq;
 
 use super::{
     AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder, OperatorBalanceAccount,
-    StateFinalizedAccount, StorageCell, TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT, TAG_HOLDER,
-    TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
-    TAG_STORAGE_CELL,
+    StateFinalizedAccount, StorageCell, TransactionTree, TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT,
+    TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE,
+    TAG_STATE_FINALIZED, TAG_STORAGE_CELL,
 };
 
 #[derive(PartialEq, Eq)]
@@ -148,6 +148,11 @@ pub struct PlainData {
     pub block_params: (U256, U256),
     /// Steps executed in the transaction
     pub steps_executed: u64,
+
+    pub tx_exit_status: Option<(
+        crate::account::transaction_tree::Status,
+        solana_program::keccak::Hash,
+    )>,
     // fields for layout_version >= 1
 }
 
@@ -209,7 +214,7 @@ impl PlainData {
         if self.tree_account.is_some() {
             debug_print!(
                 "Pre-finalize State {} into {} for scheduled transaction",
-                self.account.key,
+                account.key,
                 scheduled_transition_tag
             );
             // Change the tag, leave all the data unchanged.
@@ -220,7 +225,7 @@ impl PlainData {
                 Header::VERSION,
             )?;
         } else {
-            debug_print!("Finalize State {}", self.account.key);
+            debug_print!("Finalize State {}", account.key);
             StateFinalizedAccount::make(program_id, self, account)?;
         }
 
@@ -235,10 +240,7 @@ impl PlainData {
             return Err(Error::StorageAccountInvalidTag(*account.key, tag));
         }
 
-        debug_print!(
-            "Finalize State {} for scheduled transaction",
-            self.account.key
-        );
+        debug_print!("Finalize State {} for scheduled transaction", account.key);
         StateFinalizedAccount::make(program_id, self, account)?;
 
         Ok(())
@@ -263,8 +265,8 @@ pub struct Root {
 
 // to be sure that solana and x86 size/alignment match
 const_assert_eq!(std::mem::align_of::<PlainData>(), 0x8);
-const_assert_eq!(std::mem::size_of::<PlainData>(), 0x178);
-const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x178);
+const_assert_eq!(std::mem::size_of::<PlainData>(), 0x1A0);
+const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x1A0);
 
 impl AccountHeader for Header {
     const VERSION: u8 = 2;
@@ -355,7 +357,7 @@ enum RestoreResult<'local, 'sol> {
     State(StateAccount<'local, 'sol>),
     NeedReallocate {
         trx_rlp: &'local [u8],
-        header: PlainData,
+        header: Box<PlainData>,
     },
 }
 
@@ -455,7 +457,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         if need_restart {
             return Ok(RestoreResult::NeedReallocate {
                 trx_rlp,
-                header: Self::recover_plain_header(program_id, account)?,
+                header: Box::new(Self::recover_plain_header(program_id, account)?),
             });
         }
 
@@ -524,6 +526,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                 gas_price: transaction.gas_price(),
                 block_params: (U256::ZERO, U256::ZERO),
                 steps_executed: 0_u64,
+                tx_exit_status: None,
             },
             revisions: TreeMap::new(),
             touched_accounts: TreeMap::new(),
@@ -625,6 +628,13 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         let BlockParams { number, timestamp } =
             self.executor_state().as_ref().unwrap().block_params;
         self.root_ref.plain_data.block_params = (timestamp, number);
+
+        let tx_exit_status = self
+            .executor_state_ref()
+            .exit_status
+            .as_ref()
+            .and_then(TransactionTree::prepare_exit_status);
+        self.root_ref.plain_data.tx_exit_status = tx_exit_status;
     }
 
     fn validate_timestamps(&self, program_id: &Pubkey, accounts: &AccountsDB) -> AccountsStatus {
@@ -681,22 +691,6 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
             debug_print!("Finalize State {}", self.account.key);
             StateFinalizedAccount::convert_from_state(program_id, self)?;
         }
-
-        Ok(())
-    }
-
-    pub fn finish_scheduled_tx(self, program_id: &Pubkey) -> Result<()> {
-        let is_finalized = self.tag == TAG_SCHEDULED_STATE_FINALIZED;
-        let is_canceled = self.tag == TAG_SCHEDULED_STATE_CANCELLED;
-        if !(is_finalized || is_canceled) {
-            return Err(Error::StorageAccountInvalidTag(*self.account.key, self.tag));
-        }
-
-        debug_print!(
-            "Finalize State {} for scheduled transaction",
-            self.account.key
-        );
-        StateFinalizedAccount::convert_from_state(program_id, self)?;
 
         Ok(())
     }

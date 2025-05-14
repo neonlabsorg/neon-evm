@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{cmp, fmt};
 
 use solana_sdk::account_info::IntoAccountInfo;
 use solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE;
@@ -10,7 +10,7 @@ use solana_sdk::{
 };
 
 pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
-use evm_loader::solana_program::debug_account_data::debug_account_data;
+// use evm_loader::solana_program::debug_account_data::debug_account_data;
 use serde::{Deserialize, Serialize};
 use serde_with::hex::Hex;
 use serde_with::serde_as;
@@ -43,7 +43,15 @@ impl fmt::Debug for AccountData {
             .field("rent_epoch", &self.rent_epoch)
             .field("data_len", &self.data.len());
 
-        debug_account_data(&self.data, &mut debug_struct);
+        let max_size: usize = 96;
+        let data_len = cmp::min(max_size, self.data.len());
+
+        let data_vec = self.data[..data_len].to_vec();
+
+        if data_len > 0 {
+            debug_struct.field("data", &data_vec);
+        }
+        // debug_account_data(&self.data, &mut debug_struct);
 
         debug_struct.finish()
     }

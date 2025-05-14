@@ -1305,6 +1305,14 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         if let Some(return_data) = result.return_data {
             self.return_data = Some(return_data);
         }
+        {
+            info!("AZAZA ACCOUNTS");
+            let c_accounts = self.accounts.clone().into_map();
+            for (key, value) in &c_accounts {
+                info!("{:?}: {:?}", key, value);
+            }
+        }
+        info!("AZAZA RETURN_DATA {:?}", self.return_data);
 
         for meta in &instruction.accounts {
             if meta.pubkey == self.operator {
@@ -1328,6 +1336,14 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
                 .borrow_mut();
 
             *account_data = AccountData::new_from_account(meta.pubkey, account);
+        }
+
+        {
+            info!("AZAZA ACCOUNTS AFTER CALL");
+            let c_accounts = self.accounts.clone().into_map();
+            for (key, value) in &c_accounts {
+                info!("{:?}: {:?}", key, value);
+            }
         }
 
         Ok(())

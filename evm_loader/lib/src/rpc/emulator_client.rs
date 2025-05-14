@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use evm_loader::account_storage::AccountStorage;
-use log::debug;
+use log::{debug, info};
 use solana_client::client_error::Result as ClientResult;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 
@@ -41,7 +41,7 @@ impl<T: Rpc> Rpc for EmulatorAccountStorage<'_, T> {
         &self,
         pubkeys: &[Pubkey],
     ) -> ClientResult<Vec<Option<Account>>> {
-        debug!("get_multiple_accounts: pubkeys={:?}", pubkeys);
+        info!("get_multiple_accounts: pubkeys={:?}", pubkeys);
         if pubkeys.is_empty() {
             return Ok(Vec::new());
         }
@@ -58,7 +58,7 @@ impl<T: Rpc> Rpc for EmulatorAccountStorage<'_, T> {
             }
 
             if let Some(account_data) = self.accounts_get(pubkey) {
-                debug!("cached account pubkey={pubkey} account_data={account_data:?}");
+                info!("cached account pubkey={pubkey} account_data={account_data:?}");
                 accounts[i] = Some(Account::from(&*account_data));
                 continue;
             }

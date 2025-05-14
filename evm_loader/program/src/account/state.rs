@@ -572,6 +572,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
             RestoreResult::NeedReallocate { trx_rlp, header } => {
                 let trx_rlp = trx_rlp.to_vec();
                 let transaction = Transaction::parse_from_rlp(trx_rlp.as_slice(), None)?;
+                StateFinalizedAccount::make(program_id, &header, info)?;
                 Holder::init_holder_heap(program_id, info, 0)?;
                 return Ok((
                     Self::new(

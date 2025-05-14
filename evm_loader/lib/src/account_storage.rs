@@ -1272,7 +1272,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
 
         let mut solana_simulator = SolanaSimulator::new(self)
             .await
-            .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
+            .map_err(|e| EvmLoaderError::FatalError(e.to_string()))?;
 
         solana_simulator.set_clock(&Clock {
             slot: self.block_number,
@@ -1311,7 +1311,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
         solana_simulator
             .sync_accounts(self, &accounts)
             .await
-            .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
+            .map_err(|e| EvmLoaderError::FatalError(e.to_string()))?;
 
         let trx = Transaction::new_unsigned(Message::new(
             &[instruction.clone()],
@@ -1320,7 +1320,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
 
         let result = solana_simulator
             .simulate_legacy_transaction(trx)
-            .map_err(|e| EvmLoaderError::Custom(e.to_string()))?;
+            .map_err(|e| EvmLoaderError::FatalError(e.to_string()))?;
 
         if let Err(error) = result.result {
             return Err(EvmLoaderError::ExternalCallFailed(
@@ -1343,14 +1343,14 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
                 .find(|(pubkey, _)| *pubkey == meta.pubkey)
                 .map(|(_, account)| account)
                 .ok_or_else(|| {
-                    EvmLoaderError::Custom(format!("Account {} not found", meta.pubkey))
+                    EvmLoaderError::FatalError(format!("Account {} not found", meta.pubkey))
                 })?;
 
             let mut account_data = self
                 .accounts
                 .get(&meta.pubkey)
                 .ok_or_else(|| {
-                    EvmLoaderError::Custom(format!("Account data {} not found", meta.pubkey))
+                    EvmLoaderError::FatalError(format!("Account data {} not found", meta.pubkey))
                 })?
                 .borrow_mut();
 

@@ -510,6 +510,25 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
 
         super::set_tag(program_id, info, TAG_STATE, Header::VERSION)?;
 
+        Self::init_header(
+            info,
+            origin,
+            transaction,
+            transaction_rlp,
+            tree_account,
+            owner,
+        )
+    }
+
+    #[allow(clippy::cast_sign_loss)]
+    fn init_header(
+        info: &'local AccountInfo<'sol>,
+        origin: Address,
+        transaction: &Transaction,
+        transaction_rlp: &[u8],
+        tree_account: Option<Pubkey>,
+        owner: Pubkey,
+    ) -> Result<Self> {
         let root = boxx(Root {
             plain_data: PlainData {
                 layout_version: PlainData::layout_version(),
@@ -571,18 +590,16 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
             RestoreResult::State(state) => state,
             RestoreResult::NeedReallocate { trx_rlp, header } => {
                 let trx_rlp = trx_rlp.to_vec();
-                let transaction = Transaction::parse_from_rlp(trx_rlp.as_slice(), None)?;
-                StateFinalizedAccount::make(program_id, &header, info)?;
                 Holder::init_holder_heap(program_id, info, 0)?;
+                let transaction = Transaction::parse_from_rlp(trx_rlp.as_slice(), None)?;
                 return Ok((
-                    Self::new(
-                        program_id,
+                    Self::init_header(
                         info,
-                        accounts,
                         header.origin,
                         &transaction,
                         trx_rlp.as_slice(),
                         header.tree_account,
+                        header.owner,
                     )?,
                     AccountsStatus::NeedRestart,
                     Some(transaction),

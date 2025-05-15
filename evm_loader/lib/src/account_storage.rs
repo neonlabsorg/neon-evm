@@ -89,6 +89,7 @@ impl<'a> UpdateLamports<'a> for StorageCell<'a> {
 #[allow(clippy::module_name_repetitions)]
 pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
     accounts: FrozenMap<Pubkey, Box<RefCell<AccountData>>>,
+    account_limit: usize,
     call_stack: Vec<FrozenMap<Pubkey, Box<RefCell<AccountData>>>>,
 
     pub gas: u64,
@@ -113,6 +114,7 @@ pub struct EmulatorAccountStorage<'rpc, T: Rpc> {
 }
 
 impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         rpc: &'rpc T,
         program_id: Pubkey,
@@ -121,6 +123,7 @@ impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         state_overrides: Option<AccountOverrides>,
         solana_overrides: Option<SolanaOverrides>,
         tx_chain_id: Option<u64>,
+        account_limit: Option<usize>,
     ) -> Result<Self, NeonError> {
         trace!("backend::new");
 
@@ -133,7 +136,7 @@ impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
 
         let block_number = block_number.unwrap_or(clock.slot);
         let block_timestamp = block_timestamp.unwrap_or(clock.unix_timestamp);
-
+        let account_limit = account_limit.unwrap_or(64);
         let chains = match chains {
             None => crate::commands::get_config::read_chains(rpc, program_id).await?,
             Some(chains) => chains,
@@ -147,6 +150,7 @@ impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         }
         let storage = Self {
             accounts: FrozenMap::new(),
+            account_limit,
             call_stack: vec![],
             program_id,
             operator: FAKE_OPERATOR,
@@ -183,6 +187,7 @@ impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
     ) -> Result<Self, NeonError> {
         let storage = Self {
             accounts: FrozenMap::new(),
+            account_limit: other.account_limit,
             call_stack: vec![],
             program_id: other.program_id,
             operator: other.operator,
@@ -219,6 +224,7 @@ impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
         state_overrides: Option<AccountOverrides>,
         solana_overrides: Option<SolanaOverrides>,
         tx_chain_id: Option<u64>,
+        account_limit: Option<usize>,
     ) -> Result<Self, NeonError> {
         let storage = Self::new(
             rpc,
@@ -228,6 +234,7 @@ impl<'rpc, T: BuildConfigSimulator> EmulatorAccountStorage<'rpc, T> {
             state_overrides,
             solana_overrides,
             tx_chain_id,
+            account_limit,
         )
         .await?;
 
@@ -469,8 +476,11 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         address: Address,
         chain_id: u64,
     ) -> NeonResult<&RefCell<AccountData>> {
-        if self.accounts.len() > 128 {
-            return Err(NeonError::TooManyAccounts(self.accounts.len(), 128));
+        if self.accounts.len() > self.account_limit {
+            return Err(NeonError::TooManyAccounts(
+                self.accounts.len(),
+                self.account_limit,
+            ));
         }
 
         let (pubkey, _) = address.find_balance_address(self.program_id(), chain_id);
@@ -511,8 +521,11 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
     }
 
     async fn get_contract_account(&self, address: Address) -> NeonResult<&RefCell<AccountData>> {
-        if self.accounts.len() > 128 {
-            return Err(NeonError::TooManyAccounts(self.accounts.len(), 128));
+        if self.accounts.len() > self.account_limit {
+            return Err(NeonError::TooManyAccounts(
+                self.accounts.len(),
+                self.account_limit,
+            ));
         }
 
         let (pubkey, _) = address.find_solana_address(self.program_id());
@@ -532,8 +545,11 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         address: Address,
         index: U256,
     ) -> NeonResult<&RefCell<AccountData>> {
-        if self.accounts.len() > 128 {
-            return Err(NeonError::TooManyAccounts(self.accounts.len(), 128));
+        if self.accounts.len() > self.account_limit {
+            return Err(NeonError::TooManyAccounts(
+                self.accounts.len(),
+                self.account_limit,
+            ));
         }
 
         let (base, _) = address.find_solana_address(self.program_id());

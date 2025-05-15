@@ -383,6 +383,7 @@ impl Fixture {
             self.state_overrides.clone(),
             self.solana_overrides.clone(),
             tx_chain_id,
+            None,
         )
         .await
         .unwrap()
@@ -398,6 +399,7 @@ impl Fixture {
             self.block_overrides.clone(),
             self.state_overrides.clone(),
             self.solana_overrides.clone(),
+            None,
             None,
         )
         .await
@@ -1004,6 +1006,7 @@ async fn test_storage_with_accounts_and_override() {
         )])),
         None,
         Some(LEGACY_CHAIN_ID),
+        None,
     )
     .await
     .expect("Failed to create storage");
@@ -1053,6 +1056,7 @@ async fn test_storage_new_from_other_and_override() {
         )])),
         None,
         Some(LEGACY_CHAIN_ID),
+        None,
     )
     .await
     .expect("Failed to create storage");

@@ -173,6 +173,7 @@ async fn initialize_storage<'rpc, T: Rpc + BuildConfigSimulator>(
         overrides.states,
         overrides.solana_accounts,
         emulate_request.tx.chain_id,
+        emulate_request.account_limit,
     )
     .await?;
 

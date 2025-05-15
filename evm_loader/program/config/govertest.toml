@@ -1,7 +1,5 @@
 program_id = "53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io"
 
-transaction_accounts_limit = 128
-
 no_update_tracking_owners = []
 
 operators_whitelist = [

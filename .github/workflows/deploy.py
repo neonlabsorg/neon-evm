@@ -174,7 +174,7 @@ def finalize_image(evm_sha_tag, evm_tag):
     docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
     docker_client.pull(f"{image}:{evm_sha_tag}")
     if re.match(RELEASE_TAG_TEMPLATE, evm_tag) is not None or evm_tag == "latest":
-        push_image_with_tag(evm_sha_tag, evm_tag)
+        push_image_with_tag(image, evm_sha_tag, evm_tag)
     else:
         click.echo(f"Nothing to finalize, the tag {evm_tag} is not version tag or latest")
 

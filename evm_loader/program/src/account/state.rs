@@ -112,7 +112,7 @@ pub struct Header {
 impl Header {
     fn valid_version_signature() -> VersionSignature {
         let mut result: VersionSignature = [0; 40];
-        let state = env!("STATE_SIGNATURE").as_bytes();
+        let state = env!("NEON_REVISION").as_bytes();
         result[..state.len()].copy_from_slice(state);
         result
     }

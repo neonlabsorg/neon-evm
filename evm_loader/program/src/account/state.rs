@@ -592,18 +592,16 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                 let trx_rlp = trx_rlp.to_vec();
                 Holder::init_holder_heap(program_id, info, 0)?;
                 let transaction = Transaction::parse_from_rlp(trx_rlp.as_slice(), None)?;
-                return Ok((
-                    Self::init_header(
-                        info,
-                        header.origin,
-                        &transaction,
-                        trx_rlp.as_slice(),
-                        header.tree_account,
-                        header.owner,
-                    )?,
-                    AccountsStatus::NeedRestart,
-                    Some(transaction),
-                ));
+                let mut state = Self::init_header(
+                    info,
+                    header.origin,
+                    &transaction,
+                    trx_rlp.as_slice(),
+                    header.tree_account,
+                    header.owner,
+                )?;
+                state.root_ref_mut().plain_data.gas_used = header.gas_used;
+                return Ok((state, AccountsStatus::NeedRestart, Some(transaction)));
             }
         };
 

@@ -34,9 +34,6 @@ pub enum Error {
     #[error("Error: {0}")]
     Custom(String),
 
-    #[error("Fatal Error: {0}")]
-    FatalError(String),
-
     #[error("Solana Program Error: {0}")]
     ProgramError(
         #[from]
@@ -377,6 +374,9 @@ pub enum Error {
 
     #[error("Gas Limit is too big: {0}")]
     GasLimitOverflow(#[serde(with = "ethnum::serde::bytes::le")] U256),
+
+    #[error("Fatal Error: {0}")]
+    FatalError(String),
 }
 
 impl Error {

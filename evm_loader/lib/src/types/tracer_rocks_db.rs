@@ -1,11 +1,13 @@
 use crate::account_data::AccountData;
 use crate::config::RocksDbConfig;
 use async_trait::async_trait;
-use jsonrpsee::core::client::ClientT;
+// use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::Serialize;
-use jsonrpsee::rpc_params;
+// use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
-use serde_json::from_str;
+// use serde_json::from_str;
+#[allow(dead_code)]
+use crate::types::tracer_db_rpc_api::TracerDbApiClient;
 use solana_account_decoder::UiDataSliceConfig;
 use solana_sdk::signature::Signature;
 use solana_sdk::{
@@ -32,7 +34,7 @@ use crate::types::{DbResult, TracerDbTrait};
 pub struct RocksDb {
     #[allow(dead_code)]
     url: String,
-    client: Arc<WsClient>,
+    ws_client: Arc<WsClient>,
 }
 
 impl RocksDb {
@@ -41,17 +43,14 @@ impl RocksDb {
         let host = &config.rocksdb_host;
         let port = &config.rocksdb_port;
         let url = format!("ws://{host}:{port}");
-
-        // match Client::builder()
-        //     .retry_policy(
-        //     ExponentialBackoff::from_millis(100)
-        //         .max_delay(Duration::from_secs(10))
-        //         .take(3),)
         match WsClientBuilder::default().build(&url).await {
             Ok(client) => {
                 let arc_c = Arc::new(client);
                 tracing::info!("Created rocksdb client at {url}");
-                Self { url, client: arc_c }
+                Self {
+                    url,
+                    ws_client: arc_c,
+                }
             }
             Err(e) => panic!("Couldn't start rocksDb client at {url}: {e}"),
         }
@@ -61,33 +60,19 @@ impl RocksDb {
 #[async_trait]
 impl TracerDbTrait for RocksDb {
     async fn get_block_time(&self, slot: Slot) -> DbResult<UnixTimestamp> {
-        let response: String = self
-            .client
-            .request("get_block_time", rpc_params![slot])
-            .await?;
-        info!(
-            "get_block_time for slot {:?} response: {:?}",
-            slot, response
-        );
-        Ok(i64::from_str(response.as_str())?)
+        let block_time = self.ws_client.get_block_time(slot).await?;
+        if let Some(block_time) = block_time {
+            return Ok(block_time);
+        }
+        anyhow::bail!("Block time value None")
     }
 
     async fn get_earliest_rooted_slot(&self) -> DbResult<u64> {
-        let response: String = self
-            .client
-            .request("get_earliest_rooted_slot", rpc_params![])
-            .await?;
-        info!("get_earliest_rooted_slot response: {:?}", response);
-        Ok(u64::from_str(response.as_str())?)
+        Ok(self.ws_client.get_earliest_rooted_slot().await?)
     }
 
     async fn get_latest_block(&self) -> DbResult<u64> {
-        let response: String = self
-            .client
-            .request("get_last_rooted_slot", rpc_params![])
-            .await?;
-        info!("get_latest_block response: {:?}", response);
-        Ok(u64::from_str(response.as_str())?)
+        Ok(self.ws_client.get_earliest_rooted_slot().await?)
     }
 
     async fn get_account_at(
@@ -98,32 +83,26 @@ impl TracerDbTrait for RocksDb {
         maybe_bin_slice: Option<UiDataSliceConfig>,
     ) -> DbResult<Option<Account>> {
         info!("get_account_at {pubkey:?}, slot: {slot:?}, tx_index: {tx_index_in_block:?}, bin_slice: {maybe_bin_slice:?}");
-
-        let response: String = self
-            .client
-            .request(
-                "get_account",
-                rpc_params![pubkey.to_string(), slot, tx_index_in_block, maybe_bin_slice],
+        Ok(self
+            .ws_client
+            .get_account_at(
+                &pubkey.to_string(),
+                slot,
+                tx_index_in_block,
+                maybe_bin_slice,
             )
-            .await?;
-
-        let account = from_str::<Option<Account>>(response.as_str())?;
-        account.as_ref().map_or_else(|| {
-            info!("Got None for Account by {pubkey:?}");
-        }, |account| {
-            info!("Got Account by {pubkey:?} owner: {:?} lamports: {:?} executable: {:?} rent_epoch: {:?}", account.owner, account.lamports, account.executable, account.rent_epoch);
-        });
-
-        Ok(account)
+            .await?)
     }
 
     async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64> {
-        let response: String = self
-            .client
-            .request("get_transaction_index", rpc_params![signature.to_string()])
+        let tx_index = self
+            .ws_client
+            .get_transaction_index(&signature.to_string())
             .await?;
-        info!("get_transaction_index response: {:?}", response);
-        Ok(u64::from_str(response.as_str())?)
+        if let Some(tx_index) = tx_index {
+            return Ok(tx_index);
+        }
+        anyhow::bail!("get_transaction_index value is None")
     }
 
     async fn get_neon_revisions(&self, _pubkey: &Pubkey) -> DbResult<RevisionMap> {
@@ -141,12 +120,14 @@ impl TracerDbTrait for RocksDb {
     }
 
     async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<u64> {
-        let response: String = self
-            .client
-            .request("get_slot_by_blockhash", rpc_params![blockhash])
+        let slot = self
+            .ws_client
+            .get_slot_by_blockhash(blockhash.as_str())
             .await?;
-        info!("response: {:?}", response);
-        Ok(from_str(response.as_str())?)
+        if let Some(slot) = slot {
+            return Ok(slot);
+        }
+        anyhow::bail!("get_slot_by_blockhash value is None")
     }
 
     async fn get_sync_status(&self) -> DbResult<EthSyncStatus> {
@@ -159,15 +140,11 @@ impl TracerDbTrait for RocksDb {
         slot: u64,
     ) -> DbResult<Vec<AccountData>> {
         let signature = Signature::try_from(sol_sig)?;
-        let response: String = self
-            .client
-            .request(
-                "get_accounts_in_transaction",
-                rpc_params![signature.to_string(), slot],
-            )
-            .await?;
 
-        let response: Vec<(&str, Account)> = from_str(response.as_str())?;
+        let response: Vec<(String, Account)> = self
+            .ws_client
+            .get_accounts_in_transaction(&signature.to_string(), Some(slot))
+            .await?;
         debug!("Accounts in response: {:?}", response);
         let account_data_vec = response
             .iter()

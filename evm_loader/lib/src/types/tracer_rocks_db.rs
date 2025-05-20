@@ -85,7 +85,7 @@ impl TracerDbTrait for RocksDb {
         info!("get_account_at {pubkey:?}, slot: {slot:?}, tx_index: {tx_index_in_block:?}, bin_slice: {maybe_bin_slice:?}");
         Ok(self
             .ws_client
-            .get_account_at(
+            .get_account(
                 &pubkey.to_string(),
                 slot,
                 tx_index_in_block,

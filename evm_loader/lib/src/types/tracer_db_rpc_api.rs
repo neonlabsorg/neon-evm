@@ -18,8 +18,8 @@ pub trait TracerDbApi {
     #[method(name = "get_transaction_index")]
     async fn get_transaction_index(&self, signature: &str) -> RpcResult<Option<u64>>;
 
-    #[method(name = "get_account_at")]
-    async fn get_account_at(
+    #[method(name = "get_account")]
+    async fn get_account(
         &self,
         pubkey: &str,
         slot: u64,

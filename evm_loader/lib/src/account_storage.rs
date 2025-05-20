@@ -404,6 +404,12 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
     }
 
     fn add_account(&self, pubkey: Pubkey, account: &Account) -> NeonResult<&RefCell<AccountData>> {
+        if self.accounts.len() + 1 > self.account_limit {
+            return Err(NeonError::TooManyAccounts(
+                self.accounts.len() + 1,
+                self.account_limit,
+            ));
+        }
         let mut account = account.clone();
         let info = account_info(&pubkey, &mut account);
         if *info.owner == self.program_id {
@@ -419,7 +425,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
                         .accounts
                         .insert(pubkey, Box::new(RefCell::new(account_data))))
                 }
-                evm_loader::account::TAG_EMPTY => Ok(self.add_empty_account(pubkey)),
+                evm_loader::account::TAG_EMPTY => self.add_empty_account(pubkey),
                 _ => {
                     unimplemented!();
                 }
@@ -433,12 +439,19 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         }
     }
 
-    fn add_empty_account(&self, pubkey: Pubkey) -> &RefCell<AccountData> {
+    fn add_empty_account(&self, pubkey: Pubkey) -> NeonResult<&RefCell<AccountData>> {
+        if self.accounts.len() + 1 > self.account_limit {
+            return Err(NeonError::TooManyAccounts(
+                self.accounts.len() + 1,
+                self.account_limit,
+            ));
+        }
         let account_data = AccountData::new(pubkey);
         self.mark_account(pubkey, false);
         info!("add_empty_account(pubkey={pubkey}, account_data={account_data:?})");
-        self.accounts
-            .insert(pubkey, Box::new(RefCell::new(account_data)))
+        Ok(self
+            .accounts
+            .insert(pubkey, Box::new(RefCell::new(account_data))))
     }
 
     async fn use_account(
@@ -462,7 +475,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         account.map_or_else(
             || {
                 info!("account not found in RPC, adding empty account for pubkey={pubkey}");
-                Ok(self.add_empty_account(pubkey))
+                self.add_empty_account(pubkey)
             },
             |account| {
                 info!("found account for pubkey={pubkey} in RPC account={account:?}");
@@ -497,7 +510,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
                     if self.accounts.get(&legacy_pubkey).is_some() {
                         // We already have information about contract account (empty or filled with data).
                         // So the balance should be updated, but it is missed. So return the empty account.
-                        Ok(self.add_empty_account(pubkey))
+                        self.add_empty_account(pubkey)
                     } else {
                         // We didn't process contract account and we doesn't have any information about it.
                         // So we can try to process account which can be a legacy.
@@ -507,14 +520,14 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
                             self.add_account(legacy_pubkey, legacy_account)?;
                             self.accounts
                                 .get(&pubkey)
-                                .map_or_else(|| Ok(self.add_empty_account(pubkey)), Ok)
+                                .map_or_else(|| self.add_empty_account(pubkey), Ok)
                         } else {
-                            self.add_empty_account(legacy_pubkey);
-                            Ok(self.add_empty_account(pubkey))
+                            self.add_empty_account(legacy_pubkey)?;
+                            self.add_empty_account(pubkey)
                         }
                     }
                 } else {
-                    Ok(self.add_empty_account(pubkey))
+                    self.add_empty_account(pubkey)
                 }
             }
         }
@@ -535,7 +548,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         }
 
         (self._get_account_from_rpc(pubkey).await?).map_or_else(
-            || Ok(self.add_empty_account(pubkey)),
+            || self.add_empty_account(pubkey),
             |account| self.add_account(pubkey, account),
         )
     }
@@ -561,7 +574,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         }
 
         (self._get_account_from_rpc(cell_pubkey).await?).map_or_else(
-            || Ok(self.add_empty_account(cell_pubkey)),
+            || self.add_empty_account(cell_pubkey),
             |account| self.add_account(cell_pubkey, account),
         )
     }

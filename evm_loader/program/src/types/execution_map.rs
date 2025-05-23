@@ -7,12 +7,13 @@ pub struct ExecutionStep {
     pub index: Option<u64>,
     pub is_reset: bool,
     pub is_cancel: bool,
-    pub is_return: bool,
     pub steps: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionMap {
     pub steps: Vec<ExecutionStep>,
+    pub block_number: Option<u64>,
+    pub block_timestamp: Option<i64>,
     pub is_skd_transaction: bool,
 }

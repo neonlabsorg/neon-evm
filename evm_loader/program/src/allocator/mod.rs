@@ -47,21 +47,3 @@ pub fn acc_allocator() -> StateAllocator {
 }
 
 pub type StateAccountAllocator = StateAllocator;
-
-//#[cfg(target_os = "solana")]
-//pub type StateAccountAllocator = AccountAllocator;
-//
-//#[cfg(target_os = "solana")]
-//#[inline]
-//pub fn acc_allocator() -> StateAccountAllocator {
-//    AccountAllocator
-//}
-//
-//#[cfg(not(target_os = "solana"))]
-//pub type StateAccountAllocator = System;
-//
-//#[cfg(not(target_os = "solana"))]
-//#[inline]
-//pub fn acc_allocator() -> StateAccountAllocator {
-//    System
-//}

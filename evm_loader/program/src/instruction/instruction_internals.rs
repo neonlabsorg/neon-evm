@@ -47,6 +47,7 @@ pub fn reinit_evm(
     account_storage: &mut ProgramAccountStorage,
     storage: &mut StateAccount,
     reallocate: bool,
+    mut parsed_tx: Option<Transaction>,
 ) -> Result<()> {
     if reallocate {
         storage.reset_steps_executed();
@@ -56,8 +57,12 @@ pub fn reinit_evm(
         let mut evm_backend =
             ExecutorState::new(account_storage, state_data.deref_mut().as_mut().unwrap());
         storage.evm_mut().take();
+
+        if parsed_tx.is_none() {
+            parsed_tx.replace(Transaction::parse_from_rlp(storage.trx_rlp(), None)?);
+        }
         storage.evm_mut().replace(Evm::new(
-            &Transaction::parse_from_rlp(storage.trx_rlp(), None)?,
+            &parsed_tx.as_ref().unwrap(),
             storage.trx_origin(),
             &mut evm_backend,
             None,
@@ -117,7 +122,7 @@ pub fn finalize(
 
     storage.update_touched_accounts(accounts.program_id(), accounts.db())?;
     storage.increment_steps_executed(steps_executed)?;
-    storage.publish_block_params();
+    storage.finalize_step();
     log_data(&[
         b"STEPS",
         &steps_executed.to_le_bytes(),

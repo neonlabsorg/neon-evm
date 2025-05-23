@@ -1,16 +1,12 @@
-#[cfg(not(target_os = "solana"))]
-use std::alloc::System;
 use std::mem::size_of;
 
 use solana_program::pubkey::Pubkey;
 
 #[cfg(target_os = "solana")]
-use solana::solana_allocator::SolanaAllocator;
-#[cfg(target_os = "solana")]
-use solana::state_account_allocator::AccountAllocator;
+mod solana_allocator;
 
 #[cfg(target_os = "solana")]
-mod solana;
+use solana_allocator::SolanaAllocator;
 
 // Holder account heap constants.
 
@@ -35,23 +31,37 @@ pub const STATE_ACCOUNT_DATA_ADDRESS: usize =
     PROGRAM_DATA_INPUT_PARAMETERS_OFFSET + FIRST_ACCOUNT_DATA_OFFSET;
 
 #[cfg(target_os = "solana")]
-pub type StateAccountAllocator = AccountAllocator;
+pub type StateAllocator = SolanaAllocator;
 
 #[cfg(target_os = "solana")]
-#[inline]
-pub fn acc_allocator() -> StateAccountAllocator {
-    AccountAllocator
+pub fn acc_allocator() -> StateAllocator {
+    SolanaAllocator::static_account_alloc()
 }
 
 #[cfg(not(target_os = "solana"))]
-pub type StateAccountAllocator = System;
+pub type StateAllocator = std::alloc::System;
 
 #[cfg(not(target_os = "solana"))]
-#[inline]
-pub fn acc_allocator() -> StateAccountAllocator {
-    System
+pub fn acc_allocator() -> StateAllocator {
+    std::alloc::System {}
 }
 
-#[cfg(target_os = "solana")]
-#[global_allocator]
-static mut DEFAULT: SolanaAllocator = SolanaAllocator;
+pub type StateAccountAllocator = StateAllocator;
+
+//#[cfg(target_os = "solana")]
+//pub type StateAccountAllocator = AccountAllocator;
+//
+//#[cfg(target_os = "solana")]
+//#[inline]
+//pub fn acc_allocator() -> StateAccountAllocator {
+//    AccountAllocator
+//}
+//
+//#[cfg(not(target_os = "solana"))]
+//pub type StateAccountAllocator = System;
+//
+//#[cfg(not(target_os = "solana"))]
+//#[inline]
+//pub fn acc_allocator() -> StateAccountAllocator {
+//    System
+//}

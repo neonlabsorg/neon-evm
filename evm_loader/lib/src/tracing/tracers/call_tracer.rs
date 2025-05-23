@@ -55,7 +55,7 @@ impl From<TraceConfig> for CallTracerConfig {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct CallLog {
     address: Address,
     topics: Vec<H256>,
@@ -65,31 +65,70 @@ pub struct CallLog {
     position: U256,
 }
 
-#[derive(Default, Serialize)]
+#[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CallFrame {
     from: Address,
     gas: U256,
     gas_used: U256,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     to: Option<Address>,
     input: Bytes,
-    #[serde(skip_serializing_if = "is_empty")]
+    #[serde(default, skip_serializing_if = "is_empty")]
     output: Bytes,
-    #[serde(skip_serializing_if = "String::is_empty")]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     error: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     revert_reason: String,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     calls: Vec<CallFrame>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     logs: Vec<CallLog>,
     // Placed at end on purpose. The RLP will be decoded to 0 instead of
     // nil if there are non-empty elements after in the struct.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     value: Option<U256>,
     #[serde(rename = "type")]
     type_string: Opcode,
+}
+
+impl CallFrame {
+    #[must_use]
+    pub const fn calls(&self) -> &Vec<Self> {
+        &self.calls
+    }
+    #[must_use]
+    pub const fn type_string(&self) -> &Opcode {
+        &self.type_string
+    }
+    #[must_use]
+    pub const fn input(&self) -> &Bytes {
+        &self.input
+    }
+    #[must_use]
+    pub const fn output(&self) -> &Bytes {
+        &self.output
+    }
+    #[must_use]
+    pub const fn from(&self) -> &Address {
+        &self.from
+    }
+    #[must_use]
+    pub const fn to(&self) -> &Option<Address> {
+        &self.to
+    }
+    #[must_use]
+    pub const fn gas(&self) -> &U256 {
+        &self.gas
+    }
+    #[must_use]
+    pub const fn gas_used(&self) -> &U256 {
+        &self.gas_used
+    }
+    #[must_use]
+    pub const fn value(&self) -> &Option<U256> {
+        &self.value
+    }
 }
 
 impl CallFrame {

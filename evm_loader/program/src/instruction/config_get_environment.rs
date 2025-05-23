@@ -11,9 +11,9 @@ pub fn process(_program_id: &Pubkey, _accounts: &[AccountInfo], _instruction: &[
         "testnet"
     } else if cfg!(feature = "devnet") {
         "devnet"
-    }  else if cfg!(feature = "devnet-2") {
+    } else if cfg!(feature = "devnet-2") {
         "devnet-2"
-    }  else if cfg!(feature = "govertest") {
+    } else if cfg!(feature = "govertest") {
         "govertest"
     } else if cfg!(feature = "ci") {
         "ci"

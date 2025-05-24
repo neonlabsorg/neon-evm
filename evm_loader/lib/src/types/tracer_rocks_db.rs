@@ -117,7 +117,7 @@ impl TracerDbTrait for RocksDb {
         self.client
             .get_slot_by_blockhash(blockhash.as_str())
             .await?
-            .ok_or(anyhow!("get_slot_by_blockhash value is None"))
+            .ok_or_else(|| anyhow!("get_slot_by_blockhash value is None"))
     }
 
     async fn get_sync_status(&self) -> DbResult<EthSyncStatus> {

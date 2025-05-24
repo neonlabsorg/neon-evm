@@ -54,15 +54,22 @@ impl From<Account> for SolanaReadableAccount {
     }
 }
 
-impl From<SolanaReadableAccount> for Account {
-    fn from(account: SolanaReadableAccount) -> Self {
-        Account {
+impl TryFrom<SolanaReadableAccount> for Account {
+    type Error = anyhow::Error;
+    fn try_from(account: SolanaReadableAccount) -> Result<Self, Self::Error> {
+        let owner_array: [u8; 32] = account
+            .owner
+            .as_slice()
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("Owner field must be 32 bytes"))?;
+
+        Ok(Self {
             lamports: account.lamports,
-            data: account.data.to_vec(),
-            owner: Pubkey::new_from_array(account.owner.as_slice().try_into().unwrap()),
+            data: account.data,
+            owner: Pubkey::new_from_array(owner_array),
             executable: account.executable,
             rent_epoch: account.rent_epoch,
-        }
+        })
     }
 }
 
@@ -75,7 +82,7 @@ pub struct Bs58Vec {
     pub bytes: Vec<u8>,
 }
 impl Bs58Vec {
-    fn new(bytes: Vec<u8>) -> Self {
+    const fn new(bytes: Vec<u8>) -> Self {
         Self { bytes }
     }
 }
@@ -93,7 +100,7 @@ impl From<Vec<u8>> for Bs58Vec {
 
 impl From<Bs58Vec> for Pubkey {
     fn from(bs58_vec: Bs58Vec) -> Self {
-        Pubkey::new_from_array(bs58_vec.bytes.try_into().expect("Expected 32-byte pubkey"))
+        Self::new_from_array(bs58_vec.bytes.try_into().expect("Expected 32-byte pubkey"))
     }
 }
 impl From<Bs58Vec> for Signature {
@@ -103,7 +110,7 @@ impl From<Bs58Vec> for Signature {
             .bytes
             .try_into()
             .expect("Expected 64-byte signature");
-        Signature::from(bytes)
+        Self::from(bytes)
     }
 }
 

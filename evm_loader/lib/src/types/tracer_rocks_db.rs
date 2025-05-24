@@ -88,8 +88,7 @@ impl TracerDbTrait for RocksDb {
                 maybe_bin_slice,
             )
             .await?;
-
-        Ok(result.map(|account| Account::from(account)))
+        result.map(Account::try_from).transpose()
     }
 
     async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64> {
@@ -97,7 +96,6 @@ impl TracerDbTrait for RocksDb {
             .client
             .get_transaction_index(Bs58Vec::from(signature.as_ref().to_vec()))
             .await?;
-
         tx_index.ok_or_else(|| anyhow::anyhow!("get_transaction_index value is None"))
     }
 

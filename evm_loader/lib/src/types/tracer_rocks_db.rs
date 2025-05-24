@@ -1,11 +1,9 @@
 use crate::account_data::AccountData;
 use crate::config::RocksDbConfig;
 use async_trait::async_trait;
-// use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::Serialize;
-// use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
-// use serde_json::from_str;
+
 #[allow(dead_code)]
 use crate::types::tracer_db_rpc_api::TracerDbApiClient;
 use solana_account_decoder::UiDataSliceConfig;
@@ -16,7 +14,7 @@ use solana_sdk::{
     pubkey::Pubkey,
 };
 use std::env;
-// use std::str::FromStr;
+
 use std::sync::Arc;
 use tracing::{debug, info};
 
@@ -59,11 +57,10 @@ impl RocksDb {
 #[async_trait]
 impl TracerDbTrait for RocksDb {
     async fn get_block_time(&self, slot: Slot) -> DbResult<UnixTimestamp> {
-        let block_time = self.client.get_block_time(slot).await?;
-        if let Some(block_time) = block_time {
-            return Ok(block_time);
-        }
-        anyhow::bail!("Block time value None")
+        self.client
+            .get_block_time(slot)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Block time value is None"))
     }
 
     async fn get_earliest_rooted_slot(&self) -> DbResult<u64> {
@@ -85,7 +82,7 @@ impl TracerDbTrait for RocksDb {
         let result = self
             .client
             .get_account_at(
-                &pubkey.to_string(),
+                Bs58Vec::from(pubkey.to_bytes().to_vec()),
                 slot,
                 tx_index_in_block,
                 maybe_bin_slice,
@@ -98,12 +95,10 @@ impl TracerDbTrait for RocksDb {
     async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64> {
         let tx_index = self
             .client
-            .get_transaction_index(&signature.to_string())
+            .get_transaction_index(Bs58Vec::from(signature.as_ref().to_vec()))
             .await?;
-        if let Some(tx_index) = tx_index {
-            return Ok(tx_index);
-        }
-        anyhow::bail!("get_transaction_index value is None")
+
+        tx_index.ok_or_else(|| anyhow::anyhow!("get_transaction_index value is None"))
     }
 
     async fn get_neon_revisions(&self, _pubkey: &Pubkey) -> DbResult<RevisionMap> {

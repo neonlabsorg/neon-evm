@@ -2,6 +2,7 @@ use jsonrpsee::core::RpcResult;
 use jsonrpsee::proc_macros::rpc;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use solana_account_decoder::UiDataSliceConfig;
+use solana_sdk::signature::Signature;
 
 use solana_sdk::account::Account;
 use solana_sdk::clock::Epoch;
@@ -90,6 +91,22 @@ impl From<Vec<u8>> for Bs58Vec {
     }
 }
 
+impl From<Bs58Vec> for Pubkey {
+    fn from(bs58_vec: Bs58Vec) -> Self {
+        Pubkey::new_from_array(bs58_vec.bytes.try_into().expect("Expected 32-byte pubkey"))
+    }
+}
+impl From<Bs58Vec> for Signature {
+    fn from(bs58_vec: Bs58Vec) -> Self {
+        // Convert Vec<u8> into [u8; 64]
+        let bytes: [u8; 64] = bs58_vec
+            .bytes
+            .try_into()
+            .expect("Expected 64-byte signature");
+        Signature::from(bytes)
+    }
+}
+
 // API
 #[rpc(client, server)]
 #[async_trait]
@@ -97,7 +114,7 @@ pub trait TracerDbApi {
     #[method(name = "get_account_at")]
     async fn get_account_at(
         &self,
-        pubkey: &str,
+        pubkey: Bs58Vec,
         slot: u64,
         write_version: Option<u64>,
         bindata: Option<UiDataSliceConfig>,
@@ -111,7 +128,7 @@ pub trait TracerDbApi {
     #[method(name = "get_slot_by_blockhash")]
     async fn get_slot_by_blockhash(&self, hash: &str) -> RpcResult<Option<u64>>;
     #[method(name = "get_transaction_index")]
-    async fn get_transaction_index(&self, signature: &str) -> RpcResult<Option<u64>>;
+    async fn get_transaction_index(&self, signature: Bs58Vec) -> RpcResult<Option<u64>>;
 
     #[method(name = "get_accounts")]
     async fn get_accounts(&self, start: u64, end: u64) -> RpcResult<Vec<Bs58Vec>>;

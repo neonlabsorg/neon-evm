@@ -16,7 +16,7 @@ use solana_sdk::{
     pubkey::Pubkey,
 };
 use std::env;
-use std::str::FromStr;
+// use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{debug, info};
 
@@ -28,13 +28,15 @@ pub struct AccountParams {
 }
 
 use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
+use crate::types::tracer_db_rpc_api::{Bs58Vec, SolanaReadableAccount};
 use crate::types::{DbResult, TracerDbTrait};
+
 // use reconnecting_jsonrpsee_ws_client::{Client, CallRetryPolicy, rpc_params, ExponentialBackoff};
 #[derive(Clone, Debug)]
 pub struct RocksDb {
     #[allow(dead_code)]
     url: String,
-    ws_client: Arc<WsClient>,
+    client: Arc<WsClient>,
 }
 
 impl RocksDb {
@@ -47,10 +49,7 @@ impl RocksDb {
             Ok(client) => {
                 let arc_c = Arc::new(client);
                 tracing::info!("Created rocksdb client at {url}");
-                Self {
-                    url,
-                    ws_client: arc_c,
-                }
+                Self { url, client: arc_c }
             }
             Err(e) => panic!("Couldn't start rocksDb client at {url}: {e}"),
         }
@@ -60,7 +59,7 @@ impl RocksDb {
 #[async_trait]
 impl TracerDbTrait for RocksDb {
     async fn get_block_time(&self, slot: Slot) -> DbResult<UnixTimestamp> {
-        let block_time = self.ws_client.get_block_time(slot).await?;
+        let block_time = self.client.get_block_time(slot).await?;
         if let Some(block_time) = block_time {
             return Ok(block_time);
         }
@@ -68,11 +67,11 @@ impl TracerDbTrait for RocksDb {
     }
 
     async fn get_earliest_rooted_slot(&self) -> DbResult<u64> {
-        Ok(self.ws_client.get_earliest_rooted_slot().await?)
+        Ok(self.client.get_earliest_rooted_slot().await?)
     }
 
     async fn get_latest_block(&self) -> DbResult<u64> {
-        Ok(self.ws_client.get_earliest_rooted_slot().await?)
+        Ok(self.client.get_earliest_rooted_slot().await?)
     }
 
     async fn get_account_at(
@@ -83,20 +82,22 @@ impl TracerDbTrait for RocksDb {
         maybe_bin_slice: Option<UiDataSliceConfig>,
     ) -> DbResult<Option<Account>> {
         info!("get_account_at {pubkey:?}, slot: {slot:?}, tx_index: {tx_index_in_block:?}, bin_slice: {maybe_bin_slice:?}");
-        Ok(self
-            .ws_client
-            .get_account(
+        let result = self
+            .client
+            .get_account_at(
                 &pubkey.to_string(),
                 slot,
                 tx_index_in_block,
                 maybe_bin_slice,
             )
-            .await?)
+            .await?;
+
+        Ok(result.map(|account| Account::from(account)))
     }
 
     async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64> {
         let tx_index = self
-            .ws_client
+            .client
             .get_transaction_index(&signature.to_string())
             .await?;
         if let Some(tx_index) = tx_index {
@@ -121,7 +122,7 @@ impl TracerDbTrait for RocksDb {
 
     async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<u64> {
         let slot = self
-            .ws_client
+            .client
             .get_slot_by_blockhash(blockhash.as_str())
             .await?;
         if let Some(slot) = slot {
@@ -139,19 +140,28 @@ impl TracerDbTrait for RocksDb {
         sol_sig: &[u8],
         slot: u64,
     ) -> DbResult<Vec<AccountData>> {
-        let signature = Signature::try_from(sol_sig)?;
-
-        let response: Vec<(String, Account)> = self
-            .ws_client
-            .get_accounts_in_transaction(&signature.to_string(), Some(slot))
+        // Convert the signature to Bs58Vec (assuming it's a 64-byte Solana Signature)
+        let response: Vec<(Bs58Vec, SolanaReadableAccount)> = self
+            .client
+            .get_accounts_in_transaction(Bs58Vec::from(sol_sig.to_vec()), Some(slot))
             .await?;
+
         debug!("Accounts in response: {:?}", response);
-        let account_data_vec = response
-            .iter()
-            .map(|(pubkey, acc)| {
-                AccountData::new_from_account(Pubkey::from_str(pubkey).unwrap(), acc)
+
+        let account_data_vec: Vec<AccountData> = response
+            .into_iter()
+            .map(|(pubkey, acc)| -> Result<_, anyhow::Error> {
+                let pubkey_array: [u8; 32] = pubkey.bytes[0..32]
+                    .try_into()
+                    .map_err(|_| anyhow::anyhow!("Invalid pubkey length"))?;
+
+                let pk = Pubkey::new_from_array(pubkey_array);
+                let acc: Account = acc.try_into()?; // assumes TryFrom<SolanaReadableAccount> for Account
+
+                Ok(AccountData::new_from_account(pk, &acc))
             })
-            .collect();
+            .collect::<Result<_, _>>()?;
+
         Ok(account_data_vec)
     }
 }

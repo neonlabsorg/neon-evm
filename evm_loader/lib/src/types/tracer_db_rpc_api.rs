@@ -1,12 +1,107 @@
 use jsonrpsee::core::RpcResult;
 use jsonrpsee::proc_macros::rpc;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use solana_account_decoder::UiDataSliceConfig;
+
 use solana_sdk::account::Account;
+use solana_sdk::clock::Epoch;
+use solana_sdk::pubkey::Pubkey;
+
+fn serialize_base58<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let encoded = bs58::encode(bytes).into_string();
+    serializer.serialize_str(&encoded)
+}
+
+fn deserialize_base58<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: &str = Deserialize::deserialize(deserializer)?;
+    bs58::decode(s).into_vec().map_err(serde::de::Error::custom)
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct SolanaReadableAccount {
+    lamports: u64,
+    #[serde(
+        serialize_with = "serialize_base58",
+        deserialize_with = "deserialize_base58"
+    )]
+    // a slice so we don't have to make a copy just to serialize this
+    data: Vec<u8>,
+    #[serde(
+        serialize_with = "serialize_base58",
+        deserialize_with = "deserialize_base58"
+    )]
+    owner: Vec<u8>,
+    executable: bool,
+    rent_epoch: Epoch,
+}
+impl From<Account> for SolanaReadableAccount {
+    fn from(account: Account) -> Self {
+        let data = account.data.clone();
+        Self {
+            lamports: account.lamports,
+            data,
+            owner: account.owner.to_bytes().to_vec(),
+            executable: account.executable,
+            rent_epoch: account.rent_epoch,
+        }
+    }
+}
+
+impl From<SolanaReadableAccount> for Account {
+    fn from(account: SolanaReadableAccount) -> Self {
+        Account {
+            lamports: account.lamports,
+            data: account.data.to_vec(),
+            owner: Pubkey::new_from_array(account.owner.as_slice().try_into().unwrap()),
+            executable: account.executable,
+            rent_epoch: account.rent_epoch,
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Bs58Vec {
+    #[serde(
+        serialize_with = "serialize_base58",
+        deserialize_with = "deserialize_base58"
+    )]
+    pub bytes: Vec<u8>,
+}
+impl Bs58Vec {
+    fn new(bytes: Vec<u8>) -> Self {
+        Self { bytes }
+    }
+}
+impl From<Bs58Vec> for Vec<u8> {
+    fn from(bs58_vec: Bs58Vec) -> Self {
+        bs58_vec.bytes
+    }
+}
+
+impl From<Vec<u8>> for Bs58Vec {
+    fn from(bytes: Vec<u8>) -> Self {
+        Self::new(bytes)
+    }
+}
 
 // API
 #[rpc(client, server)]
 #[async_trait]
 pub trait TracerDbApi {
+    #[method(name = "get_account_at")]
+    async fn get_account_at(
+        &self,
+        pubkey: &str,
+        slot: u64,
+        write_version: Option<u64>,
+        bindata: Option<UiDataSliceConfig>,
+    ) -> jsonrpsee::core::RpcResult<Option<SolanaReadableAccount>>;
     #[method(name = "get_block_time")]
     async fn get_block_time(&self, slot: u64) -> RpcResult<Option<i64>>;
     #[method(name = "get_earliest_rooted_slot")]
@@ -18,22 +113,13 @@ pub trait TracerDbApi {
     #[method(name = "get_transaction_index")]
     async fn get_transaction_index(&self, signature: &str) -> RpcResult<Option<u64>>;
 
-    #[method(name = "get_account")]
-    async fn get_account(
-        &self,
-        pubkey: &str,
-        slot: u64,
-        write_version: Option<u64>,
-        bindata: Option<UiDataSliceConfig>,
-    ) -> jsonrpsee::core::RpcResult<Option<Account>>;
-
     #[method(name = "get_accounts")]
-    async fn get_accounts(&self, start: u64, end: u64) -> RpcResult<Vec<Vec<u8>>>;
+    async fn get_accounts(&self, start: u64, end: u64) -> RpcResult<Vec<Bs58Vec>>;
 
     #[method(name = "get_accounts_in_transaction")]
     async fn get_accounts_in_transaction(
         &self,
-        signature: &str,
+        signature: Bs58Vec,
         slot: Option<u64>,
-    ) -> RpcResult<Vec<(String, Account)>>;
+    ) -> RpcResult<Vec<(Bs58Vec, SolanaReadableAccount)>>;
 }

@@ -1,5 +1,6 @@
 use crate::account_data::AccountData;
 use crate::config::RocksDbConfig;
+use anyhow::anyhow;
 use async_trait::async_trait;
 use jsonrpsee::core::Serialize;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
@@ -29,7 +30,6 @@ use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
 use crate::types::tracer_db_rpc_api::{Bs58Vec, SolanaReadableAccount};
 use crate::types::{DbResult, TracerDbTrait};
 
-// use reconnecting_jsonrpsee_ws_client::{Client, CallRetryPolicy, rpc_params, ExponentialBackoff};
 #[derive(Clone, Debug)]
 pub struct RocksDb {
     #[allow(dead_code)]
@@ -114,14 +114,10 @@ impl TracerDbTrait for RocksDb {
     }
 
     async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<u64> {
-        let slot = self
-            .client
+        self.client
             .get_slot_by_blockhash(blockhash.as_str())
-            .await?;
-        if let Some(slot) = slot {
-            return Ok(slot);
-        }
-        anyhow::bail!("get_slot_by_blockhash value is None")
+            .await?
+            .ok_or(anyhow!("get_slot_by_blockhash value is None"))
     }
 
     async fn get_sync_status(&self) -> DbResult<EthSyncStatus> {
@@ -150,11 +146,9 @@ impl TracerDbTrait for RocksDb {
 
                 let pk = Pubkey::new_from_array(pubkey_array);
                 let acc: Account = acc.try_into()?; // assumes TryFrom<SolanaReadableAccount> for Account
-
                 Ok(AccountData::new_from_account(pk, &acc))
             })
             .collect::<Result<_, _>>()?;
-
         Ok(account_data_vec)
     }
 }

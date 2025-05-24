@@ -53,6 +53,7 @@ pub fn do_continue(
     mut storage: StateAccount,
     gasometer: Gasometer,
     reset: bool,
+    parsed_tx: Option<Transaction>,
 ) -> Result<()> {
     debug_print!("do_continue");
 
@@ -65,7 +66,7 @@ pub fn do_continue(
         log_data(&[b"RESET"]);
     }
     let mut account_storage = ProgramAccountStorage::new(accounts)?;
-    reinit_evm(&mut account_storage, &mut storage, reset)?;
+    reinit_evm(&mut account_storage, &mut storage, reset, parsed_tx)?;
 
     if storage.interrupted_state().is_some() {
         return finalize_interrupted(storage, account_storage, gasometer);

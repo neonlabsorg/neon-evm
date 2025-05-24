@@ -436,9 +436,12 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
     let mut overrides = init_overrides(emulate_request);
 
+    let block_number = execution_map.block_number.or(Some(clock.slot));
+    let block_timestamp = execution_map.block_timestamp.or(Some(clock.unix_timestamp));
+
     overrides.blocks.get_or_insert(BlockOverrides {
-        number: Some(clock.slot),
-        time: Some(clock.unix_timestamp),
+        number: block_number,
+        time: block_timestamp,
         ..Default::default()
     });
 

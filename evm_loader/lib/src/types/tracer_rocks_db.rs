@@ -79,16 +79,16 @@ impl TracerDbTrait for RocksDb {
         maybe_bin_slice: Option<UiDataSliceConfig>,
     ) -> DbResult<Option<Account>> {
         info!("get_account_at {pubkey:?}, slot: {slot:?}, tx_index: {tx_index_in_block:?}, bin_slice: {maybe_bin_slice:?}");
-        let result = self
-            .client
+        self.client
             .get_account_at(
                 Bs58Vec::from(pubkey.to_bytes().to_vec()),
                 slot,
                 tx_index_in_block,
                 maybe_bin_slice,
             )
-            .await?;
-        result.map(Account::try_from).transpose()
+            .await?
+            .map(Account::try_from)
+            .transpose()
     }
 
     async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64> {

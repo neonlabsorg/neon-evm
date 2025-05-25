@@ -187,7 +187,7 @@ pub struct Machine<T: EventListener> {
 
     execution_code: Buffer,
     call_data: Vector<u8>,
-    return_data: Buffer,
+    return_data: Vector<u8>,
     return_range: Range<usize>,
 
     stack: Stack,
@@ -215,7 +215,6 @@ impl Machine<NoopEventListener> {
         let mut machine = self;
         loop {
             Self::reinit_buffer(&mut machine.execution_code, backend);
-            Self::reinit_buffer(&mut machine.return_data, backend);
             match &mut machine.parent {
                 None => break,
                 Some(parent) => machine = parent,
@@ -284,7 +283,7 @@ impl<T: EventListener> Machine<T> {
             gas_limit: trx.gas_limit(),
             execution_code,
             call_data: trx.call_data().to_vector(),
-            return_data: Buffer::empty(),
+            return_data: Vector::<u8>::new_in(acc_allocator()),
             return_range: 0..0,
             stack: Stack::new(),
             memory: Memory::new(),
@@ -346,7 +345,7 @@ impl<T: EventListener> Machine<T> {
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
-            return_data: Buffer::empty(),
+            return_data: Vector::<u8>::new_in(acc_allocator()),
             return_range: 0..0,
             stack: Stack::new(),
             memory: Memory::new(),
@@ -457,7 +456,7 @@ impl<T: EventListener> Machine<T> {
             gas_limit: gas_limit.unwrap_or(self.gas_limit),
             execution_code,
             call_data,
-            return_data: Buffer::empty(),
+            return_data: Vector::<u8>::new_in(acc_allocator()),
             return_range: 0..0,
             stack: Stack::new(),
             memory: Memory::new(),

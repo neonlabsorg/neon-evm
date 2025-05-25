@@ -11,10 +11,10 @@ use super::{
     database::{Database, DatabaseExt},
     end_vm, tracing_event, Context, Machine, Reason,
 };
-use crate::account::InterruptedState;
 use crate::evm::tracing::EventListener;
 use crate::types::vector::VectorSliceExt;
 use crate::types::Vector;
+use crate::{account::InterruptedState, allocator::acc_allocator};
 use crate::{
     debug::log_data,
     error::{Error, Result},
@@ -1132,7 +1132,7 @@ impl<T: EventListener> Machine<T> {
             chain_id,
             context,
             init_code,
-            Buffer::empty(),
+            Vector::new_in(acc_allocator()),
             None,
         );
         backend.snapshot();
@@ -1167,7 +1167,7 @@ impl<T: EventListener> Machine<T> {
         self.return_data = Buffer::empty();
         self.return_range = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let call_data = self.memory.read(args_offset, args_length)?.to_vector();
         let code = backend.code(address).await?;
 
         let chain_id = self.context.contract_chain_id;
@@ -1218,7 +1218,7 @@ impl<T: EventListener> Machine<T> {
         self.return_data = Buffer::empty();
         self.return_range = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let call_data = self.memory.read(args_offset, args_length)?.to_vector();
         let code = backend.code(address).await?;
 
         let chain_id = self.context.contract_chain_id;
@@ -1268,7 +1268,7 @@ impl<T: EventListener> Machine<T> {
         self.return_data = Buffer::empty();
         self.return_range = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let call_data = self.memory.read(args_offset, args_length)?.to_vector();
         let code = backend.code(address).await?;
 
         let context = Context {
@@ -1307,7 +1307,7 @@ impl<T: EventListener> Machine<T> {
         self.return_data = Buffer::empty();
         self.return_range = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let call_data = self.memory.read(args_offset, args_length)?.to_vector();
         let code = backend.code(address).await?;
 
         let chain_id = self.context.contract_chain_id;

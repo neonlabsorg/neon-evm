@@ -4,6 +4,8 @@
 #![allow(clippy::future_not_send)]
 
 use crate::account::InterruptedState;
+use crate::allocator::acc_allocator;
+use crate::types::vector::VectorSliceExt;
 use crate::types::TrxView;
 use ethnum::U256;
 use maybe_async::maybe_async;
@@ -184,7 +186,7 @@ pub struct Machine<T: EventListener> {
     gas_limit: U256,
 
     execution_code: Buffer,
-    call_data: Buffer,
+    call_data: Vector<u8>,
     return_data: Buffer,
     return_range: Range<usize>,
 
@@ -212,7 +214,6 @@ impl Machine<NoopEventListener> {
     pub fn reinit(&mut self, backend: &impl Database) {
         let mut machine = self;
         loop {
-            Self::reinit_buffer(&mut machine.call_data, backend);
             Self::reinit_buffer(&mut machine.execution_code, backend);
             Self::reinit_buffer(&mut machine.return_data, backend);
             match &mut machine.parent {
@@ -282,7 +283,7 @@ impl<T: EventListener> Machine<T> {
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
             execution_code,
-            call_data: Buffer::from_slice(trx.call_data()),
+            call_data: trx.call_data().to_vector(),
             return_data: Buffer::empty(),
             return_range: 0..0,
             stack: Stack::new(),
@@ -353,7 +354,7 @@ impl<T: EventListener> Machine<T> {
             is_static: false,
             reason: Reason::Create,
             execution_code: Buffer::from_slice(trx.call_data()),
-            call_data: Buffer::empty(),
+            call_data: Vector::new_in(acc_allocator()),
             parent: None,
             tracer,
         };
@@ -445,7 +446,7 @@ impl<T: EventListener> Machine<T> {
         chain_id: u64,
         context: Context,
         execution_code: Buffer,
-        call_data: Buffer,
+        call_data: Vector<u8>,
         gas_limit: Option<U256>,
     ) {
         let mut other = Self {

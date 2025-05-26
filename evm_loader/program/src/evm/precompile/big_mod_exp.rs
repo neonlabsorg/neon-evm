@@ -2,21 +2,15 @@ use crate::evm::U256;
 use crate::types::vector::VectorVecExt;
 use crate::types::Vector;
 use crate::vector;
-use num_bigint::BigUint;
-use num_traits::{One, Zero};
+use dashu::{integer::fast_div::ConstDivisor, integer::UBig};
 
-fn big_uint_mod_exp(base: &[u8], exponent: &[u8], modulus: &[u8]) -> Vec<u8> {
+fn dashu_mod_exp(base: &[u8], exponent: &[u8], modulus: &[u8]) -> Vec<u8> {
     let modulus_len = modulus.len();
-    let base = BigUint::from_bytes_be(base);
-    let exponent = BigUint::from_bytes_be(exponent);
-    let modulus = BigUint::from_bytes_be(modulus);
+    let modulus = ConstDivisor::new(UBig::from_be_bytes(modulus));
+    let base = modulus.reduce(UBig::from_be_bytes(base));
 
-    if modulus.is_zero() || modulus.is_one() {
-        return vec![0_u8; modulus_len];
-    }
-
-    let ret_int = base.modpow(&exponent, &modulus);
-    let ret_int = ret_int.to_bytes_be();
+    let ret_int = base.pow(&UBig::from_be_bytes(exponent)).residue();
+    let ret_int = ret_int.to_be_bytes();
     let mut return_value = vec![0_u8; modulus_len.saturating_sub(ret_int.len())];
     return_value.extend(ret_int);
     return_value
@@ -50,5 +44,5 @@ pub fn big_mod_exp(input: &[u8]) -> Vector<u8> {
     let (exp_val, rest) = rest.split_at(exp_len);
     let (mod_val, _) = rest.split_at(mod_len);
 
-    big_uint_mod_exp(base_val, exp_val, mod_val).into_vector()
+    dashu_mod_exp(base_val, exp_val, mod_val).into_vector()
 }

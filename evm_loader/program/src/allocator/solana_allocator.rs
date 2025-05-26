@@ -129,7 +129,10 @@ unsafe impl allocator_api2::alloc::Allocator for SolanaAllocator {
                 .map(|ptr| {
                     NonNull::new_unchecked(slice::from_raw_parts_mut(ptr.as_ptr(), layout.size()))
                 })
-                .map_err(|()| allocator_api2::alloc::AllocError)
+                .map_err(|()| {
+                    solana_program::log::sol_log(self.error_msg);
+                    allocator_api2::alloc::AllocError
+                })
         }
     }
 

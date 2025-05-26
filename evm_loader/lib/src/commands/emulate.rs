@@ -20,7 +20,7 @@ use crate::{
 use ethnum::U256;
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::error::build_revert_message;
-use evm_loader::types::{Address, Transaction};
+use evm_loader::types::{Address, Transaction, TrxView};
 use evm_loader::{
     config::{
         EVM_STEPS_MIN, GAS_LIMIT_MULTIPLIER_NO_CHAINID, LAMPORTS_PER_SIGNATURE, PAYMENT_TO_TREASURE,
@@ -436,9 +436,12 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
     let mut overrides = init_overrides(emulate_request);
 
+    let block_number = execution_map.block_number.or(Some(clock.slot));
+    let block_timestamp = execution_map.block_timestamp.or(Some(clock.unix_timestamp));
+
     overrides.blocks.get_or_insert(BlockOverrides {
-        number: Some(clock.slot),
-        time: Some(clock.unix_timestamp),
+        number: block_number,
+        time: block_timestamp,
         ..Default::default()
     });
 
@@ -478,7 +481,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
         let mut step_on_solana = None;
         let mut tracer_result: Option<T> = evm.take_tracer();
         for execution_step in &execution_map.steps {
-            if execution_step.is_reset || execution_step.is_cancel {
+            if execution_step.is_reset {
                 drop(evm);
                 drop(backend);
                 drop(storage);
@@ -512,17 +515,33 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
             }
 
             if execution_step.is_cancel {
-                evm.set_tracer(tracer_result);
+                drop(evm);
+                drop(backend);
+                drop(storage);
+                drop(rpc);
 
-                evm.end_vm(&backend, ExitStatus::Cancel).await?;
+                steps_executed = 0u64;
                 exit_status = ExitStatus::Cancel;
 
-                tracer_result = evm.take_tracer();
+                rpc = create_rpc(db_config, execution_step.block, execution_step.index).await?;
+                (storage, _) = initialize_storage_and_transaction(
+                    program_id,
+                    emulate_request,
+                    &rpc,
+                    overrides.clone(),
+                )
+                .await?;
+                backend = SyncedExecutorState::new(&mut storage);
+
+                if let Some(ref mut tracer) = tracer_result {
+                    tracer.cancel(&emulate_request.tx);
+                }
+
                 break;
             }
 
             match exit_status {
-                ExitStatus::Return(_) | ExitStatus::Stop => {
+                ExitStatus::Return(_) | ExitStatus::Stop | ExitStatus::Revert(_) => {
                     if execution_step.steps == 0 {
                         // skipping empty instructions
                         continue;

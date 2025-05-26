@@ -413,22 +413,38 @@ impl<'a> TransactionTree<'a> {
         Ok(())
     }
 
-    pub fn end_transaction(&mut self, index: u16, result: &ExitStatus) -> Result<()> {
-        use solana_program::keccak::{hash as keccak256, Hash};
+    #[must_use]
+    pub fn prepare_exit_status(
+        result: &ExitStatus,
+    ) -> Option<(Status, solana_program::keccak::Hash)> {
+        use solana_program::keccak::hash as keccak256;
 
+        let (status, result_hash) = match result {
+            ExitStatus::Stop | ExitStatus::Suicide => (Status::Success, keccak256(&[])),
+            ExitStatus::Return(result) => (Status::Success, keccak256(result)),
+            ExitStatus::Revert(result) => (Status::Failed, keccak256(result)),
+            ExitStatus::Cancel => (Status::Failed, keccak256(&[])),
+            ExitStatus::Interrupted(_) | ExitStatus::StepLimit => return None,
+        };
+
+        Some((status, result_hash))
+    }
+
+    pub fn end_transaction(
+        &mut self,
+        hash: [u8; 32],
+        result: (Status, solana_program::keccak::Hash),
+    ) -> Result<()> {
+        use solana_program::keccak::Hash;
+
+        let index = self.find_node(hash)?;
         let mut node = self.node_mut(index);
 
         if node.status != Status::InProgress {
             return Err(Error::TreeAccountTxInvalidStatus);
         }
 
-        let (status, Hash(result_hash)) = match result {
-            ExitStatus::Stop | ExitStatus::Suicide => (Status::Success, keccak256(&[])),
-            ExitStatus::Return(result) => (Status::Success, keccak256(result)),
-            ExitStatus::Revert(result) => (Status::Failed, keccak256(result)),
-            ExitStatus::Cancel => (Status::Failed, keccak256(&[])),
-            ExitStatus::Interrupted(_) | ExitStatus::StepLimit => unreachable!(),
-        };
+        let (status, Hash(result_hash)) = result;
 
         node.status = status;
         node.result_hash = result_hash;

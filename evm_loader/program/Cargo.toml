@@ -64,6 +64,7 @@ strum = { version = "0.26.3", features = ["derive"] }
 maybe-async = "0.2.10"
 async-trait = { version = "0.1.81", optional = true }
 allocator-api2 = "0.2.16"
+dashu = "0.4.2"
 
 [target.'cfg(target_os = "solana")'.dependencies.maybe-async]
 version = "0.2.10"

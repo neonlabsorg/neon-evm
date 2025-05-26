@@ -1,11 +1,14 @@
 use std::cmp::min;
 
-use crate::account::{AccountsDB, BalanceAccount, Operator, OperatorBalanceAccount, StateAccount};
+use crate::account::{
+    AccountsDB, BalanceAccount, Operator, OperatorBalanceAccount, PlainStateHeader, StateAccount,
+};
 use crate::config::{DEFAULT_CHAIN_ID, LAST_ITERATION_COST};
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 
 use crate::priority_gas_calculator::calc_priority_gas;
+use crate::types::TrxView;
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::rent::Rent;
@@ -27,37 +30,35 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     log_data(&[b"MINER", operator_balance.address().as_bytes()]);
 
     let accounts_db = AccountsDB::new(&accounts[3..], operator, Some(operator_balance), None, None);
-    let storage = StateAccount::restore_without_revision_check(program_id, &storage_info)?;
 
-    validate(&storage, transaction_hash)?;
-    execute(program_id, accounts_db, storage)
+    let mut header = StateAccount::recover_plain_header(program_id, &storage_info)?;
+
+    validate(&header, transaction_hash)?;
+    execute(program_id, accounts_db, &mut header, &storage_info)
 }
 
-fn validate(storage: &StateAccount, transaction_hash: &[u8; 32]) -> Result<()> {
-    if &storage.trx().hash() != transaction_hash {
-        return Err(Error::HolderInvalidHash(
-            storage.trx().hash(),
-            *transaction_hash,
-        ));
+fn validate(header: &PlainStateHeader, transaction_hash: &[u8; 32]) -> Result<()> {
+    if &header.hash() != transaction_hash {
+        return Err(Error::HolderInvalidHash(header.hash(), *transaction_hash));
     }
 
     Ok(())
 }
 
-fn execute<'a>(
+fn execute(
     program_id: &Pubkey,
-    accounts: AccountsDB<'a>,
-    mut storage: StateAccount<'a>,
+    accounts: AccountsDB,
+    header: &mut PlainStateHeader,
+    storage_account: &AccountInfo,
 ) -> Result<()> {
-    let trx = storage.trx();
-    let trx_chain_id = trx.chain_id().unwrap_or(DEFAULT_CHAIN_ID);
-    let priority_gas = calc_priority_gas(trx)?;
+    let trx_chain_id = header.chain_id().unwrap_or(DEFAULT_CHAIN_ID);
+    let priority_gas = calc_priority_gas(header)?;
 
     let used_gas = min(
-        storage.gas_available(),
+        header.gas_available(),
         U256::from(LAST_ITERATION_COST + priority_gas),
     );
-    let total_used_gas = storage.gas_used() + used_gas;
+    let total_used_gas = header.gas_used + used_gas;
 
     log_data(&[
         b"GAS",
@@ -65,19 +66,19 @@ fn execute<'a>(
         &total_used_gas.to_le_bytes(),
     ]);
 
-    let _ = storage.consume_gas(used_gas, accounts.try_operator_balance()); // ignore error
+    let _ = header.consume_gas(used_gas, accounts.try_operator_balance()); // ignore error
 
-    let origin = storage.trx_origin();
+    let origin = header.origin;
     let (origin_pubkey, _) = origin.find_balance_address(program_id, trx_chain_id);
 
     // Do not refund unused gas for the scheduled transaction - it happens in the `scheduled_transaction_finish`.
-    if !storage.trx().is_scheduled_tx() {
+    if !header.is_scheduled_tx() {
         let origin_info = accounts.get(&origin_pubkey).clone();
         let mut balance = BalanceAccount::from_account(program_id, origin_info)?;
         balance.increment_revision(&Rent::get()?, &accounts)?;
 
-        storage.refund_unused_gas(&mut balance)?;
+        header.refund_unused_gas(&mut balance)?;
     }
 
-    storage.cancel(program_id)
+    header.cancel(program_id, storage_account)
 }

@@ -355,4 +355,9 @@ impl Tracer for CallTracer {
         }];
         self.depth = 0;
     }
+
+    fn cancel(&mut self, tx: &TxParams) {
+        self.clear(tx);
+        self.call_stack[0].process_output(ExitStatus::Cancel);
+    }
 }

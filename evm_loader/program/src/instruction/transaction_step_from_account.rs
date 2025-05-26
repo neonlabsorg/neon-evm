@@ -8,6 +8,7 @@ use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
 use crate::instruction::instruction_internals::holder_parse_trx;
 use crate::instruction::transaction_step::{do_begin, do_continue};
+use crate::types::TrxView;
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
@@ -47,8 +48,8 @@ pub fn process_inner(
     let tag = crate::account::tag(program_id, &holder_or_storage)?;
     match tag {
         TAG_HOLDER => {
-            let mut trx =
-                holder_parse_trx(holder_or_storage.clone(), &operator, program_id, false)?;
+            let (mut trx, tx_rlp) =
+                holder_parse_trx(&holder_or_storage, &operator, program_id, false)?;
             let origin = trx.recover_caller_address()?;
 
             operator_balance.validate_transaction(&trx)?;
@@ -68,17 +69,18 @@ pub fn process_inner(
 
             let storage = StateAccount::new(
                 program_id,
-                holder_or_storage,
+                &holder_or_storage,
                 &accounts_db,
                 origin,
-                trx,
+                &trx,
+                tx_rlp.as_slice(),
                 None,
             )?;
 
-            do_begin(accounts_db, storage, gasometer)
+            do_begin(trx, accounts_db, storage, gasometer)
         }
         TAG_STATE => {
-            let (storage, accounts_status) =
+            let (storage, accounts_status, parsed_trx) =
                 StateAccount::restore(program_id, &holder_or_storage, &accounts_db)?;
 
             operator_balance.validate_transaction(storage.trx())?;
@@ -90,7 +92,14 @@ pub fn process_inner(
             let gasometer = Gasometer::new(storage.gas_used(), &operator)?;
 
             let reset = accounts_status != AccountsStatus::Ok;
-            do_continue(step_count, accounts_db, storage, gasometer, reset)
+            do_continue(
+                step_count,
+                accounts_db,
+                storage,
+                gasometer,
+                reset,
+                parsed_trx,
+            )
         }
         TAG_SCHEDULED_STATE_CANCELLED | TAG_SCHEDULED_STATE_FINALIZED => {
             Err(Error::ScheduledTxAlreadyComplete(*holder_or_storage.key))

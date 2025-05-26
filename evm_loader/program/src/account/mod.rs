@@ -14,7 +14,10 @@ pub use ether_storage::{Cell, Header as StorageCellHeader, StorageCell, StorageC
 pub use holder::{Header as HolderHeader, Holder};
 pub use operator::Operator;
 pub use operator_balance::{OperatorBalanceAccount, OperatorBalanceValidator};
-pub use state::{AccountsStatus, InterruptedInstruction, InterruptedState, StateAccount};
+pub use state::{
+    AccountsStatus, InterruptedInstruction, InterruptedState, PlainData as PlainStateHeader,
+    StateAccount,
+};
 pub use state_finalized::{Header as StateFinalizedHeader, StateFinalizedAccount};
 pub use transaction_tree::{
     NodeInitializer, Status as TransactionTreeNodeStatus, TransactionTree, TreeInitializer,
@@ -73,18 +76,21 @@ fn section<'r, T>(account: &'r AccountInfo<'_>, offset: usize) -> Ref<'r, T> {
 }
 
 #[inline]
-fn section_mut<'r, T>(account: &'r AccountInfo<'_>, offset: usize) -> RefMut<'r, T> {
+fn section_mut_from_slice<T>(data: &mut [u8], offset: usize) -> &mut T {
     let begin = offset;
     let end = begin + std::mem::size_of::<T>();
 
-    let data = account.data.borrow_mut();
-    RefMut::map(data, |d| {
-        let bytes = &mut d[begin..end];
+    let bytes = &mut data[begin..end];
 
-        assert_eq!(std::mem::align_of::<T>(), 1);
-        assert_eq!(std::mem::size_of::<T>(), bytes.len());
-        unsafe { &mut *(bytes.as_mut_ptr().cast()) }
-    })
+    assert_eq!(std::mem::align_of::<T>(), 1);
+    assert_eq!(std::mem::size_of::<T>(), bytes.len());
+    unsafe { &mut *(bytes.as_mut_ptr().cast()) }
+}
+
+#[inline]
+fn section_mut<'r, T>(account: &'r AccountInfo<'_>, offset: usize) -> RefMut<'r, T> {
+    let data = account.data.borrow_mut();
+    RefMut::map(data, |d| section_mut_from_slice(d, offset))
 }
 
 trait AccountHeader {
@@ -103,6 +109,11 @@ fn header<'r, T: AccountHeader>(account: &'r AccountInfo<'_>) -> Ref<'r, T> {
 #[inline]
 fn header_mut<'r, T: AccountHeader>(account: &'r AccountInfo<'_>) -> RefMut<'r, T> {
     section_mut(account, ACCOUNT_PREFIX_LEN)
+}
+
+#[inline]
+fn header_mut_from_slice<T: AccountHeader>(account: &mut [u8]) -> &mut T {
+    section_mut_from_slice(account, ACCOUNT_PREFIX_LEN)
 }
 
 fn expand_header<'a, From: AccountHeader, To: AccountHeader>(
@@ -157,6 +168,7 @@ pub fn tag(program_id: &Pubkey, info: &AccountInfo) -> Result<u8> {
     }
 
     let data = info.try_borrow_data()?;
+
     if data.len() < ACCOUNT_PREFIX_LEN {
         return Err(Error::AccountInvalidData(*info.key));
     }

@@ -35,6 +35,14 @@ impl core::cmp::PartialEq for Buffer {
 }
 
 impl Buffer {
+    #[must_use]
+    pub fn is_owned(&self) -> bool {
+        match &self.inner {
+            Inner::Owned { .. } => true,
+            Inner::Account { .. } => false,
+        }
+    }
+
     fn new(inner: Inner) -> Self {
         let (ptr, len) = match &inner {
             Inner::Owned(data) => (data.as_ptr(), data.len()),

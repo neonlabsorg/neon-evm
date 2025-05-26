@@ -46,6 +46,7 @@ impl EventListener for TracerTypeEnum {
 pub trait Tracer: EventListener {
     fn into_traces(self, emulator_gas_used: u64) -> Value;
     fn clear(&mut self, tx: &TxParams);
+    fn cancel(&mut self, tx: &TxParams);
 }
 
 pub fn new_tracer(

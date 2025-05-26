@@ -73,4 +73,8 @@ impl Tracer for PrestateTracer {
     fn clear(&mut self, tx: &TxParams) {
         self.state_diff_tracer = StateDiffTracer::new(tx);
     }
+
+    fn cancel(&mut self, tx: &TxParams) {
+        self.clear(tx);
+    }
 }

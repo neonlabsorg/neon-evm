@@ -33,11 +33,10 @@ const HEAP_OBJECT_OFFSET_PTR: usize = STATE_ACCOUNT_DATA_ADDRESS + crate::accoun
 #[derive(Copy, Clone)]
 pub struct SolanaAllocator {
     heap: *mut Heap,
-    error_msg: &'static str,
 }
 
 impl SolanaAllocator {
-    pub unsafe fn from_slice(slice: &mut [u8], error_msg: &'static str) -> Result<Self, ()> {
+    pub unsafe fn from_slice(slice: &mut [u8]) -> Result<Self, ()> {
         let mut heap = Heap::from_slice(unsafe { std::mem::transmute(slice) });
         let ptr = heap.allocate_first_fit(Layout::new::<Heap>())?;
         unsafe {
@@ -46,7 +45,6 @@ impl SolanaAllocator {
         }
         Ok(SolanaAllocator {
             heap: ptr.as_ptr().cast::<Heap>(),
-            error_msg,
         })
     }
 
@@ -60,10 +58,7 @@ impl SolanaAllocator {
         // Holder/StateAccount creation), because account knows its size and thus can
         // correctly specify heap size.
 
-        SolanaAllocator {
-            heap: heap_ptr,
-            error_msg: "EVM Account Allocator out of memory",
-        }
+        SolanaAllocator { heap: heap_ptr }
     }
 
     fn heap(&self) -> &mut Heap {
@@ -79,6 +74,15 @@ impl SolanaAllocator {
             self.heap().deallocate(NonNull::new_unchecked(ptr), layout);
         }
     }
+
+    fn error_msg(&self) -> &'static str {
+        let ptr = self.heap as usize;
+        if ptr >= SOLANA_HEAP_START_ADDRESS && ptr < SOLANA_HEAP_START_ADDRESS + SOLANA_HEAP_SIZE {
+            "Solana heap allocator out of memory"
+        } else {
+            "EVM Account Allocator out of memory"
+        }
+    }
 }
 
 unsafe impl std::alloc::GlobalAlloc for SolanaAllocator {
@@ -87,7 +91,7 @@ unsafe impl std::alloc::GlobalAlloc for SolanaAllocator {
         if let Ok(non_null) = self.alloc_impl(layout) {
             non_null.as_ptr()
         } else {
-            solana_program::log::sol_log(&self.error_msg);
+            solana_program::log::sol_log(self.error_msg());
             std::ptr::null_mut()
         }
     }
@@ -130,7 +134,7 @@ unsafe impl allocator_api2::alloc::Allocator for SolanaAllocator {
                     NonNull::new_unchecked(slice::from_raw_parts_mut(ptr.as_ptr(), layout.size()))
                 })
                 .map_err(|()| {
-                    solana_program::log::sol_log(self.error_msg);
+                    solana_program::log::sol_log(self.error_msg());
                     allocator_api2::alloc::AllocError
                 })
         }
@@ -144,16 +148,10 @@ unsafe impl allocator_api2::alloc::Allocator for SolanaAllocator {
 struct StaticAllocator {
     start_address: usize,
     heap_size: usize,
-    error_msg: &'static str,
 }
 
 impl StaticAllocator {
     fn maybe_init(&self) -> SolanaAllocator {
-        let mask = std::mem::align_of::<Heap>() - 1;
-        if self.start_address & mask != 0 {
-            panic!("bad alignment")
-        }
-
         let heap_ptr: *mut Heap = self.start_address as *mut Heap;
         let heap = unsafe { &mut *heap_ptr };
 
@@ -163,10 +161,7 @@ impl StaticAllocator {
             unsafe { heap.init(start, size) };
         }
 
-        SolanaAllocator {
-            heap: heap_ptr,
-            error_msg: self.error_msg,
-        }
+        SolanaAllocator { heap: heap_ptr }
     }
 }
 
@@ -192,5 +187,4 @@ unsafe impl std::alloc::GlobalAlloc for StaticAllocator {
 static DEFAULT: StaticAllocator = StaticAllocator {
     start_address: SOLANA_HEAP_START_ADDRESS,
     heap_size: SOLANA_HEAP_SIZE,
-    error_msg: "Solana Allocator out of memory",
 };

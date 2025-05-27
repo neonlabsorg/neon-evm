@@ -5,9 +5,6 @@ use solana_program::pubkey::Pubkey;
 #[cfg(target_os = "solana")]
 mod solana_allocator;
 
-#[cfg(target_os = "solana")]
-use solana_allocator::SolanaAllocator;
-
 // Holder account heap constants.
 
 /// See [`solana_program::entrypoint::deserialize`] for more details.
@@ -31,11 +28,11 @@ pub const STATE_ACCOUNT_DATA_ADDRESS: usize =
     PROGRAM_DATA_INPUT_PARAMETERS_OFFSET + FIRST_ACCOUNT_DATA_OFFSET;
 
 #[cfg(target_os = "solana")]
-pub type StateAllocator = SolanaAllocator;
+pub type StateAllocator = solana_allocator::SolanaAllocator;
 
 #[cfg(target_os = "solana")]
 pub fn acc_allocator() -> StateAllocator {
-    SolanaAllocator::static_account_alloc()
+    solana_allocator::SolanaAllocator::static_account_alloc()
 }
 
 #[cfg(not(target_os = "solana"))]

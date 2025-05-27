@@ -349,8 +349,11 @@ async fn emulate_trx_single_step<T: Tracer>(
             }
         };
 
-        let (exit_status, steps_executed, step_on_solana, tracer) =
-            evm.execute(step_limit, &mut backend).await?;
+        let execute_result = evm.execute(step_limit, &mut backend).await;
+        if let Err(e) = execute_result {
+            return Ok((EmulateResponse::revert(&e, &backend), None));
+        }
+        let (exit_status, steps_executed, step_on_solana, tracer) = execute_result?;
 
         if exit_status == ExitStatus::StepLimit {
             error!("Step_limit={step_limit} exceeded");

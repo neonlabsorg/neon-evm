@@ -7,6 +7,8 @@ mod synced_state;
 pub mod precompile_extension;
 
 pub use action::Action;
+pub use action::ExternalInstructionData;
+
 pub use block_params::BlockParams;
 pub use cache::Cache;
 pub use cache::OwnedAccountInfo;

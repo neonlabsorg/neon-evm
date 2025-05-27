@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::ops::Deref;
 
 use ethnum::U256;
 use solana_program::instruction::Instruction;
@@ -171,7 +170,7 @@ impl<'a> ProgramAccountStorage<'a> {
                         data,
                         seeds,
                         ..
-                    } = instruction.deref();
+                    } = &**instruction;
                     let seeds = seeds
                         .iter()
                         .map(|s| s.iter().map(|s| s.as_slice()).collect::<Vec<_>>())

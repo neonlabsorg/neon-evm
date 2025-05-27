@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::ops::Deref;
 
 use crate::account_storage::{AccountStorage, LogCollector};
 use crate::error::{Error, Result};
@@ -519,7 +518,7 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
                     accounts: meta,
                     emulated_internally,
                     ..
-                } = action.deref();
+                } = &**action;
                 if !emulated_internally {
                     unreachable!();
                 }

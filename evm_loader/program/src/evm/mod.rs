@@ -414,7 +414,9 @@ impl<T: EventListener> Machine<T> {
                     Ok(result) => result,
                     Err(Error::FatalError(message)) => return Err(Error::FatalError(message)),
                     Err(Error::ExternalCallFailed(pubkey, string)) => {
-                        return Err(Error::ExternalCallFailed(pubkey, string))
+                        break ExitStatus::Revert(build_revert_message(
+                            &Error::ExternalCallFailed(pubkey, string).to_string(),
+                        ))
                     }
                     Err(e) => {
                         let message = build_revert_message(&e.to_string());

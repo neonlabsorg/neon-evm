@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 
 use crate::account::Operator;
-use crate::config::{HOLDER_MSG_SIZE, LAMPORTS_PER_SIGNATURE, TREE_ACCOUNT_FINISH_TRANSACTION_GAS};
+use crate::config::{HOLDER_MSG_SIZE, LAMPORTS_PER_SIGNATURE};
 use crate::error::Error;
 use crate::priority_gas_calculator::calc_priority_gas;
 use crate::types::Transaction;
@@ -79,12 +79,5 @@ impl Gasometer {
         let cost = (extend_count + 3) as u64 * LAMPORTS_PER_SIGNATURE;
 
         self.gas = self.gas.saturating_add(cost);
-    }
-
-    pub fn record_scheduled_transaction_finish(&mut self) {
-        // real gas usage happens in finish instruction
-        //  here we just reserve the gas for finish instruction
-        self.gas = self.gas.saturating_add(TREE_ACCOUNT_FINISH_TRANSACTION_GAS);
-        self.refund_lamports(TREE_ACCOUNT_FINISH_TRANSACTION_GAS);
     }
 }

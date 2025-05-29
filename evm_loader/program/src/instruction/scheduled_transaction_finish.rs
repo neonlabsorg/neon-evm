@@ -1,13 +1,9 @@
-use crate::account::{
-    Operator, OperatorBalanceAccount, OperatorBalanceValidator, StateAccount, TransactionTree,
-};
-use crate::config::TREE_ACCOUNT_FINISH_TRANSACTION_GAS;
+use crate::account::{Operator, StateAccount, TransactionTree};
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::evm::ExitStatus;
 use crate::executor::ExecutorStateData;
 use crate::types::Transaction;
-use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
@@ -16,34 +12,21 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8
     let storage_info = accounts[0].clone();
     let mut transaction_tree = TransactionTree::from_account(&program_id, accounts[1].clone())?;
     let operator = Operator::from_account(&accounts[2])?;
-    let mut operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
 
     let mut state = StateAccount::restore_without_revision_check(program_id, &storage_info)?;
     let mut executor_state = state.read_executor_state();
     let trx = state.trx();
 
-    operator_balance.validate_owner(&operator)?;
-    operator_balance.validate_transaction(&trx)?;
-    let miner_address = operator_balance.miner(state.trx_origin());
-
     log_data(&[b"HASH", &trx.hash]);
-    log_data(&[b"MINER", miner_address.as_bytes()]);
 
     // Validate.
     let (index, exit_status) = validate(&mut executor_state, &state, trx, &transaction_tree)?;
-
-    // Handle gas, transaction costs to operator, refund into tree account.
-    const GAS: U256 = U256::new(TREE_ACCOUNT_FINISH_TRANSACTION_GAS as u128);
-    if let Some(operator_balance) = &mut operator_balance {
-        // don't burn tokens in tree, because it was already reserved at the start
-        operator_balance.mint(GAS)?;
-    }
 
     let refund = state.materialize_unused_gas()?;
     transaction_tree.mint(refund)?;
 
     // Finalize.
-    transaction_tree.end_transaction(index, exit_status)?;
+    transaction_tree.end_transaction(index, exit_status, &operator)?;
     state.finish_scheduled_tx(program_id)?;
 
     Ok(())

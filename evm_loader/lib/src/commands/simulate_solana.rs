@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::{
     rpc::Rpc,
     solana_simulator::{SolanaSimulator, SyncState},
@@ -13,10 +11,12 @@ use serde_with::serde_as;
 use solana_compute_budget::compute_budget::ComputeBudget;
 use solana_runtime::runtime_config::RuntimeConfig;
 use solana_sdk::{
+    account::Account,
     pubkey::Pubkey,
     transaction::{SanitizedTransaction, Transaction, VersionedTransaction},
 };
 use solana_transaction_status::EncodableWithMeta;
+use std::collections::HashSet;
 
 #[serde_as]
 #[derive(Deserialize, Serialize, Debug, Default)]
@@ -120,9 +120,24 @@ pub async fn execute(
         sanitized_transactions.push(sanitized);
     }
 
-    // Download accounts
-    let accounts = account_keys(&sanitized_transactions);
-    simulator.sync_accounts(rpc, &accounts).await?;
+    if let Some(solana_overrides) = request.solana_overrides {
+        // Take override accounts from request
+        let mut storable_accounts: Vec<(&Pubkey, Account)> = vec![];
+        for (pubkey, account) in &solana_overrides {
+            if let Some(account) = account {
+                storable_accounts.push((pubkey, Account::from(account)));
+            }
+        }
+        let storable_accounts: Vec<_> = storable_accounts
+            .iter()
+            .map(|(pubkey, account)| (*pubkey, account))
+            .collect();
+        simulator.set_multiple_accounts(&storable_accounts);
+    } else {
+        // Download accounts from Solana
+        let accounts = account_keys(&sanitized_transactions);
+        simulator.sync_accounts(rpc, &accounts).await?;
+    }
 
     // Process transactions
     let mut results = Vec::new();

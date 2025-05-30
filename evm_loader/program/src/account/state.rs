@@ -4,6 +4,7 @@ use std::ops::Deref;
 use std::ptr::{addr_of, slice_from_raw_parts};
 
 use crate::account_storage::AccountStorage;
+use crate::allocator::{acc_allocator, StateAllocator};
 use crate::config::DEFAULT_CHAIN_ID;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
@@ -260,7 +261,8 @@ pub struct Root {
 
     pub executor_state: RefCell<Option<ExecutorStateData>>,
     pub machine_state: RefCell<Option<Machine<crate::evm::tracing::NoopEventListener>>>,
-    //pub alloc : SolanaAllocator
+
+    pub alloc: StateAllocator,
 }
 
 // to be sure that solana and x86 size/alignment match
@@ -520,6 +522,11 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         )
     }
 
+    #[must_use]
+    pub fn alloc(&self) -> StateAllocator {
+        self.root_ref.alloc
+    }
+
     #[allow(clippy::cast_sign_loss)]
     fn init_header(
         info: &'local AccountInfo<'sol>,
@@ -552,6 +559,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
             interrupted_state: None,
             executor_state: None.into(),
             machine_state: None.into(),
+            alloc: acc_allocator(),
         });
 
         let tx_rlp = transaction_rlp.to_vector();

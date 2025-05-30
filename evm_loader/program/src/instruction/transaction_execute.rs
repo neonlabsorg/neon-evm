@@ -2,6 +2,7 @@ use std::ops::Deref;
 
 use crate::account::{AccountsDB, AllocateResult};
 use crate::account_storage::ProgramAccountStorage;
+use crate::allocator::StateAllocator;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::evm::tracing::NoopEventListener;
@@ -16,6 +17,7 @@ pub fn execute(
     gasometer: Gasometer,
     trx: Transaction,
     origin: Address,
+    alloc: StateAllocator,
 ) -> Result<()> {
     let mut account_storage = ProgramAccountStorage::new(accounts)?;
     let mut backend_data = ExecutorStateData::new(&account_storage);
@@ -27,7 +29,7 @@ pub fn execute(
     let (exit_reason, steps_executed) = {
         let mut backend = ExecutorState::new(&mut account_storage, &mut backend_data);
 
-        let mut evm = Machine::new(&trx, origin, &mut backend, None::<NoopEventListener>)?;
+        let mut evm = Machine::new(&trx, origin, alloc, &mut backend, None::<NoopEventListener>)?;
         let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
 
         (result, steps_executed)
@@ -62,6 +64,7 @@ pub fn execute_with_solana_call(
     gasometer: Gasometer,
     trx: Boxx<Transaction>,
     origin: Address,
+    alloc: StateAllocator,
 ) -> Result<()> {
     let mut account_storage = ProgramAccountStorage::new(accounts)?;
 
@@ -74,7 +77,13 @@ pub fn execute_with_solana_call(
     let (exit_reason, steps_executed) = {
         let mut backend = SyncedExecutorState::new(&mut account_storage);
 
-        let mut evm = Machine::new(trx.deref(), origin, &mut backend, None::<NoopEventListener>)?;
+        let mut evm = Machine::new(
+            trx.deref(),
+            origin,
+            alloc,
+            &mut backend,
+            None::<NoopEventListener>,
+        )?;
         let (result, steps_executed, _, _) = evm.execute(u64::MAX, &mut backend)?;
 
         (result, steps_executed)

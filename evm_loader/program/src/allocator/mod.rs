@@ -31,6 +31,7 @@ pub const STATE_ACCOUNT_DATA_ADDRESS: usize =
 pub type StateAllocator = solana_allocator::SolanaAllocator;
 
 #[cfg(target_os = "solana")]
+#[must_use]
 pub fn acc_allocator() -> StateAllocator {
     solana_allocator::SolanaAllocator::static_account_alloc()
 }
@@ -39,6 +40,7 @@ pub fn acc_allocator() -> StateAllocator {
 pub type StateAllocator = std::alloc::System;
 
 #[cfg(not(target_os = "solana"))]
+#[must_use]
 pub fn acc_allocator() -> StateAllocator {
     std::alloc::System {}
 }

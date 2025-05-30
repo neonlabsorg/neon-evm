@@ -18,7 +18,8 @@
 
 solana_program::declare_id!(crate::config::PROGRAM_ID);
 
-mod allocator;
+pub mod allocator;
+
 #[macro_use]
 pub mod debug;
 #[macro_use]

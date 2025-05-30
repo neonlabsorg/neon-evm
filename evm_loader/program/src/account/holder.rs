@@ -7,7 +7,7 @@ use std::mem::{align_of, size_of};
 use std::ptr::write_unaligned;
 
 use crate::account::TAG_STATE_FINALIZED;
-use crate::allocator::STATE_ACCOUNT_DATA_ADDRESS;
+use crate::allocator::{acc_allocator, StateAllocator, STATE_ACCOUNT_DATA_ADDRESS};
 use crate::error::{Error, Result};
 use crate::types::{Transaction, TrxView};
 
@@ -204,9 +204,11 @@ impl<'local, 'sol> Holder<'local, 'sol> {
     /// Initializes the heap using the whole account data space.
     /// Also, writes the offset of the heap object into the separate field in the header.
     /// After this, the persistent objects can be allocated into the account data.
-    pub fn init_heap(&self, transaction_offset: usize) -> Result<()> {
+    pub fn init_heap(&self, transaction_offset: usize) -> Result<StateAllocator> {
         // For this case, the account.owner is already validated to be equal to program id.
-        Self::init_holder_heap(self.account.owner, self.account, transaction_offset)
+        Self::init_holder_heap(self.account.owner, self.account, transaction_offset)?;
+
+        Ok(acc_allocator())
     }
 
     /// Associated function, see `fn init_heap`.

@@ -1,7 +1,7 @@
 use std::alloc::{GlobalAlloc, Layout};
 use std::ops::Range;
 
-use crate::allocator::acc_allocator;
+use crate::allocator::StateAllocator;
 use solana_program::program_memory::{sol_memcpy, sol_memmove, sol_memset};
 
 use crate::error::Error;
@@ -20,17 +20,18 @@ pub struct Memory {
     data: *mut u8,
     capacity: usize,
     size: usize,
+    alloc: StateAllocator,
 }
 
 impl Memory {
-    pub fn new() -> Self {
-        Self::with_capacity(MEMORY_CAPACITY)
+    pub fn new(alloc: StateAllocator) -> Self {
+        Self::with_capacity(MEMORY_CAPACITY, alloc)
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
+    pub fn with_capacity(capacity: usize, alloc: StateAllocator) -> Self {
         unsafe {
             let layout = Layout::from_size_align_unchecked(capacity, MEMORY_ALIGN);
-            let data = acc_allocator().alloc_zeroed(layout);
+            let data = alloc.alloc_zeroed(layout);
             if data.is_null() {
                 std::alloc::handle_alloc_error(layout);
             }
@@ -39,6 +40,7 @@ impl Memory {
                 data,
                 capacity,
                 size: 0,
+                alloc,
             }
         }
     }
@@ -75,7 +77,7 @@ impl Memory {
 
         unsafe {
             let old_layout = Layout::from_size_align_unchecked(self.capacity, MEMORY_ALIGN);
-            let new_data = acc_allocator().realloc(self.data, old_layout, new_capacity);
+            let new_data = self.alloc.realloc(self.data, old_layout, new_capacity);
             if new_data.is_null() {
                 let layout = Layout::from_size_align_unchecked(new_capacity, MEMORY_ALIGN);
                 std::alloc::handle_alloc_error(layout);
@@ -222,7 +224,7 @@ impl Drop for Memory {
     fn drop(&mut self) {
         unsafe {
             let layout = Layout::from_size_align_unchecked(self.capacity, MEMORY_ALIGN);
-            acc_allocator().dealloc(self.data, layout);
+            self.alloc.dealloc(self.data, layout);
         }
     }
 }

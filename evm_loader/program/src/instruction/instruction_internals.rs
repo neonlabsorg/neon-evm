@@ -5,7 +5,6 @@ use solana_program::pubkey::Pubkey;
 
 use crate::account::{AllocateResult, Holder, Operator, StateAccount};
 use crate::account_storage::{AccountStorage, ProgramAccountStorage};
-use crate::allocator::acc_allocator;
 use crate::debug::log_data;
 use crate::error::Result;
 use crate::evm::tracing::NoopEventListener;
@@ -36,9 +35,13 @@ pub fn allocate_evm(
     *state_data = Some(ExecutorStateData::new(account_storage));
     let mut evm_backend =
         ExecutorState::new(account_storage, state_data.deref_mut().as_mut().unwrap());
-    storage
-        .evm_mut()
-        .replace(Evm::new(trx, storage.trx_origin(), &mut evm_backend, None)?);
+    storage.evm_mut().replace(Evm::new(
+        trx,
+        storage.trx_origin(),
+        storage.alloc(),
+        &mut evm_backend,
+        None,
+    )?);
 
     Ok(())
 }
@@ -64,6 +67,7 @@ pub fn reinit_evm(
         storage.evm_mut().replace(Evm::new(
             &parsed_tx.as_ref().unwrap(),
             storage.trx_origin(),
+            storage.alloc(),
             &mut evm_backend,
             None,
         )?);
@@ -197,6 +201,8 @@ pub fn finalize_interrupted(
 ) -> Result<()> {
     debug_print!("finalize_interrupted");
 
+    let alloc = storage.alloc();
+
     let (exit_reason, steps_executed, _, _) = {
         let mut state_ref = storage.executor_state_mut();
         let state_data = state_ref.as_mut().unwrap();
@@ -227,7 +233,7 @@ pub fn finalize_interrupted(
         evm.execute(u64::MAX, &mut backend)?
     };
 
-    let no_actions = Vector::new_in(acc_allocator());
+    let no_actions = Vector::new_in(alloc);
     finalize(
         steps_executed,
         storage,

@@ -7,8 +7,7 @@ use std::{
 
 use ethnum::{I256, U256};
 
-use crate::allocator::acc_allocator;
-use crate::{error::Error, types::Address};
+use crate::{allocator::StateAllocator, error::Error, types::Address};
 
 const ELEMENT_SIZE: usize = 32;
 const STACK_SIZE: usize = ELEMENT_SIZE * 128;
@@ -18,13 +17,14 @@ pub struct Stack {
     begin: *mut u8,
     end: *mut u8,
     top: *mut u8,
+    alloc: StateAllocator,
 }
 
 impl Stack {
-    pub fn new() -> Self {
+    pub fn new(alloc: StateAllocator) -> Self {
         let (begin, end) = unsafe {
             let layout = Layout::from_size_align_unchecked(STACK_SIZE, ELEMENT_SIZE);
-            let begin = acc_allocator().alloc(layout);
+            let begin = alloc.alloc(layout);
             if begin.is_null() {
                 std::alloc::handle_alloc_error(layout);
             }
@@ -38,6 +38,7 @@ impl Stack {
             begin,
             end,
             top: begin,
+            alloc,
         }
     }
 
@@ -261,7 +262,7 @@ impl Drop for Stack {
     fn drop(&mut self) {
         unsafe {
             let layout = Layout::from_size_align_unchecked(STACK_SIZE, ELEMENT_SIZE);
-            acc_allocator().dealloc(self.begin, layout);
+            self.alloc.dealloc(self.begin, layout);
         }
     }
 }

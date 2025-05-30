@@ -4,7 +4,7 @@
 #![allow(clippy::future_not_send)]
 
 use crate::account::InterruptedState;
-use crate::allocator::acc_allocator;
+use crate::allocator::StateAllocator;
 use crate::types::vector::VectorSliceExt;
 use crate::types::TrxView;
 use ethnum::U256;
@@ -199,6 +199,8 @@ pub struct Machine<T: EventListener> {
 
     parent: Option<Boxx<Self>>,
 
+    alloc: StateAllocator,
+
     tracer: Option<T>,
 }
 
@@ -228,6 +230,7 @@ impl<T: EventListener> Machine<T> {
     pub async fn new(
         trx: &Transaction,
         origin: Address,
+        alloc: StateAllocator,
         backend: &mut impl Database,
         tracer: Option<T>,
     ) -> Result<Self> {
@@ -242,9 +245,9 @@ impl<T: EventListener> Machine<T> {
         }
 
         if trx.target().is_some() {
-            Self::new_call(trx_chain_id, trx, origin, backend, tracer).await
+            Self::new_call(trx_chain_id, trx, origin, alloc, backend, tracer).await
         } else {
-            Self::new_create(trx_chain_id, trx, origin, backend, tracer).await
+            Self::new_create(trx_chain_id, trx, origin, alloc, backend, tracer).await
         }
     }
 
@@ -254,6 +257,7 @@ impl<T: EventListener> Machine<T> {
         chain_id: u64,
         trx: &Transaction,
         origin: Address,
+        alloc: StateAllocator,
         backend: &mut impl Database,
         tracer: Option<T>,
     ) -> Result<Self> {
@@ -283,14 +287,15 @@ impl<T: EventListener> Machine<T> {
             gas_limit: trx.gas_limit(),
             execution_code,
             call_data: trx.call_data().to_vector(),
-            return_data: Vector::<u8>::new_in(acc_allocator()),
+            return_data: Vector::<u8>::new_in(alloc),
             return_range: 0..0,
-            stack: Stack::new(),
-            memory: Memory::new(),
+            stack: Stack::new(alloc),
+            memory: Memory::new(alloc),
             pc: 0_usize,
             is_static: false,
             reason: Reason::Call,
             parent: None,
+            alloc,
             tracer,
         };
         begin_vm!(
@@ -314,6 +319,7 @@ impl<T: EventListener> Machine<T> {
         chain_id: u64,
         trx: &Transaction,
         origin: Address,
+        alloc: StateAllocator,
         backend: &mut impl Database,
         tracer: Option<T>,
     ) -> Result<Self> {
@@ -345,16 +351,17 @@ impl<T: EventListener> Machine<T> {
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
-            return_data: Vector::<u8>::new_in(acc_allocator()),
+            return_data: Vector::<u8>::new_in(alloc),
             return_range: 0..0,
-            stack: Stack::new(),
-            memory: Memory::new(),
+            stack: Stack::new(alloc),
+            memory: Memory::new(alloc),
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,
             execution_code: Buffer::from_slice(trx.call_data()),
-            call_data: Vector::new_in(acc_allocator()),
+            call_data: Vector::new_in(alloc),
             parent: None,
+            alloc,
             tracer,
         };
         begin_vm!(
@@ -456,14 +463,15 @@ impl<T: EventListener> Machine<T> {
             gas_limit: gas_limit.unwrap_or(self.gas_limit),
             execution_code,
             call_data,
-            return_data: Vector::<u8>::new_in(acc_allocator()),
+            return_data: Vector::<u8>::new_in(self.alloc),
             return_range: 0..0,
-            stack: Stack::new(),
-            memory: Memory::new(),
+            stack: Stack::new(self.alloc),
+            memory: Memory::new(self.alloc),
             pc: 0_usize,
             is_static: self.is_static,
             reason,
             parent: None,
+            alloc: self.alloc,
             tracer: self.tracer.take(),
         };
 

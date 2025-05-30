@@ -24,7 +24,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let system = program::System::from_account(&accounts[4])?;
 
     holder.validate_owner(&operator)?;
-    holder.init_heap(0)?;
+    let alloc = holder.init_heap(0)?;
 
     let trx = Transaction::from_rlp(messsage)?;
     let origin = trx.recover_caller_address()?;
@@ -47,5 +47,5 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let mut gasometer = Gasometer::new(U256::ZERO, accounts_db.operator())?;
     gasometer.record_address_lookup_table(accounts);
 
-    super::transaction_execute::execute(accounts_db, gasometer, trx, origin)
+    super::transaction_execute::execute(accounts_db, gasometer, trx, origin, alloc)
 }

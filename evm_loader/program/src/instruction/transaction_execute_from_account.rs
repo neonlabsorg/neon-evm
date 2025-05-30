@@ -34,7 +34,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     // The second option wastes the holder space (because transaction bytes will be
     // stored two times), but doesnt copy.
     let transaction_rlp_copy = holder.transaction().to_vec();
-    holder.init_heap(0)?;
+    let alloc = holder.init_heap(0)?;
 
     let trx = Transaction::from_rlp(&transaction_rlp_copy)?;
     holder.validate_transaction(&trx)?;
@@ -60,5 +60,5 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     gasometer.record_address_lookup_table(accounts);
     gasometer.record_write_to_holder(&trx);
 
-    super::transaction_execute::execute(accounts_db, gasometer, trx, origin)
+    super::transaction_execute::execute(accounts_db, gasometer, trx, origin, alloc)
 }

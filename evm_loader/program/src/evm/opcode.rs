@@ -11,10 +11,10 @@ use super::{
     database::{Database, DatabaseExt},
     end_vm, tracing_event, Context, Machine, Reason,
 };
+use crate::account::InterruptedState;
 use crate::evm::tracing::EventListener;
 use crate::types::vector::VectorSliceExt;
 use crate::types::Vector;
-use crate::{account::InterruptedState, allocator::acc_allocator};
 use crate::{
     debug::log_data,
     error::{Error, Result},
@@ -1111,7 +1111,7 @@ impl<T: EventListener> Machine<T> {
             .increment_nonce(self.context.contract, chain_id)
             .await?;
 
-        self.return_data = Vector::<u8>::new_in(acc_allocator());
+        self.return_data = Vector::<u8>::new_in(self.alloc);
         self.return_range = 0..0;
 
         let init_code = self.memory.read_buffer(offset, length)?;
@@ -1131,7 +1131,7 @@ impl<T: EventListener> Machine<T> {
             chain_id,
             context,
             init_code,
-            Vector::new_in(acc_allocator()),
+            Vector::new_in(self.alloc),
             None,
         );
         backend.snapshot();
@@ -1163,7 +1163,7 @@ impl<T: EventListener> Machine<T> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Vector::<u8>::new_in(acc_allocator());
+        self.return_data = Vector::<u8>::new_in(self.alloc);
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read(args_offset, args_length)?.to_vector();
@@ -1214,7 +1214,7 @@ impl<T: EventListener> Machine<T> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Vector::<u8>::new_in(acc_allocator());
+        self.return_data = Vector::<u8>::new_in(self.alloc);
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read(args_offset, args_length)?.to_vector();
@@ -1264,7 +1264,7 @@ impl<T: EventListener> Machine<T> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Vector::<u8>::new_in(acc_allocator());
+        self.return_data = Vector::<u8>::new_in(self.alloc);
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read(args_offset, args_length)?.to_vector();
@@ -1303,7 +1303,7 @@ impl<T: EventListener> Machine<T> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Vector::<u8>::new_in(acc_allocator());
+        self.return_data = Vector::<u8>::new_in(self.alloc);
         self.return_range = return_offset..(return_offset + return_length);
 
         let call_data = self.memory.read(args_offset, args_length)?.to_vector();

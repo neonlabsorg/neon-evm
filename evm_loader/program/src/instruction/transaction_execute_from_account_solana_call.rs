@@ -41,7 +41,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
         transaction_copy.copy_from_slice(&holder_transaction_ref);
         transaction_copy
     };
-    holder.init_heap(0)?;
+    let alloc = holder.init_heap(0)?;
 
     let trx = boxx(Transaction::from_rlp(&transaction_rlp_copy)?);
     holder.validate_transaction(trx.deref())?;
@@ -66,5 +66,5 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     gasometer.record_address_lookup_table(accounts);
     gasometer.record_write_to_holder(&trx);
 
-    super::transaction_execute::execute_with_solana_call(accounts_db, gasometer, trx, origin)
+    super::transaction_execute::execute_with_solana_call(accounts_db, gasometer, trx, origin, alloc)
 }

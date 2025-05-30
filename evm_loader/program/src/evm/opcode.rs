@@ -11,14 +11,13 @@ use super::{
     database::{Database, DatabaseExt},
     end_vm, tracing_event, Context, Machine, Reason,
 };
-use crate::account::InterruptedState;
 use crate::evm::tracing::EventListener;
 use crate::types::vector::VectorSliceExt;
 use crate::types::Vector;
+use crate::{account::InterruptedState, allocator::acc_allocator};
 use crate::{
     debug::log_data,
     error::{Error, Result},
-    evm::Buffer,
     types::Address,
 };
 
@@ -1112,7 +1111,7 @@ impl<T: EventListener> Machine<T> {
             .increment_nonce(self.context.contract, chain_id)
             .await?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = Vector::<u8>::new_in(acc_allocator());
         self.return_range = 0..0;
 
         let init_code = self.memory.read_buffer(offset, length)?;
@@ -1132,7 +1131,7 @@ impl<T: EventListener> Machine<T> {
             chain_id,
             context,
             init_code,
-            Buffer::empty(),
+            Vector::new_in(acc_allocator()),
             None,
         );
         backend.snapshot();
@@ -1164,10 +1163,10 @@ impl<T: EventListener> Machine<T> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = Vector::<u8>::new_in(acc_allocator());
         self.return_range = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let call_data = self.memory.read(args_offset, args_length)?.to_vector();
         let code = backend.code(address).await?;
 
         let chain_id = self.context.contract_chain_id;
@@ -1215,10 +1214,10 @@ impl<T: EventListener> Machine<T> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = Vector::<u8>::new_in(acc_allocator());
         self.return_range = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let call_data = self.memory.read(args_offset, args_length)?.to_vector();
         let code = backend.code(address).await?;
 
         let chain_id = self.context.contract_chain_id;
@@ -1265,10 +1264,10 @@ impl<T: EventListener> Machine<T> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = Vector::<u8>::new_in(acc_allocator());
         self.return_range = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let call_data = self.memory.read(args_offset, args_length)?.to_vector();
         let code = backend.code(address).await?;
 
         let context = Context {
@@ -1304,10 +1303,10 @@ impl<T: EventListener> Machine<T> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Buffer::empty();
+        self.return_data = Vector::<u8>::new_in(acc_allocator());
         self.return_range = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read_buffer(args_offset, args_length)?;
+        let call_data = self.memory.read(args_offset, args_length)?.to_vector();
         let code = backend.code(address).await?;
 
         let chain_id = self.context.contract_chain_id;
@@ -1406,7 +1405,7 @@ impl<T: EventListener> Machine<T> {
                 self.memory.write_range(&self.return_range, &return_data)?;
                 self.stack.push_bool(true)?; // success
 
-                self.return_data = Buffer::from_vector(return_data);
+                self.return_data = return_data;
             }
             Reason::Create => {
                 let address = returned.context.contract;
@@ -1459,7 +1458,7 @@ impl<T: EventListener> Machine<T> {
             }
         }
 
-        self.return_data = Buffer::from_vector(return_data);
+        self.return_data = return_data;
 
         unsafe {
             ManuallyDrop::drop(&mut returned);

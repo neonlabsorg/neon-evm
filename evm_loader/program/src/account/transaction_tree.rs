@@ -7,7 +7,7 @@ use super::{
     ACCOUNT_SEED_VERSION, TAG_TRANSACTION_TREE,
 };
 use crate::config::{
-    BASE_ITERATIVE_TRANSACTION_COST, TREE_ACCOUNT_DESTROY_FEE, TREE_ACCOUNT_FINISH_TRANSACTION_GAS,
+    BASE_ITERATIVE_TRANSACTION_COST, TREE_ACCOUNT_DESTROY_FEE, TREE_ACCOUNT_FINISH_TRANSACTION_FEE,
     TREE_ACCOUNT_TIMEOUT,
 };
 use crate::error::{Error, Result};
@@ -133,9 +133,7 @@ impl<'a> TransactionTree<'a> {
         clock: &Clock,
     ) -> Result<Self> {
         const MIN_FEE_PER_GAS: U256 = U256::new(1_100_000_000);
-        const MIN_GAS_LIMIT: U256 = U256::new(
-            BASE_ITERATIVE_TRANSACTION_COST as u128 + TREE_ACCOUNT_FINISH_TRANSACTION_GAS as u128,
-        );
+        const MIN_GAS_LIMIT: U256 = U256::new(BASE_ITERATIVE_TRANSACTION_COST as u128);
         const TREE_ACCOUNT_MAX_NODES: usize = 16;
 
         // Validate account
@@ -215,7 +213,10 @@ impl<'a> TransactionTree<'a> {
             space,
             rent,
         )?;
-        system.transfer(destroy_fee_payer, &account, TREE_ACCOUNT_DESTROY_FEE)?;
+
+        let nodes_len = nodes.len() as u64;
+        let fee = TREE_ACCOUNT_DESTROY_FEE + (nodes_len * TREE_ACCOUNT_FINISH_TRANSACTION_FEE);
+        system.transfer(destroy_fee_payer, &account, fee)?;
 
         // Init data
         super::set_tag(&crate::ID, &account, TAG_TRANSACTION_TREE, Header::VERSION)?;
@@ -413,7 +414,12 @@ impl<'a> TransactionTree<'a> {
         Ok(())
     }
 
-    pub fn end_transaction(&mut self, index: u16, result: &ExitStatus) -> Result<()> {
+    pub fn end_transaction(
+        &mut self,
+        index: u16,
+        result: &ExitStatus,
+        operator: &Operator,
+    ) -> Result<()> {
         use solana_program::keccak::{hash as keccak256, Hash};
 
         let mut node = self.node_mut(index);
@@ -440,6 +446,25 @@ impl<'a> TransactionTree<'a> {
         self.update_last_slot(&clock);
 
         self.decrease_parent_count(child_index, status);
+        self.pay_for_end_transaction(operator)
+    }
+
+    fn pay_for_end_transaction(&mut self, operator: &Operator) -> Result<()> {
+        let rent = Rent::get()?;
+        let minimum_balance = rent.minimum_balance(self.account.data_len());
+
+        let available_lamports = self
+            .account
+            .lamports()
+            .saturating_sub(minimum_balance)
+            .saturating_sub(TREE_ACCOUNT_DESTROY_FEE);
+
+        if available_lamports < TREE_ACCOUNT_FINISH_TRANSACTION_FEE {
+            return Ok(()); // Not enough funds. This could happen if working with old tree account.
+        }
+
+        **operator.lamports.borrow_mut() += TREE_ACCOUNT_FINISH_TRANSACTION_FEE;
+        **self.account.lamports.borrow_mut() -= TREE_ACCOUNT_FINISH_TRANSACTION_FEE;
 
         Ok(())
     }

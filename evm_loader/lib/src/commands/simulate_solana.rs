@@ -120,8 +120,12 @@ pub async fn execute(
         sanitized_transactions.push(sanitized);
     }
 
+    // Download accounts from Solana
+    let accounts = account_keys(&sanitized_transactions);
+    simulator.sync_accounts(rpc, &accounts).await?;
+
+    // Take override accounts from request, if set
     if let Some(solana_overrides) = request.solana_overrides {
-        // Take override accounts from request
         let mut storable_accounts: Vec<(&Pubkey, Account)> = vec![];
         for (pubkey, account) in &solana_overrides {
             if let Some(account) = account {
@@ -133,10 +137,6 @@ pub async fn execute(
             .map(|(pubkey, account)| (*pubkey, account))
             .collect();
         simulator.set_multiple_accounts(&storable_accounts);
-    } else {
-        // Download accounts from Solana
-        let accounts = account_keys(&sanitized_transactions);
-        simulator.sync_accounts(rpc, &accounts).await?;
     }
 
     // Process transactions

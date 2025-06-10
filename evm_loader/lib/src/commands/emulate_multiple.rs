@@ -5,7 +5,10 @@ use solana_sdk::pubkey::Pubkey;
 use crate::{
     config::DbConfig,
     tracing::tracers::TracerTypeEnum,
-    types::{AccountInfoLevel, EmulateMultipleRequest, EmulateRequest, SerializedAccount},
+    types::{
+        AccountInfoLevel, EmulateMultipleRequest, EmulatePlainTxData, EmulateRequest,
+        SerializedAccount,
+    },
     NeonResult,
 };
 
@@ -34,7 +37,7 @@ pub async fn execute(
 
     for tx in request.tx {
         let single_emulate_request = EmulateRequest {
-            tx,
+            tx_data: EmulatePlainTxData { tx },
             step_limit: request.step_limit,
             chains: Option::clone(&request.chains),
             trace_config: None,

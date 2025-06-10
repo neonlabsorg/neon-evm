@@ -831,13 +831,18 @@ impl Transaction {
     }
 
     #[must_use]
-    pub fn payer(&self, origin: Address) -> Address {
+    pub fn get_payer(&self) -> Option<Address> {
         match self.transaction {
             TransactionPayload::Legacy(_)
             | TransactionPayload::AccessList(_)
-            | TransactionPayload::DynamicFee(_) => origin,
-            TransactionPayload::Scheduled(ScheduledTx { payer, .. }) => payer,
+            | TransactionPayload::DynamicFee(_) => None,
+            TransactionPayload::Scheduled(ScheduledTx { payer, .. }) => Some(payer),
         }
+    }
+
+    #[must_use]
+    pub fn payer(&self, origin: Address) -> Address {
+        self.get_payer().unwrap_or(origin)
     }
 
     #[must_use]

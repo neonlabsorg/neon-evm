@@ -14,7 +14,10 @@ use neon_lib::{
         get_storage_at, init_environment, trace,
     },
     rpc::CloneRpcClient,
-    types::{deactivated_features::set_deactivated_features_rpc, BalanceAddress, EmulateRequest},
+    types::{
+        deactivated_features::set_deactivated_features_rpc, BalanceAddress, EmulatePlainTxData,
+        EmulateRequest,
+    },
     Config,
 };
 
@@ -207,7 +210,7 @@ async fn main() {
     };
 }
 
-fn read_tx_from_stdin() -> Result<EmulateRequest, NeonError> {
+fn read_tx_from_stdin() -> Result<EmulateRequest<EmulatePlainTxData>, NeonError> {
     let mut stdin_buffer = String::new();
     std::io::stdin().read_to_string(&mut stdin_buffer)?;
 

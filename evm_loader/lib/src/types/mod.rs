@@ -174,6 +174,33 @@ pub struct TxParams {
 }
 
 impl TxParams {
+    #[must_use]
+    pub fn recover(trx: &Transaction, header: &evm_loader::account::PlainStateHeader) -> Self {
+        Self {
+            nonce: Some(header.nonce()),
+            index: trx.tree_account_index(),
+            from: FromAddress::Ethereum(header.origin),
+            payer: trx.get_payer(),
+            to: header.tx_target,
+            data: Some(trx.call_data().to_vec()),
+            value: Some(trx.value()),
+            gas_limit: Some(header.gas_limit),
+            actual_gas_used: Some(header.gas_used),
+            gas_price: Some(header.gas_price),
+            max_fee_per_gas: trx.max_fee_per_gas(),
+            max_priority_fee_per_gas: trx.max_priority_fee_per_gas(),
+            access_list: trx.access_list().map(|x| {
+                x.iter()
+                    .map(|(address, storage_keys)| AccessListItem {
+                        address: *address,
+                        storage_keys: storage_keys.as_slice().to_vec(),
+                    })
+                    .collect()
+            }),
+            chain_id: trx.chain_id(),
+        }
+    }
+
     pub async fn into_transaction(self, backend: &impl AccountStorage) -> (Address, Transaction) {
         let chain_id = self.chain_id.unwrap_or_else(|| backend.default_chain_id());
 
@@ -351,8 +378,22 @@ pub enum AccountInfoLevel {
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmulateRequest {
+pub struct EmulatePlainTxData {
     pub tx: TxParams,
+}
+
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmulateFromHolderTxData {
+    #[serde_as(as = "DisplayFromStr")]
+    pub holder_pubkey: Pubkey,
+}
+
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmulateRequest<TxData: Sized> {
+    #[serde(flatten)]
+    pub tx_data: TxData,
     pub step_limit: Option<u64>,
     pub chains: Option<Vec<ChainInfo>>,
     pub trace_config: Option<TraceCallConfig>,
@@ -364,10 +405,20 @@ pub struct EmulateRequest {
     pub execution_map: Option<ExecutionMap>,
 }
 
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmulateFromHolderApiRequest {
+    #[serde(flatten)]
+    pub body: EmulateRequest<EmulateFromHolderTxData>,
+    pub slot: Option<u64>,
+    pub tx_index_in_block: Option<u64>,
+    pub id: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulateApiRequest {
     #[serde(flatten)]
-    pub body: EmulateRequest,
+    pub body: EmulateRequest<EmulatePlainTxData>,
     pub slot: Option<u64>,
     pub tx_index_in_block: Option<u64>,
     pub id: Option<String>,
@@ -500,7 +551,7 @@ pub struct SimulateSolanaRequest {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::tracer_ch_common::RevisionMap;
+    use crate::types::{tracer_ch_common::RevisionMap, EmulatePlainTxData};
 
     #[test]
     fn test_build_ranges_empty() {
@@ -612,7 +663,7 @@ mod tests {
         }
         "#;
 
-        let request: super::EmulateRequest = serde_json::from_str(txt).unwrap();
+        let request: super::EmulateRequest<EmulatePlainTxData> = serde_json::from_str(txt).unwrap();
         println!("{request:?}");
     }
 }

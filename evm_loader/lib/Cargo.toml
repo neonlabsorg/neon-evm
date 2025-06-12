@@ -33,8 +33,9 @@ bs58 = "0.5.1"
 base64 = "0.22"
 hex = { version = "0.4", features = ["serde"] }
 serde = "1.0"
+
 serde_json = { version = "1.0", features = ["preserve_order"] }
-serde_with = { version = "3.9", features = ["hex"] }
+serde_with = { version = "3.9", features = ["hex","base64"] }
 log = "0.4.22"
 rand = "0.8"
 ethnum.workspace = true

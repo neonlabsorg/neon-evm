@@ -27,7 +27,9 @@ pub struct AccountParams {
 }
 
 use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
-use crate::types::tracer_db_rpc_api::{Bs58Vec, SolanaReadableAccount};
+use crate::types::tracer_db_rpc_api::{
+    BlockHashBase58, PubkeyBase58, SignatureBase58, SolanaReadableAccount,
+};
 use crate::types::{DbResult, TracerDbTrait};
 
 #[derive(Clone, Debug)]
@@ -81,7 +83,7 @@ impl TracerDbTrait for RocksDb {
         info!("get_account_at {pubkey:?}, slot: {slot:?}, tx_index: {tx_index_in_block:?}, bin_slice: {maybe_bin_slice:?}");
         self.client
             .get_account_at(
-                Bs58Vec::from(pubkey.to_bytes().to_vec()),
+                PubkeyBase58::from(pubkey.clone()),
                 slot,
                 tx_index_in_block,
                 maybe_bin_slice,
@@ -94,7 +96,7 @@ impl TracerDbTrait for RocksDb {
     async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64> {
         let tx_index = self
             .client
-            .get_transaction_index(Bs58Vec::from(signature.as_ref().to_vec()))
+            .get_transaction_index(SignatureBase58::from(signature))
             .await?;
         tx_index.ok_or_else(|| anyhow::anyhow!("get_transaction_index value is None"))
     }
@@ -115,7 +117,7 @@ impl TracerDbTrait for RocksDb {
 
     async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<u64> {
         self.client
-            .get_slot_by_blockhash(blockhash.as_str())
+            .get_slot_by_blockhash(BlockHashBase58::from(&blockhash))
             .await?
             .ok_or_else(|| anyhow!("get_slot_by_blockhash value is None"))
     }
@@ -130,9 +132,9 @@ impl TracerDbTrait for RocksDb {
         slot: u64,
     ) -> DbResult<Vec<AccountData>> {
         // Convert the signature to Bs58Vec (assuming it's a 64-byte Solana Signature)
-        let response: Vec<(Bs58Vec, SolanaReadableAccount)> = self
+        let response: Vec<(PubkeyBase58, SolanaReadableAccount)> = self
             .client
-            .get_accounts_in_transaction(Bs58Vec::from(sol_sig.to_vec()), Some(slot))
+            .get_accounts_in_transaction(SignatureBase58::from(sol_sig.to_vec()), Some(slot))
             .await?;
 
         debug!("Accounts in response: {:?}", response);
@@ -140,11 +142,7 @@ impl TracerDbTrait for RocksDb {
         let account_data_vec: Vec<AccountData> = response
             .into_iter()
             .map(|(pubkey, acc)| -> Result<_, anyhow::Error> {
-                let pubkey_array: [u8; 32] = pubkey.bytes[0..32]
-                    .try_into()
-                    .map_err(|_| anyhow::anyhow!("Invalid pubkey length"))?;
-
-                let pk = Pubkey::new_from_array(pubkey_array);
+                let pk = Pubkey::from(pubkey);
                 let acc: Account = acc.try_into()?; // assumes TryFrom<SolanaReadableAccount> for Account
                 Ok(AccountData::new_from_account(pk, &acc))
             })

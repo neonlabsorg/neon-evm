@@ -5,16 +5,13 @@ use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 
 use crate::account::TransactionTree;
-use crate::types::vector::VectorVecExt;
 use crate::{
-    account_storage::AccountStorage, config::GAS_LIMIT_MULTIPLIER_NO_CHAINID, error::Error, vector,
+    account_storage::AccountStorage, config::GAS_LIMIT_MULTIPLIER_NO_CHAINID, error::Error,
 };
 
-use super::vector::VectorSliceExt;
-use super::{Address, Vector};
+use super::Address;
 
 use super::read_raw_utils::ReconstructRaw;
-use crate::types::read_raw_utils::read_vec;
 use evm_loader_macro::ReconstructRaw;
 
 #[repr(transparent)]
@@ -98,7 +95,7 @@ pub struct LegacyTx {
     pub gas_limit: U256,
     pub target: Option<Address>,
     pub value: U256,
-    pub call_data: Vector<u8>,
+    pub call_data: Vec<u8>,
     pub v: U256,
     pub r: U256,
     pub s: U256,
@@ -169,12 +166,12 @@ pub struct AccessListTx {
     pub gas_limit: U256,
     pub target: Option<Address>,
     pub value: U256,
-    pub call_data: Vector<u8>,
+    pub call_data: Vec<u8>,
     pub r: U256,
     pub s: U256,
     pub chain_id: U256,
     pub recovery_id: u8,
-    pub access_list: Vector<(Address, Vector<StorageKey>)>,
+    pub access_list: Vec<(Address, Vec<StorageKey>)>,
 }
 
 impl rlp::Decodable for AccessListTx {
@@ -198,7 +195,7 @@ impl rlp::Decodable for AccessListTx {
         let call_data = decode_byte_vector(&rlp.at(6)?)?;
 
         let rlp_access_list = rlp.at(7)?;
-        let mut access_list = vector![];
+        let mut access_list = vec![];
 
         for entry in &rlp_access_list {
             // Check if entry is a list
@@ -207,7 +204,7 @@ impl rlp::Decodable for AccessListTx {
                 let address: Address = entry.at(0)?.as_val()?;
 
                 // Get storage keys from second element
-                let mut storage_keys: Vector<StorageKey> = vector![];
+                let mut storage_keys: Vec<StorageKey> = vec![];
 
                 for key in &entry.at(1)? {
                     storage_keys.push(key.as_val()?);
@@ -254,12 +251,12 @@ pub struct DynamicFeeTx {
     pub gas_limit: U256,
     pub target: Option<Address>,
     pub value: U256,
-    pub call_data: Vector<u8>,
+    pub call_data: Vec<u8>,
     pub r: U256,
     pub s: U256,
     pub chain_id: U256,
     pub recovery_id: u8,
-    pub access_list: Vector<(Address, Vector<StorageKey>)>,
+    pub access_list: Vec<(Address, Vec<StorageKey>)>,
 }
 
 impl rlp::Decodable for DynamicFeeTx {
@@ -291,7 +288,7 @@ impl rlp::Decodable for DynamicFeeTx {
         let call_data = decode_byte_vector(&rlp.at(7)?)?;
 
         let rlp_access_list = rlp.at(8)?;
-        let mut access_list = vector![];
+        let mut access_list = vec![];
 
         for entry in &rlp_access_list {
             // Check if entry is a list
@@ -300,7 +297,7 @@ impl rlp::Decodable for DynamicFeeTx {
                 let address: Address = entry.at(0)?.as_val()?;
 
                 // Get storage keys from second element
-                let mut storage_keys: Vector<StorageKey> = vector![];
+                let mut storage_keys: Vec<StorageKey> = vec![];
 
                 for key in &entry.at(1)? {
                     storage_keys.push(key.as_val()?);
@@ -439,9 +436,9 @@ pub struct ScheduledTx {
     pub nonce: u64,
     pub index: u16,
     pub intent: Option<Address>,
-    pub intent_call_data: Vector<u8>,
+    pub intent_call_data: Vec<u8>,
     pub target: Option<Address>,
-    pub call_data: Vector<u8>,
+    pub call_data: Vec<u8>,
     pub value: U256,
     pub chain_id: U256,
     pub gas_limit: U256,
@@ -498,7 +495,7 @@ impl rlp::Decodable for ScheduledTx {
         let index: u16 = rlp.val_at(3)?;
 
         let intent: Option<Address> = decode_optional_address(&rlp.at(4)?)?;
-        let intent_call_data: Vector<u8> = decode_byte_vector(&rlp.at(5)?)?;
+        let intent_call_data: Vec<u8> = decode_byte_vector(&rlp.at(5)?)?;
 
         let target: Option<Address> = decode_optional_address(&rlp.at(6)?)?;
         let call_data = decode_byte_vector(&rlp.at(7)?)?;
@@ -1059,7 +1056,7 @@ impl Transaction {
     }
 
     #[must_use]
-    pub fn access_list(&self) -> Option<&Vector<(Address, Vector<StorageKey>)>> {
+    pub fn access_list(&self) -> Option<&Vec<(Address, Vec<StorageKey>)>> {
         match &self.transaction {
             TransactionPayload::AccessList(AccessListTx { access_list, .. })
             | TransactionPayload::DynamicFee(DynamicFeeTx { access_list, .. }) => Some(access_list),
@@ -1131,8 +1128,8 @@ impl Transaction {
 }
 
 #[inline]
-fn decode_byte_vector(rlp: &Rlp) -> Result<Vector<u8>, DecoderError> {
-    rlp.decoder().decode_value(|bytes| Ok(bytes.to_vector()))
+fn decode_byte_vector(rlp: &Rlp) -> Result<Vec<u8>, DecoderError> {
+    rlp.decoder().decode_value(|bytes| Ok(bytes.to_vec()))
 }
 
 #[inline]

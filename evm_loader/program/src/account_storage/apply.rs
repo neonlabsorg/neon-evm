@@ -163,13 +163,14 @@ impl<'a> ProgramAccountStorage<'a> {
                         Some(&self.keys),
                     )?;
                 }
-                Action::ExternalInstruction {
-                    program_id,
-                    accounts,
-                    data,
-                    seeds,
-                    ..
-                } => {
+                Action::ExternalInstruction(instruction) => {
+                    let crate::executor::ExternalInstructionData {
+                        program_id,
+                        accounts,
+                        data,
+                        seeds,
+                        ..
+                    } = &**instruction;
                     let seeds = seeds
                         .iter()
                         .map(|s| s.iter().map(|s| s.as_slice()).collect::<Vec<_>>())

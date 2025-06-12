@@ -35,9 +35,10 @@ impl<'de, const N: usize> DeserializeAs<'de, [u8; N]> for Base58Array<N> {
         let decoded = bs58::decode(&s)
             .into_vec()
             .map_err(serde::de::Error::custom)?;
-        let tmp_len = decoded.len(); //
+        let tmp_len = decoded.len();
         decoded.try_into().map_err(|_| {
-            serde::de::Error::custom(format_args!(
+            #[allow(clippy::uninlined_format_args)]
+            serde::de::Error::custom(format!(
                 "Expected base58-encoded {} bytes, got {}",
                 N, tmp_len
             ))
@@ -108,7 +109,7 @@ pub struct SignatureBase58(#[serde_as(as = "Base58Array<64>")] [u8; 64]);
 
 impl From<Signature> for SignatureBase58 {
     fn from(sig: Signature) -> Self {
-        SignatureBase58(sig.as_ref().try_into().expect("Signature must be 64 bytes"))
+        Self(sig.as_ref().try_into().expect("Signature must be 64 bytes"))
     }
 }
 
@@ -120,7 +121,7 @@ impl From<[u8; 64]> for SignatureBase58 {
 
 impl From<SignatureBase58> for Signature {
     fn from(signature_base58: SignatureBase58) -> Self {
-        Signature::from(signature_base58.0)
+        Self::from(signature_base58.0)
     }
 }
 

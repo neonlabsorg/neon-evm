@@ -131,10 +131,11 @@ impl TracerDbTrait for RocksDb {
         sol_sig: &[u8],
         slot: u64,
     ) -> DbResult<Vec<AccountData>> {
+        let sig_array: [u8; 64] = sol_sig.try_into().expect("Signature must be 64 bytes");
         // Convert the signature to Bs58Vec (assuming it's a 64-byte Solana Signature)
         let response: Vec<(PubkeyBase58, SolanaReadableAccount)> = self
             .client
-            .get_accounts_in_transaction(SignatureBase58::from(sol_sig.to_vec()), Some(slot))
+            .get_accounts_in_transaction(SignatureBase58::from(sig_array), Some(slot))
             .await?;
 
         debug!("Accounts in response: {:?}", response);

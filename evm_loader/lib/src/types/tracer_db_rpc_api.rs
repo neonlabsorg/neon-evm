@@ -37,7 +37,7 @@ impl<'de, const N: usize> DeserializeAs<'de, [u8; N]> for Base58Array<N> {
             .map_err(serde::de::Error::custom)?;
         let tmp_len = decoded.len(); //
         decoded.try_into().map_err(|_| {
-            serde::de::Error::custom(format!(
+            serde::de::Error::custom(format_args!(
                 "Expected base58-encoded {} bytes, got {}",
                 N, tmp_len
             ))
@@ -58,7 +58,7 @@ impl From<&Vec<u8>> for Base58Array32 {
     fn from(bytes: &Vec<u8>) -> Self {
         assert_eq!(bytes.len(), 32, "Expected 32-byte pubkey");
         let mut array = [0u8; 32];
-        array.copy_from_slice(&bytes);
+        array.copy_from_slice(bytes);
         Self(array)
     }
 }
@@ -76,7 +76,7 @@ impl From<Pubkey> for PubkeyBase58 {
 }
 impl From<PubkeyBase58> for Pubkey {
     fn from(pubkey_base58: PubkeyBase58) -> Self {
-        Pubkey::new_from_array(pubkey_base58.0)
+        Self::new_from_array(pubkey_base58.0)
     }
 }
 
@@ -89,7 +89,7 @@ impl From<Hash> for BlockHashBase58 {
 }
 impl From<BlockHashBase58> for Hash {
     fn from(block_hash_base58: BlockHashBase58) -> Self {
-        Hash::new_from_array(block_hash_base58.0)
+        Self::new_from_array(block_hash_base58.0)
     }
 }
 impl From<&String> for BlockHashBase58 {
@@ -115,14 +115,6 @@ impl From<Signature> for SignatureBase58 {
 impl From<[u8; 64]> for SignatureBase58 {
     fn from(bytes: [u8; 64]) -> Self {
         Self(bytes)
-    }
-}
-impl From<Vec<u8>> for SignatureBase58 {
-    fn from(value: Vec<u8>) -> Self {
-        assert_eq!(value.len(), 64, "Expected 64-byte signature");
-        let mut array = [0u8; 64];
-        array.copy_from_slice(&value);
-        Self(array)
     }
 }
 

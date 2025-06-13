@@ -6,6 +6,7 @@ use crate::error::{Error, Result};
 use crate::evm::database::Database;
 use crate::evm::precompile::is_precompile_address;
 use crate::evm::{Context, ExitStatus};
+use crate::types::boxx::Boxx;
 use crate::types::Address;
 use ethnum::{AsU256, U256};
 use maybe_async::maybe_async;
@@ -18,7 +19,7 @@ use crate::allocator::acc_allocator;
 use crate::types::tree_map::TreeMap;
 use crate::types::vector::{Vector, VectorSliceExt, VectorSliceSlowExt};
 
-use super::action::Action;
+use super::action::{Action, ExternalInstructionData};
 use super::block_params::BlockParams;
 use super::cache::Cache;
 use super::precompile_extension::PrecompiledContracts;
@@ -486,8 +487,8 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
             .actions
             .iter()
             .filter_map(|a| {
-                if let Action::ExternalInstruction { accounts, .. } = a {
-                    Some(accounts)
+                if let Action::ExternalInstruction(instruction) = a {
+                    Some(&instruction.accounts)
                 } else {
                     None
                 }
@@ -510,14 +511,14 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         }
 
         for action in &self.data.actions {
-            if let Action::ExternalInstruction {
-                program_id,
-                data,
-                accounts: meta,
-                emulated_internally,
-                ..
-            } = action
-            {
+            if let Action::ExternalInstruction(action) = action {
+                let ExternalInstructionData {
+                    program_id,
+                    data,
+                    accounts: meta,
+                    emulated_internally,
+                    ..
+                } = &**action;
                 if !emulated_internally {
                     unreachable!();
                 }
@@ -657,13 +658,16 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
             return Err(Error::UnavalableExternalSolanaCall);
         }
 
-        let action = Action::ExternalInstruction {
-            program_id: instruction.program_id,
-            data: instruction.data.to_vector(),
-            accounts: instruction.accounts.elementwise_copy_to_vector(),
-            seeds,
-            emulated_internally,
-        };
+        let action = Action::ExternalInstruction(Boxx::new_in(
+            ExternalInstructionData {
+                program_id: instruction.program_id,
+                data: instruction.data.to_vector(),
+                accounts: instruction.accounts.elementwise_copy_to_vector(),
+                seeds,
+                emulated_internally,
+            },
+            acc_allocator(),
+        ));
 
         self.data.actions.push(action);
         Ok(())

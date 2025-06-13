@@ -43,7 +43,6 @@ VALIDATOR_ARGS=(
 )
 
 LIST_OF_TEST_PROGRAMS=("test_invoke_program" "counter" "cross_program_invocation" "transfer_sol" "transfer_tokens" "alt_updater")
-solana-keygen new -o "${NEON_BIN}/deploy/alt_updater/alt_updater-keypair.json"
 
 for program in "${LIST_OF_TEST_PROGRAMS[@]}"; do
   keypair="${NEON_BIN}/deploy/${program}/${program}-keypair.json"

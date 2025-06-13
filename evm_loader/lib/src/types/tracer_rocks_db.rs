@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use jsonrpsee::core::Serialize;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 
-#[allow(dead_code)]
 use crate::types::tracer_db_rpc_api::TracerDbApiClient;
 use solana_account_decoder::UiDataSliceConfig;
 use solana_sdk::signature::Signature;

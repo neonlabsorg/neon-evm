@@ -129,7 +129,6 @@ impl From<SignatureBase58> for Signature {
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct SolanaReadableAccount {
     pub lamports: u64,
-    //#[serde_as(as = "Base64")]
     #[serde_as(as = "Base64")]
     pub data: Vec<u8>,
     pub owner: PubkeyBase58,

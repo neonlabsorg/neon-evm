@@ -17,7 +17,7 @@ use ethnum::U256;
 use solana_program::hash::Hash;
 use solana_program::system_program;
 use solana_program::{account_info::AccountInfo, instruction::AccountMeta, pubkey::Pubkey};
-// use static_assertions::const_assert_eq;
+use static_assertions::const_assert_eq;
 
 use super::{
     AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder, OperatorBalanceAccount,
@@ -264,9 +264,9 @@ pub struct Root {
 }
 
 // to be sure that solana and x86 size/alignment match
-// const_assert_eq!(std::mem::align_of::<PlainData>(), 0x8);
-// const_assert_eq!(std::mem::size_of::<PlainData>(), 0x1A0);
-// const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x1A0);
+const_assert_eq!(std::mem::align_of::<PlainData>(), 0x8);
+const_assert_eq!(std::mem::size_of::<PlainData>(), 0x1A0);
+const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x1A0);
 
 impl AccountHeader for Header {
     const VERSION: u8 = 2;

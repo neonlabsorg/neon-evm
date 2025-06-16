@@ -87,11 +87,13 @@ jobs:
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v1
 
-      - uses: actions/setup-python@v5
-
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          cache: 'pip'
 
       - name: Stop containers (cleanup from previous runs)
         run: |
@@ -149,10 +151,14 @@ jobs:
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - uses: actions/setup-python@v5
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          cache: 'pip'
+
       - run: pip install -r ./.github/workflows/requirements.txt
       - run: curl https://api.github.com/user
       - run: ping -c2 api.github.com
@@ -179,10 +185,13 @@ jobs:
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - uses: actions/setup-python@v5
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          cache: 'pip'
       - run:  pip install -r ./.github/workflows/requirements.txt
       - name: Finalize image
         run: |

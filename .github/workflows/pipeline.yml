@@ -28,7 +28,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build-image:
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["gha-runner-scale-set-large"]
     outputs:
       evm_tag: ${{ steps.tags.outputs.evm_tag }}
       evm_sha_tag: ${{ steps.tags.outputs.evm_sha_tag }}
@@ -38,11 +38,14 @@ jobs:
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - uses: actions/setup-python@v5
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - run:  pip install -r ./.github/workflows/requirements.txt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          cache: 'pip'
+      - run: pip install -r ./.github/workflows/requirements.txt
       - name: Specify image tags
         run: |
           python3 ./.github/workflows/deploy.py specify_image_tags \
@@ -67,7 +70,7 @@ jobs:
           --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }} \
           --evm_tag=${{ steps.tags.outputs.evm_tag }}
   run-evm-tests:
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["gha-runner-scale-set-large"]
     needs:
       - build-image
     steps:
@@ -138,7 +141,7 @@ jobs:
           docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down
 
   trigger-proxy-tests:
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["gha-runner-scale-set-large"]
     needs:
       - build-image
     steps:
@@ -166,7 +169,7 @@ jobs:
         if: "failure()"
         uses: "andymckay/cancel-action@0.4"
   finalize-image:
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["gha-runner-scale-set-large"]
     needs:
       - build-image
       - trigger-proxy-tests

@@ -42,9 +42,7 @@ jobs:
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-          cache: 'pip'
+
       - run: pip install -r ./.github/workflows/requirements.txt
       - name: Specify image tags
         run: |
@@ -91,9 +89,6 @@ jobs:
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-          cache: 'pip'
 
       - name: Stop containers (cleanup from previous runs)
         run: |
@@ -155,9 +150,6 @@ jobs:
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-          cache: 'pip'
 
       - run: pip install -r ./.github/workflows/requirements.txt
       - run: curl https://api.github.com/user
@@ -189,9 +181,7 @@ jobs:
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-          cache: 'pip'
+
       - run:  pip install -r ./.github/workflows/requirements.txt
       - name: Finalize image
         run: |

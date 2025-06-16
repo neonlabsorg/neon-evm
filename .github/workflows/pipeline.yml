@@ -84,6 +84,8 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v1
 
       - uses: actions/setup-python@v5
 
@@ -93,15 +95,15 @@ jobs:
 
       - name: Stop containers (cleanup from previous runs)
         run: |
-          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down || true
+          docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down || true
 
       - name: Docker compose pull
         run: |
-          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml pull
+          docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml pull
 
       - name: Docker compose up
         run: |
-          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml up -d 
+          docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml up -d 
 
       - name: Get test container name
         id: get_container_name
@@ -138,7 +140,7 @@ jobs:
       - name: Stop containers
         if: always()
         run: |
-          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down
+          docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down
 
   trigger-proxy-tests:
     runs-on: ["gha-runner-scale-set-large"]

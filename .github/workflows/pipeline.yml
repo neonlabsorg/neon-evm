@@ -104,7 +104,9 @@ jobs:
 
       - name: Docker compose up
         run: |
-          docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml up -d 
+          for i in {1..5}; do
+            docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml up -d && break || sleep 10
+          done
 
       - name: Get test container name
         id: get_container_name
@@ -144,7 +146,7 @@ jobs:
           docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down
 
   trigger-proxy-tests:
-    runs-on: ["gha-runner-scale-set-large"]
+    runs-on: ["gha-runner-scale-set"]
     needs:
       - build-image
     steps:

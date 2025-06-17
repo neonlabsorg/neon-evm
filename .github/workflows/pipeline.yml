@@ -132,7 +132,7 @@ jobs:
 
       - name: "Generate allure report"
         if: always()
-        uses: neonlabsorg/neon-tests/.github/actions/generate-allure-report@develop
+        uses: neonlabsorg/neon-tests/.github/actions/generate-allure-report@feat/aws-dynamic-ci-cd
         with:
           container: ${{ env.TEST_CONTAINER_NAME }}
           network: ${{ env.NETWORK }}

@@ -42,7 +42,7 @@ VALIDATOR_ARGS=(
   --limit-ledger-size 400000000
 )
 
-LIST_OF_TEST_PROGRAMS=("test_invoke_program" "counter" "cross_program_invocation" "transfer_sol" "transfer_tokens" "alt-updater")
+LIST_OF_TEST_PROGRAMS=("test_invoke_program" "counter" "cross_program_invocation" "transfer_sol" "transfer_tokens" "alt_updater")
 
 for program in "${LIST_OF_TEST_PROGRAMS[@]}"; do
   keypair="${NEON_BIN}/deploy/${program}/${program}-keypair.json"

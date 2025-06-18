@@ -64,7 +64,7 @@ pub async fn call_solana<State: Database>(
                 return Err(Error::StaticModeViolation(*address));
             }
 
-            let offset = read_usize(&input)?;
+            let offset = read_usize(input)?;
             let instruction: Instruction =
                 bincode::deserialize(&input[offset..]).map_err(|_| Error::OutOfBounds)?;
 
@@ -141,7 +141,7 @@ pub async fn call_solana<State: Database>(
                 return Err(Error::StaticModeViolation(*address));
             }
 
-            let instruction_offset = read_usize(&input)?;
+            let instruction_offset = read_usize(input)?;
             let instruction = read_instruction(&input[instruction_offset..])?;
 
             let signer = context.caller;

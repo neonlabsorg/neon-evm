@@ -5,7 +5,10 @@ use crate::{
     config::ACCOUNT_SEED_VERSION,
     error::{Error, Result},
     evm::database::Database,
-    types::{vector::VectorSliceExt, vector::VectorSliceSlowExt, Address, Vector},
+    types::{
+        vector::{VectorSliceExt, VectorSliceSlowExt},
+        Address, Vector,
+    },
     vector,
 };
 
@@ -66,7 +69,7 @@ pub async fn call_solana<State: Database>(
 
             let offset = read_usize(input)?;
             let instruction: Instruction =
-                bincode::deserialize(&input[offset..]).map_err(|_| Error::OutOfBounds)?;
+                bincode::deserialize(&input[32 + offset..]).map_err(|_| Error::OutOfBounds)?;
 
             let signer = context.caller;
             let (_signer_pubkey, bump_seed) = state.contract_pubkey(signer);

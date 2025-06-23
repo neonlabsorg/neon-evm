@@ -6,7 +6,6 @@ use jsonrpsee::core::Serialize;
 use jsonrpsee::rpc_params;
 
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
-use serde_json::from_str;
 use solana_account_decoder::UiDataSliceConfig;
 use solana_sdk::signature::Signature;
 use solana_sdk::{
@@ -15,7 +14,7 @@ use solana_sdk::{
     pubkey::Pubkey,
 };
 use std::env;
-use std::str::FromStr;
+
 use std::sync::Arc;
 use tracing::{debug, info};
 

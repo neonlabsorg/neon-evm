@@ -37,7 +37,6 @@ services:
       NEON_API_LISTENER_ADDR: 0.0.0.0:8085
       SOLANA_URL: http://solana:8899
       EVM_LOADER: 53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io
-      NEON_ALT_PROGRAM: 2opr1VoyXxpNePA4gcLBGPMPgrzgpyixuqDrE7EzKFWv
       # operator-keypairs/id.json
       SOLANA_KEY_FOR_CONFIG: BMp6gEnveANdvSvspESJUrNczuHz1GF5UQKjVLCkAZih
       COMMITMENT: confirmed
@@ -61,7 +60,6 @@ services:
       NEON_API_LISTENER_ADDR: 0.0.0.0:3100
       SOLANA_URL: http://solana:8899
       EVM_LOADER: 53DfF883gyixYNXnM7s5xhdeyV8mVk9T4i2hGV9vG9io
-      NEON_ALT_PROGRAM: 2opr1VoyXxpNePA4gcLBGPMPgrzgpyixuqDrE7EzKFWv
       NEON_TOKEN_MINT: HPsV9Deocecw3GeZv1FkAPNCBRfuVyfw9MMwjwRe1xaU
       NEON_CHAIN_ID: 111
       COMMITMENT: confirmed

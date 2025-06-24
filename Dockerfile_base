@@ -34,6 +34,7 @@ FROM ${DOCKERHUB_ORG_NAME}/alt_updater:latest AS alt_updater
 FROM solana AS base
 COPY --from=neon_test_programs /opt/deploy/ /opt/deploy/
 COPY --from=alt_updater /opt/deploy/ /opt/deploy/
+COPY --from=alt_updater /opt/alt_updater-keypair.json /opt/deploy/alt_updater/alt_updater-keypair.json
 
 ARG MAINNET_SOLANA_URL
 RUN solana program dump metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s /opt/metaplex.so --url ${MAINNET_SOLANA_URL}

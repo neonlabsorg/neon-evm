@@ -539,7 +539,7 @@ pub struct SimulateSolanaRequest {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::{tracer_ch_common::RevisionMap, EmulatePlainTxData};
+    use crate::types::tracer_ch_common::RevisionMap;
 
     #[test]
     fn test_build_ranges_empty() {
@@ -651,7 +651,7 @@ mod tests {
         }
         "#;
 
-        let request: super::EmulateRequest<EmulatePlainTxData> = serde_json::from_str(txt).unwrap();
+        let request: super::EmulateRequest = serde_json::from_str(txt).unwrap();
         println!("{request:?}");
     }
 }

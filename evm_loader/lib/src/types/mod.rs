@@ -378,22 +378,8 @@ pub enum AccountInfoLevel {
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmulatePlainTxData {
+pub struct EmulateRequest {
     pub tx: TxParams,
-}
-
-#[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmulateFromHolderTxData {
-    #[serde_as(as = "DisplayFromStr")]
-    pub holder_pubkey: Pubkey,
-}
-
-#[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmulateRequest<TxData: Sized> {
-    #[serde(flatten)]
-    pub tx_data: TxData,
     pub step_limit: Option<u64>,
     pub chains: Option<Vec<ChainInfo>>,
     pub trace_config: Option<TraceCallConfig>,
@@ -408,8 +394,10 @@ pub struct EmulateRequest<TxData: Sized> {
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulateFromHolderApiRequest {
-    #[serde(flatten)]
-    pub body: EmulateRequest<EmulateFromHolderTxData>,
+    #[serde_as(as = "DisplayFromStr")]
+    pub holder_pubkey: Pubkey,
+    pub step_limit: Option<u64>,
+    pub chains: Option<Vec<ChainInfo>>,
     pub slot: Option<u64>,
     pub tx_index_in_block: Option<u64>,
     pub id: Option<String>,
@@ -418,7 +406,7 @@ pub struct EmulateFromHolderApiRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulateApiRequest {
     #[serde(flatten)]
-    pub body: EmulateRequest<EmulatePlainTxData>,
+    pub body: EmulateRequest,
     pub slot: Option<u64>,
     pub tx_index_in_block: Option<u64>,
     pub id: Option<String>,

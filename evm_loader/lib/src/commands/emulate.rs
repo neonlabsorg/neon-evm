@@ -6,11 +6,10 @@ use crate::config::DbConfig;
 use crate::rpc::Rpc;
 use crate::rpc::{CallDbClient, RpcEnum};
 use crate::sysvar::get_sysvar;
-use crate::tracing::tracers::Tracer;
+use crate::tracing::tracers::{Tracer, TracerTypeEnum};
 use crate::tracing::{AccountOverride, BlockOverrides};
-use crate::types::{AccountInfoLevel, EmulateRequest};
-use crate::types::{EmulateFromHolderTxData, EmulatePlainTxData, TracerDb};
-use crate::types::{FromAddress, TxParams};
+use crate::types::{AccountInfoLevel, EmulateFromHolderApiRequest, EmulateRequest};
+use crate::types::{FromAddress, TracerDb, TxParams};
 
 use crate::{
     account_storage::{EmulatorAccountStorage, SyncedAccountStorage},
@@ -95,7 +94,7 @@ impl EmulateResponse {
     }
 }
 
-fn init_overrides<Tx: InitializeFrom + Sized>(emulate_request: &EmulateRequest<Tx>) -> Overrides {
+fn init_overrides(emulate_request: &EmulateRequest) -> Overrides {
     let blocks = emulate_request
         .trace_config
         .as_ref()
@@ -119,11 +118,59 @@ fn init_overrides<Tx: InitializeFrom + Sized>(emulate_request: &EmulateRequest<T
     }
 }
 
-pub async fn execute<T: Tracer, Tx: InitializeFrom + Sized>(
+pub async fn execute_from_holder(
+    rpc: &impl BuildConfigSimulator,
+    program_id: &Pubkey,
+    emulate_request: EmulateFromHolderApiRequest,
+) -> NeonResult<(EmulateResponse, Option<Value>)> {
+    let step_limit = emulate_request.step_limit.unwrap_or(100_000);
+
+    let holder_key = emulate_request.holder_pubkey;
+    let account: Account = rpc
+        .get_account(&emulate_request.holder_pubkey)
+        .await?
+        .ok_or(NeonError::AccountNotFound(holder_key))?;
+
+    match evm_loader::account::tag_from_slice(&holder_key, account.data.as_slice())? {
+        TAG_STATE => {
+            let (header, accounts, trx) =
+                evm_loader::account::StateAccount::get_state_account_view_from_slice(
+                    account.data.as_slice(),
+                )?;
+            let trx = Transaction::parse_from_rlp(trx.as_slice(), None)?;
+
+            let mut storage = EmulatorAccountStorage::with_accounts(
+                rpc,
+                *program_id,
+                accounts.as_slice(),
+                emulate_request.chains,
+                None,
+                None,
+                Some(HashMap::from([(holder_key, Some(account))])),
+                trx.chain_id(),
+            )
+            .await?;
+
+            emulate_trx_single_step(
+                &mut storage,
+                TxParams::recover(&trx, &header),
+                &trx,
+                None::<TracerTypeEnum>,
+                None,
+                step_limit,
+            )
+            .await
+        }
+        // TAG_HOLDER is not supported
+        tag => Err(NeonError::AccountInvalidTag(holder_key, tag)),
+    }
+}
+
+pub async fn execute<T: Tracer>(
     rpc: &impl BuildConfigSimulator,
     db_config: Option<&DbConfig>,
     program_id: &Pubkey,
-    emulate_request: EmulateRequest<Tx>,
+    emulate_request: EmulateRequest,
     tracer: Option<T>,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     let step_limit = emulate_request.step_limit.unwrap_or(100_000);
@@ -159,136 +206,28 @@ async fn create_rpc(
     ))
 }
 
-#[allow(async_fn_in_trait)]
-pub trait InitializeFrom {
-    async fn initialize<'rpc, T: Rpc + BuildConfigSimulator>(
-        program_id: &Pubkey,
-        overrides: Overrides,
-        request: &EmulateRequest<Self>,
-        rpc: &'rpc T,
-    ) -> NeonResult<(TxParams, Transaction, EmulatorAccountStorage<'rpc, T>)>
-    where
-        Self: Sized;
-}
-
-#[allow(clippy::use_self)]
-impl InitializeFrom for EmulatePlainTxData {
-    async fn initialize<'rpc, T: Rpc + BuildConfigSimulator>(
-        program_id: &Pubkey,
-        overrides: Overrides,
-        emulate_request: &EmulateRequest<Self>,
-        rpc: &'rpc T,
-    ) -> NeonResult<(TxParams, Transaction, EmulatorAccountStorage<'rpc, T>)> {
-        let storage = EmulatorAccountStorage::with_accounts(
-            rpc,
-            *program_id,
-            &emulate_request.accounts,
-            emulate_request.chains.clone(),
-            overrides.blocks,
-            overrides.states,
-            overrides.solana_accounts,
-            emulate_request.tx_data.tx.chain_id,
-        )
-        .await?;
-
-        let (_, tx) = emulate_request
-            .tx_data
-            .tx
-            .clone()
-            .into_transaction(&storage)
-            .await;
-
-        Ok((emulate_request.tx_data.tx.clone(), tx, storage))
-    }
-}
-
-#[allow(clippy::use_self)]
-impl InitializeFrom for EmulateFromHolderTxData {
-    async fn initialize<'rpc, T: Rpc + BuildConfigSimulator>(
-        program_id: &Pubkey,
-        overrides: Overrides,
-        request: &EmulateRequest<Self>,
-        rpc: &'rpc T,
-    ) -> NeonResult<(TxParams, Transaction, EmulatorAccountStorage<'rpc, T>)> {
-        let holder_key = request.tx_data.holder_pubkey;
-        let mut downloaded: Option<Account> = None;
-
-        let account = overrides
-            .solana_accounts
-            .as_ref()
-            .and_then(|x| x.get(&holder_key));
-        let account = if account.is_some() {
-            account
-        } else {
-            downloaded = rpc.get_account(&request.tx_data.holder_pubkey).await?;
-            Some(&downloaded)
-        }
-        .unwrap()
-        .as_ref()
-        .ok_or(NeonError::AccountNotFound(holder_key))?;
-
-        match evm_loader::account::tag_from_slice(&holder_key, account.data.as_slice())? {
-            TAG_STATE => {
-                let (header, accounts, trx) =
-                    evm_loader::account::StateAccount::get_state_account_view_from_slice(
-                        account.data.as_slice(),
-                    )?;
-                let trx = Transaction::parse_from_rlp(trx.as_slice(), None)?;
-
-                let mut accounts: Vec<Pubkey> = request
-                    .accounts
-                    .iter()
-                    .chain(accounts.iter())
-                    .copied()
-                    .filter(|x| *x != holder_key)
-                    .collect();
-
-                accounts.sort();
-                accounts.dedup();
-
-                let solana_accounts = match downloaded {
-                    Some(downloaded_account) => match overrides.solana_accounts {
-                        Some(mut overrides) => {
-                            overrides.insert(holder_key, Some(downloaded_account));
-                            Some(overrides)
-                        }
-                        None => Some(HashMap::from([(holder_key, Some(downloaded_account))])),
-                    },
-                    None => overrides.solana_accounts,
-                };
-
-                let storage = EmulatorAccountStorage::with_accounts(
-                    rpc,
-                    *program_id,
-                    accounts.as_slice(),
-                    request.chains.clone(),
-                    overrides.blocks,
-                    overrides.states,
-                    solana_accounts,
-                    trx.chain_id(),
-                )
-                .await?;
-
-                Ok((TxParams::recover(&trx, &header), trx, storage))
-            }
-            // TAG_HOLDER is not supported
-            tag => Err(NeonError::AccountInvalidTag(holder_key, tag)),
-        }
-    }
-}
-
-async fn initialize_storage_and_transaction<
-    'rpc,
-    T: Rpc + BuildConfigSimulator,
-    Tx: InitializeFrom + Sized,
->(
+async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>(
     program_id: &Pubkey,
-    emulate_request: &EmulateRequest<Tx>,
+    emulate_request: &EmulateRequest,
     rpc: &'rpc T,
     overrides: Overrides,
 ) -> NeonResult<(EmulatorAccountStorage<'rpc, T>, TxParams, Transaction)> {
-    let (tx_params, tx, storage) =
-        Tx::initialize(program_id, overrides, emulate_request, rpc).await?;
+    let storage = EmulatorAccountStorage::with_accounts(
+        rpc,
+        *program_id,
+        &emulate_request.accounts,
+        emulate_request.chains.clone(),
+        overrides.blocks,
+        overrides.states,
+        overrides.solana_accounts,
+        emulate_request.tx.chain_id,
+    )
+    .await?;
+
+    let (_, tx) = emulate_request.tx.clone().into_transaction(&storage).await;
+
+    let (tx_params, tx, storage) = (emulate_request.tx.clone(), tx, storage);
+
     info!("tx_params: {:?}", tx_params);
     let from = tx_params.from.clone();
 
@@ -400,8 +339,8 @@ async fn calculate_response<T: Rpc + BuildConfigSimulator, Tr: Tracer>(
     Ok(result)
 }
 
-async fn emulate_trx<T: Tracer, Tx: InitializeFrom + Sized>(
-    emulate_request: &EmulateRequest<Tx>,
+async fn emulate_trx<T: Tracer>(
+    emulate_request: &EmulateRequest,
     db_config: Option<&DbConfig>,
     program_id: &Pubkey,
     step_limit: u64,
@@ -423,7 +362,7 @@ async fn emulate_trx<T: Tracer, Tx: InitializeFrom + Sized>(
             tx_params,
             &tx,
             tracer,
-            emulate_request,
+            emulate_request.provide_account_info,
             step_limit,
         )
         .await?;
@@ -434,12 +373,12 @@ async fn emulate_trx<T: Tracer, Tx: InitializeFrom + Sized>(
     emulate_trx_multiple_steps(db_config, program_id, tracer, emulate_request, step_limit).await
 }
 
-async fn emulate_trx_single_step<T: Tracer, Tx: InitializeFrom + Sized>(
+async fn emulate_trx_single_step<T: Tracer>(
     storage: &mut EmulatorAccountStorage<'_, impl BuildConfigSimulator>,
     tx_params: TxParams,
     tx: &Transaction,
     tracer: Option<T>,
-    emulate_request: &EmulateRequest<Tx>,
+    provide_account_info: Option<AccountInfoLevel>,
     step_limit: u64,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     let origin = tx_params.from.address();
@@ -483,7 +422,7 @@ async fn emulate_trx_single_step<T: Tracer, Tx: InitializeFrom + Sized>(
         exit_status,
         storage,
         tracer,
-        emulate_request.provide_account_info,
+        provide_account_info,
     )
     .await
 }
@@ -512,11 +451,11 @@ async fn prepare_origin<T: Rpc + BuildConfigSimulator>(
     Ok(())
 }
 
-async fn emulate_trx_multiple_steps<T: Tracer, Tx: InitializeFrom + Sized>(
+async fn emulate_trx_multiple_steps<T: Tracer>(
     db_config: Option<&DbConfig>,
     program_id: &Pubkey,
     tracer: Option<T>,
-    emulate_request: &EmulateRequest<Tx>,
+    emulate_request: &EmulateRequest,
     step_limit: u64,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     let execution_map = emulate_request

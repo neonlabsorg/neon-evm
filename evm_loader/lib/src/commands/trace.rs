@@ -9,13 +9,13 @@ use solana_sdk::pubkey::Pubkey;
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::errors::NeonError;
 use crate::tracing::tracers::new_tracer;
-use crate::types::{EmulatePlainTxData, EmulateRequest};
+use crate::types::EmulateRequest;
 
 pub async fn trace_transaction(
     rpc: &impl BuildConfigSimulator,
     db_config: Option<&DbConfig>,
     program_id: &Pubkey,
-    emulate_request: EmulateRequest<EmulatePlainTxData>,
+    emulate_request: EmulateRequest,
 ) -> Result<(EmulateResponse, Option<Value>), NeonError> {
     let trace_config = emulate_request
         .trace_config
@@ -23,7 +23,7 @@ pub async fn trace_transaction(
         .map(|c| c.trace_config.clone())
         .unwrap_or_default();
 
-    let tracer = new_tracer(&emulate_request.tx_data.tx, trace_config)?;
+    let tracer = new_tracer(&emulate_request.tx, trace_config)?;
 
     let response =
         super::emulate::execute(rpc, db_config, program_id, emulate_request, Some(tracer)).await?;

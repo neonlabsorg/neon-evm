@@ -2,7 +2,6 @@
 
 use actix_request_identifier::RequestId;
 use actix_web::{http::StatusCode, post, web::Json, Responder};
-use neon_lib::tracing::tracers::TracerTypeEnum;
 use std::convert::Into;
 use tracing::info;
 
@@ -31,15 +30,9 @@ pub async fn emulate_from_holder(
     };
 
     process_result(
-        &EmulateCommand::execute(
-            &rpc,
-            state.config.db_config.as_ref(),
-            &state.config.evm_loader,
-            emulate_request.body,
-            None::<TracerTypeEnum>,
-        )
-        .await
-        .map(|(response, _)| response)
-        .map_err(Into::into),
+        &EmulateCommand::execute_from_holder(&rpc, &state.config.evm_loader, emulate_request)
+            .await
+            .map(|(response, _)| response)
+            .map_err(Into::into),
     )
 }

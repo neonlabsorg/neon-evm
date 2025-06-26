@@ -1,4 +1,5 @@
 use serde_with::serde_as;
+use solana_account_decoder::UiDataSliceConfig;
 use solana_sdk::bs58;
 
 use jsonrpsee::core::RpcResult;
@@ -6,7 +7,6 @@ use jsonrpsee::proc_macros::rpc;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::base64::Base64;
-use solana_account_decoder::UiDataSliceConfig;
 use solana_sdk::hash::Hash;
 use solana_sdk::signature::Signature;
 

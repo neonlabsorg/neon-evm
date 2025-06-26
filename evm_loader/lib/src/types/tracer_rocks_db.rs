@@ -1,10 +1,10 @@
 use crate::account_data::AccountData;
 use crate::config::RocksDbConfig;
+use anyhow::anyhow;
 use async_trait::async_trait;
 use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::Serialize;
 use jsonrpsee::rpc_params;
-
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use solana_account_decoder::UiDataSliceConfig;
 use solana_sdk::signature::Signature;
@@ -14,15 +14,12 @@ use solana_sdk::{
     pubkey::Pubkey,
 };
 use std::env;
-
 use std::sync::Arc;
-use tracing::{debug, info};
-
-use anyhow::anyhow;
-
-use crate::types::tracer_db_rpc_api::{
+use tracerdb_api::tracer_db_rpc_api::{
     BlockHashBase58, PubkeyBase58, SignatureBase58, SolanaReadableAccount, TracerDbApiClient,
 };
+use tracing::{debug, info};
+
 #[derive(Clone, Serialize)]
 pub struct AccountParams {
     pub pubkey: Pubkey,

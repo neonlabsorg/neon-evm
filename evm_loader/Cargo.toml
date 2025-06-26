@@ -9,6 +9,7 @@ members = [
     'rpc-client',
     'program',
     'program-macro',
+    'tracerdb-api'
 ]
 
 [workspace.dependencies]

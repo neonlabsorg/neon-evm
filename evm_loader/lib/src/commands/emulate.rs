@@ -17,7 +17,6 @@ use crate::{
     NeonResult,
 };
 use ethnum::U256;
-use evm_loader::account::TAG_STATE;
 use evm_loader::account_storage::AccountStorage;
 use evm_loader::error::build_revert_message;
 use evm_loader::types::{Address, Transaction, TrxView};
@@ -64,7 +63,7 @@ pub struct EmulateResponse {
 }
 
 #[derive(Clone)]
-pub struct Overrides {
+struct Overrides {
     pub blocks: Option<BlockOverrides>,
     pub states: Option<HashMap<Address, AccountOverride>>,
     pub solana_accounts: Option<HashMap<Pubkey, Option<Account>>>,
@@ -123,46 +122,34 @@ pub async fn execute_from_holder(
     program_id: &Pubkey,
     emulate_request: EmulateFromHolderApiRequest,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
-    let step_limit = emulate_request.step_limit.unwrap_or(100_000);
-
     let holder_key = emulate_request.holder_pubkey;
-    let account: Account = rpc
-        .get_account(&emulate_request.holder_pubkey)
-        .await?
-        .ok_or(NeonError::AccountNotFound(holder_key))?;
 
-    match evm_loader::account::tag_from_slice(&holder_key, account.data.as_slice())? {
-        TAG_STATE => {
-            let (header, accounts, trx) =
-                evm_loader::account::StateAccount::get_state_account_view_from_slice(
-                    account.data.as_slice(),
-                )?;
-            let trx = Transaction::parse_from_rlp(trx.as_slice(), None)?;
+    let response = crate::commands::get_holder::execute(rpc, program_id, holder_key).await?;
 
-            let mut storage = EmulatorAccountStorage::with_accounts(
+    match response.status {
+        crate::commands::get_holder::Status::Empty => Err(NeonError::AccountNotFound(holder_key)),
+        crate::commands::get_holder::Status::Active => {
+            execute(
                 rpc,
-                *program_id,
-                accounts.as_slice(),
-                emulate_request.chains,
                 None,
-                None,
-                Some(HashMap::from([(holder_key, Some(account))])),
-                trx.chain_id(),
-            )
-            .await?;
-
-            emulate_trx_single_step(
-                &mut storage,
-                TxParams::recover(&trx, &header),
-                &trx,
+                program_id,
+                EmulateRequest {
+                    tx: response
+                        .tx_data
+                        .ok_or(NeonError::AccountInvalidStatus(holder_key))?,
+                    step_limit: emulate_request.step_limit,
+                    chains: emulate_request.chains,
+                    trace_config: None,
+                    accounts: response.accounts.unwrap_or(Vec::new()),
+                    solana_overrides: None,
+                    provide_account_info: None,
+                    execution_map: None,
+                },
                 None::<TracerTypeEnum>,
-                None,
-                step_limit,
             )
             .await
         }
-        // TAG_HOLDER is not supported
-        tag => Err(NeonError::AccountInvalidTag(holder_key, tag)),
+        _ => Err(NeonError::AccountInvalidStatus(holder_key)),
     }
 }
 

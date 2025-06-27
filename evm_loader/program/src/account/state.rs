@@ -406,13 +406,20 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         Ok(unsafe { &*slice_from_raw_parts(tx_ptr, tx_len) })
     }
 
-    pub fn recover_plain_header_from_slice(data: &[u8]) -> Result<PlainData> {
-        let root_offset = super::header_from_slice::<Header>(data).root_offset;
+    pub fn recover_plain_header(
+        program_id: &Pubkey,
+        account: &'local AccountInfo<'sol>,
+    ) -> Result<PlainData> {
+        let tag = super::tag(program_id, account)?;
+        Self::validate_tag(account.key, tag)?;
+
+        let root_offset = super::header::<Header>(account).root_offset;
 
         let mut plain = PlainData::default();
         {
             let plain_ref = &mut plain;
-            let dataslice: &[u8] = &data[root_offset..][..size_of::<PlainData>()];
+            let dataref = account.try_borrow_data()?;
+            let dataslice: &[u8] = &dataref.as_ref()[root_offset..][..size_of::<PlainData>()];
             unsafe {
                 std::slice::from_raw_parts_mut(
                     std::ptr::from_mut::<PlainData>(plain_ref).cast::<u8>(),
@@ -426,17 +433,6 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         }
 
         Ok(plain)
-    }
-
-    pub fn recover_plain_header(
-        program_id: &Pubkey,
-        account: &'local AccountInfo<'sol>,
-    ) -> Result<PlainData> {
-        let tag = super::tag(program_id, account)?;
-        Self::validate_tag(account.key, tag)?;
-
-        let data = account.try_borrow_data()?;
-        Self::recover_plain_header_from_slice(*data)
     }
 
     // allocator should have provided a properly aligned pointer
@@ -914,22 +910,17 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
     /// 2. `addr_of!` and `read_unaligned` is heavily used to facilitate the reading of fields by raw pointers.
     /// 3. There are upcasts from *const u8 to *const T, but since T was allocated by the allocator previously,
     ///     it has the correct alignment and the upcast is sound.
+    #[allow(clippy::cast_ptr_alignment)]
     pub fn get_state_account_view(
         program_id: &Pubkey,
         account: &'local AccountInfo<'sol>,
     ) -> Result<StateAccountCoreApiView> {
         Self::validate_tag(account.key, super::tag(program_id, account)?)?;
 
-        let data = account.try_borrow_data()?;
-        Self::get_state_account_view_from_slice(&data)
-    }
-
-    #[allow(clippy::cast_ptr_alignment)]
-    pub fn get_state_account_view_from_slice(data: &[u8]) -> Result<StateAccountCoreApiView> {
-        let account_data_ptr = data.as_ptr();
+        let account_data_ptr = account.try_borrow_data()?.as_ptr();
 
         let (tx_start, tx_end, root_offset) = {
-            let header = super::header_from_slice::<Header>(data);
+            let header = super::header::<Header>(account);
             (
                 header.serialized_tx.start,
                 header.serialized_tx.end,
@@ -937,12 +928,12 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
             )
         };
 
-        let tx_rlp: Vec<u8> = data[..tx_end][tx_start..].to_vec();
+        let tx_rlp: Vec<u8> = account.try_borrow_data()?.as_ref()[..tx_end][tx_start..].to_vec();
 
         let root_ptr: *const Root =
             unsafe { account_data_ptr.add(root_offset).cast::<Root>().cast() };
 
-        let plain = Self::recover_plain_header_from_slice(data)?;
+        let plain = Self::recover_plain_header(program_id, account)?;
 
         if plain.layout_version == PlainData::layout_version() {
             let memory_space_delta = {

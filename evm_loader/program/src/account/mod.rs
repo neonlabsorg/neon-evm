@@ -61,21 +61,18 @@ const HEADER_VERSION_OFFSET: usize = 1;
 pub const ACCOUNT_PREFIX_LEN: usize = 1/*tag*/ + 1/*header version*/;
 
 #[inline]
-fn section_from_slice<T>(data: &[u8], offset: usize) -> &T {
+fn section<'r, T>(account: &'r AccountInfo<'_>, offset: usize) -> Ref<'r, T> {
     let begin = offset;
     let end = begin + std::mem::size_of::<T>();
 
-    let bytes = &data[begin..end];
-
-    assert_eq!(std::mem::align_of::<T>(), 1);
-    assert_eq!(std::mem::size_of::<T>(), bytes.len());
-    unsafe { &*(bytes.as_ptr().cast()) }
-}
-
-#[inline]
-fn section<'r, T>(account: &'r AccountInfo<'_>, offset: usize) -> Ref<'r, T> {
     let data = account.data.borrow();
-    Ref::map(data, |d| section_from_slice(d, offset))
+    Ref::map(data, |d| {
+        let bytes = &d[begin..end];
+
+        assert_eq!(std::mem::align_of::<T>(), 1);
+        assert_eq!(std::mem::size_of::<T>(), bytes.len());
+        unsafe { &*(bytes.as_ptr().cast()) }
+    })
 }
 
 #[inline]
@@ -102,11 +99,6 @@ trait AccountHeader {
 struct NoHeader {}
 impl AccountHeader for NoHeader {
     const VERSION: u8 = 0;
-}
-
-#[inline]
-fn header_from_slice<T: AccountHeader>(data: &[u8]) -> &T {
-    section_from_slice(data, ACCOUNT_PREFIX_LEN)
 }
 
 #[inline]
@@ -170,14 +162,6 @@ fn header_version(info: &AccountInfo) -> u8 {
     data[HEADER_VERSION_OFFSET]
 }
 
-pub fn tag_from_slice(key: &Pubkey, data: &[u8]) -> Result<u8> {
-    if data.len() < ACCOUNT_PREFIX_LEN {
-        return Err(Error::AccountInvalidData(*key));
-    }
-
-    Ok(data[TAG_OFFSET])
-}
-
 pub fn tag(program_id: &Pubkey, info: &AccountInfo) -> Result<u8> {
     if info.owner != program_id {
         return Err(Error::AccountInvalidOwner(*info.key, *program_id));
@@ -185,7 +169,11 @@ pub fn tag(program_id: &Pubkey, info: &AccountInfo) -> Result<u8> {
 
     let data = info.try_borrow_data()?;
 
-    tag_from_slice(info.key, *data)
+    if data.len() < ACCOUNT_PREFIX_LEN {
+        return Err(Error::AccountInvalidData(*info.key));
+    }
+
+    Ok(data[TAG_OFFSET])
 }
 
 pub fn set_tag(program_id: &Pubkey, info: &AccountInfo, tag: u8, header_version: u8) -> Result<()> {

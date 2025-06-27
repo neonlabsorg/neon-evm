@@ -174,33 +174,6 @@ pub struct TxParams {
 }
 
 impl TxParams {
-    #[must_use]
-    pub fn recover(trx: &Transaction, header: &evm_loader::account::PlainStateHeader) -> Self {
-        Self {
-            nonce: Some(header.nonce()),
-            index: trx.tree_account_index(),
-            from: FromAddress::Ethereum(header.origin),
-            payer: trx.get_payer(),
-            to: header.tx_target,
-            data: Some(trx.call_data().to_vec()),
-            value: Some(trx.value()),
-            gas_limit: Some(header.gas_limit),
-            actual_gas_used: Some(header.gas_used),
-            gas_price: Some(header.gas_price),
-            max_fee_per_gas: trx.max_fee_per_gas(),
-            max_priority_fee_per_gas: trx.max_priority_fee_per_gas(),
-            access_list: trx.access_list().map(|x| {
-                x.iter()
-                    .map(|(address, storage_keys)| AccessListItem {
-                        address: *address,
-                        storage_keys: storage_keys.as_slice().to_vec(),
-                    })
-                    .collect()
-            }),
-            chain_id: trx.chain_id(),
-        }
-    }
-
     pub async fn into_transaction(self, backend: &impl AccountStorage) -> (Address, Transaction) {
         let chain_id = self.chain_id.unwrap_or_else(|| backend.default_chain_id());
 

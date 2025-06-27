@@ -30,8 +30,8 @@ use solana_program::{
 // "09c5eabe": "execute(bytes)"
 // "c549a7af": "execute(uint64,bytes)",
 // "32607450": "executeWithSeed(uint64,bytes32,bytes)",
+// "260e40bc": "executeWithSeed(bytes32,bytes)",
 // "aeed7f1e": "execute(uint64,(bytes32,(bytes32,bool,bool)[],bytes))",
-// "a5754fda": "execute((bytes32,(bytes32,bool,bool)[],bytes))",
 // "add378af": "executeWithSeed(uint64,bytes32,(bytes32,(bytes32,bool,bool)[],bytes))",
 // "cff5c1a5": "getReturnData()",
 
@@ -112,6 +112,24 @@ pub async fn call_solana<State: Database>(
             .await
         }
 
+        // "260e40bc": "executeWithSeed(bytes32,bytes)",
+        [0x26, 0x0e, 0x40, 0xbc] => {
+            if is_static {
+                return Err(Error::StaticModeViolation(*address));
+            }
+
+            let salt = read_salt(input)?;
+            let offset = read_usize(&input[32..])?;
+            let instruction: Instruction =
+                bincode::deserialize(&input[offset + 32..]).map_err(|_| Error::OutOfBounds)?;
+
+            let (_, signer_seed) =
+                pda_accounts::contract_auth_address(state.program_id(), &context.caller, salt);
+            let seeds = pda_accounts::contract_auth_seeds(&context.caller, salt, signer_seed);
+
+            execute_external_instruction(state, context, instruction, seeds, None).await
+        }
+
         // "32607450": "executeWithSeed(uint64,bytes32,bytes)",
         [0x32, 0x60, 0x74, 0x50] => {
             if is_static {
@@ -136,22 +154,6 @@ pub async fn call_solana<State: Database>(
                 Some(required_lamports),
             )
             .await
-        }
-
-        // "a5754fda": "execute((bytes32,(bytes32,bool,bool)[],bytes))",
-        [0xa5, 0x75, 0x4f, 0xda] => {
-            if is_static {
-                return Err(Error::StaticModeViolation(*address));
-            }
-
-            let instruction_offset = read_usize(input)?;
-            let instruction = read_instruction(&input[instruction_offset..])?;
-
-            let signer = context.caller;
-            let (_signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-            let signer_seeds = pda_accounts::contract_seeds(&signer, bump_seed);
-
-            execute_external_instruction(state, context, instruction, signer_seeds, None).await
         }
 
         // "aeed7f1e": "execute(uint64,(bytes32,(bytes32,bool,bool)[],bytes))",

@@ -496,6 +496,8 @@ pub struct SimulateSolanaRequest {
     #[serde_as(as = "Vec<Hex>")]
     pub transactions: Vec<Vec<u8>>,
     pub id: Option<String>,
+    #[serde_as(as = "Option<HashMap<DisplayFromStr,_>>")]
+    pub solana_overrides: Option<HashMap<Pubkey, Option<SerializedAccount>>>,
 }
 
 #[cfg(test)]

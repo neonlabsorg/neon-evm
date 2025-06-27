@@ -9,7 +9,7 @@ use crate::sysvar::get_sysvar;
 use crate::tracing::tracers::{Tracer, TracerTypeEnum};
 use crate::tracing::{AccountOverride, BlockOverrides};
 use crate::types::{AccountInfoLevel, EmulateFromHolderApiRequest, EmulateRequest};
-use crate::types::{FromAddress, TracerDb, TxParams};
+use crate::types::{FromAddress, TracerDb};
 
 use crate::{
     account_storage::{EmulatorAccountStorage, SyncedAccountStorage},
@@ -193,12 +193,12 @@ async fn create_rpc(
     ))
 }
 
-async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>(
+async fn initialize_storage<'rpc, T: Rpc + BuildConfigSimulator>(
+    rpc: &'rpc T,
     program_id: &Pubkey,
     emulate_request: &EmulateRequest,
-    rpc: &'rpc T,
     overrides: Overrides,
-) -> NeonResult<(EmulatorAccountStorage<'rpc, T>, TxParams, Transaction)> {
+) -> NeonResult<EmulatorAccountStorage<'rpc, T>> {
     let storage = EmulatorAccountStorage::with_accounts(
         rpc,
         *program_id,
@@ -211,20 +211,26 @@ async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>
     )
     .await?;
 
-    let (_, tx) = emulate_request.tx.clone().into_transaction(&storage).await;
-
-    let (tx_params, tx, storage) = (emulate_request.tx.clone(), tx, storage);
-
-    info!("tx_params: {:?}", tx_params);
-    let from = tx_params.from.clone();
-
     // Store the from pubkey in the storage to correctly initialize the BalanceAccount.
+    let from = &emulate_request.tx.from;
     if let FromAddress::Solana(pubkey) = from {
-        storage.add_balance_pubkey(from.address(), pubkey);
+        storage.add_balance_pubkey(from.address(), *pubkey);
         info!("from is solana address: {:?}", pubkey);
     }
 
-    let origin = from.address();
+    Ok(storage)
+}
+
+async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>(
+    program_id: &Pubkey,
+    emulate_request: &EmulateRequest,
+    rpc: &'rpc T,
+    overrides: Overrides,
+) -> NeonResult<(EmulatorAccountStorage<'rpc, T>, Transaction)> {
+    let storage = initialize_storage(rpc, program_id, emulate_request, overrides).await?;
+
+    let (origin, tx) = emulate_request.tx.clone().into_transaction(&storage).await;
+
     info!("origin: {:?}", origin);
     info!("tx: {:?}", tx);
 
@@ -234,7 +240,7 @@ async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>
         .mark_balance_account(&origin, chain_id, true)
         .await?;
 
-    Ok((storage, tx_params, tx))
+    Ok((storage, tx))
 }
 
 async fn increment_nonce<T: Rpc + BuildConfigSimulator>(
@@ -334,25 +340,23 @@ async fn emulate_trx<T: Tracer>(
     tracer: Option<T>,
     rpc: &impl BuildConfigSimulator,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
+    info!("tx_params: {:?}", emulate_request.tx);
+
     if emulate_request.execution_map.is_none() {
         let overrides = init_overrides(emulate_request);
-        let (mut storage, tx_params, tx) =
+        let (mut storage, tx) =
             initialize_storage_and_transaction(program_id, emulate_request, rpc, overrides).await?;
-        let origin = tx_params.from.address();
 
-        let chain_id = tx.chain_id().unwrap_or_else(|| storage.default_chain_id());
+        let chain_id = emulate_request
+            .tx
+            .chain_id
+            .unwrap_or_else(|| storage.default_chain_id());
+        let from = emulate_request.tx.from.address();
 
-        increment_nonce(&mut storage, &origin, chain_id).await?;
+        increment_nonce(&mut storage, &from, chain_id).await?;
 
-        let result = emulate_trx_single_step(
-            &mut storage,
-            tx_params,
-            &tx,
-            tracer,
-            emulate_request.provide_account_info,
-            step_limit,
-        )
-        .await?;
+        let result =
+            emulate_trx_single_step(&mut storage, &tx, tracer, emulate_request, step_limit).await?;
 
         return Ok(result);
     }
@@ -362,13 +366,12 @@ async fn emulate_trx<T: Tracer>(
 
 async fn emulate_trx_single_step<T: Tracer>(
     storage: &mut EmulatorAccountStorage<'_, impl BuildConfigSimulator>,
-    tx_params: TxParams,
     tx: &Transaction,
     tracer: Option<T>,
-    provide_account_info: Option<AccountInfoLevel>,
+    emulate_request: &EmulateRequest,
     step_limit: u64,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
-    let origin = tx_params.from.address();
+    let origin = emulate_request.tx.from.address();
 
     let (exit_status, steps_executed, step_on_solana, tracer, timestamped_contracts) = {
         let mut backend = SyncedExecutorState::new(storage);
@@ -409,7 +412,7 @@ async fn emulate_trx_single_step<T: Tracer>(
         exit_status,
         storage,
         tracer,
-        provide_account_info,
+        emulate_request.provide_account_info,
     )
     .await
 }
@@ -452,6 +455,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
     let is_skd_transaction = execution_map.is_skd_transaction;
 
+    let origin = emulate_request.tx.from.address();
     let (block, index) = {
         let step = execution_map
             .steps
@@ -476,13 +480,15 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
         ..Default::default()
     });
 
-    let (mut storage, tx_params, mut tx) =
+    let (mut storage, mut tx) =
         initialize_storage_and_transaction(program_id, emulate_request, &rpc, overrides.clone())
             .await?;
-    let origin = tx_params.from.address();
 
-    let chain_id = tx.chain_id().unwrap_or_else(|| storage.default_chain_id());
-    let increase_gas_limit = tx.chain_id().is_none();
+    let chain_id = emulate_request
+        .tx
+        .chain_id
+        .unwrap_or_else(|| storage.default_chain_id());
+    let increase_gas_limit = emulate_request.tx.chain_id.is_none();
 
     prepare_origin(
         &origin,
@@ -520,7 +526,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
                 exit_status = ExitStatus::StepLimit;
 
                 rpc = create_rpc(db_config, execution_step.block, execution_step.index).await?;
-                (storage, _, tx) = initialize_storage_and_transaction(
+                (storage, tx) = initialize_storage_and_transaction(
                     program_id,
                     emulate_request,
                     &rpc,
@@ -529,7 +535,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
                 .await?;
 
                 if let Some(ref mut tracer) = tracer_result {
-                    tracer.clear(&tx_params);
+                    tracer.clear(&emulate_request.tx);
                 }
 
                 backend = SyncedExecutorState::new(&mut storage);
@@ -553,7 +559,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
                 exit_status = ExitStatus::Cancel;
 
                 rpc = create_rpc(db_config, execution_step.block, execution_step.index).await?;
-                (storage, _, _) = initialize_storage_and_transaction(
+                (storage, _) = initialize_storage_and_transaction(
                     program_id,
                     emulate_request,
                     &rpc,
@@ -563,7 +569,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
                 backend = SyncedExecutorState::new(&mut storage);
 
                 if let Some(ref mut tracer) = tracer_result {
-                    tracer.cancel(&tx_params);
+                    tracer.cancel(&emulate_request.tx);
                 }
 
                 break;

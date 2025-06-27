@@ -55,6 +55,9 @@ RUN cargo fmt --check && \
 # Add neon_test_invoke_program to the genesis
 FROM ${DOCKERHUB_ORG_NAME}/neon_test_programs:latest AS neon_test_programs
 
+# Add alt_updater program to the genesis
+FROM ${DOCKERHUB_ORG_NAME}/alt_updater:latest AS alt_updater
+
 # Define solana-image that contains utility
 FROM solana AS base
 
@@ -67,6 +70,8 @@ COPY --from=evm-builder /opt/neon-evm/evm_loader/target/release/neon-cli /opt/
 COPY --from=evm-builder /opt/neon-evm/evm_loader/target/release/neon-api /opt/
 
 COPY --from=neon_test_programs /opt/deploy/ /opt/deploy/
+COPY --from=alt_updater /opt/deploy/ /opt/deploy/
+COPY --from=alt_updater /opt/alt_updater-keypair.json /opt/deploy/alt_updater/alt_updater-keypair.json
 COPY --from=evm-builder /opt/neon-evm/evm_loader/target/release/neon-rpc /opt/
 COPY --from=evm-builder /opt/neon-evm/evm_loader/target/release/libneon_lib.so /opt/libs/current/
 

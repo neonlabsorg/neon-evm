@@ -1,7 +1,7 @@
 use crate::account::{
-    program, AccountsDB, Holder, Operator, OperatorBalanceAccount, OperatorBalanceValidator,
-    StateAccount, TransactionTree, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
-    TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
+    program, AccountDispatch, AccountsDB, Holder, Operator, OperatorBalance,
+    OperatorBalanceValidator, StateAccount, TransactionTree, TAG_HOLDER,
+    TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::debug::log_data;
 use crate::error::{Error, Result};
@@ -12,17 +12,17 @@ use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Start Scheduled Transaction from Instruction");
 
     let tree_index = u16::try_from(u32::from_le_bytes(*array_ref![instruction, 0, 4]))?;
     let message = &instruction[4..];
 
     let holder = accounts[0].clone();
-    let transaction_tree = TransactionTree::from_account(&program_id, accounts[1].clone())?;
-    let operator = Operator::from_account(&accounts[2])?;
-    let operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
-    let system = program::System::from_account(&accounts[4])?;
+    let transaction_tree = TransactionTree::from_account_info(program_id, &accounts[1])?;
+    let operator = Operator::from_account_info(&accounts[2])?;
+    let operator_balance = OperatorBalance::try_from_account_info(program_id, &accounts[3])?;
+    let system = program::System::from_account_info(&accounts[4])?;
 
     operator_balance.validate_owner(&operator)?;
 
@@ -34,9 +34,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
         None,
     );
 
-    let tag = crate::account::tag(program_id, &holder)?;
-
-    match tag {
+    match holder.tag(program_id)? {
         TAG_HOLDER | TAG_STATE_FINALIZED => {
             // TODO clarify how it works with STATE_FINALIZED.
             Holder::init_holder_heap(program_id, &holder, 0)?;
@@ -62,7 +60,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
                 origin,
                 &trx,
                 message,
-                Some(*transaction_tree.info().key),
+                Some(transaction_tree.pubkey()),
             )?;
 
             do_scheduled_start(&trx, accounts_db, storage, transaction_tree, gasometer)

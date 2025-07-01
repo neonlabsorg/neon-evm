@@ -39,21 +39,21 @@ impl<'a> ProgramAccountStorage<'a> {
         let pubkey = self.keys.storage_cell(&crate::ID, address, index);
 
         let account = self.accounts.get(&pubkey);
-        StorageCell::from_account(&crate::ID, account.clone())
+        StorageCell::from_account_info(crate::ID, account)
     }
 
     pub fn contract_account(&self, address: Address) -> Result<ContractAccount<'a>> {
         let pubkey = self.keys.contract(&crate::ID, address);
 
         let account = self.accounts.get(&pubkey);
-        ContractAccount::from_account(&crate::ID, account.clone())
+        ContractAccount::from_account_info(crate::ID, account)
     }
 
     pub fn balance_account(&self, address: Address, chain_id: u64) -> Result<BalanceAccount<'a>> {
         let pubkey = self.keys.balance(&crate::ID, address, chain_id);
 
         let account = self.accounts.get(&pubkey);
-        BalanceAccount::from_account(&crate::ID, account.clone())
+        BalanceAccount::from_account_info(crate::ID, account)
     }
 
     pub fn create_balance_account(

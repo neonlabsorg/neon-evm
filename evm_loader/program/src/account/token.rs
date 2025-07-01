@@ -9,7 +9,7 @@ pub struct Account<'a, T: Pack + IsInitialized> {
 }
 
 impl<'a, T: Pack + IsInitialized> Account<'a, T> {
-    pub fn from_account(info: &AccountInfo<'a>) -> Result<Self> {
+    pub fn from_account_info(info: &AccountInfo<'a>) -> Result<Self> {
         if !spl_token::check_id(info.owner) {
             return Err(Error::AccountInvalidOwner(*info.key, spl_token::ID));
         }

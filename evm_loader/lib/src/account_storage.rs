@@ -6,6 +6,7 @@ use crate::{rpc::Rpc, solana_simulator::SolanaSimulator, NeonError, NeonResult};
 use async_trait::async_trait;
 use elsa::FrozenMap;
 use ethnum::U256;
+use evm_loader::account::AccountDispatch;
 use evm_loader::account_storage::LogCollector;
 pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use evm_loader::{
@@ -55,8 +56,12 @@ pub struct SolanaAccount {
 pub type SolanaOverrides = HashMap<Pubkey, Option<Account>>;
 
 trait UpdateLamports<'a> {
+    #[allow(irrefutable_let_patterns)]
     fn update_lamports(&mut self, rent: &Rent) {
-        let info = self.info();
+        let evm_loader::account::Account::AccountInfo(info) = self.info() else {
+            unreachable!();
+        };
+
         let required_lamports = rent.minimum_balance(info.data_len());
         if info.lamports() < required_lamports {
             info!(
@@ -68,21 +73,21 @@ trait UpdateLamports<'a> {
             **lamports = required_lamports;
         }
     }
-    fn info(&self) -> &AccountInfo<'a>;
+    fn info(&self) -> &evm_loader::account::Account<'a>;
 }
 impl<'a> UpdateLamports<'a> for BalanceAccount<'a> {
-    fn info(&self) -> &AccountInfo<'a> {
-        self.info()
+    fn info(&self) -> &evm_loader::account::Account<'a> {
+        &self.account
     }
 }
 impl<'a> UpdateLamports<'a> for ContractAccount<'a> {
-    fn info(&self) -> &AccountInfo<'a> {
-        self.info()
+    fn info(&self) -> &evm_loader::account::Account<'a> {
+        &self.account
     }
 }
 impl<'a> UpdateLamports<'a> for StorageCell<'a> {
-    fn info(&self) -> &AccountInfo<'a> {
-        self.info()
+    fn info(&self) -> &evm_loader::account::Account<'a> {
+        &self.account
     }
 }
 
@@ -400,7 +405,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         let mut account = account.clone();
         let info = account_info(&pubkey, &mut account);
         if *info.owner == self.program_id {
-            let tag = evm_loader::account::tag(&self.program_id, &info)?;
+            let tag = info.tag(self.program_id)?;
             match tag {
                 evm_loader::account::TAG_ACCOUNT_BALANCE
                 | evm_loader::account::TAG_ACCOUNT_CONTRACT
@@ -556,7 +561,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
             Ok(default)
         } else {
             let account_info = balance_data.into_account_info();
-            let balance = BalanceAccount::from_account(self.program_id(), account_info)?;
+            let balance = BalanceAccount::from_account(self.program_id, account_info.into())?;
             Ok(action(&balance))
         }
     }
@@ -575,7 +580,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
             Ok(default)
         } else {
             let account_info = contract_data.into_account_info();
-            let contract = ContractAccount::from_account(self.program_id(), account_info)?;
+            let contract = ContractAccount::from_account(self.program_id, account_info.into())?;
             Ok(action(&contract))
         }
     }
@@ -595,7 +600,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
             Ok(default)
         } else {
             let account_info = storage_data.into_account_info();
-            let storage = StorageCell::from_account(self.program_id(), account_info)?;
+            let storage = StorageCell::from_account(self.program_id, account_info.into())?;
             Ok(action(&storage))
         }
     }
@@ -613,14 +618,14 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
 
         match self.balance_addr_to_pubkey.get(&address) {
             Some(pubkey) => BalanceAccount::initialize_for_solana_user(
-                account_data.into_account_info(),
-                &self.program_id,
+                account_data.into_account_info().into(),
+                self.program_id,
                 *pubkey,
                 chain_id,
             ),
             None => BalanceAccount::initialize(
-                account_data.into_account_info(),
-                &self.program_id,
+                account_data.into_account_info().into(),
+                self.program_id,
                 address,
                 chain_id,
             ),
@@ -636,7 +641,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         if account_data.is_empty() {
             self.create_ethereum_balance(account_data, address, chain_id)
         } else {
-            BalanceAccount::from_account(&self.program_id, account_data.into_account_info())
+            BalanceAccount::from_account(self.program_id, account_data.into_account_info().into())
         }
     }
 
@@ -645,7 +650,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         account_data: &'a mut RefMut<AccountData>,
         address: Address,
         chain_id: u64,
-        generation: u32,
+        _generation: u32,
         code: &[u8],
     ) -> evm_loader::error::Result<ContractAccount<'a>> {
         self.mark_account(account_data.pubkey, true);
@@ -655,11 +660,10 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         account_data.lamports = self.rent.minimum_balance(account_data.get_length());
 
         ContractAccount::initialize(
-            account_data.into_account_info(),
-            &self.program_id,
+            account_data.into_account_info().into(),
+            self.program_id,
             address,
             chain_id,
-            generation,
             code,
         )
     }
@@ -673,7 +677,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         account_data.expand(StorageCell::required_account_size(0));
         account_data.lamports = self.rent.minimum_balance(account_data.get_length());
 
-        StorageCell::initialize(account_data.into_account_info(), &self.program_id)
+        StorageCell::initialize(account_data.into_account_info().into(), self.program_id)
     }
 
     fn get_or_create_ethereum_storage<'a>(
@@ -683,7 +687,7 @@ impl<T: Rpc> EmulatorAccountStorage<'_, T> {
         if account_data.is_empty() {
             self.create_ethereum_storage(account_data)
         } else {
-            StorageCell::from_account(&self.program_id, account_data.into_account_info())
+            StorageCell::from_account(self.program_id, account_data.into_account_info().into())
         }
     }
 
@@ -1096,8 +1100,8 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
                 self.create_ethereum_contract(&mut account_data, address, chain_id, 0, &code)?;
             } else {
                 let contract = ContractAccount::from_account(
-                    self.program_id(),
-                    account_data.into_account_info(),
+                    self.program_id,
+                    account_data.into_account_info().into(),
                 )?;
                 if contract.code().len() > 0 {
                     return Err(EvmLoaderError::AccountAlreadyInitialized(
@@ -1147,7 +1151,10 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
             let mut contract = if contract_data.is_empty() {
                 self.create_ethereum_contract(&mut contract_data, address, 0, 0, &[])?
             } else {
-                ContractAccount::from_account(self.program_id(), contract_data.into_account_info())?
+                ContractAccount::from_account(
+                    *self.program_id(),
+                    contract_data.into_account_info().into(),
+                )?
             };
 
             contract.set_storage_value(index.as_usize(), &value);

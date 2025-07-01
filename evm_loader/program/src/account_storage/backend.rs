@@ -142,8 +142,10 @@ impl<'a> AccountStorage for ProgramAccountStorage<'a> {
     }
 
     fn code(&self, address: Address) -> crate::evm::Buffer {
-        self.contract_account(address)
-            .map_or_else(|_| crate::evm::Buffer::empty(), |a| a.code_buffer())
+        self.contract_account(address).map_or_else(
+            |_| crate::evm::Buffer::empty(),
+            |a| crate::evm::Buffer::from_slice(&a.code()),
+        )
     }
 
     fn storage(&self, address: Address, index: U256) -> [u8; 32] {

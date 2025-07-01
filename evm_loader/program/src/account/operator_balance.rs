@@ -1,14 +1,16 @@
+use std::cell::{Ref, RefMut};
 use std::mem::size_of;
 
+use crate::config::ACCOUNT_SEED_VERSION;
 use crate::{
     error::{Error, Result},
     types::{Address, Transaction, TrxView},
 };
 use ethnum::U256;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, system_program};
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent};
 
 use super::{
-    program, AccountHeader, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION,
+    program, Account, AccountDispatch, AccountHeader, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN,
     TAG_OPERATOR_BALANCE,
 };
 
@@ -24,32 +26,35 @@ impl AccountHeader for Header {
 }
 
 #[derive(Clone)]
-pub struct OperatorBalanceAccount<'a> {
-    account: AccountInfo<'a>,
+pub struct OperatorBalance<'a> {
+    account: Account<'a>,
 }
 
-impl<'a> OperatorBalanceAccount<'a> {
+impl<'a> OperatorBalance<'a> {
     #[must_use]
     pub fn required_account_size() -> usize {
         ACCOUNT_PREFIX_LEN + size_of::<Header>()
     }
 
-    pub fn from_account(program_id: &Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
-        super::validate_tag(program_id, account, TAG_OPERATOR_BALANCE)?;
+    pub fn from_account(program_id: Pubkey, account: Account<'a>) -> Result<Self> {
+        account.validate_tag(program_id, TAG_OPERATOR_BALANCE)?;
 
-        Ok(Self {
-            account: account.clone(),
-        })
+        Ok(Self { account })
     }
 
-    pub fn try_from_account(
-        program_id: &Pubkey,
+    pub fn from_account_info(program_id: Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
+        let account = account.clone().into();
+        Self::from_account(program_id, account)
+    }
+
+    pub fn try_from_account_info(
+        program_id: Pubkey,
         account: &AccountInfo<'a>,
     ) -> Result<Option<Self>> {
-        if system_program::check_id(account.owner) {
+        if account.is_system_owned() {
             Ok(None)
         } else {
-            let balance = Self::from_account(program_id, account)?;
+            let balance = Self::from_account_info(program_id, account)?;
             Ok(Some(balance))
         }
     }
@@ -57,7 +62,7 @@ impl<'a> OperatorBalanceAccount<'a> {
     pub fn create(
         address: Address,
         chain_id: u64,
-        account: AccountInfo<'a>,
+        mut account: AccountInfo<'a>,
         operator: &Operator<'a>,
         system: &program::System<'a>,
         rent: &Rent,
@@ -68,9 +73,9 @@ impl<'a> OperatorBalanceAccount<'a> {
             return Err(Error::AccountInvalidKey(*account.key, pubkey));
         }
 
-        // Already created. Return immidiately
-        if !system_program::check_id(account.owner) {
-            let balance_account = Self::from_account(&crate::ID, &account)?;
+        // Already created. Return immediately
+        if !account.is_system_owned() {
+            let balance_account = Self::from_account(crate::ID, account.into())?;
             assert_eq!(balance_account.address(), address);
             assert_eq!(balance_account.chain_id(), chain_id);
             assert_eq!(balance_account.owner(), *operator.key);
@@ -96,44 +101,46 @@ impl<'a> OperatorBalanceAccount<'a> {
             rent,
         )?;
 
-        super::set_tag(&crate::ID, &account, TAG_OPERATOR_BALANCE, Header::VERSION)?;
+        account.init_tag(TAG_OPERATOR_BALANCE, Header::VERSION)?;
         {
-            let mut header = super::header_mut::<Header>(&account);
+            let mut header: RefMut<Header> = account.header_mut();
             header.owner = *operator.key;
             header.address = address;
             header.chain_id = chain_id;
             header.balance = U256::ZERO;
         }
 
-        Ok(Self { account })
+        Ok(Self {
+            account: account.into(),
+        })
     }
 
     #[must_use]
-    pub fn pubkey(&self) -> &'a Pubkey {
-        self.account.key
+    pub fn pubkey(&self) -> Pubkey {
+        self.account.pubkey()
     }
 
     #[must_use]
     pub fn address(&self) -> Address {
-        let header = super::header::<Header>(&self.account);
+        let header: Ref<Header> = self.account.header();
         header.address
     }
 
     #[must_use]
     pub fn chain_id(&self) -> u64 {
-        let header = super::header::<Header>(&self.account);
+        let header: Ref<Header> = self.account.header();
         header.chain_id
     }
 
     #[must_use]
     pub fn balance(&self) -> U256 {
-        let header = super::header::<Header>(&self.account);
+        let header: Ref<Header> = self.account.header();
         header.balance
     }
 
     #[must_use]
     pub fn owner(&self) -> Pubkey {
-        let header = super::header::<Header>(&self.account);
+        let header: Ref<Header> = self.account.header();
         header.owner
     }
 
@@ -171,7 +178,7 @@ impl<'a> OperatorBalanceAccount<'a> {
     }
 
     pub fn burn(&mut self, value: U256) -> Result<()> {
-        let mut header = super::header_mut::<Header>(&self.account);
+        let mut header: RefMut<Header> = self.account.header_mut();
 
         header.balance = header
             .balance
@@ -186,7 +193,7 @@ impl<'a> OperatorBalanceAccount<'a> {
     }
 
     pub fn mint(&mut self, value: U256) -> Result<()> {
-        let mut header = super::header_mut::<Header>(&self.account);
+        let mut header: RefMut<Header> = self.account.header_mut();
 
         header.balance = header
             .balance
@@ -198,10 +205,13 @@ impl<'a> OperatorBalanceAccount<'a> {
 
     /// # Safety
     /// Permanently deletes Operator Balance account and all data in it
-    pub unsafe fn suicide(self, operator: &Operator) {
+    pub unsafe fn suicide(self, operator: &Operator) -> Result<()> {
         assert_eq!(self.balance(), U256::ZERO);
 
-        crate::account::delete(&self.account, operator);
+        let info = self.account.try_into()?;
+        crate::account::delete(&info, operator);
+
+        Ok(())
     }
 }
 
@@ -217,7 +227,7 @@ pub trait OperatorBalanceValidator {
     fn miner(&self, origin: Address) -> Address;
 }
 
-impl OperatorBalanceValidator for Option<OperatorBalanceAccount<'_>> {
+impl OperatorBalanceValidator for Option<OperatorBalance<'_>> {
     fn validate_owner(&self, operator: &Operator) -> Result<()> {
         let Some(balance) = self else { return Ok(()) };
         balance.validate_owner(operator)
@@ -239,7 +249,6 @@ impl OperatorBalanceValidator for Option<OperatorBalanceAccount<'_>> {
     }
 
     fn miner(&self, origin: Address) -> Address {
-        self.as_ref()
-            .map_or(origin, OperatorBalanceAccount::address)
+        self.as_ref().map_or(origin, OperatorBalance::address)
     }
 }

@@ -108,7 +108,7 @@ async fn withdraw<State: Database>(
     let mut mint_account = state.external_account(mint_address).await?;
     let mint_data = {
         let info = mint_account.into_account_info();
-        token::Mint::from_account(&info)?.into_data()
+        token::Mint::from_account_info(&info)?.into_data()
     };
 
     assert!(mint_data.decimals < 18);

@@ -18,6 +18,7 @@ fn process_instruction(
     instruction_data: &[u8],
 ) -> ProgramResult {
     assert!(crate::check_id(program_id));
+    let program_id = *program_id;
 
     let (tag, instruction) = instruction_data
         .split_first()
@@ -69,6 +70,7 @@ fn process_instruction(
     use crate::error::Error;
 
     assert!(crate::check_id(program_id));
+    let program_id = *program_id;
 
     let (tag, instruction) = instruction_data
         .split_first()

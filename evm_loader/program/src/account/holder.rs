@@ -6,7 +6,7 @@ use std::cell::{Ref, RefMut};
 use std::mem::{align_of, size_of};
 use std::ptr::write_unaligned;
 
-use crate::account::TAG_STATE_FINALIZED;
+use crate::account::{AccountDispatch, TAG_STATE_FINALIZED};
 use crate::allocator::STATE_ACCOUNT_DATA_ADDRESS;
 use crate::error::{Error, Result};
 use crate::types::{Transaction, TrxView};
@@ -49,10 +49,13 @@ impl<'local, 'sol> Holder<'local, 'sol> {
         self.account
     }
 
-    pub fn from_account(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<Self> {
-        match super::tag(program_id, account)? {
+    pub fn from_account_info(
+        program_id: Pubkey,
+        account: &'local AccountInfo<'sol>,
+    ) -> Result<Self> {
+        match account.tag(program_id)? {
             TAG_STATE_FINALIZED => {
-                super::set_tag(program_id, account, TAG_HOLDER, Header::VERSION)?;
+                account.init_tag(TAG_HOLDER, Header::VERSION)?;
 
                 let mut holder = Self { account };
                 holder.clear();
@@ -65,25 +68,25 @@ impl<'local, 'sol> Holder<'local, 'sol> {
     }
 
     pub fn create(
-        program_id: &Pubkey,
+        program_id: Pubkey,
         account: &'local AccountInfo<'sol>,
         seed: &str,
         operator: &Operator,
     ) -> Result<Self> {
-        if account.owner != program_id {
-            return Err(Error::AccountInvalidOwner(*account.key, *program_id));
+        if account.owner() != program_id {
+            return Err(Error::AccountInvalidOwner(account.pubkey(), program_id));
         }
 
-        let key = Pubkey::create_with_seed(operator.key, seed, program_id)?;
+        let key = Pubkey::create_with_seed(operator.key, seed, &program_id)?;
         if &key != account.key {
             return Err(Error::AccountInvalidKey(*account.key, key));
         }
 
-        super::validate_tag(program_id, account, TAG_EMPTY)?;
-        super::set_tag(&crate::ID, account, TAG_HOLDER, Header::VERSION)?;
+        account.validate_tag(program_id, TAG_EMPTY)?;
+        account.init_tag(TAG_HOLDER, Header::VERSION)?;
 
-        let mut holder = Self::from_account(program_id, account)?;
-        holder.header_mut().owner = *operator.key;
+        let mut holder = Self::from_account_info(program_id, account)?;
+        holder.update(|h| h.owner = *operator.key);
         holder.clear();
 
         Ok(holder)
@@ -91,32 +94,25 @@ impl<'local, 'sol> Holder<'local, 'sol> {
 
     pub fn update<F>(&mut self, f: F)
     where
-        F: FnOnce(RefMut<Header>),
+        F: FnOnce(&mut Header),
     {
-        f(self.header_mut());
-    }
-
-    fn header(&self) -> Ref<Header> {
-        super::section(self.account, HEADER_OFFSET)
-    }
-
-    fn header_mut(&self) -> RefMut<Header> {
-        super::section_mut(self.account, HEADER_OFFSET)
+        let mut header: RefMut<Header> = self.account.header_mut();
+        f(&mut header);
     }
 
     fn buffer(&self) -> Ref<[u8]> {
-        let data = self.account.data.borrow();
+        let data = self.account.data();
         Ref::map(data, |d| &d[BUFFER_OFFSET..])
     }
 
     fn buffer_mut(&mut self) -> RefMut<[u8]> {
-        let data = self.account.data.borrow_mut();
+        let data = self.account.data_mut();
         RefMut::map(data, |d| &mut d[BUFFER_OFFSET..])
     }
 
     pub fn clear(&mut self) {
         {
-            let mut header = self.header_mut();
+            let mut header: RefMut<Header> = self.account.header_mut();
             header.transaction_hash.fill(0);
             header.transaction_len = 0;
         }
@@ -135,7 +131,7 @@ impl<'local, 'sol> Holder<'local, 'sol> {
             .ok_or(Error::IntegerOverflow)?;
 
         {
-            let mut header = self.header_mut();
+            let mut header: RefMut<Header> = self.account.header_mut();
             header.transaction_len = std::cmp::max(header.transaction_len, end);
         }
         {
@@ -152,7 +148,8 @@ impl<'local, 'sol> Holder<'local, 'sol> {
 
     #[must_use]
     pub fn transaction_len(&self) -> usize {
-        self.header().transaction_len
+        let header: Ref<Header> = self.account.header();
+        header.transaction_len
     }
 
     #[must_use]
@@ -165,7 +162,8 @@ impl<'local, 'sol> Holder<'local, 'sol> {
 
     #[must_use]
     pub fn transaction_hash(&self) -> [u8; 32] {
-        self.header().transaction_hash
+        let header: Ref<Header> = self.account.header();
+        header.transaction_hash
     }
 
     pub fn update_transaction_hash(&mut self, hash: [u8; 32]) {
@@ -174,12 +172,13 @@ impl<'local, 'sol> Holder<'local, 'sol> {
         }
 
         self.clear();
-        self.header_mut().transaction_hash = hash;
+        self.update(|h| h.transaction_hash = hash);
     }
 
     #[must_use]
     pub fn owner(&self) -> Pubkey {
-        self.header().owner
+        let header: Ref<Header> = self.account.header();
+        header.owner
     }
 
     pub fn validate_owner(&self, operator: &Operator) -> Result<()> {
@@ -206,18 +205,18 @@ impl<'local, 'sol> Holder<'local, 'sol> {
     /// After this, the persistent objects can be allocated into the account data.
     pub fn init_heap(&self, transaction_offset: usize) -> Result<()> {
         // For this case, the account.owner is already validated to be equal to program id.
-        Self::init_holder_heap(self.account.owner, self.account, transaction_offset)
+        Self::init_holder_heap(*self.account.owner, self.account, transaction_offset)
     }
 
     /// Associated function, see `fn init_heap`.
     pub fn init_holder_heap(
-        program_id: &Pubkey,
+        program_id: Pubkey,
         account: &AccountInfo,
         transaction_offset: usize,
     ) -> Result<()> {
         // Validation: check that the passed account is a variant of Holder: Holder, State or StateFinalized.
         // An additional owner check is happening inside the tag.
-        let tag = crate::account::tag(program_id, account)?;
+        let tag = account.tag(program_id)?;
         assert!(
             tag == TAG_HOLDER || tag == crate::account::TAG_STATE || tag == TAG_STATE_FINALIZED
         );

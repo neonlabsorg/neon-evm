@@ -1,5 +1,5 @@
 use crate::account::{
-    program, AccountsDB, AccountsStatus, Holder, Operator, OperatorBalanceAccount,
+    program, AccountDispatch, AccountsDB, AccountsStatus, Holder, Operator, OperatorBalance,
     OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
     TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
 };
@@ -12,7 +12,7 @@ use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Begin or Continue Transaction from Instruction");
 
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
@@ -22,10 +22,10 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
 
     let storage_info = accounts[0].clone();
 
-    let operator = Operator::from_account(&accounts[1])?;
-    let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
-    let operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
-    let system = program::System::from_account(&accounts[4])?;
+    let operator = Operator::from_account_info(&accounts[1])?;
+    let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
+    let operator_balance = OperatorBalance::try_from_account_info(program_id, &accounts[3])?;
+    let system = program::System::from_account_info(&accounts[4])?;
 
     operator_balance.validate_owner(&operator)?;
 
@@ -37,8 +37,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
         Some(treasury),
     );
 
-    let tag = crate::account::tag(program_id, &storage_info)?;
-    match tag {
+    match storage_info.tag(program_id)? {
         TAG_HOLDER | TAG_STATE_FINALIZED => {
             // Holder's method (fn init_heap) transforms TAG_STATE_FINALIZED into HOLDER
             // and it breaks the logic (of throwing StorageAccountFinalized error).

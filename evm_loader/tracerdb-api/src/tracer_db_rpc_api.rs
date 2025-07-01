@@ -210,4 +210,11 @@ pub trait TracerDbApi {
         write_version: Option<u64>,
         new_slot: u64,
     ) -> RpcResult<()>;
+    #[method(name = "get_account_data_history")]
+    async fn get_account_data_history(
+        &self,
+        pubkey: PubkeyBase58,
+        slot_from: Option<u64>,
+        slot_to: Option<u64>,
+    ) -> RpcResult<Vec<(u64, u64)>>;
 }

@@ -115,7 +115,7 @@ pub trait SyncedAccountStorage: AccountStorage {
     async fn execute_external_instruction(
         &mut self,
         instruction: Instruction,
-        seeds: Vector<Vector<Vector<u8>>>,
+        seeds: &[&[&[u8]]],
         emulated_internally: bool,
     ) -> Result<()>;
 

@@ -8,9 +8,7 @@ use solana_program::{account_info::IntoAccountInfo, pubkey::Pubkey};
 use spl_associated_token_account::get_associated_token_address;
 
 use crate::account::pda_accounts;
-use crate::vector;
 
-use crate::types::Vector;
 use crate::{
     account::token,
     account_storage::FAKE_OPERATOR,
@@ -34,7 +32,7 @@ pub async fn neon_token<State: Database>(
     input: &[u8],
     context: &crate::evm::Context,
     is_static: bool,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     debug_print!("neon_token({})", hex::encode(input));
 
     if &context.contract != address {
@@ -60,7 +58,7 @@ pub async fn neon_token<State: Database>(
 
         withdraw(state, source, chain_id, destination, value).await?;
 
-        let mut output = vector![0_u8; 32];
+        let mut output = vec![0_u8; 32];
         output[31] = 1; // return true
 
         return Ok(output);
@@ -81,7 +79,7 @@ pub async fn neon_token<State: Database>(
 
         withdraw(state, context.caller, chain_id, dest, amount).await?;
 
-        let mut output = vector![0_u8; 32];
+        let mut output = vec![0_u8; 32];
         output[31] = 1; // return true
 
         return Ok(output);
@@ -140,11 +138,13 @@ async fn withdraw<State: Database>(
             create_associated_token_account(&FAKE_OPERATOR, &target, &mint_address, &spl_token::ID);
 
         state
-            .queue_external_instruction(create_associated, vector![], true)
+            .queue_external_instruction(create_associated, &[], true)
             .await?;
     }
 
     let (authority, bump_seed) = pda_accounts::main_pool_authority(state.program_id());
+    let authority_seeds: &[&[u8]] = pda_accounts::main_pool_authority_seeds!(bump_seed);
+
     let pool = get_associated_token_address(&authority, &mint_address);
 
     let transfer = spl_token::instruction::transfer_checked(
@@ -157,11 +157,10 @@ async fn withdraw<State: Database>(
         spl_amount.as_u64(),
         mint_data.decimals,
     )?;
-    let transfer_seeds = pda_accounts::main_pool_authority_seeds(bump_seed);
 
     state.burn(source, chain_id, value).await?;
     state
-        .queue_external_instruction(transfer, vector![transfer_seeds], true)
+        .queue_external_instruction(transfer, &[authority_seeds], true)
         .await?;
 
     Ok(())

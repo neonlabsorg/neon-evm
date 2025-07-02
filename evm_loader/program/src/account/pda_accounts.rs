@@ -1,11 +1,13 @@
-use crate::types::vector::VectorSliceExt;
-use crate::types::Vector;
-use crate::vector;
-use crate::{config::TREASURY_POOL_SEED, types::Address};
+#![allow(unused_macros, unused_imports)]
+
+use crate::{
+    config::{ACCOUNT_SEED_VERSION, TREASURY_POOL_SEED},
+    types::Address,
+};
 use ethnum::U256;
 use solana_program::pubkey::Pubkey;
 
-use super::ACCOUNT_SEED_VERSION;
+// TODO: TEST GLOBAL CACHE
 
 // Program Derived Addresses for all account types in the program.
 // Caution: When adding new account types, make sure no collisions occur with existing seeds.
@@ -47,10 +49,12 @@ pub fn main_pool_authority(program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"Deposit"], program_id)
 }
 
-#[must_use]
-pub fn main_pool_authority_seeds(bump_seed: u8) -> Vector<Vector<u8>> {
-    vector![b"Deposit".to_vector(), vector![bump_seed]]
+macro_rules! main_pool_authority_seeds {
+    ($bump_seed:expr) => {
+        &[b"Deposit", &[$bump_seed]]
+    };
 }
+pub(crate) use main_pool_authority_seeds;
 
 #[must_use]
 pub fn operator_address(
@@ -80,20 +84,34 @@ pub fn balance_address(program_id: &Pubkey, account: &Address, chain_id: u64) ->
     Pubkey::find_program_address(balance_seeds, program_id)
 }
 
+macro_rules! balance_seeds {
+    ($account:expr, $chain_id:expr, $bump_seed:expr) => {
+        &[
+            &[$crate::config::ACCOUNT_SEED_VERSION],
+            $account.as_bytes(),
+            &U256::from($chain_id).to_be_bytes(),
+            &[$bump_seed],
+        ]
+    };
+}
+pub(crate) use balance_seeds;
+
 #[must_use]
 pub fn contract_address(program_id: &Pubkey, contract: &Address) -> (Pubkey, u8) {
     let contract_seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], contract.as_bytes()];
     Pubkey::find_program_address(contract_seeds, program_id)
 }
 
-#[must_use]
-pub fn contract_seeds(contract: &Address, bump_seed: u8) -> Vector<Vector<u8>> {
-    vector![
-        vector![ACCOUNT_SEED_VERSION],
-        contract.as_bytes().to_vector(),
-        vector![bump_seed]
-    ]
+macro_rules! contract_seeds {
+    ($contract:expr, $bump_seed:expr) => {
+        &[
+            &[$crate::config::ACCOUNT_SEED_VERSION],
+            $contract.as_bytes(),
+            &[$bump_seed],
+        ]
+    };
 }
+pub(crate) use contract_seeds;
 
 #[must_use]
 pub fn contract_payer_address(program_id: &Pubkey, contract: &Address) -> (Pubkey, u8) {
@@ -101,15 +119,17 @@ pub fn contract_payer_address(program_id: &Pubkey, contract: &Address) -> (Pubke
     Pubkey::find_program_address(payer_seeds, program_id)
 }
 
-#[must_use]
-pub fn contract_payer_seeds(contract: &Address, bump_seed: u8) -> Vector<Vector<u8>> {
-    vector![
-        vector![ACCOUNT_SEED_VERSION],
-        b"PAYER".to_vector(),
-        contract.as_bytes().to_vector(),
-        vector![bump_seed],
-    ]
+macro_rules! contract_payer_seeds {
+    ($contract:expr, $bump_seed:expr) => {
+        &[
+            &[$crate::config::ACCOUNT_SEED_VERSION],
+            b"PAYER",
+            $contract.as_bytes(),
+            &[$bump_seed],
+        ]
+    };
 }
+pub(crate) use contract_payer_seeds;
 
 #[must_use]
 pub fn contract_auth_address(
@@ -121,20 +141,18 @@ pub fn contract_auth_address(
     Pubkey::find_program_address(auth_seeds, program_id)
 }
 
-#[must_use]
-pub fn contract_auth_seeds(
-    contract: &Address,
-    salt: &[u8; 32],
-    bump_seed: u8,
-) -> Vector<Vector<u8>> {
-    vector![
-        vector![ACCOUNT_SEED_VERSION],
-        b"AUTH".to_vector(),
-        contract.as_bytes().to_vector(),
-        salt.to_vector(),
-        vector![bump_seed],
-    ]
+macro_rules! contract_auth_seeds {
+    ($contract:expr, $salt:expr, $bump_seed:expr) => {
+        &[
+            &[$crate::config::ACCOUNT_SEED_VERSION],
+            b"AUTH",
+            $contract.as_bytes(),
+            $salt,
+            &[$bump_seed],
+        ]
+    };
 }
+pub(crate) use contract_auth_seeds;
 
 #[must_use]
 pub fn contract_data_address(
@@ -151,17 +169,15 @@ pub fn contract_data_address(
     Pubkey::find_program_address(data_seeds, program_id)
 }
 
-#[must_use]
-pub fn contract_data_seeds(
-    contract: &Address,
-    salt: &[u8; 32],
-    bump_seed: u8,
-) -> Vector<Vector<u8>> {
-    vector![
-        vector![ACCOUNT_SEED_VERSION],
-        b"ContractData".to_vector(),
-        contract.as_bytes().to_vector(),
-        salt.to_vector(),
-        vector![bump_seed],
-    ]
+macro_rules! contract_data_seeds {
+    ($contract:expr, $salt:expr, $bump_seed:expr) => {
+        &[
+            &[$crate::config::ACCOUNT_SEED_VERSION],
+            b"ContractData",
+            $contract.as_bytes(),
+            $salt,
+            &[$bump_seed],
+        ]
+    };
 }
+pub(crate) use contract_data_seeds;

@@ -272,7 +272,6 @@ async fn transfer_gas_limit<T: Rpc + BuildConfigSimulator>(
 
 async fn calculate_response<T: Rpc + BuildConfigSimulator, Tr: Tracer>(
     steps_executed: u64,
-    step_on_solana: Option<u64>,
     exit_status: ExitStatus,
     storage: &EmulatorAccountStorage<'_, T>,
     tracer: Option<Tr>,
@@ -280,9 +279,6 @@ async fn calculate_response<T: Rpc + BuildConfigSimulator, Tr: Tracer>(
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     debug!("Execute done, result={exit_status:?}");
     debug!("{steps_executed} steps executed");
-    if let Some(step) = step_on_solana {
-        debug!("Got Solana call on {step}");
-    }
 
     let logs = storage.logs();
     let execute_status = storage.execute_status;
@@ -373,7 +369,7 @@ async fn emulate_trx_single_step<T: Tracer>(
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     let origin = emulate_request.tx.from.address();
 
-    let (exit_status, steps_executed, step_on_solana, tracer, timestamped_contracts) = {
+    let (exit_status, steps_executed, tracer, timestamped_contracts) = {
         let mut backend = SyncedExecutorState::new(storage);
         let mut evm = match Machine::new(tx, origin, &mut backend, tracer).await {
             Ok(evm) => evm,
@@ -383,8 +379,8 @@ async fn emulate_trx_single_step<T: Tracer>(
             }
         };
 
-        let (exit_status, steps_executed, step_on_solana, tracer) =
-            evm.execute(step_limit, &mut backend).await?;
+        let (exit_status, steps_executed) = evm.execute(step_limit, &mut backend).await?;
+        let tracer = evm.into_tracer();
 
         if exit_status == ExitStatus::StepLimit {
             error!("Step_limit={step_limit} exceeded");
@@ -395,20 +391,13 @@ async fn emulate_trx_single_step<T: Tracer>(
         }
 
         let timestamped_contracts = backend.timestamped_contracts.take();
-        (
-            exit_status,
-            steps_executed,
-            step_on_solana,
-            tracer,
-            timestamped_contracts,
-        )
+        (exit_status, steps_executed, tracer, timestamped_contracts)
     };
 
     storage.mark_timestamped_contracts(timestamped_contracts.keys());
 
     calculate_response(
         steps_executed,
-        step_on_solana,
         exit_status,
         storage,
         tracer,
@@ -500,7 +489,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
     )
     .await?;
 
-    let (exit_status, steps_executed, step_on_solana, tracer, timestamped_contracts) = {
+    let (exit_status, steps_executed, tracer, timestamped_contracts) = {
         let mut backend = SyncedExecutorState::new(&mut storage);
 
         let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
@@ -513,7 +502,6 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
         let mut exit_status = ExitStatus::StepLimit;
         let mut steps_executed = 0u64;
-        let mut step_on_solana = None;
         let mut tracer_result: Option<T> = evm.take_tracer();
         for execution_step in &execution_map.steps {
             if execution_step.is_reset {
@@ -586,13 +574,14 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
             }
 
             evm.set_tracer(tracer_result);
-            let (local_exit_status, local_steps_executed, local_step_on_solana, local_tracer) = evm
+            let (local_exit_status, local_steps_executed) = evm
                 .execute(u64::from(execution_step.steps), &mut backend)
                 .await?;
 
+            let local_tracer = evm.take_tracer();
+
             exit_status = local_exit_status;
             steps_executed += local_steps_executed;
-            step_on_solana = local_step_on_solana;
             tracer_result = local_tracer;
         }
 
@@ -608,7 +597,6 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
         (
             exit_status,
             steps_executed,
-            step_on_solana,
             tracer_result,
             timestamped_contracts,
         )
@@ -618,7 +606,6 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
     calculate_response(
         steps_executed,
-        step_on_solana,
         exit_status,
         &storage,
         tracer,

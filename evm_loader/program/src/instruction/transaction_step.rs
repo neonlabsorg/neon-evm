@@ -83,7 +83,7 @@ pub fn do_continue(
         let mut steps_executed = 0;
 
         if backend.exit_status().is_none() {
-            let (exit_status, steps_returned, _, _) = evm.execute(step_count, &mut backend)?;
+            let (exit_status, steps_returned) = evm.execute(step_count, &mut backend)?;
 
             if let ExitStatus::Interrupted(state) = exit_status {
                 root.interrupted_state = *state;

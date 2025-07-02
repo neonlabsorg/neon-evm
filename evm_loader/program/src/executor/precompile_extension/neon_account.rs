@@ -7,7 +7,7 @@ use maybe_async::maybe_async;
 use crate::{
     error::{Error, Result},
     evm::database::Database,
-    types::{vector::VectorSliceExt, Address, Vector},
+    types::Address,
 };
 
 //-------------------------------------------
@@ -22,7 +22,7 @@ pub async fn neon_account<State: Database>(
     input: &[u8],
     context: &crate::evm::Context,
     _is_static: bool,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     debug_print!("neon_account({})", hex::encode(input));
 
     if context.value != 0 {
@@ -51,7 +51,7 @@ pub async fn neon_account<State: Database>(
 }
 
 #[maybe_async]
-async fn is_solana_user<State: Database>(state: &State, address: Address) -> Result<Vector<u8>> {
+async fn is_solana_user<State: Database>(state: &State, address: Address) -> Result<Vec<u8>> {
     let pubkey = state.solana_user_address(address).await?;
     let result = if pubkey.is_some() {
         U256::ONE.to_be_bytes()
@@ -59,13 +59,13 @@ async fn is_solana_user<State: Database>(state: &State, address: Address) -> Res
         U256::ZERO.to_be_bytes()
     };
 
-    Ok(result.to_vector())
+    Ok(result.to_vec())
 }
 
 #[maybe_async]
-async fn solana_address<State: Database>(state: &State, address: Address) -> Result<Vector<u8>> {
+async fn solana_address<State: Database>(state: &State, address: Address) -> Result<Vec<u8>> {
     let pubkey = state.solana_user_address(address).await?;
     let result = pubkey.unwrap_or_default().to_bytes();
 
-    Ok(result.to_vector())
+    Ok(result.to_vec())
 }

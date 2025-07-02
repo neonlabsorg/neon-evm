@@ -1345,18 +1345,12 @@ impl<T: EventListener> Machine<T> {
         backend: &mut impl Database,
         address: &Address,
     ) -> Result<Action> {
-        let result = match Self::precompile(address, &self.call_data).map(Ok) {
-            Some(x) => Some(x),
-            None => {
-                backend
-                    .precompile_extension(&self.context, address, &self.call_data, self.is_static)
+        match self.try_call_precompile(address, backend).await {
+            Some(Ok(return_data)) => {
+                self.opcode_return_impl(return_data.to_vector(), backend)
                     .await
             }
-        };
-
-        match result {
-            Some(Ok(return_data)) => self.opcode_return_impl(return_data, backend).await,
-            Some(Err(Error::InterruptedCall(state))) => Ok(Action::Interrupted(Box::new(*state))),
+            Some(Err(Error::InterruptedCall(state))) => Ok(Action::Interrupted(state)),
             Some(Err(e)) => Err(e),
             None => Ok(Action::Noop),
         }

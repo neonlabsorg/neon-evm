@@ -1239,7 +1239,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
     async fn execute_external_instruction(
         &mut self,
         instruction: Instruction,
-        seeds: Vector<Vector<Vector<u8>>>,
+        seeds: &[&[&[u8]]],
         emulated_internally: bool,
     ) -> evm_loader::error::Result<()> {
         use solana_sdk::{message::Message, signature::Signer, transaction::Transaction};
@@ -1262,11 +1262,7 @@ impl<T: Rpc> SyncedAccountStorage for EmulatorAccountStorage<'_, T> {
 
         let signers = seeds
             .iter()
-            .map(|s| {
-                let seed = s.iter().map(Vector::as_slice).collect::<Vec<_>>();
-                let signer = Pubkey::create_program_address(&seed, &self.program_id)?;
-                Ok(signer)
-            })
+            .map(|s| Pubkey::create_program_address(s, &self.program_id))
             .collect::<Result<HashSet<_>, PubkeyError>>()?;
         info!("Signers: {signers:?}");
 

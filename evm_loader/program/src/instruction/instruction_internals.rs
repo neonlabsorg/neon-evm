@@ -13,6 +13,7 @@ use crate::evm::{ExitStatus, Machine};
 use crate::executor::precompile_extension::call_solana::execute_external_instruction;
 use crate::executor::{Action, ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
+use crate::types::vector::VectorSliceExt;
 use crate::types::Vector;
 use crate::types::{Transaction, TrxView};
 
@@ -192,7 +193,7 @@ pub fn finalize_interrupted(
 ) -> Result<()> {
     debug_print!("finalize_interrupted");
 
-    let (exit_reason, steps_executed, _, _) = {
+    let (exit_reason, steps_executed) = {
         let mut state_ref = storage.executor_state_mut();
         let state_data = state_ref.as_mut().unwrap();
         accounts.apply_state_change(state_data.into_actions())?;
@@ -204,6 +205,12 @@ pub fn finalize_interrupted(
             .interrupted_state()
             .expect("storage.interrupted_state should be Some within finalize_interrupted context");
 
+        let signer_seeds = interrupted_state
+            .signer_seeds
+            .iter()
+            .map(|s| s.as_slice())
+            .collect::<Vec<_>>();
+
         let result = execute_external_instruction(
             &mut backend,
             evm.context(),
@@ -212,11 +219,11 @@ pub fn finalize_interrupted(
                 accounts: interrupted_state.instruction.accounts.to_vec(),
                 data: interrupted_state.instruction.data.to_vec(),
             },
-            interrupted_state.signer_seeds.clone(),
+            &signer_seeds,
             interrupted_state.lamports,
         );
         if let Ok(return_data) = result {
-            evm.opcode_return_impl(return_data, &mut backend)?;
+            evm.opcode_return_impl(return_data.to_vector(), &mut backend)?;
             evm.increment_pc();
         }
         evm.execute(u64::MAX, &mut backend)?

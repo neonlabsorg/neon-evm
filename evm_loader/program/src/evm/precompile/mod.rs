@@ -1,6 +1,11 @@
+use maybe_async::maybe_async;
+
+use crate::error::Result;
 use crate::evm::tracing::EventListener;
 use crate::evm::Machine;
-use crate::types::{Address, Vector};
+use crate::types::Address;
+
+use super::database::Database;
 
 mod big_mod_exp;
 mod blake2_f;
@@ -57,9 +62,12 @@ pub fn is_precompile_address(address: &Address) -> bool {
         || *address == SYSTEM_ACCOUNT_BLAKE2F
 }
 
-impl<T: EventListener> Machine<T> {
+impl<T> Machine<T>
+where
+    T: EventListener,
+{
     #[must_use]
-    pub fn precompile(address: &Address, data: &[u8]) -> Option<Vector<u8>> {
+    pub fn standard_precompile(address: &Address, data: &[u8]) -> Option<Vec<u8>> {
         match *address {
             SYSTEM_ACCOUNT_ECRECOVER => Some(ecrecover::ecrecover(data)),
             SYSTEM_ACCOUNT_SHA_256 => Some(sha256::sha256(data)),
@@ -72,5 +80,21 @@ impl<T: EventListener> Machine<T> {
             SYSTEM_ACCOUNT_BLAKE2F => Some(blake2_f::blake2_f(data)),
             _ => None,
         }
+    }
+
+    #[maybe_async]
+    pub async fn try_call_precompile(
+        &self,
+        address: &Address,
+        backend: &mut impl Database,
+    ) -> Option<Result<Vec<u8>>> {
+        let value = Self::standard_precompile(address, &self.call_data);
+        if let Some(value) = value {
+            return Some(Ok(value));
+        }
+
+        backend
+            .precompile_extension(&self.context, address, &self.call_data, self.is_static)
+            .await
     }
 }

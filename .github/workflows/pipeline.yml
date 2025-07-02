@@ -117,7 +117,7 @@ jobs:
 
       - name: Run tests
         run: |
-          docker exec ${{ env.TEST_CONTAINER_NAME }} python3 clickfile.py run evm --numprocesses 8 --network "${{ env.NETWORK }}"
+          docker exec ${{ env.TEST_CONTAINER_NAME }} python3 clickfile.py run evm --numprocesses 12 --network "${{ env.NETWORK }}"
 
       - name: Get container logs
         if: always()

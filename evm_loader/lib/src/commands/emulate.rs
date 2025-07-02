@@ -6,11 +6,10 @@ use crate::config::DbConfig;
 use crate::rpc::Rpc;
 use crate::rpc::{CallDbClient, RpcEnum};
 use crate::sysvar::get_sysvar;
-use crate::tracing::tracers::Tracer;
+use crate::tracing::tracers::{Tracer, TracerTypeEnum};
 use crate::tracing::{AccountOverride, BlockOverrides};
-use crate::types::FromAddress;
-use crate::types::TracerDb;
-use crate::types::{AccountInfoLevel, EmulateRequest};
+use crate::types::{AccountInfoLevel, EmulateFromHolderApiRequest, EmulateRequest};
+use crate::types::{FromAddress, TracerDb};
 
 use crate::{
     account_storage::{EmulatorAccountStorage, SyncedAccountStorage},
@@ -115,6 +114,42 @@ fn init_overrides(emulate_request: &EmulateRequest) -> Overrides {
         blocks,
         states,
         solana_accounts,
+    }
+}
+
+pub async fn execute_from_holder(
+    rpc: &impl BuildConfigSimulator,
+    program_id: &Pubkey,
+    emulate_request: EmulateFromHolderApiRequest,
+) -> NeonResult<(EmulateResponse, Option<Value>)> {
+    let holder_key = emulate_request.holder_pubkey;
+
+    let response = crate::commands::get_holder::execute(rpc, program_id, holder_key).await?;
+
+    match response.status {
+        crate::commands::get_holder::Status::Empty => Err(NeonError::AccountNotFound(holder_key)),
+        crate::commands::get_holder::Status::Active => {
+            execute(
+                rpc,
+                None,
+                program_id,
+                EmulateRequest {
+                    tx: response
+                        .tx_data
+                        .ok_or(NeonError::AccountInvalidStatus(holder_key))?,
+                    step_limit: emulate_request.step_limit,
+                    chains: emulate_request.chains,
+                    trace_config: None,
+                    accounts: response.accounts.unwrap_or(Vec::new()),
+                    solana_overrides: None,
+                    provide_account_info: None,
+                    execution_map: None,
+                },
+                None::<TracerTypeEnum>,
+            )
+            .await
+        }
+        _ => Err(NeonError::AccountInvalidStatus(holder_key)),
     }
 }
 

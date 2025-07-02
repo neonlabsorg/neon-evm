@@ -364,6 +364,18 @@ pub struct EmulateRequest {
     pub execution_map: Option<ExecutionMap>,
 }
 
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmulateFromHolderApiRequest {
+    #[serde_as(as = "DisplayFromStr")]
+    pub holder_pubkey: Pubkey,
+    pub step_limit: Option<u64>,
+    pub chains: Option<Vec<ChainInfo>>,
+    pub slot: Option<u64>,
+    pub tx_index_in_block: Option<u64>,
+    pub id: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulateApiRequest {
     #[serde(flatten)]

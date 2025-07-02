@@ -46,6 +46,8 @@ use strum_macros::{AsRefStr, Display, EnumString, IntoStaticStr};
 pub enum LibMethod {
     #[strum(serialize = "emulate")]
     Emulate,
+    #[strum(serialize = "emulate_from_holder")]
+    EmulateFromHolder,
     #[strum(serialize = "get_storage_at")]
     GetStorageAt,
     #[strum(serialize = "config")]

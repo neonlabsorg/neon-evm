@@ -3,10 +3,9 @@ use std::mem::size_of;
 
 use super::treasury::Treasury;
 use super::{
-    pda_accounts, Account, AccountDispatch, AccountHeader, AccountsDB, BalanceAccount, Operator,
+    pda, Account, AccountDispatch, AccountHeader, AccountsDB, BalanceAccount, Operator,
     ACCOUNT_PREFIX_LEN, TAG_TRANSACTION_TREE,
 };
-use crate::config::ACCOUNT_SEED_VERSION;
 use crate::config::{
     BASE_ITERATIVE_TRANSACTION_COST, TREE_ACCOUNT_DESTROY_FEE, TREE_ACCOUNT_FINISH_TRANSACTION_GAS,
     TREE_ACCOUNT_TIMEOUT,
@@ -123,7 +122,7 @@ impl<'a> TransactionTree<'a> {
         chain_id: u64,
         nonce: u64,
     ) -> (Pubkey, u8) {
-        pda_accounts::tree_account_address(program_id, payer, chain_id, nonce)
+        pda::tree_account_address(program_id, payer, chain_id, nonce)
     }
 
     pub fn create(
@@ -193,15 +192,7 @@ impl<'a> TransactionTree<'a> {
         }
 
         // Create account
-        let seeds: &[&[u8]] = &[
-            &[ACCOUNT_SEED_VERSION],
-            b"TREE",
-            init.payer.as_bytes(),
-            &init.chain_id.to_le_bytes(),
-            &init.nonce.to_le_bytes(),
-            &[bump],
-        ];
-
+        let seeds: &[&[u8]] = pda::tree_account_seeds!(init, bump);
         let space = Self::required_account_size(nodes.len());
 
         let system = db.system();

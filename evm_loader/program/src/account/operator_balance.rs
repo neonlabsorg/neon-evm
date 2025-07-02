@@ -1,7 +1,7 @@
 use std::cell::{Ref, RefMut};
 use std::mem::size_of;
 
-use crate::config::ACCOUNT_SEED_VERSION;
+use crate::account::pda;
 use crate::{
     error::{Error, Result},
     types::{Address, Transaction, TrxView},
@@ -84,19 +84,12 @@ impl<'a> OperatorBalance<'a> {
         }
 
         // Create a new account
-        let program_seeds: &[&[u8]] = &[
-            &[ACCOUNT_SEED_VERSION],
-            operator.key.as_ref(),
-            address.as_bytes(),
-            &U256::from(chain_id).to_be_bytes(),
-            &[bump_seed],
-        ];
-
+        let seeds: &[&[u8]] = pda::operator_seeds!(operator.key, address, chain_id, bump_seed);
         system.create_pda_account(
             &crate::ID,
             operator,
             &account,
-            program_seeds,
+            seeds,
             Self::required_account_size(),
             rent,
         )?;

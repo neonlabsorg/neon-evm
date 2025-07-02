@@ -8,7 +8,7 @@ use solana_program::{
 
 use super::create_account;
 use crate::{
-    account::pda_accounts,
+    account::pda,
     account_storage::FAKE_OPERATOR,
     error::{Error, Result},
     evm::database::Database,
@@ -267,12 +267,13 @@ async fn initialize_mint<State: Database>(
     mint_authority: Option<Pubkey>,
     freeze_authority: Option<Pubkey>,
 ) -> Result<Vec<u8>> {
-    let signer = context.caller;
-    let (signer_pubkey, _) = state.contract_pubkey(signer);
+    let program_id = state.program_id();
 
-    let (mint_key, bump_seed) =
-        pda_accounts::contract_data_address(state.program_id(), &signer, seed);
-    let seeds: &[&[u8]] = pda_accounts::contract_data_seeds!(signer, seed, bump_seed);
+    let signer = context.caller;
+    let (signer_pubkey, _) = pda::contract_address(program_id, &signer);
+
+    let (mint_key, bump_seed) = pda::contract_data_address(program_id, &signer, seed);
+    let seeds: &[&[u8]] = pda::contract_data_seeds!(signer, seed, bump_seed);
 
     let account = state.external_account(mint_key).await?;
     if !system_program::check_id(&account.owner) {
@@ -310,12 +311,13 @@ async fn initialize_account<State: Database>(
     mint: Pubkey,
     owner: Option<Pubkey>,
 ) -> Result<Vec<u8>> {
-    let signer = context.caller;
-    let (signer_pubkey, _) = state.contract_pubkey(signer);
+    let program_id = state.program_id();
 
-    let (account_key, bump_seed) =
-        pda_accounts::contract_data_address(state.program_id(), &signer, seed);
-    let seeds: &[&[u8]] = pda_accounts::contract_data_seeds!(&signer, seed, bump_seed);
+    let signer = context.caller;
+    let (signer_pubkey, _) = pda::contract_address(program_id, &signer);
+
+    let (account_key, bump_seed) = pda::contract_data_address(program_id, &signer, seed);
+    let seeds: &[&[u8]] = pda::contract_data_seeds!(&signer, seed, bump_seed);
 
     let account = state.external_account(account_key).await?;
     if !system_program::check_id(&account.owner) {
@@ -350,9 +352,11 @@ async fn close_account<State: Database>(
     state: &mut State,
     account: Pubkey,
 ) -> Result<Vec<u8>> {
+    let program_id = state.program_id();
+
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds: &[&[u8]] = pda_accounts::contract_seeds!(signer, bump_seed);
+    let (signer_pubkey, bump_seed) = pda::contract_address(program_id, &signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let close_account = spl_token::instruction::close_account(
         &spl_token::ID,
@@ -376,9 +380,11 @@ async fn approve<State: Database>(
     target: Pubkey,
     amount: u64,
 ) -> Result<Vec<u8>> {
+    let program_id = state.program_id();
+
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds: &[&[u8]] = pda_accounts::contract_seeds!(signer, bump_seed);
+    let (signer_pubkey, bump_seed) = pda::contract_address(program_id, &signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let approve = spl_token::instruction::approve(
         &spl_token::ID,
@@ -401,9 +407,11 @@ async fn revoke<State: Database>(
     state: &mut State,
     account: Pubkey,
 ) -> Result<Vec<u8>> {
+    let program_id = state.program_id();
+
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds: &[&[u8]] = pda_accounts::contract_seeds!(signer, bump_seed);
+    let (signer_pubkey, bump_seed) = pda::contract_address(program_id, &signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let revoke = spl_token::instruction::revoke(&spl_token::ID, &account, &signer_pubkey, &[])?;
     state
@@ -425,9 +433,11 @@ async fn transfer<State: Database>(
         return Ok(vec![]);
     }
 
+    let program_id = state.program_id();
+
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds: &[&[u8]] = pda_accounts::contract_seeds!(signer, bump_seed);
+    let (signer_pubkey, bump_seed) = pda::contract_address(program_id, &signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let transfer = spl_token::instruction::transfer(
         &spl_token::ID,
@@ -457,10 +467,11 @@ async fn transfer_with_seed<State: Database>(
         return Ok(vec![]);
     }
 
+    let program_id = state.program_id();
+
     let signer = context.caller;
-    let (signer_pubkey, signer_seed) =
-        pda_accounts::contract_auth_address(state.program_id(), &signer, seed);
-    let seeds: &[&[u8]] = pda_accounts::contract_auth_seeds!(signer, seed, signer_seed);
+    let (signer_pubkey, signer_seed) = pda::contract_auth_address(program_id, &signer, seed);
+    let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, seed, signer_seed);
 
     let transfer = spl_token::instruction::transfer(
         &spl_token::ID,
@@ -489,9 +500,11 @@ async fn mint_to<State: Database>(
         return Ok(vec![]);
     }
 
+    let program_id = state.program_id();
+
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds: &[&[u8]] = pda_accounts::contract_seeds!(signer, bump_seed);
+    let (signer_pubkey, bump_seed) = pda::contract_address(program_id, &signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let mint_to = spl_token::instruction::mint_to(
         &spl_token::ID,
@@ -520,9 +533,11 @@ async fn burn<State: Database>(
         return Ok(vec![]);
     }
 
+    let program_id = state.program_id();
+
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds: &[&[u8]] = pda_accounts::contract_seeds!(signer, bump_seed);
+    let (signer_pubkey, bump_seed) = pda::contract_address(program_id, &signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     #[rustfmt::skip]
     let burn = spl_token::instruction::burn(
@@ -547,9 +562,11 @@ async fn freeze<State: Database>(
     mint: Pubkey,
     target: Pubkey,
 ) -> Result<Vec<u8>> {
+    let program_id = state.program_id();
+
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds: &[&[u8]] = pda_accounts::contract_seeds!(signer, bump_seed);
+    let (signer_pubkey, bump_seed) = pda::contract_address(program_id, &signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let freeze = spl_token::instruction::freeze_account(
         &spl_token::ID,
@@ -572,9 +589,11 @@ async fn thaw<State: Database>(
     mint: Pubkey,
     target: Pubkey,
 ) -> Result<Vec<u8>> {
+    let program_id = state.program_id();
+
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds: &[&[u8]] = pda_accounts::contract_seeds!(signer, bump_seed);
+    let (signer_pubkey, bump_seed) = pda::contract_address(program_id, &signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     #[rustfmt::skip]
     let thaw = spl_token::instruction::thaw_account(
@@ -598,8 +617,9 @@ fn find_account<State: Database>(
     seed: &[u8; 32],
 ) -> Result<Vec<u8>> {
     let program_id = state.program_id();
+
     let signer = context.caller;
-    let (account_key, _) = pda_accounts::contract_data_address(program_id, &signer, seed);
+    let (account_key, _) = pda::contract_data_address(program_id, &signer, seed);
 
     Ok(account_key.to_bytes().to_vec())
 }

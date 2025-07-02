@@ -1,7 +1,7 @@
 use crate::account::program::System;
 use crate::account::{
-    pda_accounts, token, AccountsDB, BalanceAccount, NodeInitializer, Operator, TransactionTree,
-    Treasury, TreeInitializer, NO_CHILD_TRANSACTION,
+    pda, token, AccountsDB, BalanceAccount, NodeInitializer, Operator, TransactionTree, Treasury,
+    TreeInitializer, NO_CHILD_TRANSACTION,
 };
 use crate::config::SOL_CHAIN_ID;
 use crate::debug::log_data;
@@ -50,9 +50,8 @@ fn validate_scheduled_tx(tx: &ScheduledTxShell, payer: Address) -> Result<U256> 
 }
 
 pub fn validate_pool(pool: &token::State) -> Result<()> {
-    let (authority_address, _) = pda_accounts::main_pool_authority(&crate::ID);
-    let expected_pool =
-        get_associated_token_address(&authority_address, &spl_token::native_mint::ID);
+    let (authority, _) = pda::main_pool_authority(&crate::ID);
+    let expected_pool = get_associated_token_address(&authority, &spl_token::native_mint::ID);
 
     if &expected_pool != pool.info.key {
         return Err(Error::AccountInvalidKey(*pool.info.key, expected_pool));

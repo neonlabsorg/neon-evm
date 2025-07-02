@@ -1,5 +1,5 @@
 use crate::{
-    account::pda_accounts,
+    account::pda,
     account_storage::FAKE_OPERATOR,
     error::{Error, Result},
     evm::database::Database,
@@ -53,6 +53,8 @@ pub async fn call_solana<State: Database>(
         ));
     }
 
+    let program_id = state.program_id();
+
     let (selector, input) = input.split_at(4);
     let selector: [u8; 4] = selector.try_into()?;
 
@@ -71,9 +73,10 @@ pub async fn call_solana<State: Database>(
                 bincode::deserialize(&input[32 + offset..]).map_err(|_| Error::OutOfBounds)?;
 
             let signer = context.caller;
-            let (_signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-            let signer_seeds: &[&[u8]] = pda_accounts::contract_seeds!(signer, bump_seed);
-            execute_external_instruction(state, context, instruction, signer_seeds, None).await
+            let (_, bump_seed) = pda::contract_address(program_id, &signer);
+            let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
+
+            execute_external_instruction(state, context, instruction, seeds, None).await
         }
         // "c549a7af": "execute(uint64,bytes)",
         [0xc5, 0x49, 0xa7, 0xaf] => {
@@ -87,14 +90,14 @@ pub async fn call_solana<State: Database>(
                 bincode::deserialize(&input[offset + 32..]).map_err(|_| Error::OutOfBounds)?;
 
             let signer = context.caller;
-            let (_signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-            let signer_seeds: &[&[u8]] = pda_accounts::contract_seeds!(signer, bump_seed);
+            let (_, bump_seed) = pda::contract_address(program_id, &signer);
+            let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
             execute_external_instruction(
                 state,
                 context,
                 instruction,
-                signer_seeds,
+                seeds,
                 Some(required_lamports),
             )
             .await
@@ -108,13 +111,11 @@ pub async fn call_solana<State: Database>(
 
             let salt = read_salt(input)?;
             let offset = read_usize(&input[32..])?;
-            let instruction: Instruction =
-                bincode::deserialize(&input[offset + 32..]).map_err(|_| Error::OutOfBounds)?;
+            let instruction: Instruction = bincode::deserialize(&input[offset + 32..])?;
 
-            let (_, signer_seed) =
-                pda_accounts::contract_auth_address(state.program_id(), &context.caller, salt);
-            let seeds: &[&[u8]] =
-                pda_accounts::contract_auth_seeds!(&context.caller, salt, signer_seed);
+            let signer = context.caller;
+            let (_, bump_seed) = pda::contract_auth_address(program_id, &signer, salt);
+            let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
 
             execute_external_instruction(state, context, instruction, seeds, None).await
         }
@@ -128,13 +129,11 @@ pub async fn call_solana<State: Database>(
             let required_lamports = read_u64(&input[0..])?;
             let salt = read_salt(&input[32..])?;
             let offset = read_usize(&input[64..])?;
-            let instruction: Instruction =
-                bincode::deserialize(&input[offset + 32..]).map_err(|_| Error::OutOfBounds)?;
+            let instruction: Instruction = bincode::deserialize(&input[offset + 32..])?;
 
-            let (_, signer_seed) =
-                pda_accounts::contract_auth_address(state.program_id(), &context.caller, salt);
-            let seeds: &[&[u8]] =
-                pda_accounts::contract_auth_seeds!(&context.caller, salt, signer_seed);
+            let signer = context.caller;
+            let (_, bump_seed) = pda::contract_auth_address(program_id, &signer, salt);
+            let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
 
             execute_external_instruction(
                 state,
@@ -157,14 +156,14 @@ pub async fn call_solana<State: Database>(
             let instruction = read_instruction(&input[instruction_offset..])?;
 
             let signer = context.caller;
-            let (_signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-            let signer_seeds: &[&[u8]] = pda_accounts::contract_seeds!(&signer, bump_seed);
+            let (_, bump_seed) = pda::contract_address(program_id, &signer);
+            let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
             execute_external_instruction(
                 state,
                 context,
                 instruction,
-                signer_seeds,
+                seeds,
                 Some(required_lamports),
             )
             .await
@@ -180,10 +179,10 @@ pub async fn call_solana<State: Database>(
             let instruction = read_instruction(&input[instruction_offset..])?;
 
             let signer = context.caller;
-            let (_signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-            let signer_seeds: &[&[u8]] = pda_accounts::contract_seeds!(&signer, bump_seed);
+            let (_, bump_seed) = pda::contract_address(program_id, &signer);
+            let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
-            execute_external_instruction(state, context, instruction, signer_seeds, None).await
+            execute_external_instruction(state, context, instruction, seeds, None).await
         }
 
         // "8ea46ee8": "executeWithSeed(bytes32,(bytes32,(bytes32,bool,bool)[],bytes))",
@@ -196,10 +195,10 @@ pub async fn call_solana<State: Database>(
             let instruction_offset = read_usize(&input[32..])?;
             let instruction = read_instruction(&input[instruction_offset..])?;
 
-            let (_, signer_seed) =
-                pda_accounts::contract_auth_address(state.program_id(), &context.caller, salt);
-            let seeds: &[&[u8]] =
-                pda_accounts::contract_auth_seeds!(&context.caller, salt, signer_seed);
+            let signer = context.caller;
+            let (_, bump_seed) = pda::contract_auth_address(program_id, &signer, salt);
+            let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
+
             execute_external_instruction(state, context, instruction, seeds, None).await
         }
 
@@ -214,10 +213,10 @@ pub async fn call_solana<State: Database>(
             let instruction_offset = read_usize(&input[64..])?;
             let instruction = read_instruction(&input[instruction_offset..])?;
 
-            let (_, signer_seed) =
-                pda_accounts::contract_auth_address(state.program_id(), &context.caller, salt);
-            let seeds: &[&[u8]] =
-                pda_accounts::contract_auth_seeds!(&context.caller, salt, signer_seed);
+            let signer = context.caller;
+            let (_, bump_seed) = pda::contract_auth_address(program_id, &signer, salt);
+            let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
+
             execute_external_instruction(
                 state,
                 context,
@@ -238,16 +237,14 @@ pub async fn call_solana<State: Database>(
         // "59e4ad63": "getResourceAddress(bytes32)"
         [0x59, 0xe4, 0xad, 0x63] => {
             let salt = read_salt(input)?;
-            let (sol_address, _) =
-                pda_accounts::contract_data_address(state.program_id(), &context.caller, salt);
+            let (sol_address, _) = pda::contract_data_address(program_id, &context.caller, salt);
             Ok(sol_address.to_bytes().to_vec())
         }
 
         // "cd2d1a3a": "getExtAuthority(bytes32)"
         [0xcd, 0x2d, 0x1a, 0x3a] => {
             let salt = read_salt(input)?;
-            let (sol_address, _) =
-                pda_accounts::contract_auth_address(state.program_id(), &context.caller, salt);
+            let (sol_address, _) = pda::contract_auth_address(program_id, &context.caller, salt);
             Ok(sol_address.to_bytes().to_vec())
         }
 
@@ -269,8 +266,7 @@ pub async fn call_solana<State: Database>(
 
         // "30aa81c6": "getPayer()"
         [0x30, 0xaa, 0x81, 0xc6] => {
-            let (sol_address, _) =
-                pda_accounts::contract_payer_address(state.program_id(), &context.caller);
+            let (sol_address, _) = pda::contract_payer_address(program_id, &context.caller);
             Ok(sol_address.to_bytes().to_vec())
         }
 
@@ -285,10 +281,10 @@ pub async fn call_solana<State: Database>(
             let _lamports = read_u64(&input[64..])?;
             let owner = read_pubkey(&input[96..])?;
 
-            let (sol_address, bump_seed) =
-                pda_accounts::contract_data_address(state.program_id(), &context.caller, salt);
-            let seeds: &[&[u8]] =
-                pda_accounts::contract_data_seeds!(&context.caller, salt, bump_seed);
+            let signer = context.caller;
+            let (sol_address, bump_seed) = pda::contract_data_address(program_id, &signer, salt);
+            let seeds: &[&[u8]] = pda::contract_data_seeds!(signer, salt, bump_seed);
+
             let account = state.external_account(sol_address).await?;
 
             super::create_account(state, &account, space, &owner, seeds).await?;
@@ -361,32 +357,32 @@ pub async fn execute_external_instruction<State: Database>(
         ))));
     }
 
+    let program_id = *state.program_id();
     let called_program = instruction.program_id;
+
     state.set_return_data(&[]);
 
-    if called_program == *state.program_id() {
+    if called_program == program_id {
         return Err(Error::RecursiveCall);
     }
 
     for meta in &instruction.accounts {
         if meta.pubkey == FAKE_OPERATOR
             || meta.pubkey == state.operator()
-            || meta.pubkey == *state.program_id()
+            || meta.pubkey == program_id
         {
             return Err(Error::InvalidAccountForCall(meta.pubkey));
         }
     }
 
-    let (payer_pubkey, payer_bump_seed) =
-        pda_accounts::contract_payer_address(state.program_id(), &context.caller);
+    let (payer_pubkey, payer_bump_seed) = pda::contract_payer_address(&program_id, &context.caller);
     let required_payer = instruction
         .accounts
         .iter()
         .any(|meta| meta.pubkey == payer_pubkey);
 
     if required_payer {
-        let payer_seeds: &[&[u8]] =
-            pda_accounts::contract_payer_seeds!(&context.caller, payer_bump_seed);
+        let payer_seeds: &[&[u8]] = pda::contract_payer_seeds!(&context.caller, payer_bump_seed);
 
         let payer = state.external_account(payer_pubkey).await?;
         if match required_lamports {
@@ -426,16 +422,12 @@ pub async fn execute_external_instruction<State: Database>(
             .queue_external_instruction(instruction, &[signer_seeds], false)
             .await?;
     }
-    let return_data = state
+
+    let (_, return_data) = state
         .return_data()
-        .and_then(|(program, data)| {
-            if program == called_program {
-                Some(data)
-            } else {
-                None
-            }
-        })
+        .filter(|(program, _)| program == &called_program)
         .unwrap_or_default();
+
     Ok(to_solidity_bytes(&return_data))
 }
 

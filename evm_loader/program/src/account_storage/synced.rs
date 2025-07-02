@@ -102,15 +102,9 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
     fn execute_external_instruction(
         &mut self,
         mut instruction: Instruction,
-        seeds: Vector<Vector<Vector<u8>>>,
+        seeds: &[&[&[u8]]],
         _emulated_internally: bool,
     ) -> Result<()> {
-        let seeds = seeds
-            .iter()
-            .map(|s| s.iter().map(|s| s.as_slice()).collect::<Vec<_>>())
-            .collect::<Vec<_>>();
-        let seeds = seeds.iter().map(|s| s.as_slice()).collect::<Vec<_>>();
-
         let mut accounts_info = Vec::with_capacity(instruction.accounts.len() + 1);
 
         let program = self.accounts.get(&instruction.program_id).clone();
@@ -129,7 +123,7 @@ impl<'a> SyncedAccountStorage for crate::account_storage::ProgramAccountStorage<
             data: instruction.data,
         };
         if !seeds.is_empty() {
-            invoke_signed_unchecked(&instruction, &accounts_info, &seeds)?;
+            invoke_signed_unchecked(&instruction, &accounts_info, seeds)?;
         } else {
             invoke_unchecked(&instruction, &accounts_info)?;
         }

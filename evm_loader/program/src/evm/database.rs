@@ -69,7 +69,7 @@ pub trait Database: LogCollector {
     async fn queue_external_instruction(
         &mut self,
         instruction: Instruction,
-        seeds: Vector<Vector<Vector<u8>>>,
+        seeds: &[&[&[u8]]],
         emulated_internally: bool,
     ) -> Result<()>;
 
@@ -79,7 +79,7 @@ pub trait Database: LogCollector {
         address: &Address,
         data: &[u8],
         is_static: bool,
-    ) -> Option<Result<Vector<u8>>>;
+    ) -> Option<Result<Vec<u8>>>;
 }
 
 /// Provides convenience methods that can be implemented in terms of `Database`.

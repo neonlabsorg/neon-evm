@@ -92,3 +92,26 @@ impl<T> VectorVecSlowExt<T> for Vec<T> {
         ret
     }
 }
+
+#[must_use]
+pub fn seeds2_to_vector(seeds: &[&[u8]]) -> Vector<Vector<u8>> {
+    let mut ret = Vector::with_capacity_in(seeds.len(), acc_allocator());
+    for seed in seeds {
+        ret.push(seed.to_vector());
+    }
+    ret
+}
+
+#[must_use]
+pub fn seeds3_to_vector(program_seeds: &[&[&[u8]]]) -> Vector<Vector<Vector<u8>>> {
+    let mut ret = Vector::with_capacity_in(program_seeds.len(), acc_allocator());
+    for account_seeds in program_seeds {
+        let mut inner = Vector::with_capacity_in(account_seeds.len(), acc_allocator());
+        for seed in *account_seeds {
+            inner.push(seed.to_vector());
+        }
+
+        ret.push(inner);
+    }
+    ret
+}

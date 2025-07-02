@@ -358,7 +358,7 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
         address: &Address,
         data: &[u8],
         is_static: bool,
-    ) -> Option<Result<Vector<u8>>> {
+    ) -> Option<Result<Vec<u8>>> {
         PrecompiledContracts::call_precompile_extension(self, context, address, data, is_static)
             .await
     }
@@ -383,7 +383,7 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
     async fn queue_external_instruction(
         &mut self,
         instruction: Instruction,
-        seeds: Vector<Vector<Vector<u8>>>,
+        seeds: &[&[&[u8]]],
         emulated_internally: bool,
     ) -> Result<()> {
         self.backend

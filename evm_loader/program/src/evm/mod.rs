@@ -11,11 +11,10 @@ use ethnum::U256;
 use maybe_async::maybe_async;
 use std::{fmt::Display, mem::ManuallyDrop, ops::Range};
 
-use crate::executor::precompile_extension::PrecompiledContracts;
 use crate::{
     debug::log_data,
     error::{build_revert_message, Error, Result},
-    evm::{opcode::Action, precompile::is_precompile_address},
+    evm::opcode::Action,
     types::{Address, Transaction, Vector},
 };
 use crate::{evm::tracing::EventListener, types::boxx::Boxx};
@@ -288,9 +287,6 @@ impl<T: EventListener> Machine<T> {
 
         Ok(machine)
     }
-    pub fn take_tracer(&mut self) -> Option<T> {
-        self.tracer.take()
-    }
 
     #[allow(unused_mut)]
     #[maybe_async]
@@ -358,74 +354,71 @@ impl<T: EventListener> Machine<T> {
         &mut self,
         step_limit: u64,
         backend: &mut impl Database,
-    ) -> Result<(ExitStatus, u64, Option<u64>, Option<T>)> {
-        let mut step = 0_u64;
-        let mut step_call_solana: Option<u64> = None;
-
-        let status = if is_precompile_address(&self.context.contract) {
-            let value = Self::precompile(&self.context.contract, &self.call_data).unwrap();
-
-            backend.commit_snapshot();
-
-            end_vm!(self, backend, ExitStatus::Return(value.clone()));
-            ExitStatus::Return(value)
-        } else if PrecompiledContracts::is_precompile_extension(&self.context.contract) {
-            let address = self.context.contract;
-            let value = PrecompiledContracts::call_precompile_extension(
-                backend,
-                &self.context,
-                &address,
-                &self.call_data,
-                self.is_static,
-            )
-            .await
-            .unwrap()?;
-
-            backend.commit_snapshot();
-            end_vm!(self, backend, ExitStatus::Return(value.clone()));
-            ExitStatus::Return(value)
-        } else {
-            loop {
-                if step >= step_limit {
-                    break ExitStatus::StepLimit;
-                }
-                step += 1;
-
-                let opcode = self
-                    .execution_code
-                    .get(self.pc)
-                    .copied()
-                    .unwrap_or_default();
-
-                begin_step!(self, backend);
-
-                let opcode_result = match self.execute_opcode(backend, opcode).await {
-                    Ok(result) => result,
-                    Err(e) => {
-                        let message = build_revert_message(&e.to_string());
-                        self.opcode_revert_impl(message, backend).await?
-                    }
-                };
-
-                match opcode_result {
-                    Action::Continue => self.pc += 1,
-                    Action::Jump(target) => self.pc = target,
-                    Action::Stop => break ExitStatus::Stop,
-                    Action::Return(value) => break ExitStatus::Return(value),
-                    Action::Revert(value) => break ExitStatus::Revert(value),
-                    Action::Suicide => break ExitStatus::Suicide,
-                    Action::Interrupted(state) => {
-                        if step_call_solana.is_none() && state.is_some() {
-                            step_call_solana = Some(step);
-                        }
-                        break ExitStatus::Interrupted(state);
-                    }
-                    Action::Noop => {}
-                };
+    ) -> Result<(ExitStatus, u64)> {
+        let contract = self.context.contract;
+        let (status, step) = match self.try_call_precompile(&contract, backend).await {
+            Some(Ok(value)) => {
+                backend.commit_snapshot();
+                end_vm!(self, backend, ExitStatus::Return(value.to_vector()));
+                (ExitStatus::Return(value.to_vector()), 0)
             }
+            Some(Err(e)) => {
+                backend.revert_snapshot();
+                let message = build_revert_message(&e.to_string());
+                end_vm!(self, backend, ExitStatus::Revert(message.clone()));
+                (ExitStatus::Revert(message), 0)
+            }
+            None => self.run_loop(step_limit, backend).await?,
         };
 
-        Ok((status, step, step_call_solana, self.tracer.take()))
+        Ok((status, step))
+    }
+
+    #[maybe_async]
+    async fn run_loop(
+        &mut self,
+        step_limit: u64,
+        backend: &mut impl Database,
+    ) -> Result<(ExitStatus, u64)> {
+        let mut step = 0_u64;
+
+        let status = loop {
+            if step >= step_limit {
+                break ExitStatus::StepLimit;
+            }
+            step += 1;
+
+            let opcode = self
+                .execution_code
+                .get(self.pc)
+                .copied()
+                .unwrap_or_default();
+
+            begin_step!(self, backend);
+
+            let opcode_result = match self.execute_opcode(backend, opcode).await {
+                Ok(result) => result,
+                Err(e) => {
+                    let message = build_revert_message(&e.to_string());
+                    self.opcode_revert_impl(message, backend).await?
+                }
+            };
+
+            match opcode_result {
+                Action::Continue => self.pc += 1,
+                Action::Jump(target) => self.pc = target,
+                Action::Stop => break ExitStatus::Stop,
+                Action::Return(value) => break ExitStatus::Return(value),
+                Action::Revert(value) => break ExitStatus::Revert(value),
+                Action::Suicide => break ExitStatus::Suicide,
+                Action::Interrupted(state) => {
+                    break ExitStatus::Interrupted(state);
+                }
+                Action::Noop => {}
+            };
+        };
+
+        Ok((status, step))
     }
 
     fn fork(
@@ -480,6 +473,14 @@ impl<T: EventListener> Machine<T> {
 
     pub fn set_tracer(&mut self, tracer: Option<T>) {
         self.tracer = tracer;
+    }
+
+    pub fn into_tracer(self) -> Option<T> {
+        self.tracer
+    }
+
+    pub fn take_tracer(&mut self) -> Option<T> {
+        self.tracer.take()
     }
 
     pub fn increment_pc(&mut self) {

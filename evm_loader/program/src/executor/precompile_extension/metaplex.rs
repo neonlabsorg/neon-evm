@@ -11,11 +11,8 @@ use mpl_token_metadata::{
 };
 use solana_program::pubkey::Pubkey;
 
-use crate::types::vector::VectorSliceExt;
-use crate::types::Vector;
-use crate::vector;
 use crate::{
-    account::ACCOUNT_SEED_VERSION,
+    account::pda_accounts,
     account_storage::FAKE_OPERATOR,
     error::{Error, Result},
     evm::database::Database,
@@ -37,7 +34,7 @@ pub async fn metaplex<State: Database>(
     input: &[u8],
     context: &crate::evm::Context,
     is_static: bool,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     if context.value != 0 {
         return Err(Error::Custom("Metaplex: value != 0".to_string()));
     }
@@ -156,15 +153,10 @@ async fn create_metadata<State: Database>(
     name: String,
     symbol: String,
     uri: String,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let signer = context.caller;
     let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-
-    let seeds = vector![
-        vector![ACCOUNT_SEED_VERSION],
-        signer.as_bytes().to_vector(),
-        vector![bump_seed],
-    ];
+    let seeds: &[&[u8]] = pda_accounts::contract_seeds!(signer, bump_seed);
 
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);
 
@@ -198,10 +190,10 @@ async fn create_metadata<State: Database>(
         .instruction();
 
     state
-        .queue_external_instruction(instruction, vector![seeds], true)
+        .queue_external_instruction(instruction, &[seeds], true)
         .await?;
 
-    Ok(metadata_pubkey.to_bytes().to_vector())
+    Ok(metadata_pubkey.to_bytes().to_vec())
 }
 
 #[maybe_async]
@@ -210,15 +202,10 @@ async fn create_master_edition<State: Database>(
     state: &mut State,
     mint: Pubkey,
     max_supply: Option<u64>,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let signer = context.caller;
     let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-
-    let seeds = vector![
-        vector![ACCOUNT_SEED_VERSION],
-        signer.as_bytes().to_vector(),
-        vector![bump_seed],
-    ];
+    let seeds: &[&[u8]] = pda_accounts::contract_seeds!(signer, bump_seed);
 
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);
     let (edition_pubkey, _) = MasterEdition::find_pda(&mint);
@@ -239,10 +226,10 @@ async fn create_master_edition<State: Database>(
     let instruction = instruction_builder.instruction();
 
     state
-        .queue_external_instruction(instruction, vector![seeds], true)
+        .queue_external_instruction(instruction, &[seeds], true)
         .await?;
 
-    Ok(edition_pubkey.to_bytes().to_vector())
+    Ok(edition_pubkey.to_bytes().to_vec())
 }
 
 #[maybe_async]
@@ -250,7 +237,7 @@ async fn is_initialized<State: Database>(
     context: &crate::evm::Context,
     state: &State,
     mint: Pubkey,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let is_initialized = metadata(context, state, mint)
         .await?
         .map_or_else(|| false, |_| true);
@@ -263,7 +250,7 @@ async fn is_nft<State: Database>(
     context: &crate::evm::Context,
     state: &State,
     mint: Pubkey,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let is_nft = metadata(context, state, mint).await?.map_or_else(
         || false,
         |m| m.token_standard == Some(TokenStandard::NonFungible),
@@ -277,7 +264,7 @@ async fn uri<State: Database>(
     context: &crate::evm::Context,
     state: &State,
     mint: Pubkey,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let uri = metadata(context, state, mint)
         .await?
         .map_or_else(String::new, |m| m.uri);
@@ -290,7 +277,7 @@ async fn token_name<State: Database>(
     context: &crate::evm::Context,
     state: &State,
     mint: Pubkey,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let token_name = metadata(context, state, mint)
         .await?
         .map_or_else(String::new, |m| m.name);
@@ -303,7 +290,7 @@ async fn symbol<State: Database>(
     context: &crate::evm::Context,
     state: &State,
     mint: Pubkey,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let symbol = metadata(context, state, mint)
         .await?
         .map_or_else(String::new, |m| m.symbol);
@@ -331,13 +318,13 @@ async fn metadata<State: Database>(
     Ok(result)
 }
 
-fn to_solidity_bool(v: bool) -> Vector<u8> {
-    let mut result = vector![0_u8; 32];
+fn to_solidity_bool(v: bool) -> Vec<u8> {
+    let mut result = vec![0_u8; 32];
     result[31] = u8::from(v);
     result
 }
 
-fn to_solidity_string(s: &str) -> Vector<u8> {
+fn to_solidity_string(s: &str) -> Vec<u8> {
     // String encoding
     // 32 bytes - offset
     // 32 bytes - length
@@ -349,7 +336,7 @@ fn to_solidity_string(s: &str) -> Vector<u8> {
         ((s.len() / 32) + 1) * 32
     };
 
-    let mut result = vector![0_u8; 32 + 32 + data_len];
+    let mut result = vec![0_u8; 32 + 32 + data_len];
 
     result[31] = 0x20; // offset - 32 bytes
 

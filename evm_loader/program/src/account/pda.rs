@@ -44,6 +44,20 @@ pub fn tree_account_address(
     Pubkey::find_program_address(seeds, program_id)
 }
 
+macro_rules! tree_account_seeds {
+    ($init:expr, $bump_seed:expr) => {
+        &[
+            &[$crate::config::ACCOUNT_SEED_VERSION],
+            b"TREE",
+            ($init).payer.as_bytes(),
+            &($init).chain_id.to_le_bytes(),
+            &($init).nonce.to_le_bytes(),
+            &[$bump_seed],
+        ]
+    };
+}
+pub(crate) use tree_account_seeds;
+
 #[must_use]
 pub fn main_pool_authority(program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"Deposit"], program_id)
@@ -72,6 +86,19 @@ pub fn operator_address(
     ];
     Pubkey::find_program_address(operator_seeds, program_id)
 }
+
+macro_rules! operator_seeds {
+    ($operator:expr, $balance:expr, $chain_id:expr, $bump_seed:expr) => {
+        &[
+            &[$crate::config::ACCOUNT_SEED_VERSION],
+            $operator.as_ref(),
+            $balance.as_bytes(),
+            &U256::from($chain_id).to_be_bytes(),
+            &[$bump_seed],
+        ]
+    };
+}
+pub(crate) use operator_seeds;
 
 #[must_use]
 pub fn balance_address(program_id: &Pubkey, account: &Address, chain_id: u64) -> (Pubkey, u8) {

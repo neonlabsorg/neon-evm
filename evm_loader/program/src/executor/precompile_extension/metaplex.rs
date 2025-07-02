@@ -12,7 +12,7 @@ use mpl_token_metadata::{
 use solana_program::pubkey::Pubkey;
 
 use crate::{
-    account::pda_accounts,
+    account::pda,
     account_storage::FAKE_OPERATOR,
     error::{Error, Result},
     evm::database::Database,
@@ -154,9 +154,11 @@ async fn create_metadata<State: Database>(
     symbol: String,
     uri: String,
 ) -> Result<Vec<u8>> {
+    let program_id = state.program_id();
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds: &[&[u8]] = pda_accounts::contract_seeds!(signer, bump_seed);
+
+    let (signer_pubkey, bump_seed) = pda::contract_address(program_id, &signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);
 
@@ -174,7 +176,7 @@ async fn create_metadata<State: Database>(
             seller_fee_basis_points: 0,
             creators: Some(vec![
                 Creator {
-                    address: *state.program_id(),
+                    address: *program_id,
                     verified: false,
                     share: 0,
                 },
@@ -203,9 +205,11 @@ async fn create_master_edition<State: Database>(
     mint: Pubkey,
     max_supply: Option<u64>,
 ) -> Result<Vec<u8>> {
+    let program_id = state.program_id();
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds: &[&[u8]] = pda_accounts::contract_seeds!(signer, bump_seed);
+
+    let (signer_pubkey, bump_seed) = pda::contract_address(program_id, &signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);
     let (edition_pubkey, _) = MasterEdition::find_pda(&mint);

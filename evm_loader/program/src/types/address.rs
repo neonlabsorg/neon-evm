@@ -5,7 +5,7 @@ use std::convert::{From, TryInto};
 use std::fmt::{Debug, Display};
 use std::str::FromStr;
 
-use crate::account::{pda_accounts, Operator};
+use crate::account::{pda, Operator};
 use crate::error::Error;
 
 #[repr(transparent)]
@@ -64,12 +64,12 @@ impl Address {
 
     #[must_use]
     pub fn find_solana_address(&self, program_id: &Pubkey) -> (Pubkey, u8) {
-        pda_accounts::contract_address(program_id, self)
+        pda::contract_address(program_id, self)
     }
 
     #[must_use]
     pub fn find_balance_address(&self, program_id: &Pubkey, chain_id: u64) -> (Pubkey, u8) {
-        pda_accounts::balance_address(program_id, self, chain_id)
+        pda::balance_address(program_id, self, chain_id)
     }
 
     #[must_use]
@@ -79,7 +79,7 @@ impl Address {
         chain_id: u64,
         operator: &Operator,
     ) -> (Pubkey, u8) {
-        pda_accounts::operator_address(program_id, operator.key, self, chain_id)
+        pda::operator_address(program_id, operator.key, self, chain_id)
     }
 }
 

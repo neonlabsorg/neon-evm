@@ -7,7 +7,7 @@ use maybe_async::maybe_async;
 use solana_program::{account_info::IntoAccountInfo, pubkey::Pubkey};
 use spl_associated_token_account::get_associated_token_address;
 
-use crate::account::pda_accounts;
+use crate::account::pda;
 
 use crate::{
     account::token,
@@ -142,8 +142,8 @@ async fn withdraw<State: Database>(
             .await?;
     }
 
-    let (authority, bump_seed) = pda_accounts::main_pool_authority(state.program_id());
-    let authority_seeds: &[&[u8]] = pda_accounts::main_pool_authority_seeds!(bump_seed);
+    let (authority, bump_seed) = pda::main_pool_authority(state.program_id());
+    let authority_seeds: &[&[u8]] = pda::main_pool_authority_seeds!(bump_seed);
 
     let pool = get_associated_token_address(&authority, &mint_address);
 

@@ -265,14 +265,6 @@ impl<'a> ContractAccount<'a> {
     }
 
     #[must_use]
-    pub fn code_buffer(&self) -> crate::evm::Buffer {
-        let begin = self.code_offset();
-        let end = begin + self.code_len();
-
-        unsafe { crate::evm::Buffer::from_account(&self.account, begin..end) }
-    }
-
-    #[must_use]
     pub fn code_len(&self) -> usize {
         let offset = self.code_offset();
 

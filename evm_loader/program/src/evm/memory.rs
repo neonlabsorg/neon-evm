@@ -7,7 +7,6 @@ use solana_program::program_memory::{sol_memcpy, sol_memmove, sol_memset};
 use crate::error::Error;
 
 use super::utils::checked_next_multiple_of_32;
-use super::Buffer;
 
 const MAX_MEMORY_SIZE: usize = 64 * 1024;
 const MEMORY_CAPACITY: usize = 1024;
@@ -185,12 +184,6 @@ impl Memory {
     #[inline]
     pub fn write_range(&mut self, range: &Range<usize>, source: &[u8]) -> Result<(), Error> {
         self.write_buffer(range.start, range.len(), source, 0)
-    }
-
-    #[inline]
-    pub fn read_buffer(&mut self, offset: usize, length: usize) -> Result<Buffer, Error> {
-        let slice = self.read(offset, length)?;
-        Ok(Buffer::from_slice(slice))
     }
 
     pub fn copy_within(

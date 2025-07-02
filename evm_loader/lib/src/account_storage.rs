@@ -8,13 +8,14 @@ use elsa::FrozenMap;
 use ethnum::U256;
 use evm_loader::account_storage::LogCollector;
 pub use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
+use evm_loader::types::vector::VectorSliceExt;
 use evm_loader::{
     account::{BalanceAccount, ContractAccount, StorageCell, StorageCellAddress},
     account_storage::{find_slot_hash_provided, FAKE_OPERATOR},
     config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT,
     error::Error as EvmLoaderError,
     executor::OwnedAccountInfo,
-    types::{vector::VectorVecExt, Address, Vector},
+    types::{Address, Vector},
 };
 
 use log::{debug, info, trace};
@@ -989,9 +990,7 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         self.code(address).await.len()
     }
 
-    async fn code(&self, address: Address) -> evm_loader::evm::Buffer {
-        use evm_loader::evm::Buffer;
-
+    async fn code(&self, address: Address) -> Vector<u8> {
         info!("code {address}");
 
         // TODO: move to reading data from Solana node
@@ -999,13 +998,12 @@ impl<T: Rpc> AccountStorage for EmulatorAccountStorage<'_, T> {
         // if let Some(code_override) = code_override {
         //     return Buffer::from_vec(code_override.0);
         // }
-
         let code = self
-            .ethereum_contract_map_or(address, Vec::default(), |c| c.code().to_vec())
+            .ethereum_contract_map_or(address, Vec::new(), |c| c.code().to_vec())
             .await
             .unwrap();
 
-        Buffer::from_vector(code.into_vector())
+        code.to_vector()
     }
 
     async fn storage(&self, address: Address, index: U256) -> [u8; 32] {

@@ -19,6 +19,7 @@ use crate::evm::Context;
 use crate::executor::action;
 use crate::executor::ExecutorStateData;
 use crate::types::{Address, TreeMap, Vector};
+use crate::vector;
 
 enum Action {
     SetTransientStorage {
@@ -185,12 +186,12 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
         Ok(self.backend.code_size(from_address).await)
     }
 
-    async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
+    async fn code(&self, from_address: Address) -> Result<Vector<u8>> {
         if PrecompiledContracts::is_precompile_extension(&from_address) {
-            return Ok(crate::evm::Buffer::from_slice(&[0xFE]));
+            return Ok(vector![0xFE]);
         }
         if is_precompile_address(&from_address) {
-            return Ok(crate::evm::Buffer::from_slice(&[]));
+            return Ok(vector![]);
         }
 
         Ok(self.backend.code(from_address).await)

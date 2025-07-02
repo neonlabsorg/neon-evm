@@ -54,7 +54,7 @@ fn create_metadata_accounts_v3(
 
     let mint = {
         let mint_info = accounts.get_mut(mint_key).unwrap().into_account_info();
-        crate::account::token::Mint::from_account(&mint_info)?.into_data()
+        crate::account::token::Mint::from_account_info(&mint_info)?.into_data()
     };
 
     let (_, edition_bump_seed) = MasterEdition::find_pda(mint_key);
@@ -113,7 +113,7 @@ fn create_master_edition_v3(
 
     let mut mint = {
         let mint_info = accounts.get_mut(mint_key).unwrap().into_account_info();
-        crate::account::token::Mint::from_account(&mint_info)?.into_data()
+        crate::account::token::Mint::from_account_info(&mint_info)?.into_data()
     };
 
     if &metadata.mint != mint_key {

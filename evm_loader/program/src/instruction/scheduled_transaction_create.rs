@@ -128,7 +128,7 @@ pub fn payment_from_signer<'a>(
 }
 
 /// Execute Ethereum transaction in a single Solana transaction
-pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Schedule Transaction");
 
     // Instruction data
@@ -138,10 +138,10 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     // Accounts
     let signer = unsafe { Operator::from_account_not_whitelisted(&accounts[0])? };
     let balance = accounts[1].clone();
-    let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
+    let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
     let tree = accounts[3].clone();
-    let pool = token::State::from_account(&accounts[4])?;
-    let system = System::from_account(&accounts[5])?;
+    let pool = token::State::from_account_info(&accounts[4])?;
+    let system = System::from_account_info(&accounts[5])?;
 
     // Validate Transaction
     let tx = ScheduledTxShell::from_rlp(messsage)?;

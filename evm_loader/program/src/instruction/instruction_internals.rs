@@ -75,10 +75,10 @@ pub fn reinit_evm(
 pub fn holder_parse_trx(
     info: &AccountInfo,
     operator: &Operator,
-    program_id: &Pubkey,
+    program_id: Pubkey,
     is_scheduled: bool,
 ) -> Result<(Transaction, Vec<u8>)> {
-    let holder = Holder::from_account(program_id, info)?;
+    let holder = Holder::from_account_info(program_id, info)?;
 
     // We have to initialize the heap before creating Transaction object, but since
     // transaction's rlp itself is stored in the holder account, we have two options:
@@ -115,7 +115,7 @@ pub fn finalize(
 ) -> Result<()> {
     debug_print!("finalize");
 
-    storage.update_touched_accounts(accounts.program_id(), accounts.db())?;
+    storage.update_touched_accounts(*accounts.program_id(), accounts.db())?;
     storage.increment_steps_executed(steps_executed)?;
     storage.finalize_step();
     log_data(&[
@@ -179,7 +179,7 @@ pub fn finalize(
             false
         }
     } {
-        storage.finalize(accounts.program_id())?;
+        storage.finalize()?;
     }
 
     Ok(())

@@ -1,5 +1,5 @@
 use crate::account::{
-    program, AccountsDB, AccountsStatus, Operator, OperatorBalanceAccount,
+    program, AccountDispatch, AccountsDB, AccountsStatus, Operator, OperatorBalance,
     OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
     TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
 };
@@ -13,14 +13,14 @@ use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Begin or Continue Transaction from Account");
 
     process_inner(program_id, accounts, instruction, false)
 }
 
 pub fn process_inner(
-    program_id: &Pubkey,
+    program_id: Pubkey,
     accounts: &[AccountInfo],
     instruction: &[u8],
     increase_gas_limit: bool,
@@ -30,10 +30,10 @@ pub fn process_inner(
 
     let holder_or_storage = accounts[0].clone();
 
-    let operator = Operator::from_account(&accounts[1])?;
-    let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
-    let operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
-    let system = program::System::from_account(&accounts[4])?;
+    let operator = Operator::from_account_info(&accounts[1])?;
+    let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
+    let operator_balance = OperatorBalance::try_from_account_info(program_id, &accounts[3])?;
+    let system = program::System::from_account_info(&accounts[4])?;
 
     operator_balance.validate_owner(&operator)?;
 
@@ -45,8 +45,7 @@ pub fn process_inner(
         Some(treasury),
     );
 
-    let tag = crate::account::tag(program_id, &holder_or_storage)?;
-    match tag {
+    match holder_or_storage.tag(program_id)? {
         TAG_HOLDER => {
             let (mut trx, tx_rlp) =
                 holder_parse_trx(&holder_or_storage, &operator, program_id, false)?;

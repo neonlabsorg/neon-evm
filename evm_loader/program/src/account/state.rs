@@ -1,10 +1,9 @@
 use std::cell::{Ref, RefCell, RefMut};
 use std::mem::size_of;
-use std::ops::Deref;
 use std::ptr::{addr_of, slice_from_raw_parts};
 
 use crate::account_storage::AccountStorage;
-use crate::config::DEFAULT_CHAIN_ID;
+use crate::config::{DEFAULT_CHAIN_ID, NO_UPDATE_TRACKING_OWNERS};
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::evm::Machine;
@@ -14,17 +13,32 @@ use crate::types::vector::VectorSliceExt;
 use crate::types::{read_raw_utils::read_vec, Address, Transaction, TreeMap, TrxView, Vector};
 
 use ethnum::U256;
-use solana_program::hash::Hash;
-use solana_program::system_program;
 use solana_program::{account_info::AccountInfo, instruction::AccountMeta, pubkey::Pubkey};
 use static_assertions::const_assert_eq;
 
 use super::{
-    AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder, OperatorBalanceAccount,
-    StateFinalizedAccount, StorageCell, TransactionTree, TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT,
-    TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE,
-    TAG_STATE_FINALIZED, TAG_STORAGE_CELL,
+    Account, AccountDispatch, AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder,
+    OperatorBalance, StateFinalizedAccount, StorageCell, TransactionTree, ACCOUNT_PREFIX_LEN,
+    TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
+    TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED, TAG_STORAGE_CELL,
 };
+
+#[inline]
+fn section_mut_from_slice<T>(data: &mut [u8], offset: usize) -> &mut T {
+    let begin = offset;
+    let end = begin + std::mem::size_of::<T>();
+
+    let bytes = &mut data[begin..end];
+
+    assert_eq!(std::mem::align_of::<T>(), 1);
+    assert_eq!(std::mem::size_of::<T>(), bytes.len());
+    unsafe { &mut *(bytes.as_mut_ptr().cast()) }
+}
+
+#[inline]
+fn header_mut_from_slice<T: AccountHeader>(account: &mut [u8]) -> &mut T {
+    section_mut_from_slice(account, ACCOUNT_PREFIX_LEN)
+}
 
 #[derive(PartialEq, Eq)]
 pub enum AccountsStatus {
@@ -34,9 +48,9 @@ pub enum AccountsStatus {
 
 #[derive(Clone, PartialEq, Eq, Copy)]
 #[repr(C)]
-enum AccountRevision {
+pub enum AccountRevision {
     Revision(u32),
-    Hash([u8; 32]),
+    Hash(solana_program::hash::Hash),
 }
 
 impl Default for AccountRevision {
@@ -46,35 +60,33 @@ impl Default for AccountRevision {
 }
 
 impl AccountRevision {
-    pub fn new(program_id: &Pubkey, info: &AccountInfo) -> Self {
-        if (info.owner != program_id) && !system_program::check_id(info.owner) {
-            if crate::config::NO_UPDATE_TRACKING_OWNERS
-                .binary_search(info.owner)
-                .is_ok()
-            {
-                return AccountRevision::Hash(Hash::default().to_bytes());
+    pub fn new(program_id: Pubkey, info: Account) -> Self {
+        if (info.owner() != program_id) && !info.is_system_owned() {
+            if NO_UPDATE_TRACKING_OWNERS.contains(&info.owner()) {
+                let hash = solana_program::hash::Hash::default();
+                return AccountRevision::Hash(hash);
             }
 
             let hash = solana_program::hash::hashv(&[
-                info.owner.as_ref(),
+                info.owner().as_ref(),
                 &info.lamports().to_le_bytes(),
-                &info.data.deref().borrow(),
+                &info.data(),
             ]);
 
-            return AccountRevision::Hash(hash.to_bytes());
+            return AccountRevision::Hash(hash);
         }
 
-        match crate::account::tag(program_id, info) {
+        match info.tag(program_id) {
             Ok(TAG_STORAGE_CELL) => {
-                let cell = StorageCell::from_account(program_id, info.clone()).unwrap();
+                let cell = StorageCell::from_account(program_id, info).unwrap();
                 Self::Revision(cell.revision())
             }
             Ok(TAG_ACCOUNT_CONTRACT) => {
-                let contract = ContractAccount::from_account(program_id, info.clone()).unwrap();
+                let contract = ContractAccount::from_account(program_id, info).unwrap();
                 Self::Revision(contract.revision())
             }
             Ok(TAG_ACCOUNT_BALANCE) => {
-                let balance = BalanceAccount::from_account(program_id, info.clone()).unwrap();
+                let balance = BalanceAccount::from_account(program_id, info).unwrap();
                 Self::Revision(balance.revision())
             }
             _ => Self::Revision(0),
@@ -195,18 +207,18 @@ impl PlainData {
         0
     }
 
-    pub fn cancel(&self, program_id: &Pubkey, account: &AccountInfo) -> Result<()> {
+    pub fn cancel(&self, program_id: Pubkey, account: &AccountInfo) -> Result<()> {
         // Clear an executor and set the result as canceled
         self.finalize_impl(program_id, TAG_SCHEDULED_STATE_CANCELLED, account)
     }
 
     fn finalize_impl(
         &self,
-        program_id: &Pubkey,
+        program_id: Pubkey,
         scheduled_transition_tag: u8,
         account: &AccountInfo,
     ) -> Result<()> {
-        let tag = super::tag(program_id, account)?;
+        let tag = account.tag(program_id)?;
         if tag != TAG_STATE {
             return Err(Error::AccountInvalidTag(*account.key, tag));
         }
@@ -218,22 +230,17 @@ impl PlainData {
                 scheduled_transition_tag
             );
             // Change the tag, leave all the data unchanged.
-            super::set_tag(
-                program_id,
-                account,
-                scheduled_transition_tag,
-                Header::VERSION,
-            )?;
+            account.init_tag(scheduled_transition_tag, Header::VERSION)?;
         } else {
             debug_print!("Finalize State {}", account.key);
-            StateFinalizedAccount::make(program_id, self, account)?;
+            StateFinalizedAccount::make(self, account)?;
         }
 
         Ok(())
     }
 
-    pub fn finish_scheduled_tx(&self, program_id: &Pubkey, account: &AccountInfo) -> Result<()> {
-        let tag = super::tag(program_id, account)?;
+    pub fn finish_scheduled_tx(&self, program_id: Pubkey, account: &AccountInfo) -> Result<()> {
+        let tag = account.tag(program_id)?;
         let is_finalized = tag == TAG_SCHEDULED_STATE_FINALIZED;
         let is_canceled = tag == TAG_SCHEDULED_STATE_CANCELLED;
         if !(is_finalized || is_canceled) {
@@ -241,7 +248,7 @@ impl PlainData {
         }
 
         debug_print!("Finalize State {} for scheduled transaction", account.key);
-        StateFinalizedAccount::make(program_id, self, account)?;
+        StateFinalizedAccount::make(self, account)?;
 
         Ok(())
     }
@@ -320,11 +327,7 @@ impl PlainData {
         Ok(gas_fee_tokens)
     }
 
-    pub fn consume_gas(
-        &mut self,
-        amount: U256,
-        receiver: Option<OperatorBalanceAccount>,
-    ) -> Result<()> {
+    pub fn consume_gas(&mut self, amount: U256, receiver: Option<OperatorBalance>) -> Result<()> {
         let tokens = self.use_gas(amount)?;
 
         if tokens == U256::ZERO {
@@ -384,10 +387,10 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
     }
 
     pub fn recover_tx_rlp(
-        program_id: &Pubkey,
+        program_id: Pubkey,
         account: &'local AccountInfo<'sol>,
     ) -> Result<&'local [u8]> {
-        let tag = super::tag(program_id, account)?;
+        let tag = account.tag(program_id)?;
         Self::validate_tag(account.key, tag)?;
 
         let data_ptr = {
@@ -396,7 +399,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         };
 
         let (tx_ptr, tx_len) = {
-            let header_ref = super::header::<Header>(account);
+            let header_ref = account.header::<Header>();
             (
                 unsafe { data_ptr.offset(header_ref.serialized_tx.start.try_into()?) },
                 header_ref.serialized_tx.end - header_ref.serialized_tx.start,
@@ -407,13 +410,13 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
     }
 
     pub fn recover_plain_header(
-        program_id: &Pubkey,
+        program_id: Pubkey,
         account: &'local AccountInfo<'sol>,
     ) -> Result<PlainData> {
-        let tag = super::tag(program_id, account)?;
+        let tag = account.tag(program_id)?;
         Self::validate_tag(account.key, tag)?;
 
-        let root_offset = super::header::<Header>(account).root_offset;
+        let root_offset = account.header::<Header>().root_offset;
 
         let mut plain = PlainData::default();
         {
@@ -438,14 +441,14 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
     // allocator should have provided a properly aligned pointer
     #[allow(clippy::cast_ptr_alignment)]
     fn from_account(
-        program_id: &Pubkey,
+        program_id: Pubkey,
         account: &'local AccountInfo<'sol>,
     ) -> Result<RestoreResult<'local, 'sol>> {
-        let tag = super::tag(program_id, account)?;
+        let tag = account.tag(program_id)?;
         Self::validate_tag(account.key, tag)?;
 
         let (offset, need_restart) = {
-            let header = super::header::<Header>(account);
+            let header = account.header::<Header>();
             (
                 header.root_offset,
                 header.version_signature != Header::valid_version_signature(),
@@ -478,7 +481,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
 
     #[allow(clippy::cast_sign_loss)]
     pub fn new(
-        program_id: &Pubkey,
+        program_id: Pubkey,
         info: &'local AccountInfo<'sol>,
         accounts: &AccountsDB<'sol>,
         origin: Address,
@@ -486,15 +489,15 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         transaction_rlp: &[u8],
         tree_account: Option<Pubkey>,
     ) -> Result<Self> {
-        let (info, owner) = match super::tag(program_id, info)? {
+        let (info, owner) = match info.tag(program_id)? {
             TAG_HOLDER => {
-                let holder = Holder::from_account(program_id, info)?;
+                let holder = Holder::from_account_info(program_id, info)?;
                 holder.validate_owner(accounts.operator())?;
                 let owner = holder.owner();
                 (holder.into_account(), owner)
             }
             TAG_STATE_FINALIZED => {
-                let finalized = StateFinalizedAccount::from_account(program_id, info)?;
+                let finalized = StateFinalizedAccount::from_account_info(program_id, info)?;
                 finalized.validate_owner(accounts.operator())?;
                 finalized.validate_trx(transaction)?;
                 let owner = finalized.owner();
@@ -508,7 +511,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
             "Tree account should be present iff it's a scheduled transaction."
         );
 
-        super::set_tag(program_id, info, TAG_STATE, Header::VERSION)?;
+        info.init_tag(TAG_STATE, Header::VERSION)?;
 
         Self::init_header(
             info,
@@ -563,7 +566,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
                 let account_data_ptr = data.as_ptr();
                 {
                     // Set header
-                    let header = super::header_mut_from_slice::<Header>(data);
+                    let header = header_mut_from_slice::<Header>(data);
                     header.version_signature = Header::valid_version_signature();
                     header.root_offset =
                         unsafe { addr_of!(*root).cast::<u8>().offset_from(account_data_ptr) }
@@ -582,7 +585,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
     }
 
     pub fn restore(
-        program_id: &Pubkey,
+        program_id: Pubkey,
         info: &'local AccountInfo<'sol>,
         accounts: &AccountsDB<'sol>,
     ) -> Result<(Self, AccountsStatus, Option<Transaction>)> {
@@ -620,7 +623,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         Ok((state, status, None))
     }
 
-    fn validate_revisions(&self, program_id: &Pubkey, accounts: &AccountsDB) -> AccountsStatus {
+    fn validate_revisions(&self, program_id: Pubkey, accounts: &AccountsDB) -> AccountsStatus {
         let touched_accounts = self
             .root_ref
             .touched_accounts
@@ -628,7 +631,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
             .filter_map(|(key, counter)| if counter >= &2 { Some(key) } else { None });
 
         for pubkey in touched_accounts {
-            let account = accounts.get(pubkey);
+            let account = accounts.get(pubkey).clone().into();
 
             let account_revision = AccountRevision::new(program_id, account);
             let stored_revision = &self.root_ref.revisions[pubkey];
@@ -655,15 +658,15 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         self.root_ref.plain_data.tx_exit_status = tx_exit_status;
     }
 
-    fn validate_timestamps(&self, program_id: &Pubkey, accounts: &AccountsDB) -> AccountsStatus {
+    fn validate_timestamps(&self, program_id: Pubkey, accounts: &AccountsDB) -> AccountsStatus {
         let state = self.root_ref.executor_state.borrow();
         let executor_state = state.as_ref().unwrap();
         let state_block_number: u64 = executor_state.block_params.number.as_u64();
 
         let timestamped_contracts = executor_state.timestamped_contracts.borrow();
         for address in timestamped_contracts.keys() {
-            let (pubkey, _) = address.find_solana_address(program_id);
-            let account = accounts.get(&pubkey).clone();
+            let (pubkey, _) = address.find_solana_address(&program_id);
+            let account = accounts.get(&pubkey).clone().into();
             let Ok(contract) = ContractAccount::from_account(program_id, account) else {
                 continue;
             };
@@ -682,11 +685,11 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         self.account.key
     }
 
-    pub fn finalize(self, program_id: &Pubkey) -> Result<()> {
-        self.finalize_impl(program_id, TAG_SCHEDULED_STATE_FINALIZED)
+    pub fn finalize(self) -> Result<()> {
+        self.finalize_impl(TAG_SCHEDULED_STATE_FINALIZED)
     }
 
-    fn finalize_impl(self, program_id: &Pubkey, scheduled_transition_tag: u8) -> Result<()> {
+    fn finalize_impl(self, scheduled_transition_tag: u8) -> Result<()> {
         if self.tag != TAG_STATE {
             return Err(Error::AccountInvalidTag(*self.account.key, self.tag));
         }
@@ -699,15 +702,11 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
             );
             std::mem::drop(self.root_ref);
             // Change the tag, leave all the data unchanged.
-            super::set_tag(
-                program_id,
-                self.account,
-                scheduled_transition_tag,
-                Header::VERSION,
-            )?;
+            self.account
+                .init_tag(scheduled_transition_tag, Header::VERSION)?;
         } else {
             debug_print!("Finalize State {}", self.account.key);
-            StateFinalizedAccount::convert_from_state(program_id, self)?;
+            StateFinalizedAccount::convert_from_state(self)?;
         }
 
         Ok(())
@@ -715,7 +714,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
 
     pub fn update_touched_accounts(
         &mut self,
-        program_id: &Pubkey,
+        program_id: Pubkey,
         accounts: &AccountsDB,
     ) -> Result<()> {
         let root = self.root_ref_mut();
@@ -736,7 +735,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         let revisions = &mut root.revisions;
 
         for (key, _) in touched_accounts {
-            let account = accounts.get(key);
+            let account = accounts.get(key).clone().into();
             revisions.insert_with_if_not_exists(*key, || AccountRevision::new(program_id, account));
         }
 
@@ -787,11 +786,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
             .saturating_sub(self.gas_used())
     }
 
-    pub fn consume_gas(
-        &mut self,
-        amount: U256,
-        receiver: Option<OperatorBalanceAccount>,
-    ) -> Result<()> {
+    pub fn consume_gas(&mut self, amount: U256, receiver: Option<OperatorBalance>) -> Result<()> {
         self.root_ref.plain_data.consume_gas(amount, receiver)
     }
 
@@ -912,15 +907,15 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
     ///     it has the correct alignment and the upcast is sound.
     #[allow(clippy::cast_ptr_alignment)]
     pub fn get_state_account_view(
-        program_id: &Pubkey,
+        program_id: Pubkey,
         account: &'local AccountInfo<'sol>,
     ) -> Result<StateAccountCoreApiView> {
-        Self::validate_tag(account.key, super::tag(program_id, account)?)?;
+        Self::validate_tag(account.key, account.tag(program_id)?)?;
 
         let account_data_ptr = account.try_borrow_data()?.as_ptr();
 
         let (tx_start, tx_end, root_offset) = {
-            let header = super::header::<Header>(account);
+            let header = account.header::<Header>();
             (
                 header.serialized_tx.start,
                 header.serialized_tx.end,

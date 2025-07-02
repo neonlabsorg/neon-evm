@@ -1,6 +1,8 @@
 use std::cell::{Ref, RefMut};
 
-use super::{AccountHeader, Operator, PlainStateHeader, StateAccount, TAG_STATE_FINALIZED};
+use super::{
+    AccountDispatch, AccountHeader, Operator, PlainStateHeader, StateAccount, TAG_STATE_FINALIZED,
+};
 use crate::{
     error::{Error, Result},
     types::{Transaction, TrxView},
@@ -29,16 +31,15 @@ impl<'local, 'sol> StateFinalizedAccount<'local, 'sol> {
     }
 
     pub fn make(
-        program_id: &Pubkey,
         header: &PlainStateHeader,
         account: &'local AccountInfo<'sol>,
     ) -> Result<&'local AccountInfo<'sol>> {
         let owner = header.owner;
         let transaction_hash = header.hash();
 
-        super::set_tag(program_id, account, TAG_STATE_FINALIZED, Header::VERSION)?;
+        account.init_tag(TAG_STATE_FINALIZED, Header::VERSION)?;
         {
-            let mut header = super::header_mut::<Header>(account);
+            let mut header: RefMut<Header> = account.header_mut();
             header.owner = owner;
             header.transaction_hash = transaction_hash;
         }
@@ -47,7 +48,6 @@ impl<'local, 'sol> StateFinalizedAccount<'local, 'sol> {
     }
 
     pub fn convert_from_state(
-        program_id: &Pubkey,
         state: StateAccount<'local, 'sol>,
     ) -> Result<&'local AccountInfo<'sol>> {
         let owner = state.owner();
@@ -55,9 +55,9 @@ impl<'local, 'sol> StateFinalizedAccount<'local, 'sol> {
 
         let account = state.into_account();
 
-        super::set_tag(program_id, account, TAG_STATE_FINALIZED, Header::VERSION)?;
+        account.init_tag(TAG_STATE_FINALIZED, Header::VERSION)?;
         {
-            let mut header = super::header_mut::<Header>(account);
+            let mut header: RefMut<Header> = account.header_mut();
             header.owner = owner;
             header.transaction_hash = transaction_hash;
         }
@@ -65,38 +65,24 @@ impl<'local, 'sol> StateFinalizedAccount<'local, 'sol> {
         Ok(account)
     }
 
-    pub fn from_account(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<Self> {
-        super::validate_tag(program_id, account, TAG_STATE_FINALIZED)?;
+    pub fn from_account_info(
+        program_id: Pubkey,
+        account: &'local AccountInfo<'sol>,
+    ) -> Result<Self> {
+        account.validate_tag(program_id, TAG_STATE_FINALIZED)?;
         Ok(Self { account })
-    }
-
-    #[inline]
-    #[must_use]
-    fn header(&self) -> Ref<Header> {
-        super::header(self.account)
-    }
-
-    #[inline]
-    #[must_use]
-    fn header_mut(&self) -> RefMut<Header> {
-        super::header_mut(self.account)
-    }
-
-    pub fn update<F>(&mut self, f: F)
-    where
-        F: FnOnce(RefMut<Header>),
-    {
-        f(self.header_mut());
     }
 
     #[must_use]
     pub fn owner(&self) -> Pubkey {
-        self.header().owner
+        let header: Ref<Header> = self.account.header();
+        header.owner
     }
 
     #[must_use]
     pub fn trx_hash(&self) -> [u8; 32] {
-        self.header().transaction_hash
+        let header: Ref<Header> = self.account.header();
+        header.transaction_hash
     }
 
     pub fn validate_owner(&self, operator: &Operator) -> Result<()> {

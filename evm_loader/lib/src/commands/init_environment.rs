@@ -243,7 +243,7 @@ pub async fn execute(
         );
         return Err(EnvironmentError::TreasuryPoolSeedMismatch.into());
     }
-    let main_balance_address = MainTreasury::address(&config.evm_loader).0;
+    let main_balance_address = MainTreasury::address(config.evm_loader).0;
     executor
         .check_and_create_object(
             "Main treasury pool",
@@ -280,7 +280,7 @@ pub async fn execute(
     let treasury_pool_count = program_parameters.get::<u32>("NEON_TREASURY_POOL_COUNT")?;
     for i in 0..treasury_pool_count {
         let minimum_balance = client.get_minimum_balance_for_rent_exemption(0).await?;
-        let aux_balance_address = Treasury::address(&config.evm_loader, i).0;
+        let aux_balance_address = Treasury::address(config.evm_loader, i).0;
         let executor_clone = executor.clone();
         executor
             .check_and_create_object(

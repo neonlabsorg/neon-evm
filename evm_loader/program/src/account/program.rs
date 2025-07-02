@@ -17,7 +17,7 @@ impl<'r, 'a> From<&'r System<'a>> for &'r AccountInfo<'a> {
 }
 
 impl<'a> System<'a> {
-    pub fn from_account(info: &AccountInfo<'a>) -> Result<Self> {
+    pub fn from_account_info(info: &AccountInfo<'a>) -> Result<Self> {
         if !system_program::check_id(info.key) {
             return Err(Error::AccountInvalidKey(*info.key, system_program::ID));
         }

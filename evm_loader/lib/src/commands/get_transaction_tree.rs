@@ -75,7 +75,7 @@ impl GetTreeResponse {
 }
 
 pub fn read_tree(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetTreeResponse> {
-    let tree = TransactionTree::from_account(program_id, info)?;
+    let tree = TransactionTree::from_account(*program_id, info.into())?;
 
     let transactions = tree
         .nodes()
@@ -94,7 +94,7 @@ pub fn read_tree(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetTreeRe
 
     Ok(GetTreeResponse {
         status: Status::Ok,
-        pubkey: *tree.info().key,
+        pubkey: tree.pubkey(),
         payer: tree.payer(),
         last_slot: tree.last_slot(),
         chain_id: tree.chain_id(),

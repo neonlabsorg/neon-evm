@@ -2,7 +2,7 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use crate::error::Result;
 
-pub fn process(_program_id: &Pubkey, _accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
+pub fn process(_program_id: Pubkey, _accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Config Get Status");
 
     if cfg!(feature = "emergency") {

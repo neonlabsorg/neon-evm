@@ -41,7 +41,7 @@ fn read_account(
     };
 
     let account_info = account_info(&solana_address, &mut account);
-    let Ok(contract) = ContractAccount::from_account(program_id, account_info) else {
+    let Ok(contract) = ContractAccount::from_account(*program_id, account_info.into()) else {
         //return read_legacy_account(program_id, legacy_chain_id, solana_address, account);
         return GetContractResponse::empty(solana_address);
     };

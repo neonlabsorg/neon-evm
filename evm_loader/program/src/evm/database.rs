@@ -1,4 +1,4 @@
-use super::{Buffer, Context};
+use super::Context;
 use crate::account_storage::LogCollector;
 use crate::types::Vector;
 use crate::{error::Result, executor::OwnedAccountInfo, types::Address};
@@ -36,7 +36,7 @@ pub trait Database: LogCollector {
     async fn burn(&mut self, address: Address, chain_id: u64, value: U256) -> Result<()>;
 
     async fn code_size(&self, address: Address) -> Result<usize>;
-    async fn code(&self, address: Address) -> Result<Buffer>;
+    async fn code(&self, address: Address) -> Result<Vector<u8>>;
     async fn set_code(&mut self, address: Address, chain_id: u64, code: Vector<u8>) -> Result<()>;
 
     async fn storage(&self, address: Address, index: U256) -> Result<[u8; 32]>;

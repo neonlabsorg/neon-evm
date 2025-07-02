@@ -11,10 +11,6 @@ use ethnum::U256;
 use maybe_async::maybe_async;
 use std::{fmt::Display, mem::ManuallyDrop, ops::Range};
 
-pub use buffer::Buffer;
-
-#[cfg(target_os = "solana")]
-use crate::evm::tracing::NoopEventListener;
 use crate::executor::precompile_extension::PrecompiledContracts;
 use crate::{
     debug::log_data,
@@ -26,7 +22,6 @@ use crate::{evm::tracing::EventListener, types::boxx::Boxx};
 
 use self::{database::Database, memory::Memory, stack::Stack};
 
-mod buffer;
 pub mod database;
 mod memory;
 pub mod opcode;
@@ -65,7 +60,12 @@ macro_rules! begin_vm {
             $context,
             $chain_id,
             $input,
-            $self.execution_code.get_or_default($self.pc).into()
+            $self
+                .execution_code
+                .get($self.pc)
+                .copied()
+                .unwrap_or_default()
+                .into()
         );
     };
 }
@@ -92,7 +92,12 @@ macro_rules! begin_step {
             crate::evm::tracing::Event::BeginStep {
                 context: $self.context,
                 chain_id: $self.chain_id,
-                opcode: $self.execution_code.get_or_default($self.pc).into(),
+                opcode: $self
+                    .execution_code
+                    .get($self.pc)
+                    .copied()
+                    .unwrap_or_default()
+                    .into(),
                 pc: $self.pc,
                 stack: $self.stack.to_vec(),
                 memory: $self.memory.to_vec(),
@@ -185,7 +190,7 @@ pub struct Machine<T: EventListener> {
     gas_price: U256,
     gas_limit: U256,
 
-    execution_code: Buffer,
+    execution_code: Vector<u8>,
     call_data: Vector<u8>,
     return_data: Vector<u8>,
     return_range: Range<usize>,
@@ -200,27 +205,6 @@ pub struct Machine<T: EventListener> {
     parent: Option<Boxx<Self>>,
 
     tracer: Option<T>,
-}
-
-#[cfg(target_os = "solana")]
-impl Machine<NoopEventListener> {
-    fn reinit_buffer(buffer: &mut Buffer, backend: &impl Database) {
-        if let Some((key, range)) = buffer.uninit_data() {
-            *buffer =
-                backend.map_solana_account(&key, |i| unsafe { Buffer::from_account(i, range) });
-        }
-    }
-
-    pub fn reinit(&mut self, backend: &impl Database) {
-        let mut machine = self;
-        loop {
-            Self::reinit_buffer(&mut machine.execution_code, backend);
-            match &mut machine.parent {
-                None => break,
-                Some(parent) => machine = parent,
-            }
-        }
-    }
 }
 
 impl<T: EventListener> Machine<T> {
@@ -352,7 +336,7 @@ impl<T: EventListener> Machine<T> {
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,
-            execution_code: Buffer::from_slice(trx.call_data()),
+            execution_code: trx.call_data().to_vector(),
             call_data: Vector::new_in(acc_allocator()),
             parent: None,
             tracer,
@@ -407,7 +391,12 @@ impl<T: EventListener> Machine<T> {
                 }
                 step += 1;
 
-                let opcode = self.execution_code.get_or_default(self.pc);
+                let opcode = self
+                    .execution_code
+                    .get(self.pc)
+                    .copied()
+                    .unwrap_or_default();
+
                 begin_step!(self, backend);
 
                 let opcode_result = match self.execute_opcode(backend, opcode).await {
@@ -444,7 +433,7 @@ impl<T: EventListener> Machine<T> {
         reason: Reason,
         chain_id: u64,
         context: Context,
-        execution_code: Buffer,
+        execution_code: Vector<u8>,
         call_data: Vector<u8>,
         gas_limit: Option<U256>,
     ) {

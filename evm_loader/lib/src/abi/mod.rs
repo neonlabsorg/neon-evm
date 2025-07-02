@@ -1,4 +1,5 @@
 mod emulate;
+mod emulate_from_holder;
 mod emulate_multiple;
 mod get_balance;
 mod get_config;
@@ -103,6 +104,9 @@ async fn dispatch(method_str: &str, params_str: &str) -> Result<String, NeonErro
 
     match method {
         LibMethod::Emulate => emulate::execute(&rpc, config, params_str)
+            .await
+            .map(|v| serde_json::to_string(&v).unwrap()),
+        LibMethod::EmulateFromHolder => emulate_from_holder::execute(&rpc, config, params_str)
             .await
             .map(|v| serde_json::to_string(&v).unwrap()),
         LibMethod::EmulateMultiple => emulate_multiple::execute(&rpc, config, params_str)

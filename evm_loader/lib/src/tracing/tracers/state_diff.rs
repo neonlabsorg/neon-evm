@@ -8,8 +8,8 @@ use web3::types::{Bytes, H256};
 
 use crate::types::TxParams;
 use evm_loader::evm::database::Database;
+use evm_loader::evm::opcode_table;
 use evm_loader::evm::tracing::{Event, EventListener};
-use evm_loader::evm::{opcode_table, Buffer};
 use evm_loader::types::Address;
 use serde::{Deserialize, Serialize};
 
@@ -37,7 +37,7 @@ pub struct States {
     pub pre: Account,
 }
 
-fn map_code(buffer: &Buffer) -> Bytes {
+fn map_code(buffer: &[u8]) -> Bytes {
     buffer.to_vec().into()
 }
 

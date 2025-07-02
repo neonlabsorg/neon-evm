@@ -8,6 +8,7 @@ use crate::evm::precompile::is_precompile_address;
 use crate::evm::{Context, ExitStatus};
 use crate::types::boxx::Boxx;
 use crate::types::Address;
+use crate::vector;
 use ethnum::{AsU256, U256};
 use maybe_async::maybe_async;
 use mpl_token_metadata::programs::MPL_TOKEN_METADATA_ID;
@@ -336,12 +337,12 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         Ok(self.backend.code_size(from_address).await)
     }
 
-    async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
+    async fn code(&self, from_address: Address) -> Result<Vector<u8>> {
         if PrecompiledContracts::is_precompile_extension(&from_address) {
-            return Ok(crate::evm::Buffer::from_slice(&[0xFE]));
+            return Ok(vector![0xFE]);
         }
         if is_precompile_address(&from_address) {
-            return Ok(crate::evm::Buffer::from_slice(&[]));
+            return Ok(vector![]);
         }
 
         self.touch_contract(from_address);
@@ -349,7 +350,7 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         for action in &self.data.actions {
             if let Action::EvmSetCode { address, code, .. } = action {
                 if &from_address == address {
-                    return Ok(crate::evm::Buffer::from_slice(code));
+                    return Ok(code.clone());
                 }
             }
         }

@@ -1114,7 +1114,7 @@ impl<T: EventListener> Machine<T> {
         self.return_data = Vector::<u8>::new_in(acc_allocator());
         self.return_range = 0..0;
 
-        let init_code = self.memory.read_buffer(offset, length)?;
+        let init_code = self.memory.read(offset, length)?.to_vector();
 
         let context = Context {
             caller: self.context.contract,

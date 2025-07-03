@@ -1,12 +1,13 @@
 use crate::account::{
-    program, AccountDispatch, AccountsDB, Holder, Operator, OperatorBalance,
-    OperatorBalanceValidator, StateAccount, TransactionTree, TAG_HOLDER,
-    TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
+    AccountDispatch, Holder, Operator, OperatorBalance, OperatorBalanceValidator, StateAccount,
+    TransactionTree, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED,
+    TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
 use crate::instruction::scheduled_transaction_start::{do_scheduled_start, validate_scheduled_tx};
+use crate::platform::Solana;
 use crate::types::Transaction;
 use arrayref::array_ref;
 use ethnum::U256;
@@ -22,17 +23,10 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let transaction_tree = TransactionTree::from_account_info(program_id, &accounts[1])?;
     let operator = Operator::from_account_info(&accounts[2])?;
     let operator_balance = OperatorBalance::try_from_account_info(program_id, &accounts[3])?;
-    let system = program::System::from_account_info(&accounts[4])?;
 
     operator_balance.validate_owner(&operator)?;
 
-    let accounts_db = AccountsDB::new(
-        &accounts[5..],
-        operator.clone(),
-        operator_balance.clone(),
-        Some(system),
-        None,
-    );
+    let accounts_db = Solana::new(&accounts[1..], operator.clone(), operator_balance.clone())?;
 
     match holder.tag(program_id)? {
         TAG_HOLDER | TAG_STATE_FINALIZED => {

@@ -2,6 +2,7 @@
 #![allow(clippy::useless_transmute)]
 
 use cfg_if::cfg_if;
+use ethnum::U256;
 use evm_loader_macro::{common_config_parser, neon_elf_param, net_specific_config_parser};
 
 cfg_if! {
@@ -46,3 +47,5 @@ pub const EXEC_ITERATION_COST: u64 = LAMPORTS_PER_SIGNATURE + PAYMENT_TO_TREASUR
 pub const LAST_ITERATION_COST: u64 = LAMPORTS_PER_SIGNATURE + PAYMENT_TO_TREASURE;
 // 10'000 (start) + 10'000 (exec) + 5000 (finalization)
 pub const BASE_ITERATIVE_TRANSACTION_COST: u64 = EXEC_ITERATION_COST * 2 + LAST_ITERATION_COST;
+
+pub const STATIC_STORAGE_LIMIT: U256 = U256::new(STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT as u128);

@@ -1,59 +1,36 @@
+use crate::account::Account;
 use crate::executor::OwnedAccountInfo;
 use crate::types::Address;
 use crate::{error::Result, types::Vector};
 use ethnum::U256;
 use maybe_async::maybe_async;
-use solana_program::{
-    account_info::AccountInfo, instruction::Instruction, pubkey, pubkey::Pubkey, rent::Rent,
-};
-#[cfg(target_os = "solana")]
-use {crate::account::AccountsDB, solana_program::clock::Clock};
-
-#[cfg(target_os = "solana")]
-mod apply;
-#[cfg(target_os = "solana")]
-mod backend;
-#[cfg(target_os = "solana")]
-mod base;
-#[cfg(target_os = "solana")]
-mod synced;
+use solana_program::{instruction::Instruction, pubkey::Pubkey, rent::Rent};
 
 mod block_hash;
 pub use block_hash::find_slot_hash;
 pub use block_hash::find_slot_hash_provided;
 
-mod keys_cache;
-pub use keys_cache::KeysCache;
-
 #[cfg(target_os = "solana")]
-pub struct ProgramAccountStorage<'a> {
-    clock: Clock,
-    rent: Rent,
-    accounts: AccountsDB<'a>,
-    keys: keys_cache::KeysCache,
-    synced_modified_contracts: std::collections::HashSet<Pubkey>,
-}
-
-pub const FAKE_OPERATOR: Pubkey = pubkey!("neonoperator1111111111111111111111111111111");
+mod platform_backend;
 
 /// Account storage
 /// Trait to access account info
 #[maybe_async(?Send)]
 pub trait AccountStorage: LogCollector {
     /// Get `NeonEVM` program id
-    fn program_id(&self) -> &Pubkey;
+    fn program_id(&self) -> Pubkey;
     /// Get operator pubkey
     fn operator(&self) -> Pubkey;
 
     /// Get block number
-    fn block_number(&self) -> U256;
+    async fn block_number(&self) -> U256;
     /// Get block timestamp
-    fn block_timestamp(&self) -> U256;
+    async fn block_timestamp(&self) -> U256;
     /// Get block hash
     async fn block_hash(&self, number: u64) -> [u8; 32];
 
     /// Get rent info
-    fn rent(&self) -> &Rent;
+    async fn rent(&self) -> Rent;
 
     /// Get return data from Solana
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)>;
@@ -96,7 +73,7 @@ pub trait AccountStorage: LogCollector {
     /// Map existing solana account
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
-        F: FnOnce(&AccountInfo) -> R;
+        F: FnOnce(&Account) -> R;
 }
 
 #[maybe_async(?Send)]
@@ -124,8 +101,9 @@ pub trait SyncedAccountStorage: AccountStorage {
     fn commit_snapshot(&mut self);
 }
 
+#[maybe_async(?Send)]
 pub trait LogCollector {
-    fn collect_log<const N: usize>(
+    async fn collect_log<const N: usize>(
         &mut self,
         address: &[u8; 20],
         topics: [[u8; 32]; N],

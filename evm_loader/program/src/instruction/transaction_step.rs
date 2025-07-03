@@ -1,7 +1,6 @@
 use std::cell::RefMut;
 
-use crate::account::{AccountsDB, StateAccount};
-use crate::account_storage::{AccountStorage, ProgramAccountStorage};
+use crate::account::StateAccount;
 use crate::config::{EVM_STEPS_LAST_ITERATION_MAX, EVM_STEPS_MIN};
 use crate::debug::log_data;
 use crate::error::{Error, Result};
@@ -11,17 +10,16 @@ use crate::gasometer::Gasometer;
 use crate::instruction::instruction_internals::{
     allocate_evm, finalize, finalize_interrupted, reinit_evm,
 };
+use crate::platform::{Platform, Solana};
 use crate::types::{Transaction, TrxView};
 
 pub fn do_begin(
     tx: Transaction,
-    accounts: AccountsDB,
+    mut account_storage: Solana,
     mut storage: StateAccount,
     gasometer: Gasometer,
 ) -> Result<()> {
     debug_print!("do_begin");
-
-    let mut account_storage = ProgramAccountStorage::new(accounts)?;
 
     let origin = storage.trx_origin();
 
@@ -31,8 +29,8 @@ pub fn do_begin(
     // This allows us to run multiple iterative transactions from the same sender in parallel
     // These transactions are guaranteed to start in a correct sequence
     // BUT they finalize in an undefined order
-    let mut origin_account = account_storage.origin(origin, &tx)?;
-    origin_account.increment_revision(account_storage.rent(), account_storage.db())?;
+    let mut origin_account = account_storage.get_origin((origin, &tx))?;
+    origin_account.increment_revision()?;
     origin_account.increment_nonce()?;
 
     // Burn `gas_limit` tokens from the origin account.
@@ -49,7 +47,7 @@ pub fn do_begin(
 
 pub fn do_continue(
     step_count: u64,
-    accounts: AccountsDB,
+    mut account_storage: Solana,
     mut storage: StateAccount,
     gasometer: Gasometer,
     reset: bool,
@@ -65,7 +63,6 @@ pub fn do_continue(
     if reset {
         log_data(&[b"RESET"]);
     }
-    let mut account_storage = ProgramAccountStorage::new(accounts)?;
     reinit_evm(&mut account_storage, &mut storage, reset, parsed_tx)?;
 
     if storage.interrupted_state().is_some() {

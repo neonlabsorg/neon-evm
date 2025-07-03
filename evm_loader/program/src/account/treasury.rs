@@ -56,6 +56,12 @@ impl<'a> Deref for Treasury<'a> {
     }
 }
 
+impl<'a> From<Treasury<'a>> for AccountInfo<'a> {
+    fn from(val: Treasury<'a>) -> Self {
+        val.info
+    }
+}
+
 impl<'a> MainTreasury<'a> {
     pub fn from_account_info(program_id: Pubkey, info: &AccountInfo<'a>) -> Result<Self> {
         let (expected_key, bump_seed) = MainTreasury::address(program_id);

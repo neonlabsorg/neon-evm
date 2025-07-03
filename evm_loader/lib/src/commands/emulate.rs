@@ -370,7 +370,7 @@ async fn emulate_trx_single_step<T: Tracer>(
     let origin = emulate_request.tx.from.address();
 
     let (exit_status, steps_executed, tracer, timestamped_contracts) = {
-        let mut backend = SyncedExecutorState::new(storage);
+        let mut backend = SyncedExecutorState::new(storage).await;
         let mut evm = match Machine::new(tx, origin, &mut backend, tracer).await {
             Ok(evm) => evm,
             Err(e) => {
@@ -490,7 +490,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
     .await?;
 
     let (exit_status, steps_executed, tracer, timestamped_contracts) = {
-        let mut backend = SyncedExecutorState::new(&mut storage);
+        let mut backend = SyncedExecutorState::new(&mut storage).await;
 
         let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
             Ok(evm) => evm,
@@ -526,7 +526,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
                     tracer.clear(&emulate_request.tx);
                 }
 
-                backend = SyncedExecutorState::new(&mut storage);
+                backend = SyncedExecutorState::new(&mut storage).await;
                 evm = match Machine::new(&tx, origin, &mut backend, tracer_result).await {
                     Ok(evm) => evm,
                     Err(e) => {
@@ -554,7 +554,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
                     overrides.clone(),
                 )
                 .await?;
-                backend = SyncedExecutorState::new(&mut storage);
+                backend = SyncedExecutorState::new(&mut storage).await;
 
                 if let Some(ref mut tracer) = tracer_result {
                     tracer.cancel(&emulate_request.tx);

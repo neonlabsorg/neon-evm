@@ -1,12 +1,13 @@
 use crate::account::{
-    program, AccountDispatch, AccountsDB, AccountsStatus, Holder, Operator, OperatorBalance,
-    OperatorBalanceValidator, StateAccount, Treasury, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
+    AccountDispatch, AccountsStatus, Holder, Operator, OperatorBalance, OperatorBalanceValidator,
+    StateAccount, Treasury, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
     TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
 use crate::instruction::transaction_step::{do_begin, do_continue};
+use crate::platform::Solana;
 use crate::types::{Transaction, TrxView};
 use arrayref::array_ref;
 use ethnum::U256;
@@ -25,17 +26,10 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let operator = Operator::from_account_info(&accounts[1])?;
     let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
     let operator_balance = OperatorBalance::try_from_account_info(program_id, &accounts[3])?;
-    let system = program::System::from_account_info(&accounts[4])?;
 
     operator_balance.validate_owner(&operator)?;
 
-    let accounts_db = AccountsDB::new(
-        &accounts[5..],
-        operator.clone(),
-        operator_balance.clone(),
-        Some(system),
-        Some(treasury),
-    );
+    let mut accounts_db = Solana::new(&accounts[1..], operator.clone(), operator_balance.clone())?;
 
     match storage_info.tag(program_id)? {
         TAG_HOLDER | TAG_STATE_FINALIZED => {
@@ -55,6 +49,8 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
 
             let mut gasometer = Gasometer::new(U256::ZERO, &operator)?;
             gasometer.record_address_lookup_table(accounts);
+
+            accounts_db.pay_to_treasury(treasury)?;
 
             let storage = StateAccount::new(
                 program_id,
@@ -79,6 +75,8 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
             log_data(&[b"MINER", miner_address.as_bytes()]);
 
             let gasometer = Gasometer::new(storage.gas_used(), &operator)?;
+
+            accounts_db.pay_to_treasury(treasury)?;
 
             let reset = accounts_status != AccountsStatus::Ok;
             do_continue(

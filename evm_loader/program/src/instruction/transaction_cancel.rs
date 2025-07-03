@@ -1,18 +1,15 @@
 use std::cmp::min;
 
-use crate::account::{
-    AccountsDB, BalanceAccount, Operator, OperatorBalance, PlainStateHeader, StateAccount,
-};
+use crate::account::{BalanceAccount, Operator, OperatorBalance, PlainStateHeader, StateAccount};
 use crate::config::{DEFAULT_CHAIN_ID, LAST_ITERATION_COST};
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 
+use crate::platform::{Platform, Solana};
 use crate::priority_gas_calculator::calc_priority_gas;
 use crate::types::TrxView;
 use arrayref::array_ref;
 use ethnum::U256;
-use solana_program::rent::Rent;
-use solana_program::sysvar::Sysvar;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
@@ -29,7 +26,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     log_data(&[b"HASH", transaction_hash]);
     log_data(&[b"MINER", operator_balance.address().as_bytes()]);
 
-    let accounts_db = AccountsDB::new(&accounts[3..], operator, Some(operator_balance), None, None);
+    let accounts_db = Solana::new(&accounts[1..], operator, Some(operator_balance))?;
 
     let mut header = StateAccount::recover_plain_header(program_id, &storage_info)?;
 
@@ -47,7 +44,7 @@ fn validate(header: &PlainStateHeader, transaction_hash: &[u8; 32]) -> Result<()
 
 fn execute(
     program_id: Pubkey,
-    accounts: AccountsDB,
+    mut accounts: Solana,
     header: &mut PlainStateHeader,
     storage_account: &AccountInfo,
 ) -> Result<()> {
@@ -69,15 +66,11 @@ fn execute(
     let _ = header.consume_gas(used_gas, accounts.try_operator_balance()); // ignore error
 
     let origin = header.origin;
-    let (origin_pubkey, _) = origin.find_balance_address(&program_id, trx_chain_id);
 
     // Do not refund unused gas for the scheduled transaction - it happens in the `scheduled_transaction_finish`.
     if !header.is_scheduled_tx() {
-        let origin_info = accounts.get(&origin_pubkey);
-        let mut balance = BalanceAccount::from_account_info(program_id, origin_info)?;
-        balance.increment_revision(&Rent::get()?, &accounts)?;
-
-        header.refund_unused_gas(&mut balance)?;
+        let mut origin: BalanceAccount = accounts.create_balance(origin, trx_chain_id)?;
+        header.refund_unused_gas(&mut origin)?;
     }
 
     header.cancel(program_id, storage_account)

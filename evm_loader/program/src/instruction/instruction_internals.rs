@@ -4,7 +4,6 @@ use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 
 use crate::account::{AllocateResult, Holder, Operator, StateAccount};
-use crate::account_storage::{AccountStorage, ProgramAccountStorage};
 use crate::allocator::acc_allocator;
 use crate::debug::log_data;
 use crate::error::Result;
@@ -13,19 +12,20 @@ use crate::evm::{ExitStatus, Machine};
 use crate::executor::precompile_extension::call_solana::execute_external_instruction;
 use crate::executor::{Action, ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
+use crate::platform::{Platform, Solana};
 use crate::types::vector::VectorSliceExt;
 use crate::types::Vector;
 use crate::types::{Transaction, TrxView};
 
 use solana_program::instruction::Instruction;
 
-pub type SyncedEvmBackend<'a, 'r> = SyncedExecutorState<'r, ProgramAccountStorage<'a>>;
-pub type EvmBackend<'a, 'r> = ExecutorState<'r, ProgramAccountStorage<'a>>;
+pub type SyncedEvmBackend<'a, 'r> = SyncedExecutorState<'r, Solana<'a>>;
+pub type EvmBackend<'a, 'r> = ExecutorState<'r, Solana<'a>>;
 pub type Evm = Machine<NoopEventListener>;
 
 pub fn allocate_evm(
     trx: &Transaction,
-    account_storage: &mut ProgramAccountStorage,
+    account_storage: &mut Solana,
     storage: &mut StateAccount,
 ) -> Result<()> {
     storage.reset_steps_executed();
@@ -45,7 +45,7 @@ pub fn allocate_evm(
 }
 
 pub fn reinit_evm(
-    account_storage: &mut ProgramAccountStorage,
+    account_storage: &mut Solana,
     storage: &mut StateAccount,
     reallocate: bool,
     mut parsed_tx: Option<Transaction>,
@@ -109,14 +109,14 @@ pub fn holder_parse_trx(
 pub fn finalize(
     steps_executed: u64,
     mut storage: StateAccount,
-    mut accounts: ProgramAccountStorage,
+    mut accounts: Solana,
     mut gasometer: Gasometer,
     apply_state: bool,
     provided_execution_result: Option<(&ExitStatus, &Vector<Action>)>,
 ) -> Result<()> {
     debug_print!("finalize");
 
-    storage.update_touched_accounts(*accounts.program_id(), accounts.db())?;
+    storage.update_touched_accounts(accounts.program_id(), &accounts)?;
     storage.increment_steps_executed(steps_executed)?;
     storage.finalize_step();
     log_data(&[
@@ -124,10 +124,6 @@ pub fn finalize(
         &steps_executed.to_le_bytes(),
         &storage.steps_executed().to_le_bytes(),
     ]);
-
-    if accounts.has_treasury() {
-        accounts.transfer_treasury_payment()?;
-    }
 
     if {
         let root = storage.root_ref_mut();
@@ -152,7 +148,7 @@ pub fn finalize(
         };
 
         gasometer.record_solana_transaction_cost(storage_header)?;
-        gasometer.record_operator_expenses(accounts.operator());
+        gasometer.record_operator_expenses(accounts.operator_account());
 
         let used_gas = gasometer.used_gas();
         let total_used_gas = gasometer.used_gas_total();
@@ -162,15 +158,19 @@ pub fn finalize(
             &total_used_gas.to_le_bytes(),
         ]);
 
-        storage_header.consume_gas(used_gas, accounts.db().try_operator_balance())?;
+        storage_header.consume_gas(used_gas, accounts.try_operator_balance())?;
 
         if let Some(status) = status {
             log_return_value(&status);
 
             // refund gas for scheduled transaction is happening in transaction_finish.
             if !storage_header.is_scheduled_tx() {
-                let mut origin = accounts.origin(storage_header.origin, storage_header)?;
-                origin.increment_revision(accounts.rent(), accounts.db())?;
+                let chain_id = storage_header
+                    .chain_id()
+                    .unwrap_or_else(|| accounts.default_chain());
+
+                let mut origin = accounts.create_balance(storage_header.origin, chain_id)?;
+                origin.increment_revision()?;
 
                 storage_header.refund_unused_gas(&mut origin)?;
             }
@@ -188,10 +188,12 @@ pub fn finalize(
 
 pub fn finalize_interrupted(
     storage: StateAccount,
-    mut accounts: ProgramAccountStorage,
+    mut accounts: Solana,
     gasometer: Gasometer,
 ) -> Result<()> {
     debug_print!("finalize_interrupted");
+
+    accounts.panic_on_revert();
 
     let (exit_reason, steps_executed) = {
         let mut state_ref = storage.executor_state_mut();

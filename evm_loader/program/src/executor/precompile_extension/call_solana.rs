@@ -1,8 +1,8 @@
 use crate::{
     account::pda,
-    account_storage::FAKE_OPERATOR,
     error::{Error, Result},
     evm::database::Database,
+    platform::FAKE_OPERATOR,
     types::{
         vector::{seeds2_to_vector, VectorSliceExt, VectorSliceSlowExt},
         Address,
@@ -73,7 +73,7 @@ pub async fn call_solana<State: Database>(
                 bincode::deserialize(&input[32 + offset..]).map_err(|_| Error::OutOfBounds)?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_address(program_id, &signer);
+            let (_, bump_seed) = pda::contract_address(&program_id, &signer);
             let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
             execute_external_instruction(state, context, instruction, seeds, None).await
@@ -90,7 +90,7 @@ pub async fn call_solana<State: Database>(
                 bincode::deserialize(&input[offset + 32..]).map_err(|_| Error::OutOfBounds)?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_address(program_id, &signer);
+            let (_, bump_seed) = pda::contract_address(&program_id, &signer);
             let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
             execute_external_instruction(
@@ -114,7 +114,7 @@ pub async fn call_solana<State: Database>(
             let instruction: Instruction = bincode::deserialize(&input[offset + 32..])?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_auth_address(program_id, &signer, salt);
+            let (_, bump_seed) = pda::contract_auth_address(&program_id, &signer, salt);
             let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
 
             execute_external_instruction(state, context, instruction, seeds, None).await
@@ -132,7 +132,7 @@ pub async fn call_solana<State: Database>(
             let instruction: Instruction = bincode::deserialize(&input[offset + 32..])?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_auth_address(program_id, &signer, salt);
+            let (_, bump_seed) = pda::contract_auth_address(&program_id, &signer, salt);
             let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
 
             execute_external_instruction(
@@ -156,7 +156,7 @@ pub async fn call_solana<State: Database>(
             let instruction = read_instruction(&input[instruction_offset..])?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_address(program_id, &signer);
+            let (_, bump_seed) = pda::contract_address(&program_id, &signer);
             let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
             execute_external_instruction(
@@ -179,7 +179,7 @@ pub async fn call_solana<State: Database>(
             let instruction = read_instruction(&input[instruction_offset..])?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_address(program_id, &signer);
+            let (_, bump_seed) = pda::contract_address(&program_id, &signer);
             let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
             execute_external_instruction(state, context, instruction, seeds, None).await
@@ -196,7 +196,7 @@ pub async fn call_solana<State: Database>(
             let instruction = read_instruction(&input[instruction_offset..])?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_auth_address(program_id, &signer, salt);
+            let (_, bump_seed) = pda::contract_auth_address(&program_id, &signer, salt);
             let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
 
             execute_external_instruction(state, context, instruction, seeds, None).await
@@ -214,7 +214,7 @@ pub async fn call_solana<State: Database>(
             let instruction = read_instruction(&input[instruction_offset..])?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_auth_address(program_id, &signer, salt);
+            let (_, bump_seed) = pda::contract_auth_address(&program_id, &signer, salt);
             let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
 
             execute_external_instruction(
@@ -237,14 +237,14 @@ pub async fn call_solana<State: Database>(
         // "59e4ad63": "getResourceAddress(bytes32)"
         [0x59, 0xe4, 0xad, 0x63] => {
             let salt = read_salt(input)?;
-            let (sol_address, _) = pda::contract_data_address(program_id, &context.caller, salt);
+            let (sol_address, _) = pda::contract_data_address(&program_id, &context.caller, salt);
             Ok(sol_address.to_bytes().to_vec())
         }
 
         // "cd2d1a3a": "getExtAuthority(bytes32)"
         [0xcd, 0x2d, 0x1a, 0x3a] => {
             let salt = read_salt(input)?;
-            let (sol_address, _) = pda::contract_auth_address(program_id, &context.caller, salt);
+            let (sol_address, _) = pda::contract_auth_address(&program_id, &context.caller, salt);
             Ok(sol_address.to_bytes().to_vec())
         }
 
@@ -266,7 +266,7 @@ pub async fn call_solana<State: Database>(
 
         // "30aa81c6": "getPayer()"
         [0x30, 0xaa, 0x81, 0xc6] => {
-            let (sol_address, _) = pda::contract_payer_address(program_id, &context.caller);
+            let (sol_address, _) = pda::contract_payer_address(&program_id, &context.caller);
             Ok(sol_address.to_bytes().to_vec())
         }
 
@@ -282,7 +282,7 @@ pub async fn call_solana<State: Database>(
             let owner = read_pubkey(&input[96..])?;
 
             let signer = context.caller;
-            let (sol_address, bump_seed) = pda::contract_data_address(program_id, &signer, salt);
+            let (sol_address, bump_seed) = pda::contract_data_address(&program_id, &signer, salt);
             let seeds: &[&[u8]] = pda::contract_data_seeds!(signer, salt, bump_seed);
 
             let account = state.external_account(sol_address).await?;
@@ -357,7 +357,7 @@ pub async fn execute_external_instruction<State: Database>(
         ))));
     }
 
-    let program_id = *state.program_id();
+    let program_id = state.program_id();
     let called_program = instruction.program_id;
 
     state.set_return_data(&[]);

@@ -1,11 +1,10 @@
 use std::ops::Deref;
 
-use crate::account::{
-    program, AccountsDB, Holder, Operator, OperatorBalance, OperatorBalanceValidator, Treasury,
-};
+use crate::account::{Holder, Operator, OperatorBalance, OperatorBalanceValidator, Treasury};
 use crate::debug::log_data;
 use crate::error::Result;
 use crate::gasometer::Gasometer;
+use crate::platform::Solana;
 use crate::types::{boxx::boxx, Transaction, TrxView};
 use arrayref::array_ref;
 use ethnum::U256;
@@ -22,7 +21,6 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1])? };
     let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
     let operator_balance = OperatorBalance::try_from_account_info(program_id, &accounts[3])?;
-    let system = program::System::from_account_info(&accounts[4])?;
 
     holder.validate_owner(&operator)?;
 
@@ -53,17 +51,12 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     log_data(&[b"HASH", &trx.hash()]);
     log_data(&[b"MINER", miner_address.as_bytes()]);
 
-    let accounts_db = AccountsDB::new(
-        &accounts[5..],
-        operator,
-        operator_balance,
-        Some(system),
-        Some(treasury),
-    );
+    let mut accounts_db = Solana::new_with_solana_call(&accounts[1..], operator, operator_balance)?;
 
-    let mut gasometer = Gasometer::new(U256::ZERO, accounts_db.operator())?;
+    let mut gasometer = Gasometer::new(U256::ZERO, accounts_db.operator_account())?;
     gasometer.record_address_lookup_table(accounts);
     gasometer.record_write_to_holder(&trx);
 
+    accounts_db.pay_to_treasury(treasury)?;
     super::transaction_execute::execute_with_solana_call(accounts_db, gasometer, trx, origin)
 }

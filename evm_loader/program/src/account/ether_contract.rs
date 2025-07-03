@@ -1,12 +1,11 @@
 use crate::{
     account::TAG_EMPTY,
-    account_storage::KeysCache,
     error::{Error, Result},
     types::Address,
 };
 use solana_program::{
     account_info::AccountInfo, clock::Clock, entrypoint::MAX_PERMITTED_DATA_INCREASE,
-    pubkey::Pubkey, rent::Rent, system_program,
+    pubkey::Pubkey,
 };
 use std::{
     cell::{Ref, RefMut},
@@ -16,8 +15,7 @@ use std::{
 use crate::config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 
 use super::{
-    Account, AccountDispatch, AccountHeader, AccountsDB, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION,
-    TAG_ACCOUNT_CONTRACT,
+    Account, AccountDispatch, AccountHeader, ZeroInit, ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_CONTRACT,
 };
 
 #[derive(Eq, PartialEq)]
@@ -91,71 +89,6 @@ impl<'a> ContractAccount<'a> {
         Ok(Self { account })
     }
 
-    pub fn allocate(
-        address: Address,
-        code: &[u8],
-        rent: &Rent,
-        accounts: &AccountsDB,
-        keys: Option<&KeysCache>,
-    ) -> Result<AllocateResult> {
-        let (pubkey, bump_seed) = keys.map_or_else(
-            || address.find_solana_address(&crate::ID),
-            |keys| keys.contract_with_bump_seed(&crate::ID, address),
-        );
-
-        let info = accounts.get(&pubkey);
-
-        let required_size = Self::required_account_size(code);
-        if info.data_len() >= required_size {
-            return Ok(AllocateResult::Ready);
-        }
-
-        let system = accounts.system();
-        let operator = accounts.operator();
-
-        if system_program::check_id(info.owner) {
-            let seeds: &[&[u8]] = &[&[ACCOUNT_SEED_VERSION], address.as_bytes(), &[bump_seed]];
-            let space = required_size.min(MAX_PERMITTED_DATA_INCREASE);
-            system.create_pda_account(&crate::ID, operator, info, seeds, space, rent)?;
-        } else if crate::check_id(info.owner) {
-            info.validate_tag(crate::ID, TAG_EMPTY)?;
-
-            let max_size = info.data_len() + MAX_PERMITTED_DATA_INCREASE;
-            let space = required_size.min(max_size);
-            info.realloc(space, false)?;
-
-            let required_balance = rent.minimum_balance(space);
-            if info.lamports() < required_balance {
-                let lamports = required_balance - info.lamports();
-                system.transfer(operator, info, lamports)?;
-            }
-        } else {
-            return Err(Error::AccountInvalidOwner(pubkey, system_program::ID));
-        }
-
-        if info.data_len() >= required_size {
-            Ok(AllocateResult::Ready)
-        } else {
-            Ok(AllocateResult::NeedMore)
-        }
-    }
-
-    pub fn create(
-        address: Address,
-        chain_id: u64,
-        code: &[u8],
-        accounts: &AccountsDB<'a>,
-        keys: Option<&KeysCache>,
-    ) -> Result<Self> {
-        let (pubkey, _) = keys.map_or_else(
-            || address.find_solana_address(&crate::ID),
-            |keys| keys.contract_with_bump_seed(&crate::ID, address),
-        );
-
-        let account = accounts.get(&pubkey).clone().into();
-        Self::initialize(account, crate::ID, address, chain_id, code)
-    }
-
     pub fn initialize(
         mut account: Account<'a>,
         program_id: Pubkey,
@@ -206,18 +139,17 @@ impl<'a> ContractAccount<'a> {
         }
     }
 
-    fn header_upgrade(&mut self, rent: &Rent, db: &AccountsDB<'a>) -> Result<()> {
+    fn header_upgrade(&mut self) -> Result<()> {
         match self.account.header_version() {
             0 | 1 => {
-                self.account.expand_header::<HeaderV0, Header>(rent, db)?;
+                self.account.expand_header::<HeaderV0, Header>()?;
             }
             HeaderWithRevision::VERSION => {
-                self.account
-                    .expand_header::<HeaderWithRevision, Header>(rent, db)?;
+                self.account.expand_header::<HeaderWithRevision, Header>()?;
             }
             HeaderWithTimestamp::VERSION => {
                 self.account
-                    .expand_header::<HeaderWithTimestamp, Header>(rent, db)?;
+                    .expand_header::<HeaderWithTimestamp, Header>()?;
             }
             v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
         }
@@ -267,6 +199,42 @@ impl<'a> ContractAccount<'a> {
         RefMut::map(data, |d| &mut d[offset..])
     }
 
+    pub fn allocate_code(&mut self, code: &[u8]) -> Result<AllocateResult> {
+        let required_size = Self::required_account_size(code);
+        if self.account.data_len() >= required_size {
+            return Ok(AllocateResult::Ready);
+        }
+
+        let max_size = self.account.original_data_len() + MAX_PERMITTED_DATA_INCREASE;
+        let new_space = required_size.min(max_size);
+        self.account.reallocate(new_space, ZeroInit::Uninit)?;
+
+        if new_space >= required_size {
+            Ok(AllocateResult::Ready)
+        } else {
+            Ok(AllocateResult::NeedMore)
+        }
+    }
+
+    pub fn allocate_entire_code_buffer(&mut self, code: &[u8]) -> Result<()> {
+        let required_size = Self::required_account_size(code);
+        if self.account.data_len() >= required_size {
+            return Ok(());
+        }
+
+        self.account.reallocate(required_size, ZeroInit::Uninit)
+    }
+
+    pub fn set_code(&mut self, code: &[u8]) -> Result<()> {
+        {
+            let mut code_region = self.code_mut();
+            code_region[..code.len()].copy_from_slice(code);
+            code_region[code.len()..].fill(0);
+        }
+
+        self.increment_revision()
+    }
+
     #[must_use]
     pub fn code_len(&self) -> usize {
         let offset = self.code_offset();
@@ -302,9 +270,9 @@ impl<'a> ContractAccount<'a> {
         header.revision
     }
 
-    pub fn increment_revision(&mut self, rent: &Rent, db: &AccountsDB<'a>) -> Result<()> {
+    pub fn increment_revision(&mut self) -> Result<()> {
         if self.account.header_version() < HeaderWithRevision::VERSION {
-            self.header_upgrade(rent, db)?;
+            self.header_upgrade()?;
         }
 
         let mut header: RefMut<HeaderWithRevision> = self.account.header_mut();
@@ -323,14 +291,9 @@ impl<'a> ContractAccount<'a> {
         header.timestamp_used_at
     }
 
-    pub fn update_timestamp_used_at(
-        &mut self,
-        clock: &Clock,
-        rent: &Rent,
-        db: &AccountsDB<'a>,
-    ) -> Result<()> {
+    pub fn update_timestamp_used_at(&mut self, clock: &Clock) -> Result<()> {
         if self.account.header_version() < HeaderWithTimestamp::VERSION {
-            self.header_upgrade(rent, db)?;
+            self.header_upgrade()?;
         }
 
         let mut header: RefMut<HeaderWithTimestamp> = self.account.header_mut();
@@ -347,13 +310,20 @@ impl<'a> ContractAccount<'a> {
         storage[index]
     }
 
-    pub fn set_storage_value(&mut self, index: usize, value: &[u8; 32]) {
+    pub fn set_storage_value(&mut self, index: usize, value: &[u8; 32]) -> Result<()> {
         assert!(index < STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT);
 
-        let mut storage = self.storage_mut();
+        {
+            let mut storage = self.storage_mut();
+            let cell: &mut [u8; 32] = &mut storage[index];
+            if cell == value {
+                return Ok(());
+            }
 
-        let cell: &mut [u8; 32] = &mut storage[index];
-        cell.copy_from_slice(value);
+            cell.copy_from_slice(value);
+        }
+
+        self.increment_revision()
     }
 
     pub fn set_storage_multiple_values(&mut self, offset: usize, values: &[[u8; 32]]) {

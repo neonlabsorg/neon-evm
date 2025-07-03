@@ -13,9 +13,9 @@ use solana_program::pubkey::Pubkey;
 
 use crate::{
     account::pda,
-    account_storage::FAKE_OPERATOR,
     error::{Error, Result},
     evm::database::Database,
+    platform::FAKE_OPERATOR,
     types::Address,
 };
 
@@ -157,7 +157,7 @@ async fn create_metadata<State: Database>(
     let program_id = state.program_id();
     let signer = context.caller;
 
-    let (signer_pubkey, bump_seed) = pda::contract_address(program_id, &signer);
+    let (signer_pubkey, bump_seed) = pda::contract_address(&program_id, &signer);
     let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);
@@ -176,7 +176,7 @@ async fn create_metadata<State: Database>(
             seller_fee_basis_points: 0,
             creators: Some(vec![
                 Creator {
-                    address: *program_id,
+                    address: program_id,
                     verified: false,
                     share: 0,
                 },
@@ -208,7 +208,7 @@ async fn create_master_edition<State: Database>(
     let program_id = state.program_id();
     let signer = context.caller;
 
-    let (signer_pubkey, bump_seed) = pda::contract_address(program_id, &signer);
+    let (signer_pubkey, bump_seed) = pda::contract_address(&program_id, &signer);
     let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);

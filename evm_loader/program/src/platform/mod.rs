@@ -13,6 +13,9 @@ use crate::account::{
 use crate::error::Result;
 use crate::types::{Address, Transaction, TrxView};
 
+mod keys_index;
+pub use keys_index::{CachedKeysIndex, DefaultKeysIndex, KeysIndex};
+
 #[cfg(target_os = "solana")]
 mod solana;
 #[cfg(target_os = "solana")]
@@ -55,6 +58,8 @@ pub trait Platform<'a>: Sized {
 
     fn chains(&self) -> impl Iterator<Item = Chain>;
     fn default_chain(&self) -> u64;
+
+    fn keys(&self) -> &impl KeysIndex;
 
     async fn invoke(
         &mut self,
@@ -100,7 +105,7 @@ pub trait Platform<'a>: Sized {
     ) -> Result<Option<BalanceAccount<'a>>> {
         let program_id = self.program_id();
 
-        let (pubkey, _) = pda::balance_address(&program_id, &address, chain_id);
+        let pubkey = self.keys().balance(address, chain_id);
 
         let account = self.get_account(pubkey).await?;
         if account.is_system_owned() {
@@ -118,7 +123,7 @@ pub trait Platform<'a>: Sized {
     ) -> Result<BalanceAccount<'a>> {
         let program_id = self.program_id();
 
-        let (_, bump_seed) = pda::balance_address(&program_id, &address, chain_id);
+        let (_, bump_seed) = self.keys().balance_bump(address, chain_id);
         let seeds: &[&[u8]] = pda::balance_seeds!(address, chain_id, bump_seed);
 
         let mut account = self.assign_account(seeds).await?;
@@ -141,7 +146,7 @@ pub trait Platform<'a>: Sized {
         let address = Address::from_solana_address(&user_pubkey);
         let chain = self.chains().find(|c| c.name == "sol").unwrap();
 
-        let (_, bump_seed) = pda::balance_address(&program_id, &address, chain.id);
+        let (_, bump_seed) = self.keys().balance_bump(address, chain.id);
         let seeds: &[&[u8]] = pda::balance_seeds!(address, chain.id, bump_seed);
 
         let mut account = self.assign_account(seeds).await?;
@@ -163,7 +168,7 @@ pub trait Platform<'a>: Sized {
     async fn get_contract(&self, address: Address) -> Result<Option<ContractAccount<'a>>> {
         let program_id = self.program_id();
 
-        let (pubkey, _) = pda::contract_address(&program_id, &address);
+        let pubkey = self.keys().contract(address);
 
         let account = self.get_account(pubkey).await?;
         if account.is_system_owned() || (account.tag(program_id)? == TAG_EMPTY) {
@@ -181,7 +186,7 @@ pub trait Platform<'a>: Sized {
     ) -> Result<ContractAccount<'a>> {
         let program_id = self.program_id();
 
-        let (_, bump_seed) = pda::contract_address(&program_id, &address);
+        let (_, bump_seed) = self.keys().contract_bump(address);
         let seeds: &[&[u8]] = pda::contract_seeds!(address, bump_seed);
 
         let mut account = self.assign_account(seeds).await?;
@@ -198,7 +203,7 @@ pub trait Platform<'a>: Sized {
     async fn allocate_contract(&mut self, address: Address, code: &[u8]) -> Result<AllocateResult> {
         let program_id = self.program_id();
 
-        let (_, bump_seed) = pda::contract_address(&program_id, &address);
+        let (_, bump_seed) = self.keys().contract_bump(address);
         let seeds: &[&[u8]] = pda::contract_seeds!(address, bump_seed);
 
         let mut account = self.assign_account(seeds).await?;
@@ -228,7 +233,7 @@ pub trait Platform<'a>: Sized {
     ) -> Result<ContractAccount<'a>> {
         let program_id = self.program_id();
 
-        let (pubkey, _) = pda::contract_address(&program_id, &address);
+        let pubkey = self.keys().contract(address);
 
         let account = self.get_account(pubkey).await?;
         ContractAccount::initialize(account, program_id, address, chain_id, code)
@@ -237,7 +242,7 @@ pub trait Platform<'a>: Sized {
     async fn get_storage(&self, contract: Address, index: U256) -> Result<Option<StorageCell<'a>>> {
         let program_id = self.program_id();
 
-        let (base, _) = pda::contract_address(&program_id, &contract);
+        let base = self.keys().contract(contract);
 
         let storage_seed = StorageCellSeed::new(index);
         let pubkey = Pubkey::create_with_seed(&base, &storage_seed, &program_id)?;
@@ -254,7 +259,7 @@ pub trait Platform<'a>: Sized {
     async fn create_storage(&mut self, contract: Address, index: U256) -> Result<StorageCell<'a>> {
         let program_id = self.program_id();
 
-        let (base, bump_seed) = pda::contract_address(&program_id, &contract);
+        let (base, bump_seed) = self.keys().contract_bump(contract);
         let base_seeds: &[&[u8]] = pda::contract_seeds!(contract, bump_seed);
 
         let storage_seed = StorageCellSeed::new(index);

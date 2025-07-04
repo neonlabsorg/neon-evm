@@ -3,11 +3,11 @@ use maybe_async::maybe_async;
 use solana_program::{clock::Clock, instruction::Instruction, pubkey::Pubkey, rent::Rent};
 
 use crate::{
-    account::{pda, Account, StorageCellSeed},
+    account::{Account, StorageCellSeed},
     account_storage::{AccountStorage, LogCollector, SyncedAccountStorage},
     error::Result,
     executor::OwnedAccountInfo,
-    platform::{Platform, FAKE_OPERATOR},
+    platform::{KeysIndex, Platform, FAKE_OPERATOR},
     types::{vector::VectorSliceExt, Address, Vector},
     vector,
 };
@@ -104,11 +104,11 @@ impl<'a, T: Platform<'a>> AccountStorage for T {
     }
 
     fn contract_pubkey(&self, address: Address) -> (Pubkey, u8) {
-        pda::contract_address(&self.program_id(), &address)
+        self.keys().contract_bump(address)
     }
 
     fn balance_pubkey(&self, address: Address, chain_id: u64) -> (Pubkey, u8) {
-        pda::balance_address(&self.program_id(), &address, chain_id)
+        self.keys().balance_bump(address, chain_id)
     }
 
     fn storage_cell_pubkey(&self, address: Address, index: U256) -> Pubkey {

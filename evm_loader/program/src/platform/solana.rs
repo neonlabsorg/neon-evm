@@ -15,10 +15,11 @@ use crate::{
     config::PAYMENT_TO_TREASURE,
     debug::log_data,
     error::{Error, Result},
+    platform::keys_index::KeysIndex,
     types::Address,
 };
 
-use super::{Chain, InvokeMode, Platform, FAKE_OPERATOR};
+use super::{keys_index::CachedKeysIndex, Chain, InvokeMode, Platform, FAKE_OPERATOR};
 
 pub struct Solana<'a> {
     sorted_account_infos: Vec<AccountInfo<'a>>,
@@ -26,6 +27,7 @@ pub struct Solana<'a> {
     panic_on_revert: bool,
     pub operator: Operator<'a>,
     pub operator_balance: Option<OperatorBalance<'a>>,
+    keys_index: CachedKeysIndex,
 }
 
 impl<'a> Solana<'a> {
@@ -48,6 +50,7 @@ impl<'a> Solana<'a> {
             panic_on_revert: false,
             operator,
             operator_balance,
+            keys_index: CachedKeysIndex::new(crate::ID),
         })
     }
 
@@ -62,10 +65,12 @@ impl<'a> Solana<'a> {
         Ok(solana)
     }
 
+    #[inline(always)]
     pub fn panic_on_revert(&mut self) {
         self.panic_on_revert = true;
     }
 
+    #[inline(always)]
     pub fn try_find_account_info(&self, pubkey: Pubkey) -> Option<&AccountInfo<'a>> {
         let Ok(index) = self
             .sorted_account_infos
@@ -104,6 +109,7 @@ impl<'a> Solana<'a> {
         operator_balance.withdraw(&mut target)
     }
 
+    #[inline(always)]
     pub fn log_miner_address(&self, origin: Address) {
         let address = self.operator_balance.miner(origin);
         log_data(&[b"MINER", address.as_bytes()]);
@@ -174,14 +180,17 @@ impl Drop for Solana<'_> {
 
 #[maybe_async::sync_impl]
 impl<'a> Platform<'a> for Solana<'a> {
+    #[inline(always)]
     fn program_id(&self) -> Pubkey {
         crate::ID
     }
 
+    #[inline(always)]
     fn operator(&self) -> Pubkey {
         *self.operator.key
     }
 
+    #[inline(always)]
     fn chains(&self) -> impl Iterator<Item = Chain> {
         crate::config::CHAIN_ID_LIST.iter().map(|c| Chain {
             id: c.0,
@@ -190,8 +199,14 @@ impl<'a> Platform<'a> for Solana<'a> {
         })
     }
 
+    #[inline(always)]
     fn default_chain(&self) -> u64 {
         crate::config::DEFAULT_CHAIN_ID
+    }
+
+    #[inline(always)]
+    fn keys(&self) -> &impl KeysIndex {
+        &self.keys_index
     }
 
     fn invoke(
@@ -214,11 +229,13 @@ impl<'a> Platform<'a> for Solana<'a> {
             .map_err(Error::from)
     }
 
+    #[inline(always)]
     fn get_return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
         solana_program::program::get_return_data()
     }
 
     #[rustfmt::skip]
+    #[inline(always)]
     fn log_event<const N: usize>(&mut self, address: Address, topics: [[u8; 32]; N], data: &[u8]) {
         let address = address.as_bytes();
 
@@ -232,11 +249,13 @@ impl<'a> Platform<'a> for Solana<'a> {
         }
     }
 
+    #[inline(always)]
     fn get_sysvar<T: Sysvar>(&self) -> Result<T> {
         let sysvar = T::get()?;
         Ok(sysvar)
     }
 
+    #[inline(always)]
     fn get_sysvar_part<T: Sysvar>(&self, offset: usize, buffer: &mut [u8]) -> Result<()> {
         let buffer_addr = buffer.as_mut_ptr();
 
@@ -314,17 +333,20 @@ impl<'a> Platform<'a> for Solana<'a> {
         Ok(account)
     }
 
+    #[inline(always)]
     fn snapshot(&mut self) {
         // not supported on Solana
         // do nothing
     }
 
+    #[inline(always)]
     fn revert(&mut self) {
         if self.panic_on_revert {
             panic_with_error!(Error::RevertWithSolanaCall);
         }
     }
 
+    #[inline(always)]
     fn commit(&mut self) {
         // do nothing
     }

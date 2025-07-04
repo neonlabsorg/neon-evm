@@ -46,31 +46,10 @@ impl<'de, const N: usize> DeserializeAs<'de, [u8; N]> for Base58Array<N> {
         })
     }
 }
-
 #[serde_as]
 #[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct Base58Array32(#[serde_as(as = "Base58Array<32>")] pub [u8; 32]);
+pub struct PubkeyBase58(#[serde_as(as = "Base58Array<32>")] pub [u8; 32]);
 
-impl From<[u8; 32]> for Base58Array32 {
-    fn from(bytes: [u8; 32]) -> Self {
-        Self(bytes)
-    }
-}
-impl From<&Vec<u8>> for Base58Array32 {
-    fn from(bytes: &Vec<u8>) -> Self {
-        assert_eq!(bytes.len(), 32, "Expected 32-byte pubkey");
-        let mut array = [0u8; 32];
-        array.copy_from_slice(bytes);
-        Self(array)
-    }
-}
-
-impl From<Base58Array32> for Vec<u8> {
-    fn from(pubkey_base58: Base58Array32) -> Self {
-        pubkey_base58.0.to_vec()
-    }
-}
-pub type PubkeyBase58 = Base58Array32;
 impl From<Pubkey> for PubkeyBase58 {
     fn from(pubkey: Pubkey) -> Self {
         Self(pubkey.to_bytes())
@@ -81,8 +60,9 @@ impl From<PubkeyBase58> for Pubkey {
         Self::new_from_array(pubkey_base58.0)
     }
 }
-
-pub type BlockHashBase58 = Base58Array32;
+#[serde_as]
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct BlockHashBase58(#[serde_as(as = "Base58Array<32>")] pub [u8; 32]);
 
 impl From<Hash> for BlockHashBase58 {
     fn from(hash: Hash) -> Self {
@@ -94,15 +74,15 @@ impl From<BlockHashBase58> for Hash {
         Self::new_from_array(block_hash_base58.0)
     }
 }
-impl From<&String> for BlockHashBase58 {
-    fn from(hash: &String) -> Self {
-        let bytes = bs58::decode(hash).into_vec().expect("Invalid base58 hash");
-        assert_eq!(bytes.len(), 32, "Expected 32-byte hash");
-        let mut array = [0u8; 32];
-        array.copy_from_slice(&bytes);
-        Self(array)
-    }
-}
+// impl From<&String> for BlockHashBase58 {
+//     fn from(hash: &String) -> Self {
+//         let bytes = bs58::decode(hash).into_vec().expect("Invalid base58 hash");
+//         assert_eq!(bytes.len(), 32, "Expected 32-byte hash");
+//         let mut array = [0u8; 32];
+//         array.copy_from_slice(&bytes);
+//         Self(array)
+//     }
+// }
 
 #[serde_as]
 #[derive(Deserialize, Serialize, Clone, Debug)]

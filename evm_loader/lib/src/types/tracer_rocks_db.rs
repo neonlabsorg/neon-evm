@@ -7,6 +7,7 @@ use jsonrpsee::core::Serialize;
 use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use solana_account_decoder::UiDataSliceConfig;
+use solana_sdk::hash::Hash;
 use solana_sdk::signature::Signature;
 use solana_sdk::{
     account::Account,
@@ -16,10 +17,9 @@ use solana_sdk::{
 use std::env;
 use std::sync::Arc;
 use tracerdb_api::tracer_db_rpc_api::{
-    BlockHashBase58, PubkeyBase58, SignatureBase58, SolanaReadableAccount, TracerDbApiClient,
+    PubkeyBase58, SignatureBase58, SolanaReadableAccount, TracerDbApiClient,
 };
 use tracing::{debug, info};
-
 #[derive(Clone, Serialize)]
 pub struct AccountParams {
     pub pubkey: Pubkey,
@@ -124,10 +124,25 @@ impl TracerDbTrait for RocksDb {
         let neon_revision = env!("NEON_REVISION");
         Ok(neon_revision.to_string())
     }
+    // impl From<&String> for BlockHashBase58 {
+    //     fn from(hash: &String) -> Self {
+    //         let bytes = bs58::decode(hash).into_vec().expect("Invalid base58 hash");
+    //         assert_eq!(bytes.len(), 32, "Expected 32-byte hash");
+    //         let mut array = [0u8; 32];
+    //         array.copy_from_slice(&bytes);
+    //         Self(array)
+    //     }
+    // }
 
     async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<u64> {
+        let bytes = bs58::decode(blockhash).into_vec()?;
+        assert_eq!(bytes.len(), 32, "Expected 32-byte hash");
+        let bytes: [u8; 32] = bytes
+            .try_into()
+            .map_err(|v: Vec<u8>| anyhow::anyhow!("Invalid length, got {} bytes", v.len()))?;
+        let hash = Hash::from(bytes);
         self.client
-            .get_slot_by_blockhash(BlockHashBase58::from(&blockhash))
+            .get_slot_by_blockhash(hash.into())
             .await?
             .ok_or_else(|| anyhow!("get_slot_by_blockhash value is None"))
     }

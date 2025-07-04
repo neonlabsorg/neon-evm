@@ -13,6 +13,7 @@ use crate::evm::{ExitStatus, Machine};
 use crate::executor::precompile_extension::call_solana::execute_external_instruction;
 use crate::executor::{Action, ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
+use crate::types::vector::VectorSliceExt;
 use crate::types::Vector;
 use crate::types::{Transaction, TrxView};
 
@@ -67,23 +68,18 @@ pub fn reinit_evm(
             &mut evm_backend,
             None,
         )?);
-    } else {
-        let mut state_data = storage.executor_state_mut_ref();
-        let mut evm = storage.evm_mut_ref();
+    }
 
-        let evm_backend = ExecutorState::new(account_storage, state_data.deref_mut());
-        evm.reinit(&evm_backend);
-    };
     Ok(())
 }
 
 pub fn holder_parse_trx(
     info: &AccountInfo,
     operator: &Operator,
-    program_id: &Pubkey,
+    program_id: Pubkey,
     is_scheduled: bool,
 ) -> Result<(Transaction, Vec<u8>)> {
-    let holder = Holder::from_account(program_id, info)?;
+    let holder = Holder::from_account_info(program_id, info)?;
 
     // We have to initialize the heap before creating Transaction object, but since
     // transaction's rlp itself is stored in the holder account, we have two options:
@@ -120,7 +116,7 @@ pub fn finalize(
 ) -> Result<()> {
     debug_print!("finalize");
 
-    storage.update_touched_accounts(accounts.program_id(), accounts.db())?;
+    storage.update_touched_accounts(*accounts.program_id(), accounts.db())?;
     storage.increment_steps_executed(steps_executed)?;
     storage.finalize_step();
     log_data(&[
@@ -184,7 +180,7 @@ pub fn finalize(
             false
         }
     } {
-        storage.finalize(accounts.program_id())?;
+        storage.finalize()?;
     }
 
     Ok(())
@@ -197,7 +193,7 @@ pub fn finalize_interrupted(
 ) -> Result<()> {
     debug_print!("finalize_interrupted");
 
-    let (exit_reason, steps_executed, _, _) = {
+    let (exit_reason, steps_executed) = {
         let mut state_ref = storage.executor_state_mut();
         let state_data = state_ref.as_mut().unwrap();
         accounts.apply_state_change(state_data.into_actions())?;
@@ -209,6 +205,12 @@ pub fn finalize_interrupted(
             .interrupted_state()
             .expect("storage.interrupted_state should be Some within finalize_interrupted context");
 
+        let signer_seeds = interrupted_state
+            .signer_seeds
+            .iter()
+            .map(|s| s.as_slice())
+            .collect::<Vec<_>>();
+
         let result = execute_external_instruction(
             &mut backend,
             evm.context(),
@@ -217,11 +219,11 @@ pub fn finalize_interrupted(
                 accounts: interrupted_state.instruction.accounts.to_vec(),
                 data: interrupted_state.instruction.data.to_vec(),
             },
-            interrupted_state.signer_seeds.clone(),
+            &signer_seeds,
             interrupted_state.lamports,
         );
         if let Ok(return_data) = result {
-            evm.opcode_return_impl(return_data, &mut backend)?;
+            evm.opcode_return_impl(return_data.to_vector(), &mut backend)?;
             evm.increment_pc();
         }
         evm.execute(u64::MAX, &mut backend)?

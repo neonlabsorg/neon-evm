@@ -148,7 +148,7 @@ where
         .await?
         .borrow_mut();
     let balance_account =
-        BalanceAccount::from_account(&storage.program_id, balance_data.into_account_info());
+        BalanceAccount::from_account(storage.program_id, balance_data.into_account_info().into());
 
     Ok(action(&balance_account?))
 }
@@ -173,7 +173,7 @@ impl ActualStorage {
         account_data.expand(StorageCell::required_account_size(self.values.len()));
         account_data.lamports = rent.minimum_balance(account_data.get_length());
         let mut storage =
-            StorageCell::initialize(account_data.into_account_info(), program_id).unwrap();
+            StorageCell::initialize(account_data.into_account_info().into(), *program_id).unwrap();
         for (cell, (index, value)) in storage.cells_mut().iter_mut().zip(self.values.iter()) {
             cell.subindex = *index;
             cell.value.copy_from_slice(value);
@@ -207,8 +207,8 @@ impl ActualBalance {
         account_data.lamports = rent.minimum_balance(account_data.get_length());
 
         let mut balance = BalanceAccount::initialize(
-            account_data.into_account_info(),
-            program_id,
+            account_data.into_account_info().into(),
+            *program_id,
             self.address,
             self.chain_id,
         )
@@ -232,7 +232,7 @@ impl ActualBalance {
 struct ActualContract {
     pub address: Address,
     pub chain_id: u64,
-    pub generation: u32,
+    pub _generation: u32,
     pub code: &'static [u8],
     pub storage: [[u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
 
@@ -248,11 +248,10 @@ impl ActualContract {
         account_data.lamports = rent.minimum_balance(account_data.get_length());
 
         let mut contract = ContractAccount::initialize(
-            account_data.into_account_info(),
-            program_id,
+            account_data.into_account_info().into(),
+            *program_id,
             self.address,
             self.chain_id,
-            self.generation,
             self.code,
         )
         .unwrap();
@@ -304,7 +303,7 @@ const ACTUAL_BALANCE2: ActualBalance = ActualBalance {
 const ACTUAL_CONTRACT: ActualContract = ActualContract {
     address: Address(hex!("7a250d5630b4cf539739df2c5dacb4c659f24c11")),
     chain_id: LEGACY_CHAIN_ID,
-    generation: 4,
+    _generation: 4,
     code: &[0x03, 0x04, 0x05],
     storage: [[14u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT],
     actual_storage: ActualStorage {
@@ -316,7 +315,7 @@ const ACTUAL_CONTRACT: ActualContract = ActualContract {
 const ACTUAL_SUICIDE: ActualContract = ActualContract {
     address: Address(hex!("7a250d5630b4cf539739df2c5dacb4c659f24d10")),
     chain_id: LEGACY_CHAIN_ID,
-    generation: 12,
+    _generation: 12,
     code: &[],
     storage: [[0u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT], // It's matter that suicide contract doesn't contains any values in storage!
     actual_storage: ActualStorage {

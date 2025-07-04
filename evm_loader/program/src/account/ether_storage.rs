@@ -1,10 +1,14 @@
 use std::cell::{Ref, RefMut};
 use std::mem::size_of;
 
-use super::{AccountHeader, AccountsDB, NoHeader, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_STORAGE_CELL};
+use super::{
+    Account, AccountDispatch, AccountHeader, AccountsDB, NoHeader, ZeroInit, ACCOUNT_PREFIX_LEN,
+    TAG_EMPTY, TAG_STORAGE_CELL,
+};
 use crate::error::{Error, Result};
 use ethnum::U256;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent};
+use solana_program::account_info::AccountInfo;
+use solana_program::{pubkey::Pubkey, rent::Rent};
 
 #[derive(Copy, Clone)]
 pub struct StorageCellAddress {
@@ -75,7 +79,7 @@ pub struct Cell {
 }
 
 pub struct StorageCell<'a> {
-    account: AccountInfo<'a>,
+    pub account: Account<'a>, // TODO: make it private after emulator changes
 }
 
 #[repr(C, packed)]
@@ -102,15 +106,15 @@ impl<'a> StorageCell<'a> {
         size_of::<Header>().saturating_sub(allocated_header_size)
     }
 
-    pub fn from_account(program_id: &Pubkey, account: AccountInfo<'a>) -> Result<Self> {
-        super::validate_tag(program_id, &account, TAG_STORAGE_CELL)?;
-
-        Ok(Self { account })
+    pub fn from_account_info(program_id: Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
+        let account = account.clone().into();
+        Self::from_account(program_id, account)
     }
 
-    #[must_use]
-    pub fn info(&self) -> &AccountInfo<'a> {
-        &self.account
+    pub fn from_account(program_id: Pubkey, account: Account<'a>) -> Result<Self> {
+        account.validate_tag(program_id, TAG_STORAGE_CELL)?;
+
+        Ok(Self { account })
     }
 
     pub fn create(
@@ -139,42 +143,45 @@ impl<'a> StorageCell<'a> {
             rent,
         )?;
 
-        Self::initialize(cell_account.clone(), &crate::ID)
+        let account = cell_account.clone().into();
+        Self::initialize(account, crate::ID)
     }
 
-    pub fn initialize(account: AccountInfo<'a>, program_id: &Pubkey) -> Result<Self> {
-        super::validate_tag(program_id, &account, TAG_EMPTY)?;
-        super::set_tag(program_id, &account, TAG_STORAGE_CELL, Header::VERSION)?;
+    pub fn initialize(mut account: Account<'a>, program_id: Pubkey) -> Result<Self> {
+        assert!(account.validate_tag(program_id, TAG_EMPTY).is_ok());
+
+        account.init_tag(TAG_STORAGE_CELL, Header::VERSION)?;
         {
-            let mut header = super::header_mut::<Header>(&account);
-            header.revision = 1;
+            let mut header: RefMut<Header> = account.header_mut();
+            header.revision = 1; // TODO: set it to zero after AccountStorage changes
         }
 
         Ok(Self { account })
     }
 
     #[must_use]
-    pub fn pubkey(&self) -> &'a Pubkey {
-        self.account.key
+    pub fn pubkey(&self) -> Pubkey {
+        self.account.pubkey()
     }
 
     fn header_size(&self) -> usize {
-        match super::header_version(&self.account) {
+        match self.account.header_version() {
             0 | 1 => size_of::<NoHeader>(),
             HeaderWithRevision::VERSION => size_of::<HeaderWithRevision>(),
-            v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
+            v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
         }
     }
 
     fn header_upgrade(&mut self, rent: &Rent, db: &AccountsDB<'a>) -> Result<()> {
-        match super::header_version(&self.account) {
+        match self.account.header_version() {
             0 | 1 => {
-                super::expand_header::<NoHeader, Header>(&self.account, rent, db)?;
+                self.account.expand_header::<NoHeader, Header>(rent, db)?;
             }
             HeaderWithRevision::VERSION => {
-                super::expand_header::<HeaderWithRevision, Header>(&self.account, rent, db)?;
+                self.account
+                    .expand_header::<HeaderWithRevision, Header>(rent, db)?;
             }
-            v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
+            v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
         }
 
         Ok(())
@@ -188,7 +195,7 @@ impl<'a> StorageCell<'a> {
     pub fn cells(&self) -> Ref<[Cell]> {
         let cells_offset = self.cells_offset();
 
-        let data = self.account.data.borrow();
+        let data = self.account.data();
         let data = Ref::map(data, |d| &d[cells_offset..]);
 
         Ref::map(data, |bytes| {
@@ -208,7 +215,7 @@ impl<'a> StorageCell<'a> {
     pub fn cells_mut(&mut self) -> RefMut<[Cell]> {
         let cells_offset = self.cells_offset();
 
-        let data = self.account.data.borrow_mut();
+        let data = self.account.data_mut();
         let data = RefMut::map(data, |d| &mut d[cells_offset..]);
 
         RefMut::map(data, |bytes| {
@@ -223,7 +230,6 @@ impl<'a> StorageCell<'a> {
             }
         })
     }
-
     #[must_use]
     pub fn get(&self, subindex: u8) -> [u8; 32] {
         for cell in &*self.cells() {
@@ -254,7 +260,7 @@ impl<'a> StorageCell<'a> {
         }
 
         let new_len = self.account.data_len() + size_of::<Cell>(); // new_len <= 8.25 kb
-        self.account.realloc(new_len, false)?;
+        self.account.reallocate(new_len, ZeroInit::Uninit)?;
 
         let mut cells = self.cells_mut();
 
@@ -266,41 +272,25 @@ impl<'a> StorageCell<'a> {
     }
 
     pub fn sync_lamports(&mut self, rent: &Rent, accounts: &AccountsDB<'a>) -> Result<()> {
-        let original_data_len = unsafe { self.account.original_data_len() };
-        if original_data_len == self.account.data_len() {
-            return Ok(());
-        }
-
-        let minimum_balance = rent.minimum_balance(self.account.data_len());
-        if self.account.lamports() >= minimum_balance {
-            return Ok(());
-        }
-
-        let system = accounts.system();
-        let operator = accounts.operator();
-
-        let lamports = minimum_balance - self.account.lamports();
-        system.transfer(operator, &self.account, lamports)?;
-
-        Ok(())
+        self.account.sync_lamports(rent, accounts)
     }
 
     #[must_use]
     pub fn revision(&self) -> u32 {
-        if super::header_version(&self.account) < HeaderWithRevision::VERSION {
+        if self.account.header_version() < HeaderWithRevision::VERSION {
             return 0;
         }
 
-        let header = super::header::<HeaderWithRevision>(&self.account);
+        let header: Ref<HeaderWithRevision> = self.account.header();
         header.revision
     }
 
-    pub fn increment_revision(&mut self, rent: &Rent, accounts: &AccountsDB<'a>) -> Result<()> {
-        if super::header_version(&self.account) < HeaderWithRevision::VERSION {
-            self.header_upgrade(rent, accounts)?;
+    pub fn increment_revision(&mut self, rent: &Rent, db: &AccountsDB<'a>) -> Result<()> {
+        if self.account.header_version() < HeaderWithRevision::VERSION {
+            self.header_upgrade(rent, db)?;
         }
 
-        let mut header = super::header_mut::<HeaderWithRevision>(&self.account);
+        let mut header: RefMut<HeaderWithRevision> = self.account.header_mut();
         header.revision = header.revision.wrapping_add(1);
 
         Ok(())

@@ -6,15 +6,15 @@ use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 /// Destroy the Scheduled Transaction.
-pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Destroy Transaction Tree Account");
 
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
 
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[0])? };
-    let mut neon_account = BalanceAccount::from_account(program_id, accounts[1].clone())?;
-    let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
-    let mut tree = TransactionTree::from_account(&crate::ID, accounts[3].clone())?;
+    let mut neon_account = BalanceAccount::from_account_info(program_id, &accounts[1])?;
+    let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
+    let mut tree = TransactionTree::from_account_info(program_id, &accounts[3])?;
 
     if neon_account.address() != tree.payer() {
         return Err(Error::TreeAccountInvalidPayer);

@@ -1,16 +1,16 @@
 use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
 
-use crate::account::{program, Operator, OperatorBalanceAccount};
+use crate::account::{program, Operator, OperatorBalance};
 use crate::config::CHAIN_ID_LIST;
 use crate::error::{Error, Result};
 use crate::types::Address;
 
-pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(_program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Create Operator Balance Account");
 
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[0]) }?;
-    let system = program::System::from_account(&accounts[1])?;
+    let system = program::System::from_account_info(&accounts[1])?;
     let account = accounts[2].clone();
 
     let address = array_ref![instruction, 0, 20];
@@ -26,7 +26,7 @@ pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8
     log_msg!("Address: {}, ChainID: {}", address, chain_id);
 
     let rent = Rent::get()?;
-    OperatorBalanceAccount::create(address, chain_id, account, &operator, &system, &rent)?;
+    OperatorBalance::create(address, chain_id, account, &operator, &system, &rent)?;
 
     Ok(())
 }

@@ -59,6 +59,8 @@ pub enum NeonError {
     IncorrectProgram(Pubkey),
     #[error("Account not found {0:?}.")]
     AccountNotFound(Pubkey),
+    #[error("Account invalid status {0:?}.")]
+    AccountInvalidStatus(Pubkey),
     /// Account is not BFP
     #[error("Account is not BPF {0:?}.")]
     AccountIsNotBpf(Pubkey),
@@ -144,6 +146,7 @@ impl NeonError {
             NeonError::KeypairNotSpecified => 202,
             NeonError::IncorrectProgram(_) => 203,
             NeonError::AccountNotFound(_) => 205,
+            NeonError::AccountInvalidStatus(_) => 206,
             NeonError::AccountIsNotBpf(_) => 226,
             NeonError::AccountIsNotUpgradeable(_) => 227,
             NeonError::AssociatedPdaNotFound(_, _) => 241,

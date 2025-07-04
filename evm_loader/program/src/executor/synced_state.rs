@@ -19,6 +19,7 @@ use crate::evm::Context;
 use crate::executor::action;
 use crate::executor::ExecutorStateData;
 use crate::types::{Address, TreeMap, Vector};
+use crate::vector;
 
 enum Action {
     SetTransientStorage {
@@ -185,12 +186,12 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
         Ok(self.backend.code_size(from_address).await)
     }
 
-    async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
+    async fn code(&self, from_address: Address) -> Result<Vector<u8>> {
         if PrecompiledContracts::is_precompile_extension(&from_address) {
-            return Ok(crate::evm::Buffer::from_slice(&[0xFE]));
+            return Ok(vector![0xFE]);
         }
         if is_precompile_address(&from_address) {
-            return Ok(crate::evm::Buffer::from_slice(&[]));
+            return Ok(vector![]);
         }
 
         Ok(self.backend.code(from_address).await)
@@ -357,7 +358,7 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
         address: &Address,
         data: &[u8],
         is_static: bool,
-    ) -> Option<Result<Vector<u8>>> {
+    ) -> Option<Result<Vec<u8>>> {
         PrecompiledContracts::call_precompile_extension(self, context, address, data, is_static)
             .await
     }
@@ -382,7 +383,7 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
     async fn queue_external_instruction(
         &mut self,
         instruction: Instruction,
-        seeds: Vector<Vector<Vector<u8>>>,
+        seeds: &[&[&[u8]]],
         emulated_internally: bool,
     ) -> Result<()> {
         self.backend

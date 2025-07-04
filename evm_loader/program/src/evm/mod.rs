@@ -11,22 +11,16 @@ use ethnum::U256;
 use maybe_async::maybe_async;
 use std::{fmt::Display, mem::ManuallyDrop, ops::Range};
 
-pub use buffer::Buffer;
-
-#[cfg(target_os = "solana")]
-use crate::evm::tracing::NoopEventListener;
-use crate::executor::precompile_extension::PrecompiledContracts;
 use crate::{
     debug::log_data,
     error::{build_revert_message, Error, Result},
-    evm::{opcode::Action, precompile::is_precompile_address},
+    evm::opcode::Action,
     types::{Address, Transaction, Vector},
 };
 use crate::{evm::tracing::EventListener, types::boxx::Boxx};
 
 use self::{database::Database, memory::Memory, stack::Stack};
 
-mod buffer;
 pub mod database;
 mod memory;
 pub mod opcode;
@@ -65,7 +59,12 @@ macro_rules! begin_vm {
             $context,
             $chain_id,
             $input,
-            $self.execution_code.get_or_default($self.pc).into()
+            $self
+                .execution_code
+                .get($self.pc)
+                .copied()
+                .unwrap_or_default()
+                .into()
         );
     };
 }
@@ -92,7 +91,12 @@ macro_rules! begin_step {
             crate::evm::tracing::Event::BeginStep {
                 context: $self.context,
                 chain_id: $self.chain_id,
-                opcode: $self.execution_code.get_or_default($self.pc).into(),
+                opcode: $self
+                    .execution_code
+                    .get($self.pc)
+                    .copied()
+                    .unwrap_or_default()
+                    .into(),
                 pc: $self.pc,
                 stack: $self.stack.to_vec(),
                 memory: $self.memory.to_vec(),
@@ -185,7 +189,7 @@ pub struct Machine<T: EventListener> {
     gas_price: U256,
     gas_limit: U256,
 
-    execution_code: Buffer,
+    execution_code: Vector<u8>,
     call_data: Vector<u8>,
     return_data: Vector<u8>,
     return_range: Range<usize>,
@@ -200,27 +204,6 @@ pub struct Machine<T: EventListener> {
     parent: Option<Boxx<Self>>,
 
     tracer: Option<T>,
-}
-
-#[cfg(target_os = "solana")]
-impl Machine<NoopEventListener> {
-    fn reinit_buffer(buffer: &mut Buffer, backend: &impl Database) {
-        if let Some((key, range)) = buffer.uninit_data() {
-            *buffer =
-                backend.map_solana_account(&key, |i| unsafe { Buffer::from_account(i, range) });
-        }
-    }
-
-    pub fn reinit(&mut self, backend: &impl Database) {
-        let mut machine = self;
-        loop {
-            Self::reinit_buffer(&mut machine.execution_code, backend);
-            match &mut machine.parent {
-                None => break,
-                Some(parent) => machine = parent,
-            }
-        }
-    }
 }
 
 impl<T: EventListener> Machine<T> {
@@ -304,9 +287,6 @@ impl<T: EventListener> Machine<T> {
 
         Ok(machine)
     }
-    pub fn take_tracer(&mut self) -> Option<T> {
-        self.tracer.take()
-    }
 
     #[allow(unused_mut)]
     #[maybe_async]
@@ -352,7 +332,7 @@ impl<T: EventListener> Machine<T> {
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,
-            execution_code: Buffer::from_slice(trx.call_data()),
+            execution_code: trx.call_data().to_vector(),
             call_data: Vector::new_in(acc_allocator()),
             parent: None,
             tracer,
@@ -374,69 +354,71 @@ impl<T: EventListener> Machine<T> {
         &mut self,
         step_limit: u64,
         backend: &mut impl Database,
-    ) -> Result<(ExitStatus, u64, Option<u64>, Option<T>)> {
-        let mut step = 0_u64;
-        let mut step_call_solana: Option<u64> = None;
-
-        let status = if is_precompile_address(&self.context.contract) {
-            let value = Self::precompile(&self.context.contract, &self.call_data).unwrap();
-
-            backend.commit_snapshot();
-
-            end_vm!(self, backend, ExitStatus::Return(value.clone()));
-            ExitStatus::Return(value)
-        } else if PrecompiledContracts::is_precompile_extension(&self.context.contract) {
-            let address = self.context.contract;
-            let value = PrecompiledContracts::call_precompile_extension(
-                backend,
-                &self.context,
-                &address,
-                &self.call_data,
-                self.is_static,
-            )
-            .await
-            .unwrap()?;
-
-            backend.commit_snapshot();
-            end_vm!(self, backend, ExitStatus::Return(value.clone()));
-            ExitStatus::Return(value)
-        } else {
-            loop {
-                if step >= step_limit {
-                    break ExitStatus::StepLimit;
-                }
-                step += 1;
-
-                let opcode = self.execution_code.get_or_default(self.pc);
-                begin_step!(self, backend);
-
-                let opcode_result = match self.execute_opcode(backend, opcode).await {
-                    Ok(result) => result,
-                    Err(e) => {
-                        let message = build_revert_message(&e.to_string());
-                        self.opcode_revert_impl(message, backend).await?
-                    }
-                };
-
-                match opcode_result {
-                    Action::Continue => self.pc += 1,
-                    Action::Jump(target) => self.pc = target,
-                    Action::Stop => break ExitStatus::Stop,
-                    Action::Return(value) => break ExitStatus::Return(value),
-                    Action::Revert(value) => break ExitStatus::Revert(value),
-                    Action::Suicide => break ExitStatus::Suicide,
-                    Action::Interrupted(state) => {
-                        if step_call_solana.is_none() && state.is_some() {
-                            step_call_solana = Some(step);
-                        }
-                        break ExitStatus::Interrupted(state);
-                    }
-                    Action::Noop => {}
-                };
+    ) -> Result<(ExitStatus, u64)> {
+        let contract = self.context.contract;
+        let (status, step) = match self.try_call_precompile(&contract, backend).await {
+            Some(Ok(value)) => {
+                backend.commit_snapshot();
+                end_vm!(self, backend, ExitStatus::Return(value.to_vector()));
+                (ExitStatus::Return(value.to_vector()), 0)
             }
+            Some(Err(e)) => {
+                backend.revert_snapshot();
+                let message = build_revert_message(&e.to_string());
+                end_vm!(self, backend, ExitStatus::Revert(message.clone()));
+                (ExitStatus::Revert(message), 0)
+            }
+            None => self.run_loop(step_limit, backend).await?,
         };
 
-        Ok((status, step, step_call_solana, self.tracer.take()))
+        Ok((status, step))
+    }
+
+    #[maybe_async]
+    async fn run_loop(
+        &mut self,
+        step_limit: u64,
+        backend: &mut impl Database,
+    ) -> Result<(ExitStatus, u64)> {
+        let mut step = 0_u64;
+
+        let status = loop {
+            if step >= step_limit {
+                break ExitStatus::StepLimit;
+            }
+            step += 1;
+
+            let opcode = self
+                .execution_code
+                .get(self.pc)
+                .copied()
+                .unwrap_or_default();
+
+            begin_step!(self, backend);
+
+            let opcode_result = match self.execute_opcode(backend, opcode).await {
+                Ok(result) => result,
+                Err(e) => {
+                    let message = build_revert_message(&e.to_string());
+                    self.opcode_revert_impl(message, backend).await?
+                }
+            };
+
+            match opcode_result {
+                Action::Continue => self.pc += 1,
+                Action::Jump(target) => self.pc = target,
+                Action::Stop => break ExitStatus::Stop,
+                Action::Return(value) => break ExitStatus::Return(value),
+                Action::Revert(value) => break ExitStatus::Revert(value),
+                Action::Suicide => break ExitStatus::Suicide,
+                Action::Interrupted(state) => {
+                    break ExitStatus::Interrupted(state);
+                }
+                Action::Noop => {}
+            };
+        };
+
+        Ok((status, step))
     }
 
     fn fork(
@@ -444,7 +426,7 @@ impl<T: EventListener> Machine<T> {
         reason: Reason,
         chain_id: u64,
         context: Context,
-        execution_code: Buffer,
+        execution_code: Vector<u8>,
         call_data: Vector<u8>,
         gas_limit: Option<U256>,
     ) {
@@ -491,6 +473,14 @@ impl<T: EventListener> Machine<T> {
 
     pub fn set_tracer(&mut self, tracer: Option<T>) {
         self.tracer = tracer;
+    }
+
+    pub fn into_tracer(self) -> Option<T> {
+        self.tracer
+    }
+
+    pub fn take_tracer(&mut self) -> Option<T> {
+        self.tracer.take()
     }
 
     pub fn increment_pc(&mut self) {

@@ -3,8 +3,8 @@ use std::mem::size_of;
 
 use super::treasury::Treasury;
 use super::{
-    pda_accounts, AccountHeader, AccountsDB, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN,
-    ACCOUNT_SEED_VERSION, TAG_TRANSACTION_TREE,
+    pda, Account, AccountDispatch, AccountHeader, AccountsDB, BalanceAccount, Operator,
+    ACCOUNT_PREFIX_LEN, TAG_TRANSACTION_TREE,
 };
 use crate::config::{
     BASE_ITERATIVE_TRANSACTION_COST, TREE_ACCOUNT_DESTROY_FEE, TREE_ACCOUNT_FINISH_TRANSACTION_GAS,
@@ -89,7 +89,7 @@ pub struct TreeInitializer {
 }
 
 pub struct TransactionTree<'a> {
-    account: AccountInfo<'a>,
+    account: Account<'a>,
 }
 
 impl<'a> TransactionTree<'a> {
@@ -104,15 +104,15 @@ impl<'a> TransactionTree<'a> {
         size_of::<Header>().saturating_sub(allocated_header_size)
     }
 
-    pub fn from_account(program_id: &Pubkey, account: AccountInfo<'a>) -> Result<Self> {
-        super::validate_tag(program_id, &account, TAG_TRANSACTION_TREE)?;
+    pub fn from_account(program_id: Pubkey, account: Account<'a>) -> Result<Self> {
+        account.validate_tag(program_id, TAG_TRANSACTION_TREE)?;
 
         Ok(Self { account })
     }
 
-    #[must_use]
-    pub fn info(&self) -> &AccountInfo<'a> {
-        &self.account
+    pub fn from_account_info(program_id: Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
+        let account = account.clone().into();
+        Self::from_account(program_id, account)
     }
 
     #[must_use]
@@ -122,12 +122,12 @@ impl<'a> TransactionTree<'a> {
         chain_id: u64,
         nonce: u64,
     ) -> (Pubkey, u8) {
-        pda_accounts::tree_account_address(program_id, payer, chain_id, nonce)
+        pda::tree_account_address(program_id, payer, chain_id, nonce)
     }
 
     pub fn create(
         init: TreeInitializer,
-        account: AccountInfo<'a>,
+        mut account: AccountInfo<'a>,
         db: &AccountsDB<'a>,
         rent: &Rent,
         clock: &Clock,
@@ -192,15 +192,7 @@ impl<'a> TransactionTree<'a> {
         }
 
         // Create account
-        let seeds: &[&[u8]] = &[
-            &[ACCOUNT_SEED_VERSION],
-            b"TREE",
-            init.payer.as_bytes(),
-            &init.chain_id.to_le_bytes(),
-            &init.nonce.to_le_bytes(),
-            &[bump],
-        ];
-
+        let seeds: &[&[u8]] = pda::tree_account_seeds!(init, bump);
         let space = Self::required_account_size(nodes.len());
 
         let system = db.system();
@@ -218,11 +210,11 @@ impl<'a> TransactionTree<'a> {
         system.transfer(destroy_fee_payer, &account, TREE_ACCOUNT_DESTROY_FEE)?;
 
         // Init data
-        super::set_tag(&crate::ID, &account, TAG_TRANSACTION_TREE, Header::VERSION)?;
-        let mut tree = Self::from_account(&crate::ID, account)?;
+        account.init_tag(TAG_TRANSACTION_TREE, Header::VERSION)?;
 
+        let mut tree = Self::from_account(crate::ID, account.into())?;
         {
-            let mut header = super::header_mut::<HeaderV0>(&tree.account);
+            let mut header: RefMut<HeaderV0> = tree.account.header_mut();
             header.payer = init.payer;
             header.last_slot = clock.slot;
             header.chain_id = init.chain_id;
@@ -293,10 +285,12 @@ impl<'a> TransactionTree<'a> {
             return Err(Error::TreeAccountNotReadyForDestruction);
         }
 
-        **operator.lamports.borrow_mut() += TREE_ACCOUNT_DESTROY_FEE;
-        **self.account.lamports.borrow_mut() -= TREE_ACCOUNT_DESTROY_FEE;
+        let account_info: AccountInfo<'a> = self.account.try_into()?;
 
-        unsafe { super::delete_with_treasury(&self.account, treasury) }
+        **operator.lamports.borrow_mut() += TREE_ACCOUNT_DESTROY_FEE;
+        **account_info.lamports.borrow_mut() -= TREE_ACCOUNT_DESTROY_FEE;
+
+        unsafe { super::delete_with_treasury(&account_info, treasury) }
     }
 
     fn validate_transaction(&self, tx: &Transaction) -> Result<u16> {
@@ -308,7 +302,7 @@ impl<'a> TransactionTree<'a> {
 
         let tx_chain_id: u64 = tx.chain_id.try_into()?;
         let (pubkey, _) = Self::find_address(&crate::ID, tx.payer, tx_chain_id, tx.nonce);
-        if &pubkey != self.account.key {
+        if pubkey != self.account.pubkey() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
@@ -462,36 +456,36 @@ impl<'a> TransactionTree<'a> {
 
     #[must_use]
     pub fn payer(&self) -> Address {
-        let header = super::header::<HeaderV0>(&self.account);
+        let header: Ref<HeaderV0> = self.account.header();
         header.payer
     }
 
     #[must_use]
     pub fn last_slot(&self) -> u64 {
-        let header = super::header::<HeaderV0>(&self.account);
+        let header: Ref<HeaderV0> = self.account.header();
         header.last_slot
     }
 
     pub fn update_last_slot(&mut self, clock: &Clock) {
-        let mut header = super::header_mut::<HeaderV0>(&self.account);
+        let mut header: RefMut<HeaderV0> = self.account.header_mut();
         header.last_slot = clock.slot;
     }
 
     #[must_use]
     pub fn chain_id(&self) -> u64 {
-        let header = super::header::<HeaderV0>(&self.account);
+        let header: Ref<HeaderV0> = self.account.header();
         header.chain_id
     }
 
     #[must_use]
     pub fn max_fee_per_gas(&self) -> U256 {
-        let header = super::header::<HeaderV0>(&self.account);
+        let header: Ref<HeaderV0> = self.account.header();
         header.max_fee_per_gas
     }
 
     #[must_use]
     pub fn max_priority_fee_per_gas(&self) -> U256 {
-        let header = super::header::<HeaderV0>(&self.account);
+        let header: Ref<HeaderV0> = self.account.header();
         header.max_priority_fee_per_gas
     }
 
@@ -511,7 +505,7 @@ impl<'a> TransactionTree<'a> {
 
     #[must_use]
     pub fn balance(&self) -> U256 {
-        let header = super::header::<HeaderV0>(&self.account);
+        let header: Ref<HeaderV0> = self.account.header();
         header.balance
     }
 
@@ -526,7 +520,7 @@ impl<'a> TransactionTree<'a> {
     }
 
     pub fn burn(&mut self, value: U256) -> Result<()> {
-        let mut header = super::header_mut::<HeaderV0>(&self.account);
+        let mut header: RefMut<HeaderV0> = self.account.header_mut();
 
         header.balance = header
             .balance
@@ -541,7 +535,7 @@ impl<'a> TransactionTree<'a> {
     }
 
     pub fn mint(&mut self, value: U256) -> Result<()> {
-        let mut header = super::header_mut::<HeaderV0>(&self.account);
+        let mut header: RefMut<HeaderV0> = self.account.header_mut();
 
         header.balance = header
             .balance
@@ -553,12 +547,12 @@ impl<'a> TransactionTree<'a> {
 
     #[must_use]
     pub fn last_index(&self) -> u16 {
-        let header = super::header::<HeaderV0>(&self.account);
+        let header: Ref<HeaderV0> = self.account.header();
         header.last_index
     }
 
     pub fn increment_last_index(&mut self) -> Result<()> {
-        let mut header = super::header_mut::<HeaderV0>(&self.account);
+        let mut header: RefMut<HeaderV0> = self.account.header_mut();
         header.last_index = header
             .last_index
             .checked_add(1)
@@ -568,24 +562,24 @@ impl<'a> TransactionTree<'a> {
     }
 
     #[must_use]
-    pub fn pubkey(&self) -> &'a Pubkey {
-        self.account.key
+    pub fn pubkey(&self) -> Pubkey {
+        self.account.pubkey()
     }
 
     fn header_size(&self) -> usize {
-        match super::header_version(&self.account) {
+        match self.account.header_version() {
             0 | 1 => size_of::<HeaderV0>(),
-            v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
+            v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
         }
     }
 
     #[allow(unused)]
     fn header_upgrade(&mut self, rent: &Rent, db: &AccountsDB<'a>) -> Result<()> {
-        match super::header_version(&self.account) {
+        match self.account.header_version() {
             0 | 1 => {
-                super::expand_header::<HeaderV0, Header>(&self.account, rent, db)?;
+                self.account.expand_header::<HeaderV0, Header>(rent, db)?;
             }
-            v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
+            v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
         }
 
         Ok(())
@@ -599,7 +593,7 @@ impl<'a> TransactionTree<'a> {
     pub fn nodes(&self) -> Ref<[Node]> {
         let nodes_offset = self.nodes_offset();
 
-        let data = self.account.data.borrow();
+        let data = self.account.data();
         let data = Ref::map(data, |d| &d[nodes_offset..]);
 
         Ref::map(data, |bytes| {
@@ -619,7 +613,7 @@ impl<'a> TransactionTree<'a> {
     pub fn nodes_mut(&mut self) -> RefMut<[Node]> {
         let nodes_offset = self.nodes_offset();
 
-        let data = self.account.data.borrow_mut();
+        let data = self.account.data_mut();
         let data = RefMut::map(data, |d| &mut d[nodes_offset..]);
 
         RefMut::map(data, |bytes| {

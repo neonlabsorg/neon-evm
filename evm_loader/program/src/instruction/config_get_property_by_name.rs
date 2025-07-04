@@ -3,7 +3,7 @@ use solana_program::{account_info::AccountInfo, program_error::ProgramError, pub
 use crate::config::PARAMETERS;
 use crate::error::Result;
 
-pub fn process(_program_id: &Pubkey, _accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(_program_id: Pubkey, _accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Config Get Property by Name");
 
     let requested_property = std::str::from_utf8(instruction)?;

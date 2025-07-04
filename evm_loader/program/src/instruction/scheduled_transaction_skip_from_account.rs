@@ -1,4 +1,4 @@
-use crate::account::{Operator, OperatorBalanceAccount, OperatorBalanceValidator, TransactionTree};
+use crate::account::{Operator, OperatorBalance, OperatorBalanceValidator, TransactionTree};
 use crate::debug::log_data;
 use crate::error::Result;
 use crate::gasometer::Gasometer;
@@ -9,14 +9,14 @@ use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Skip Scheduled Transaction from Account");
 
     let tree_index = u16::try_from(u32::from_le_bytes(*array_ref![instruction, 0, 4]))?;
 
-    let mut transaction_tree = TransactionTree::from_account(&program_id, accounts[1].clone())?;
-    let operator = Operator::from_account(&accounts[2])?;
-    let mut operator_balance = OperatorBalanceAccount::try_from_account(program_id, &accounts[3])?;
+    let mut transaction_tree = TransactionTree::from_account_info(program_id, &accounts[1])?;
+    let operator = Operator::from_account_info(&accounts[2])?;
+    let mut operator_balance = OperatorBalance::try_from_account_info(program_id, &accounts[3])?;
 
     let (trx, _) = holder_parse_trx(&accounts[0], &operator, program_id, true)?;
     let _ = validate_scheduled_tx(&trx, tree_index)?;

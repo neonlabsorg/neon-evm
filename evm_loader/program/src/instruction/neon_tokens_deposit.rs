@@ -4,9 +4,7 @@ use solana_program::program::invoke_signed;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
 use spl_associated_token_account::get_associated_token_address;
 
-use crate::account::{
-    pda_accounts, program, token, AccountsDB, BalanceAccount, Operator, ACCOUNT_SEED_VERSION,
-};
+use crate::account::{pda, program, token, AccountsDB, BalanceAccount, Operator};
 use crate::config::CHAIN_ID_LIST;
 use crate::error::{Error, Result};
 use crate::types::Address;
@@ -25,19 +23,19 @@ struct Accounts<'a> {
 impl<'a> Accounts<'a> {
     pub fn from_slice(accounts: &[AccountInfo<'a>]) -> Result<Accounts<'a>> {
         Ok(Accounts {
-            mint: token::Mint::from_account(&accounts[0])?,
-            source: token::State::from_account(&accounts[1])?,
-            pool: token::State::from_account(&accounts[2])?,
+            mint: token::Mint::from_account_info(&accounts[0])?,
+            source: token::State::from_account_info(&accounts[1])?,
+            pool: token::State::from_account_info(&accounts[2])?,
             balance_account: accounts[3].clone(),
             contract_account: accounts[4].clone(),
             token_program: program::Token::from_account(&accounts[5])?,
             operator: unsafe { Operator::from_account_not_whitelisted(&accounts[6]) }?,
-            system_program: program::System::from_account(&accounts[7])?,
+            system_program: program::System::from_account_info(&accounts[7])?,
         })
     }
 }
 
-pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Deposit");
 
     let parsed_accounts = Accounts::from_slice(accounts)?;
@@ -53,7 +51,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
 }
 
 fn validate(
-    program_id: &Pubkey,
+    program_id: Pubkey,
     accounts: &Accounts,
     address: Address,
     chain_id: u64,
@@ -63,12 +61,12 @@ fn validate(
     let pool = *accounts.pool.info.key;
     let mint = *accounts.mint.info.key;
 
-    let (expected_pubkey, _) = address.find_balance_address(program_id, chain_id);
+    let (expected_pubkey, _) = address.find_balance_address(&program_id, chain_id);
     if expected_pubkey != balance_account {
         return Err(Error::AccountInvalidKey(balance_account, expected_pubkey));
     }
 
-    let (expected_pubkey, _) = address.find_solana_address(program_id);
+    let (expected_pubkey, _) = address.find_solana_address(&program_id);
     if expected_pubkey != contract_account {
         return Err(Error::AccountInvalidKey(contract_account, expected_pubkey));
     }
@@ -82,7 +80,7 @@ fn validate(
         return Err(Error::AccountInvalidKey(mint, expected_mint));
     }
 
-    let (authority_address, _) = pda_accounts::main_pool_authority(program_id);
+    let (authority_address, _) = pda::main_pool_authority(&program_id);
     let expected_pool = get_associated_token_address(&authority_address, &mint);
     if pool != expected_pool {
         return Err(Error::AccountInvalidKey(pool, expected_pool));
@@ -108,14 +106,9 @@ fn validate(
     Ok(())
 }
 
-fn execute(program_id: &Pubkey, accounts: Accounts, address: Address, chain_id: u64) -> Result<()> {
-    let (_, bump_seed) = address.find_balance_address(program_id, chain_id);
-    let signer_seeds: &[&[u8]] = &[
-        &[ACCOUNT_SEED_VERSION],
-        address.as_bytes(),
-        &U256::from(chain_id).to_be_bytes(),
-        &[bump_seed],
-    ];
+fn execute(program_id: Pubkey, accounts: Accounts, address: Address, chain_id: u64) -> Result<()> {
+    let (_, bump_seed) = address.find_balance_address(&program_id, chain_id);
+    let signer_seeds: &[&[u8]] = pda::balance_seeds!(address, chain_id, bump_seed);
 
     let instruction = spl_token::instruction::transfer(
         accounts.token_program.key,

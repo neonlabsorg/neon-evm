@@ -8,6 +8,7 @@ use crate::evm::precompile::is_precompile_address;
 use crate::evm::{Context, ExitStatus};
 use crate::types::boxx::Boxx;
 use crate::types::Address;
+use crate::vector;
 use ethnum::{AsU256, U256};
 use maybe_async::maybe_async;
 use mpl_token_metadata::programs::MPL_TOKEN_METADATA_ID;
@@ -17,7 +18,7 @@ use solana_program::rent::Rent;
 
 use crate::allocator::acc_allocator;
 use crate::types::tree_map::TreeMap;
-use crate::types::vector::{Vector, VectorSliceExt, VectorSliceSlowExt};
+use crate::types::vector::{seeds3_to_vector, Vector, VectorSliceExt, VectorSliceSlowExt};
 
 use super::action::{Action, ExternalInstructionData};
 use super::block_params::BlockParams;
@@ -336,12 +337,12 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         Ok(self.backend.code_size(from_address).await)
     }
 
-    async fn code(&self, from_address: Address) -> Result<crate::evm::Buffer> {
+    async fn code(&self, from_address: Address) -> Result<Vector<u8>> {
         if PrecompiledContracts::is_precompile_extension(&from_address) {
-            return Ok(crate::evm::Buffer::from_slice(&[0xFE]));
+            return Ok(vector![0xFE]);
         }
         if is_precompile_address(&from_address) {
-            return Ok(crate::evm::Buffer::from_slice(&[]));
+            return Ok(vector![]);
         }
 
         self.touch_contract(from_address);
@@ -349,7 +350,7 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         for action in &self.data.actions {
             if let Action::EvmSetCode { address, code, .. } = action {
                 if &from_address == address {
-                    return Ok(crate::evm::Buffer::from_slice(code));
+                    return Ok(code.clone());
                 }
             }
         }
@@ -611,7 +612,7 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         address: &Address,
         data: &[u8],
         is_static: bool,
-    ) -> Option<Result<Vector<u8>>> {
+    ) -> Option<Result<Vec<u8>>> {
         PrecompiledContracts::call_precompile_extension(self, context, address, data, is_static)
             .await
     }
@@ -650,7 +651,7 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
     async fn queue_external_instruction(
         &mut self,
         instruction: Instruction,
-        seeds: Vector<Vector<Vector<u8>>>,
+        seeds: &[&[&[u8]]],
         emulated_internally: bool,
     ) -> Result<()> {
         #[cfg(target_os = "solana")]
@@ -663,7 +664,7 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
                 program_id: instruction.program_id,
                 data: instruction.data.to_vector(),
                 accounts: instruction.accounts.elementwise_copy_to_vector(),
-                seeds,
+                seeds: seeds3_to_vector(seeds),
                 emulated_internally,
             },
             acc_allocator(),

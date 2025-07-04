@@ -17,7 +17,7 @@ use {
         Config,
     },
     evm_loader::{
-        account::{pda_accounts, MainTreasury, Treasury},
+        account::{pda, MainTreasury, Treasury},
         config::TREASURY_POOL_SEED,
     },
     log::{error, info, warn},
@@ -199,7 +199,7 @@ pub async fn execute(
     executor.checkpoint(config.commitment).await?;
 
     //====================== Create 'Deposit' NEON-token balance ======================================================
-    let (deposit_authority, _) = pda_accounts::main_pool_authority(&config.evm_loader);
+    let (deposit_authority, _) = pda::main_pool_authority(&config.evm_loader);
     let chains = super::get_config::read_chains(client, config.evm_loader).await?;
     for chain in chains {
         let pool = get_associated_token_address(&deposit_authority, &chain.token);
@@ -243,7 +243,7 @@ pub async fn execute(
         );
         return Err(EnvironmentError::TreasuryPoolSeedMismatch.into());
     }
-    let main_balance_address = MainTreasury::address(&config.evm_loader).0;
+    let main_balance_address = MainTreasury::address(config.evm_loader).0;
     executor
         .check_and_create_object(
             "Main treasury pool",
@@ -280,7 +280,7 @@ pub async fn execute(
     let treasury_pool_count = program_parameters.get::<u32>("NEON_TREASURY_POOL_COUNT")?;
     for i in 0..treasury_pool_count {
         let minimum_balance = client.get_minimum_balance_for_rent_exemption(0).await?;
-        let aux_balance_address = Treasury::address(&config.evm_loader, i).0;
+        let aux_balance_address = Treasury::address(config.evm_loader, i).0;
         let executor_clone = executor.clone();
         executor
             .check_and_create_object(

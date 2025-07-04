@@ -1,7 +1,7 @@
 use crate::account::program::System;
 use crate::account::{
-    pda_accounts, token, AccountsDB, BalanceAccount, NodeInitializer, Operator, TransactionTree,
-    Treasury, TreeInitializer, NO_CHILD_TRANSACTION,
+    pda, token, AccountsDB, BalanceAccount, NodeInitializer, Operator, TransactionTree, Treasury,
+    TreeInitializer, NO_CHILD_TRANSACTION,
 };
 use crate::config::SOL_CHAIN_ID;
 use crate::debug::log_data;
@@ -50,9 +50,8 @@ fn validate_scheduled_tx(tx: &ScheduledTxShell, payer: Address) -> Result<U256> 
 }
 
 pub fn validate_pool(pool: &token::State) -> Result<()> {
-    let (authority_address, _) = pda_accounts::main_pool_authority(&crate::ID);
-    let expected_pool =
-        get_associated_token_address(&authority_address, &spl_token::native_mint::ID);
+    let (authority, _) = pda::main_pool_authority(&crate::ID);
+    let expected_pool = get_associated_token_address(&authority, &spl_token::native_mint::ID);
 
     if &expected_pool != pool.info.key {
         return Err(Error::AccountInvalidKey(*pool.info.key, expected_pool));
@@ -128,7 +127,7 @@ pub fn payment_from_signer<'a>(
 }
 
 /// Execute Ethereum transaction in a single Solana transaction
-pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Schedule Transaction");
 
     // Instruction data
@@ -138,10 +137,10 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     // Accounts
     let signer = unsafe { Operator::from_account_not_whitelisted(&accounts[0])? };
     let balance = accounts[1].clone();
-    let treasury = Treasury::from_account(program_id, treasury_index, &accounts[2])?;
+    let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
     let tree = accounts[3].clone();
-    let pool = token::State::from_account(&accounts[4])?;
-    let system = System::from_account(&accounts[5])?;
+    let pool = token::State::from_account_info(&accounts[4])?;
+    let system = System::from_account_info(&accounts[5])?;
 
     // Validate Transaction
     let tx = ScheduledTxShell::from_rlp(messsage)?;

@@ -85,7 +85,7 @@ pub trait AccountStorage: LogCollector {
     /// Get code size
     async fn code_size(&self, address: Address) -> usize;
     /// Get code data
-    async fn code(&self, address: Address) -> crate::evm::Buffer;
+    async fn code(&self, address: Address) -> Vector<u8>;
 
     /// Get data from storage
     async fn storage(&self, address: Address, index: U256) -> [u8; 32];
@@ -115,7 +115,7 @@ pub trait SyncedAccountStorage: AccountStorage {
     async fn execute_external_instruction(
         &mut self,
         instruction: Instruction,
-        seeds: Vector<Vector<Vector<u8>>>,
+        seeds: &[&[&[u8]]],
         emulated_internally: bool,
     ) -> Result<()>;
 

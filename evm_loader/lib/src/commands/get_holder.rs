@@ -1,8 +1,9 @@
 use ethnum::U256;
 use evm_loader::{
     account::{
-        Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
-        TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
+        AccountDispatch, Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER,
+        TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE,
+        TAG_STATE_FINALIZED,
     },
     types::{Address, Transaction, TrxView},
 };
@@ -79,12 +80,12 @@ impl GetHolderResponse {
     }
 }
 
-pub fn read_holder(program_id: &Pubkey, info: &AccountInfo) -> NeonResult<GetHolderResponse> {
+pub fn read_holder(program_id: Pubkey, info: &AccountInfo) -> NeonResult<GetHolderResponse> {
     let data_len = info.data_len();
 
-    match evm_loader::account::tag(program_id, info)? {
+    match info.tag(program_id)? {
         TAG_HOLDER => {
-            let holder = Holder::from_account(program_id, info)?;
+            let holder = Holder::from_account_info(program_id, info)?;
 
             Ok(GetHolderResponse {
                 status: Status::Holder,
@@ -98,7 +99,7 @@ pub fn read_holder(program_id: &Pubkey, info: &AccountInfo) -> NeonResult<GetHol
             })
         }
         TAG_STATE_FINALIZED => {
-            let state = StateFinalizedAccount::from_account(program_id, info)?;
+            let state = StateFinalizedAccount::from_account_info(program_id, info)?;
 
             Ok(GetHolderResponse {
                 status: Status::Finalized,
@@ -160,5 +161,5 @@ pub async fn execute(
     };
 
     let info = account_info(&address, &mut account);
-    Ok(read_holder(program_id, &info).unwrap_or_else(GetHolderResponse::error))
+    Ok(read_holder(*program_id, &info).unwrap_or_else(GetHolderResponse::error))
 }

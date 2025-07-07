@@ -130,12 +130,12 @@ impl TracerDbTrait for RocksDb {
         debug!("Accounts in response: {:?}", response);
         let account_data_vec = response
             .into_iter()
-            .map(|(pubkey, acc)| -> Result<_, anyhow::Error> {
+            .map(|(pubkey, acc)| {
                 let pk = Pubkey::from(pubkey);
-                let acc: Account = acc.into(); // assumes TryFrom<SolanaReadableAccount> for Account
-                Ok(AccountData::new_from_account(pk, &acc))
+                let acc: Account = acc.into();
+                AccountData::new_from_account(pk, &acc)
             })
-            .collect::<Result<_, _>>()?;
+            .collect();
         Ok(account_data_vec)
     }
 }

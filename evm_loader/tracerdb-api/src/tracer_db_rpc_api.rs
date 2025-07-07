@@ -74,15 +74,6 @@ impl From<BlockHashBase58> for Hash {
         Self::new_from_array(block_hash_base58.0)
     }
 }
-// impl From<&String> for BlockHashBase58 {
-//     fn from(hash: &String) -> Self {
-//         let bytes = bs58::decode(hash).into_vec().expect("Invalid base58 hash");
-//         assert_eq!(bytes.len(), 32, "Expected 32-byte hash");
-//         let mut array = [0u8; 32];
-//         array.copy_from_slice(&bytes);
-//         Self(array)
-//     }
-// }
 
 #[serde_as]
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -129,16 +120,15 @@ impl From<Account> for SolanaReadableAccount {
     }
 }
 
-impl TryFrom<SolanaReadableAccount> for Account {
-    type Error = anyhow::Error;
-    fn try_from(account: SolanaReadableAccount) -> Result<Self, Self::Error> {
-        Ok(Self {
+impl From<SolanaReadableAccount> for Account {
+    fn from(account: SolanaReadableAccount) -> Self {
+        Self {
             lamports: account.lamports,
             data: account.data,
             owner: Pubkey::from(account.owner),
             executable: account.executable,
             rent_epoch: account.rent_epoch,
-        })
+        }
     }
 }
 

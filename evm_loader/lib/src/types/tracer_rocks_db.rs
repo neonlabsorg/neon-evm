@@ -2,9 +2,7 @@ use crate::account_data::AccountData;
 use crate::config::RocksDbConfig;
 use anyhow::anyhow;
 use async_trait::async_trait;
-use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::Serialize;
-use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
 use solana_account_decoder::UiDataSliceConfig;
 use solana_sdk::hash::Hash;
@@ -15,10 +13,9 @@ use solana_sdk::{
     pubkey::Pubkey,
 };
 use std::env;
+use std::str::FromStr;
 use std::sync::Arc;
-use tracerdb_api::tracer_db_rpc_api::{
-    PubkeyBase58, SignatureBase58, SolanaReadableAccount, TracerDbApiClient,
-};
+use tracerdb_api::tracer_db_rpc_api::TracerDbApiClient;
 use tracing::{debug, info};
 #[derive(Clone, Serialize)]
 pub struct AccountParams {
@@ -65,20 +62,10 @@ impl TracerDbTrait for RocksDb {
     }
 
     async fn get_earliest_rooted_slot(&self) -> DbResult<u64> {
-        let response: String = self
-            .client
-            .request("get_earliest_rooted_slot", rpc_params![])
-            .await?;
-        info!("get_earliest_rooted_slot response: {:?}", response);
         Ok(self.client.get_earliest_rooted_slot().await?)
     }
 
     async fn get_latest_block(&self) -> DbResult<u64> {
-        let response: String = self
-            .client
-            .request("get_last_rooted_slot", rpc_params![])
-            .await?;
-        info!("get_latest_block response: {:?}", response);
         Ok(self.client.get_earliest_rooted_slot().await?)
     }
 
@@ -90,24 +77,15 @@ impl TracerDbTrait for RocksDb {
         maybe_bin_slice: Option<UiDataSliceConfig>,
     ) -> DbResult<Option<Account>> {
         info!("get_account_at {pubkey:?}, slot: {slot:?}, tx_index: {tx_index_in_block:?}, bin_slice: {maybe_bin_slice:?}");
-
-        self.client
-            .get_account(
-                PubkeyBase58::from(*pubkey),
-                slot,
-                tx_index_in_block,
-                maybe_bin_slice,
-            )
+        Ok(self
+            .client
+            .get_account((*pubkey).into(), slot, tx_index_in_block, maybe_bin_slice)
             .await?
-            .map(Account::try_from)
-            .transpose()
+            .map(Account::from))
     }
 
     async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64> {
-        let tx_index = self
-            .client
-            .get_transaction_index(SignatureBase58::from(signature))
-            .await?;
+        let tx_index = self.client.get_transaction_index(signature.into()).await?;
         tx_index.ok_or_else(|| anyhow::anyhow!("get_transaction_index value is None"))
     }
 
@@ -124,23 +102,10 @@ impl TracerDbTrait for RocksDb {
         let neon_revision = env!("NEON_REVISION");
         Ok(neon_revision.to_string())
     }
-    // impl From<&String> for BlockHashBase58 {
-    //     fn from(hash: &String) -> Self {
-    //         let bytes = bs58::decode(hash).into_vec().expect("Invalid base58 hash");
-    //         assert_eq!(bytes.len(), 32, "Expected 32-byte hash");
-    //         let mut array = [0u8; 32];
-    //         array.copy_from_slice(&bytes);
-    //         Self(array)
-    //     }
-    // }
 
     async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<u64> {
-        let bytes = bs58::decode(blockhash).into_vec()?;
-        assert_eq!(bytes.len(), 32, "Expected 32-byte hash");
-        let bytes: [u8; 32] = bytes
-            .try_into()
-            .map_err(|v: Vec<u8>| anyhow::anyhow!("Invalid length, got {} bytes", v.len()))?;
-        let hash = Hash::from(bytes);
+        let hash = Hash::from_str(&blockhash).map_err(|e| anyhow!(e))?;
+
         self.client
             .get_slot_by_blockhash(hash.into())
             .await?
@@ -156,18 +121,18 @@ impl TracerDbTrait for RocksDb {
         sol_sig: &[u8],
         slot: u64,
     ) -> DbResult<Vec<AccountData>> {
-        let sig_array: [u8; 64] = sol_sig.try_into().expect("Signature must be 64 bytes");
-        // Convert the signature to Bs58Vec (assuming it's a 64-byte Solana Signature)
-        let response: Vec<(PubkeyBase58, SolanaReadableAccount)> = self
+        let signature =
+            Signature::try_from(sol_sig).map_err(|e| anyhow!("Invalid signature format: {}", e))?;
+        let response = self
             .client
-            .get_accounts_in_transaction(SignatureBase58::from(sig_array), Some(slot))
+            .get_accounts_in_transaction(signature.into(), Some(slot))
             .await?;
         debug!("Accounts in response: {:?}", response);
-        let account_data_vec: Vec<AccountData> = response
+        let account_data_vec = response
             .into_iter()
             .map(|(pubkey, acc)| -> Result<_, anyhow::Error> {
                 let pk = Pubkey::from(pubkey);
-                let acc: Account = acc.try_into()?; // assumes TryFrom<SolanaReadableAccount> for Account
+                let acc: Account = acc.into(); // assumes TryFrom<SolanaReadableAccount> for Account
                 Ok(AccountData::new_from_account(pk, &acc))
             })
             .collect::<Result<_, _>>()?;

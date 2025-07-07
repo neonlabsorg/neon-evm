@@ -85,12 +85,6 @@ impl From<Signature> for SignatureBase58 {
     }
 }
 
-impl From<[u8; 64]> for SignatureBase58 {
-    fn from(bytes: [u8; 64]) -> Self {
-        Self(bytes)
-    }
-}
-
 impl From<SignatureBase58> for Signature {
     fn from(signature_base58: SignatureBase58) -> Self {
         Self::from(signature_base58.0)

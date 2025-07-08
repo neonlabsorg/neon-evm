@@ -1,12 +1,12 @@
 use crate::account::program::System;
 use crate::account::{
-    token, AccountsDB, BalanceAccount, NodeInitializer, Operator, TransactionTree, Treasury,
-    TreeInitializer,
+    token, BalanceAccount, NodeInitializer, Operator, TransactionTree, Treasury, TreeInitializer,
 };
 use crate::config::SOL_CHAIN_ID;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::instruction::scheduled_transaction_create::validate_nonce;
+use crate::platform::{Platform, Solana};
 use crate::types::Address;
 use arrayref::array_ref;
 use ethnum::U256;
@@ -95,7 +95,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
 
     // Accounts
     let signer = unsafe { Operator::from_account_not_whitelisted(&accounts[0])? };
-    let balance = accounts[1].clone();
+    let _balance = &accounts[1];
     let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
     let tree = accounts[3].clone();
     let pool = token::State::from_account_info(&accounts[4])?;
@@ -104,22 +104,23 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     validate_pool(&pool)?;
 
     let payer_pubkey = *signer.key;
-    let init_data = parse_instruction(&signer, message);
-    let required_balance = calculate_required_balance(&init_data)?;
+    let init = parse_instruction(&signer, message);
+    let required_balance = calculate_required_balance(&init)?;
 
     // Create Balance Account if not exists
     let rent = Rent::get()?;
     let clock = Clock::get()?;
 
-    let db = AccountsDB::new(&[balance], signer, None, Some(system), Some(treasury));
-    let mut user = BalanceAccount::create_for_solana_user(payer_pubkey, SOL_CHAIN_ID, &db, &rent)?;
-    validate_nonce(&user, init_data.nonce)?;
+    let mut solana = Solana::new(accounts, signer.clone(), None)?;
+    let mut user: BalanceAccount = solana.create_balance_for_solana_user(payer_pubkey)?;
+
+    validate_nonce(&user, init.nonce)?;
 
     // Create Tree Account
-    let mut tree = TransactionTree::create(init_data, tree, &db, &rent, &clock)?;
+    let mut tree = TransactionTree::create(init, tree, &system, &treasury, &signer, &rent, &clock)?;
 
     let required_balance = payment_from_balance(&mut tree, &mut user, required_balance)?;
-    payment_from_signer(&mut tree, &db, &pool, required_balance)?;
+    payment_from_signer(&mut tree, &signer, &system, &pool, required_balance)?;
 
     Ok(())
 }

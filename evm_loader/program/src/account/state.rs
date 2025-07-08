@@ -8,6 +8,7 @@ use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::evm::Machine;
 use crate::executor::{BlockParams, ExecutorStateData};
+use crate::platform::Platform;
 use crate::types::boxx::{boxx, Boxx};
 use crate::types::vector::VectorSliceExt;
 use crate::types::{read_raw_utils::read_vec, Address, Transaction, TreeMap, TrxView, Vector};
@@ -17,10 +18,10 @@ use solana_program::{account_info::AccountInfo, instruction::AccountMeta, pubkey
 use static_assertions::const_assert_eq;
 
 use super::{
-    Account, AccountDispatch, AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder,
+    Account, AccountDispatch, AccountHeader, BalanceAccount, ContractAccount, Holder,
     OperatorBalance, StateFinalizedAccount, StorageCell, TransactionTree, ACCOUNT_PREFIX_LEN,
-    TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
-    TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED, TAG_STORAGE_CELL,
+    TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT, TAG_SCHEDULED_STATE_CANCELLED,
+    TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STORAGE_CELL,
 };
 
 #[inline]
@@ -364,6 +365,7 @@ enum RestoreResult<'local, 'sol> {
     },
 }
 
+#[maybe_async::maybe_async(?Send)]
 impl<'local, 'sol> StateAccount<'local, 'sol> {
     #[must_use]
     pub fn into_account(self) -> &'local AccountInfo<'sol> {
@@ -480,25 +482,26 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
     }
 
     #[allow(clippy::cast_sign_loss)]
+    #[cfg(target_os = "solana")]
     pub fn new(
         program_id: Pubkey,
         info: &'local AccountInfo<'sol>,
-        accounts: &AccountsDB<'sol>,
+        accounts: &crate::platform::Solana<'sol>,
         origin: Address,
         transaction: &Transaction,
         transaction_rlp: &[u8],
         tree_account: Option<Pubkey>,
     ) -> Result<Self> {
         let (info, owner) = match info.tag(program_id)? {
-            TAG_HOLDER => {
+            super::TAG_HOLDER => {
                 let holder = Holder::from_account_info(program_id, info)?;
-                holder.validate_owner(accounts.operator())?;
+                holder.validate_owner(accounts.operator_account())?;
                 let owner = holder.owner();
                 (holder.into_account(), owner)
             }
-            TAG_STATE_FINALIZED => {
+            super::TAG_STATE_FINALIZED => {
                 let finalized = StateFinalizedAccount::from_account_info(program_id, info)?;
-                finalized.validate_owner(accounts.operator())?;
+                finalized.validate_owner(accounts.operator_account())?;
                 finalized.validate_trx(transaction)?;
                 let owner = finalized.owner();
                 (finalized.into_account(), owner)
@@ -584,10 +587,10 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         })
     }
 
-    pub fn restore(
+    pub async fn restore(
         program_id: Pubkey,
         info: &'local AccountInfo<'sol>,
-        accounts: &AccountsDB<'sol>,
+        accounts: &impl Platform<'sol>,
     ) -> Result<(Self, AccountsStatus, Option<Transaction>)> {
         let mut state = match Self::from_account(program_id, info)? {
             RestoreResult::State(state) => state,
@@ -608,9 +611,9 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
             }
         };
 
-        let mut status = state.validate_revisions(program_id, accounts);
+        let mut status = state.validate_revisions(program_id, accounts).await?;
         if status == AccountsStatus::Ok {
-            status = state.validate_timestamps(program_id, accounts);
+            status = state.validate_timestamps(program_id, accounts).await?;
         }
 
         if status == AccountsStatus::NeedRestart {
@@ -623,26 +626,31 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         Ok((state, status, None))
     }
 
-    fn validate_revisions(&self, program_id: Pubkey, accounts: &AccountsDB) -> AccountsStatus {
+    async fn validate_revisions(
+        &self,
+        program_id: Pubkey,
+        accounts: &impl Platform<'sol>,
+    ) -> Result<AccountsStatus> {
         let touched_accounts = self
             .root_ref
             .touched_accounts
             .iter()
-            .filter_map(|(key, counter)| if counter >= &2 { Some(key) } else { None });
+            .filter_map(|(key, counter)| if counter >= &2 { Some(key) } else { None })
+            .copied();
 
         for pubkey in touched_accounts {
-            let account = accounts.get(pubkey).clone().into();
+            let account = accounts.get_account(pubkey).await?;
 
             let account_revision = AccountRevision::new(program_id, account);
             let stored_revision = &self.root_ref.revisions[pubkey];
 
             if stored_revision != &account_revision {
                 log_data(&[b"INVALID_REVISION", pubkey.as_ref()]);
-                return AccountsStatus::NeedRestart;
+                return Ok(AccountsStatus::NeedRestart);
             }
         }
 
-        AccountsStatus::Ok
+        Ok(AccountsStatus::Ok)
     }
 
     pub fn finalize_step(&mut self) {
@@ -658,7 +666,12 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         self.root_ref.plain_data.tx_exit_status = tx_exit_status;
     }
 
-    fn validate_timestamps(&self, program_id: Pubkey, accounts: &AccountsDB) -> AccountsStatus {
+    #[allow(clippy::await_holding_refcell_ref)]
+    async fn validate_timestamps(
+        &self,
+        program_id: Pubkey,
+        accounts: &impl Platform<'sol>,
+    ) -> Result<AccountsStatus> {
         let state = self.root_ref.executor_state.borrow();
         let executor_state = state.as_ref().unwrap();
         let state_block_number: u64 = executor_state.block_params.number.as_u64();
@@ -666,18 +679,18 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         let timestamped_contracts = executor_state.timestamped_contracts.borrow();
         for address in timestamped_contracts.keys() {
             let (pubkey, _) = address.find_solana_address(&program_id);
-            let account = accounts.get(&pubkey).clone().into();
+            let account = accounts.get_account(pubkey).await?;
             let Ok(contract) = ContractAccount::from_account(program_id, account) else {
                 continue;
             };
 
             if contract.timestamp_used_at() > state_block_number {
                 log_data(&[b"INVALID_REVISION", pubkey.as_ref()]);
-                return AccountsStatus::NeedRestart;
+                return Ok(AccountsStatus::NeedRestart);
             }
         }
 
-        AccountsStatus::Ok
+        Ok(AccountsStatus::Ok)
     }
 
     #[must_use]
@@ -712,10 +725,10 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         Ok(())
     }
 
-    pub fn update_touched_accounts(
+    pub async fn update_touched_accounts<'a>(
         &mut self,
         program_id: Pubkey,
-        accounts: &AccountsDB,
+        accounts: &impl Platform<'a>,
     ) -> Result<()> {
         let root = self.root_ref_mut();
         for (key, counter) in &*root
@@ -735,7 +748,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
         let revisions = &mut root.revisions;
 
         for (key, _) in touched_accounts {
-            let account = accounts.get(key).clone().into();
+            let account = accounts.get_account(*key).await?;
             revisions.insert_with_if_not_exists(*key, || AccountRevision::new(program_id, account));
         }
 

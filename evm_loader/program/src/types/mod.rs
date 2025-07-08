@@ -13,6 +13,7 @@ pub use tree_map::TreeMap;
 pub use vector::Vector;
 
 mod address;
+pub mod btree_map_cell;
 mod transaction;
 pub mod tree_map;
 #[macro_use]

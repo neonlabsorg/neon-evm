@@ -11,9 +11,9 @@ use crate::account::pda;
 
 use crate::{
     account::token,
-    account_storage::FAKE_OPERATOR,
     error::{Error, Result},
     evm::database::Database,
+    platform::FAKE_OPERATOR,
     types::Address,
 };
 
@@ -142,7 +142,7 @@ async fn withdraw<State: Database>(
             .await?;
     }
 
-    let (authority, bump_seed) = pda::main_pool_authority(state.program_id());
+    let (authority, bump_seed) = pda::main_pool_authority(&state.program_id());
     let authority_seeds: &[&[u8]] = pda::main_pool_authority_seeds!(bump_seed);
 
     let pool = get_associated_token_address(&authority, &mint_address);

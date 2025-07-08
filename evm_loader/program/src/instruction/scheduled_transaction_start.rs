@@ -1,13 +1,13 @@
-use crate::account::{AccountsDB, StateAccount, TransactionTree};
-use crate::account_storage::{AccountStorage, ProgramAccountStorage};
+use crate::account::{StateAccount, TransactionTree};
 use crate::error::{Error, Result};
 use crate::gasometer::Gasometer;
 use crate::instruction::instruction_internals::{allocate_evm, finalize};
+use crate::platform::{Platform, Solana};
 use crate::types::{ScheduledTx, Transaction, TrxView};
 
 pub fn do_scheduled_start<'a, 'b>(
     trx: &Transaction,
-    accounts: AccountsDB<'a>,
+    mut account_storage: Solana<'a>,
     mut storage: StateAccount<'b, 'a>,
     mut transaction_tree: TransactionTree<'a>,
     mut gasometer: Gasometer,
@@ -17,8 +17,6 @@ where
 {
     debug_print!("do_scheduled_start");
 
-    let mut account_storage = ProgramAccountStorage::new(accounts)?;
-
     let origin = storage.trx_origin();
 
     trx.validate(origin, &account_storage, Some(&transaction_tree))?;
@@ -26,9 +24,9 @@ where
     transaction_tree.start_transaction(trx)?;
 
     // Increment origin's nonce only once for the whole execution tree.
-    let mut origin_account = account_storage.origin(origin, trx)?;
+    let mut origin_account = account_storage.get_origin((origin, trx))?;
     if origin_account.nonce() == trx.nonce() {
-        origin_account.increment_revision(account_storage.rent(), account_storage.db())?;
+        origin_account.increment_revision()?;
         origin_account.increment_nonce()?;
     }
 

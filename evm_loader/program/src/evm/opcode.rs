@@ -695,7 +695,7 @@ impl<T: EventListener> Machine<T> {
     /// current block's Unix timestamp in seconds
     #[maybe_async]
     pub async fn opcode_timestamp(&mut self, backend: &mut impl Database) -> Result<Action> {
-        let timestamp = backend.block_timestamp(self.context.contract)?;
+        let timestamp = backend.block_timestamp(self.context.contract).await?;
 
         self.stack.push_u256(timestamp)?;
 
@@ -705,7 +705,7 @@ impl<T: EventListener> Machine<T> {
     /// current block's number
     #[maybe_async]
     pub async fn opcode_number(&mut self, backend: &mut impl Database) -> Result<Action> {
-        let block_number = backend.block_number(self.context.contract)?;
+        let block_number = backend.block_number(self.context.contract).await?;
 
         self.stack.push_u256(block_number)?;
 
@@ -1041,7 +1041,7 @@ impl<T: EventListener> Machine<T> {
             topics
         };
 
-        backend.collect_log(address.as_bytes(), topics, data);
+        backend.collect_log(address.as_bytes(), topics, data).await;
 
         Ok(Action::Continue)
     }

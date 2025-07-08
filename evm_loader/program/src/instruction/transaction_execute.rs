@@ -1,7 +1,6 @@
 use std::ops::Deref;
 
-use crate::account::{AccountsDB, AllocateResult};
-use crate::account_storage::ProgramAccountStorage;
+use crate::account::AllocateResult;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::evm::tracing::NoopEventListener;
@@ -9,20 +8,22 @@ use crate::evm::Machine;
 use crate::executor::{ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
 use crate::instruction::instruction_internals::log_return_value;
+use crate::platform::{Platform, Solana};
 use crate::types::{boxx::Boxx, Address, Transaction, TrxView};
 
 pub fn execute(
-    accounts: AccountsDB<'_>,
+    mut account_storage: Solana,
     gasometer: Gasometer,
     trx: Transaction,
     origin: Address,
 ) -> Result<()> {
-    let mut account_storage = ProgramAccountStorage::new(accounts)?;
     let mut backend_data = ExecutorStateData::new(&account_storage);
 
     trx.validate(origin, &account_storage, None)?;
 
-    account_storage.origin(origin, &trx)?.increment_nonce()?;
+    account_storage
+        .get_origin((origin, &trx))?
+        .increment_nonce()?;
 
     let (exit_reason, steps_executed) = {
         let mut backend = ExecutorState::new(&mut account_storage, &mut backend_data);
@@ -49,7 +50,6 @@ pub fn execute(
 
     account_storage.apply_state_change(apply_state)?;
     account_storage.update_timestamped_contracts(timestamped_contracts.keys())?;
-    account_storage.transfer_treasury_payment()?;
 
     handle_gas(account_storage, &trx, gasometer, origin)?;
 
@@ -58,17 +58,15 @@ pub fn execute(
 }
 
 pub fn execute_with_solana_call(
-    accounts: AccountsDB<'_>,
+    mut account_storage: Solana,
     gasometer: Gasometer,
     trx: Boxx<Transaction>,
     origin: Address,
 ) -> Result<()> {
-    let mut account_storage = ProgramAccountStorage::new(accounts)?;
-
     trx.validate(origin, &account_storage, None)?;
 
     account_storage
-        .origin(origin, trx.deref())?
+        .get_origin((origin, trx.deref()))?
         .increment_nonce()?;
 
     let (exit_reason, steps_executed) = {
@@ -86,9 +84,6 @@ pub fn execute_with_solana_call(
         &steps_executed.to_le_bytes(), // Total steps is the same as iteration steps
     ]);
 
-    account_storage.increment_revision_for_modified_contracts()?;
-    account_storage.transfer_treasury_payment()?;
-
     handle_gas(account_storage, &trx, gasometer, origin)?;
 
     log_return_value(&exit_reason);
@@ -96,7 +91,7 @@ pub fn execute_with_solana_call(
 }
 
 fn handle_gas(
-    mut account_storage: ProgramAccountStorage,
+    mut account_storage: Solana,
     trx: &Transaction,
     mut gasometer: Gasometer,
     origin: Address,
@@ -106,7 +101,7 @@ fn handle_gas(
     let chain_id = trx.chain_id().unwrap_or(crate::config::DEFAULT_CHAIN_ID);
 
     gasometer.record_solana_transaction_cost(trx)?;
-    gasometer.record_operator_expenses(account_storage.operator());
+    gasometer.record_operator_expenses(account_storage.operator_account());
     let used_gas = gasometer.used_gas();
     if used_gas > gas_limit {
         return Err(Error::OutOfGas(gas_limit, used_gas));

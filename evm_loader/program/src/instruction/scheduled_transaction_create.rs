@@ -1,11 +1,12 @@
 use crate::account::program::System;
 use crate::account::{
-    pda, token, AccountsDB, BalanceAccount, NodeInitializer, Operator, TransactionTree, Treasury,
+    pda, token, BalanceAccount, NodeInitializer, Operator, TransactionTree, Treasury,
     TreeInitializer, NO_CHILD_TRANSACTION,
 };
 use crate::config::SOL_CHAIN_ID;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
+use crate::platform::{Platform, Solana};
 use crate::types::{Address, ScheduledTxShell};
 use arrayref::array_ref;
 use ethnum::U256;
@@ -97,16 +98,14 @@ pub fn payment_from_balance(
 
 pub fn payment_from_signer<'a>(
     tree: &mut TransactionTree<'a>,
-    db: &AccountsDB<'a>,
+    signer: &Operator<'a>,
+    system: &System<'a>,
     pool: &token::State<'a>,
     gas: U256,
 ) -> Result<()> {
     if gas == U256::ZERO {
         return Ok(());
     }
-
-    let signer = db.operator();
-    let system = db.system();
 
     assert!(tree.payer() == Address::from_solana_address(signer.key));
     assert!(tree.chain_id() == SOL_CHAIN_ID);
@@ -136,7 +135,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
 
     // Accounts
     let signer = unsafe { Operator::from_account_not_whitelisted(&accounts[0])? };
-    let balance = accounts[1].clone();
+    let _balance = &accounts[1];
     let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
     let tree = accounts[3].clone();
     let pool = token::State::from_account_info(&accounts[4])?;
@@ -158,8 +157,9 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let rent = Rent::get()?;
     let clock = Clock::get()?;
 
-    let db = AccountsDB::new(&[balance], signer, None, Some(system), Some(treasury));
-    let mut user = BalanceAccount::create_for_solana_user(payer_pubkey, SOL_CHAIN_ID, &db, &rent)?;
+    let mut solana = Solana::new(accounts, signer.clone(), None)?;
+    let mut user: BalanceAccount = solana.create_balance_for_solana_user(payer_pubkey)?;
+
     validate_nonce(&user, tx.nonce)?;
 
     // Create Tree Account
@@ -180,13 +180,15 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
             }],
         },
         tree,
-        &db,
+        &system,
+        &treasury,
+        &signer,
         &rent,
         &clock,
     )?;
 
     let required_balance = payment_from_balance(&mut tree, &mut user, required_balance)?;
-    payment_from_signer(&mut tree, &db, &pool, required_balance)?;
+    payment_from_signer(&mut tree, &signer, &system, &pool, required_balance)?;
 
     Ok(())
 }

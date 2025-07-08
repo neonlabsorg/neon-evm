@@ -1,3 +1,5 @@
+#![allow(clippy::await_holding_refcell_ref)]
+
 mod action;
 mod block_params;
 mod cache;

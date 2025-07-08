@@ -354,8 +354,8 @@ pub enum Error {
     #[error("Account {0} - invalid header version {1}")]
     AccountInvalidHeader(Pubkey, u8),
 
-    #[error("Revert after Solana Call is not supported")]
-    RevertAfterSolanaCall,
+    #[error("Revert with Solana Call is not supported")]
+    RevertWithSolanaCall,
 
     #[error("Unsupported EIP-2718 Transaction type | First byte: {0}")]
     UnsuppotedEthereumTransactionType(u8),

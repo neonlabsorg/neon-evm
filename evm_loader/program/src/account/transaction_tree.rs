@@ -3,9 +3,10 @@ use std::mem::size_of;
 
 use super::treasury::Treasury;
 use super::{
-    pda, Account, AccountDispatch, AccountHeader, AccountsDB, BalanceAccount, Operator,
-    ACCOUNT_PREFIX_LEN, TAG_TRANSACTION_TREE,
+    pda, Account, AccountDispatch, AccountHeader, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN,
+    TAG_TRANSACTION_TREE,
 };
+use crate::account::program;
 use crate::config::{
     BASE_ITERATIVE_TRANSACTION_COST, TREE_ACCOUNT_DESTROY_FEE, TREE_ACCOUNT_FINISH_TRANSACTION_GAS,
     TREE_ACCOUNT_TIMEOUT,
@@ -128,7 +129,9 @@ impl<'a> TransactionTree<'a> {
     pub fn create(
         init: TreeInitializer,
         mut account: AccountInfo<'a>,
-        db: &AccountsDB<'a>,
+        system: &program::System<'a>,
+        treasury: &Treasury<'a>,
+        destroy_fee_payer: &Operator<'a>,
         rent: &Rent,
         clock: &Clock,
     ) -> Result<Self> {
@@ -194,10 +197,6 @@ impl<'a> TransactionTree<'a> {
         // Create account
         let seeds: &[&[u8]] = pda::tree_account_seeds!(init, bump);
         let space = Self::required_account_size(nodes.len());
-
-        let system = db.system();
-        let treasury = db.treasury();
-        let destroy_fee_payer = db.operator();
 
         system.create_pda_account_with_treasury_payer(
             &crate::ID,
@@ -574,10 +573,10 @@ impl<'a> TransactionTree<'a> {
     }
 
     #[allow(unused)]
-    fn header_upgrade(&mut self, rent: &Rent, db: &AccountsDB<'a>) -> Result<()> {
+    fn header_upgrade(&mut self) -> Result<()> {
         match self.account.header_version() {
             0 | 1 => {
-                self.account.expand_header::<HeaderV0, Header>(rent, db)?;
+                self.account.expand_header::<HeaderV0, Header>()?;
             }
             v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
         }

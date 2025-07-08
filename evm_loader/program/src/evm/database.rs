@@ -1,17 +1,16 @@
 use super::Context;
+use crate::account::Account;
 use crate::account_storage::LogCollector;
 use crate::types::Vector;
 use crate::{error::Result, executor::OwnedAccountInfo, types::Address};
 use ethnum::U256;
 use maybe_async::maybe_async;
-use solana_program::{
-    account_info::AccountInfo, instruction::Instruction, pubkey::Pubkey, rent::Rent,
-};
+use solana_program::{instruction::Instruction, pubkey::Pubkey, rent::Rent};
 
 #[maybe_async(?Send)]
 pub trait Database: LogCollector {
     fn is_synced_state(&self) -> bool;
-    fn program_id(&self) -> &Pubkey;
+    fn program_id(&self) -> Pubkey;
     fn operator(&self) -> Pubkey;
     fn chain_id_to_token(&self, chain_id: u64) -> Pubkey;
     fn contract_pubkey(&self, address: Address) -> (Pubkey, u8);
@@ -51,8 +50,8 @@ pub trait Database: LogCollector {
     ) -> Result<()>;
 
     async fn block_hash(&self, number: U256) -> Result<[u8; 32]>;
-    fn block_number(&self, current_contract: Address) -> Result<U256>;
-    fn block_timestamp(&self, current_contract: Address) -> Result<U256>;
+    async fn block_number(&self, current_contract: Address) -> Result<U256>;
+    async fn block_timestamp(&self, current_contract: Address) -> Result<U256>;
     fn rent(&self) -> &Rent;
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)>;
     fn set_return_data(&mut self, data: &[u8]);
@@ -60,7 +59,7 @@ pub trait Database: LogCollector {
     async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo>;
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
-        F: FnOnce(&AccountInfo) -> R;
+        F: FnOnce(&Account) -> R;
 
     fn snapshot(&mut self);
     fn revert_snapshot(&mut self);

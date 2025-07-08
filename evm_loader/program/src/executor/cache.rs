@@ -1,17 +1,16 @@
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 use std::{cell::RefCell, rc::Rc};
 
-use crate::types::vector::VectorSliceExt;
-use crate::{types::Vector, vector};
+use crate::account::{Account, AccountDispatch};
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 #[repr(C)]
 pub struct OwnedAccountInfo {
     pub key: Pubkey,
     pub is_signer: bool,
     pub is_writable: bool,
     pub lamports: u64,
-    pub data: Vector<u8>,
+    pub data: Vec<u8>,
     pub owner: Pubkey,
     pub executable: bool,
     pub rent_epoch: solana_program::clock::Epoch,
@@ -19,22 +18,22 @@ pub struct OwnedAccountInfo {
 
 impl OwnedAccountInfo {
     #[must_use]
-    pub fn from_account_info(program_id: &Pubkey, info: &AccountInfo) -> Self {
+    pub fn from_account(program_id: Pubkey, info: &Account) -> Self {
         Self {
-            key: *info.key,
-            is_signer: info.is_signer,
-            is_writable: info.is_writable,
+            key: info.pubkey(),
+            is_signer: false,
+            is_writable: false,
             lamports: info.lamports(),
-            data: if info.executable || (info.owner == program_id) {
+            data: if info.is_executable() || (info.owner() == program_id) {
                 // This is only used to emulate external programs
                 // They don't use data in our accounts
-                vector![]
+                vec![]
             } else {
-                info.data.borrow().to_vector()
+                info.data().to_vec()
             },
-            owner: *info.owner,
-            executable: info.executable,
-            rent_epoch: info.rent_epoch,
+            owner: info.owner(),
+            executable: info.is_executable(),
+            rent_epoch: info.rent_epoch(),
         }
     }
 }

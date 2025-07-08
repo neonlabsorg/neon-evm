@@ -1,11 +1,13 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
+use crate::account::Account;
 use crate::account_storage::{AccountStorage, LogCollector};
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
 use crate::evm::precompile::is_precompile_address;
 use crate::evm::{Context, ExitStatus};
+use crate::platform::FAKE_OPERATOR;
 use crate::types::boxx::Boxx;
 use crate::types::Address;
 use crate::vector;
@@ -41,6 +43,7 @@ pub struct ExecutorStateData {
     stack: Vector<usize>,
     pub exit_status: Option<ExitStatus>,
     pub touched_accounts: RefCell<TouchedAccounts>,
+    pub rent: Rent,
 }
 
 pub struct ExecutorState<'a, B: AccountStorage> {
@@ -49,14 +52,16 @@ pub struct ExecutorState<'a, B: AccountStorage> {
 }
 
 impl<'a> ExecutorStateData {
-    pub fn new<B: AccountStorage>(backend: &B) -> Self {
+    #[maybe_async(?Send)]
+    pub async fn new<B: AccountStorage>(backend: &B) -> Self {
         let block_params = BlockParams {
-            number: backend.block_number(),
-            timestamp: backend.block_timestamp(),
+            number: backend.block_number().await,
+            timestamp: backend.block_timestamp().await,
         };
         block_params.log_data();
 
-        ExecutorStateData::new_instance(block_params)
+        let rent = backend.rent().await;
+        ExecutorStateData::new_instance(block_params, rent)
     }
 
     #[must_use]
@@ -88,7 +93,7 @@ impl<'a> ExecutorStateData {
         &self.stack
     }
 
-    fn new_instance(block_params: BlockParams) -> Self {
+    fn new_instance(block_params: BlockParams, rent: Rent) -> Self {
         Self {
             cache: RefCell::new(Cache {}),
             block_params,
@@ -97,6 +102,7 @@ impl<'a> ExecutorStateData {
             exit_status: None,
             touched_accounts: RefCell::new(TouchedAccounts::new()),
             timestamped_contracts: RefCell::new(TimestampedContracts::new()),
+            rent,
         }
     }
 
@@ -186,6 +192,10 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     }
 
     fn touch_solana(&self, pubkey: Pubkey) {
+        if pubkey == FAKE_OPERATOR {
+            return;
+        }
+
         self.touch_account(pubkey, 2);
     }
 
@@ -200,14 +210,15 @@ impl<'a, B: AccountStorage> ExecutorState<'a, B> {
     }
 }
 
+#[maybe_async(?Send)]
 impl<B: AccountStorage> LogCollector for ExecutorState<'_, B> {
-    fn collect_log<const N: usize>(
+    async fn collect_log<const N: usize>(
         &mut self,
         address: &[u8; 20],
         topics: [[u8; 32]; N],
         data: &[u8],
     ) {
-        self.backend.collect_log(address, topics, data);
+        self.backend.collect_log(address, topics, data).await;
     }
 }
 
@@ -216,7 +227,7 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
     fn is_synced_state(&self) -> bool {
         false
     }
-    fn program_id(&self) -> &Pubkey {
+    fn program_id(&self) -> Pubkey {
         self.backend.program_id()
     }
     fn operator(&self) -> Pubkey {
@@ -466,14 +477,14 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         Ok(self.backend.block_hash(number).await)
     }
 
-    fn block_number(&self, current_contract: Address) -> Result<U256> {
+    async fn block_number(&self, current_contract: Address) -> Result<U256> {
         let mut timestamped_contracts = self.data.timestamped_contracts.borrow_mut();
         timestamped_contracts.insert_if_not_exists(current_contract, ());
 
         Ok(self.data.block_params.number)
     }
 
-    fn block_timestamp(&self, current_contract: Address) -> Result<U256> {
+    async fn block_timestamp(&self, current_contract: Address) -> Result<U256> {
         let mut timestamped_contracts = self.data.timestamped_contracts.borrow_mut();
         timestamped_contracts.insert_if_not_exists(current_contract, ());
 
@@ -560,7 +571,7 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
     }
 
     fn rent(&self) -> &Rent {
-        self.backend.rent()
+        &self.data.rent
     }
 
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
@@ -573,7 +584,7 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
 
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
-        F: FnOnce(&solana_program::account_info::AccountInfo) -> R,
+        F: FnOnce(&Account) -> R,
     {
         self.touch_solana(*address);
 

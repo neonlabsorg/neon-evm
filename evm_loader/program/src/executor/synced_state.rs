@@ -10,6 +10,7 @@ use super::precompile_extension::PrecompiledContracts;
 use super::state::TimestampedContracts;
 use super::{BlockParams, OwnedAccountInfo};
 
+use crate::account::Account;
 use crate::account_storage::{AccountStorage, LogCollector, SyncedAccountStorage};
 use crate::allocator::acc_allocator;
 use crate::error::{Error, Result};
@@ -35,17 +36,21 @@ pub struct SyncedExecutorState<'a, B: AccountStorage> {
     pub timestamped_contracts: RefCell<TimestampedContracts>,
     actions: Vector<Action>,
     stack: Vector<usize>,
+    rent: Rent,
 }
 
 impl<'a, B: SyncedAccountStorage> SyncedExecutorState<'a, B> {
     #[must_use]
-    pub fn new(backend: &'a mut B) -> Self {
+    #[maybe_async(?Send)]
+    pub async fn new(backend: &'a mut B) -> Self {
+        let rent = backend.rent().await;
         Self {
             backend,
             actions: Vector::with_capacity_in(64, acc_allocator()),
             stack: Vector::with_capacity_in(16, acc_allocator()),
             block_params: None,
             timestamped_contracts: RefCell::new(TreeMap::new()),
+            rent,
         }
     }
 
@@ -81,6 +86,7 @@ impl<'a, B: SyncedAccountStorage> SyncedExecutorState<'a, B> {
             stack,
             block_params: Some(state_data.block_params),
             timestamped_contracts: RefCell::clone(&state_data.timestamped_contracts),
+            rent: state_data.rent.clone(),
         }
     }
 
@@ -90,14 +96,15 @@ impl<'a, B: SyncedAccountStorage> SyncedExecutorState<'a, B> {
     }
 }
 
+#[maybe_async(?Send)]
 impl<B: AccountStorage> LogCollector for SyncedExecutorState<'_, B> {
-    fn collect_log<const N: usize>(
+    async fn collect_log<const N: usize>(
         &mut self,
         address: &[u8; 20],
         topics: [[u8; 32]; N],
         data: &[u8],
     ) {
-        self.backend.collect_log(address, topics, data);
+        self.backend.collect_log(address, topics, data).await;
     }
 }
 
@@ -106,7 +113,7 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
     fn is_synced_state(&self) -> bool {
         true
     }
-    fn program_id(&self) -> &Pubkey {
+    fn program_id(&self) -> Pubkey {
         self.backend.program_id()
     }
     fn operator(&self) -> Pubkey {
@@ -264,7 +271,7 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
         }
 
         let number = number.as_u64();
-        let block_slot = self.backend.block_number().as_u64();
+        let block_slot = self.backend.block_number().await.as_u64();
         let lower_block_slot = if block_slot < 257 {
             0
         } else {
@@ -278,7 +285,7 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
         Ok(self.backend.block_hash(number).await)
     }
 
-    fn block_number(&self, current_contract: Address) -> Result<U256> {
+    async fn block_number(&self, current_contract: Address) -> Result<U256> {
         let mut timestamped_contracts = self.timestamped_contracts.borrow_mut();
         timestamped_contracts.insert_if_not_exists(current_contract, ());
 
@@ -286,10 +293,10 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
             return Ok(block.number);
         }
 
-        Ok(self.backend.block_number())
+        Ok(self.backend.block_number().await)
     }
 
-    fn block_timestamp(&self, current_contract: Address) -> Result<U256> {
+    async fn block_timestamp(&self, current_contract: Address) -> Result<U256> {
         let mut timestamped_contracts = self.timestamped_contracts.borrow_mut();
         timestamped_contracts.insert_if_not_exists(current_contract, ());
 
@@ -297,7 +304,7 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
             return Ok(block.timestamp);
         }
 
-        Ok(self.backend.block_timestamp())
+        Ok(self.backend.block_timestamp().await)
     }
 
     async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo> {
@@ -306,7 +313,7 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
     }
 
     fn rent(&self) -> &Rent {
-        self.backend.rent()
+        &self.rent
     }
 
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {
@@ -319,7 +326,7 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
 
     async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
     where
-        F: FnOnce(&solana_program::account_info::AccountInfo) -> R,
+        F: FnOnce(&Account) -> R,
     {
         self.backend.map_solana_account(address, action).await
     }

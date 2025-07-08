@@ -4,7 +4,7 @@ use std::{
 };
 
 use enum_dispatch::enum_dispatch;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, system_program};
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey, system_program};
 
 use crate::error::{Error, Result};
 
@@ -49,7 +49,6 @@ pub trait AccountDispatch<'a> {
     fn is_executable(&self) -> bool;
 
     fn reallocate(&mut self, new_size: usize, zero_init: ZeroInit) -> Result<()>;
-    fn sync_lamports(&mut self, rent: &Rent, db: &super::AccountsDB<'a>) -> Result<()>;
 
     fn tag(&self, program_id: Pubkey) -> Result<u8> {
         if self.owner() != program_id {
@@ -184,11 +183,7 @@ pub trait AccountDispatch<'a> {
         self.section_mut_uninit(ACCOUNT_PREFIX_LEN)
     }
 
-    fn expand_header<From: AccountHeader, To: AccountHeader>(
-        &mut self,
-        rent: &Rent,
-        db: &super::AccountsDB<'a>,
-    ) -> Result<()> {
+    fn expand_header<From: AccountHeader, To: AccountHeader>(&mut self) -> Result<()> {
         let from_len = std::mem::size_of::<From>();
         let to_len = std::mem::size_of::<To>();
 
@@ -202,7 +197,6 @@ pub trait AccountDispatch<'a> {
         assert!(required_len >= data_len);
 
         self.reallocate(required_len, ZeroInit::Uninit)?;
-        self.sync_lamports(rent, db)?;
 
         {
             let mut account_data = self.data_mut();
@@ -264,26 +258,6 @@ impl<'a> AccountDispatch<'a> for AccountInfo<'a> {
 
     fn reallocate(&mut self, new_size: usize, zero_init: ZeroInit) -> Result<()> {
         self.realloc(new_size, zero_init == ZeroInit::Zero)?;
-
-        Ok(())
-    }
-
-    fn sync_lamports(&mut self, rent: &Rent, accounts: &super::AccountsDB<'a>) -> Result<()> {
-        let original_data_len = unsafe { self.original_data_len() };
-        if original_data_len == self.data_len() {
-            return Ok(());
-        }
-
-        let minimum_balance = rent.minimum_balance(self.data_len());
-        if self.lamports() >= minimum_balance {
-            return Ok(());
-        }
-
-        let system = accounts.system();
-        let operator = accounts.operator();
-
-        let lamports = minimum_balance - self.lamports();
-        system.transfer(operator, self, lamports)?;
 
         Ok(())
     }

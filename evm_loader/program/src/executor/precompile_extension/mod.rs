@@ -1,7 +1,7 @@
 use crate::{
-    account_storage::FAKE_OPERATOR,
     error::Result,
     evm::{database::Database, Context},
+    platform::FAKE_OPERATOR,
     types::Address,
 };
 use maybe_async::maybe_async;

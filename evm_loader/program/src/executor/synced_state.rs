@@ -204,7 +204,11 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
         Ok(self.backend.code(from_address).await)
     }
 
-    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vector<u8>) -> Result<()> {
+    async fn start_create(&mut self, address: Address, chain_id: u64) -> Result<()> {
+        self.backend.start_create(address, chain_id).await
+    }
+
+    async fn end_create(&mut self, address: Address, code: Vector<u8>) -> Result<()> {
         if code.starts_with(&[0xEF]) {
             // https://eips.ethereum.org/EIPS/eip-3541
             return Err(Error::EVMObjectFormatNotSupported(address));
@@ -215,8 +219,7 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
             return Err(Error::ContractCodeSizeLimit(address, code.len()));
         }
 
-        self.backend.set_code(address, chain_id, code).await?;
-        Ok(())
+        self.backend.end_create(address, code).await
     }
 
     async fn storage(&self, from_address: Address, from_index: U256) -> Result<[u8; 32]> {

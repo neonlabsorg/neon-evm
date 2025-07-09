@@ -6,16 +6,16 @@
     clippy::missing_panics_doc,
     clippy::too_many_lines,
     clippy::module_name_repetitions,
-    clippy::used_underscore_items
+    clippy::await_holding_refcell_ref
 )]
 
 pub mod abi;
 pub mod account_data;
-pub mod account_storage;
 pub mod build_info;
 pub mod build_info_common;
 pub mod commands;
 pub mod config;
+pub mod emulator_platform;
 pub mod errors;
 pub mod rpc;
 pub mod sysvar;

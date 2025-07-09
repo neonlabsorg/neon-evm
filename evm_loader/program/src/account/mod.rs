@@ -5,7 +5,7 @@ use crate::error::Result;
 use solana_program::account_info::AccountInfo;
 
 pub use abstraction::{
-    Account, AccountDispatch, AccountHeader, NoHeader, ZeroInit, ACCOUNT_PREFIX_LEN,
+    Account, AccountDispatch, AccountHeader, NoHeader, SharedAccount, ZeroInit, ACCOUNT_PREFIX_LEN,
 };
 pub use ether_balance::{BalanceAccount, Header as BalanceHeader};
 pub use ether_contract::{AllocateResult, ContractAccount, Header as ContractHeader};

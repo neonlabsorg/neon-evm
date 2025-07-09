@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 use solana_sdk::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt::Display;
 
-use crate::{account_storage::account_info, rpc::Rpc, types::TxParams, NeonResult};
+use super::account_info;
+use crate::{rpc::Rpc, types::TxParams, NeonResult};
 
 use serde_with::{hex::Hex, serde_as, skip_serializing_none, DisplayFromStr};
 

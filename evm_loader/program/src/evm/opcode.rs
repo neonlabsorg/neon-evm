@@ -1144,6 +1144,7 @@ impl<T: EventListener> Machine<T> {
             return Err(Error::DeployToExistingAccount(address, self.context.caller));
         }
 
+        backend.start_create(address, chain_id).await?;
         backend.increment_nonce(address, chain_id).await?;
         backend
             .transfer(self.context.caller, address, chain_id, value)
@@ -1375,9 +1376,8 @@ impl<T: EventListener> Machine<T> {
         backend: &mut impl Database,
     ) -> Result<Action> {
         if self.reason == Reason::Create {
-            backend
-                .set_code(self.context.contract, self.chain_id, return_data.clone())
-                .await?;
+            let code = return_data.clone();
+            backend.end_create(self.context.contract, code).await?;
         }
 
         backend.commit_snapshot();

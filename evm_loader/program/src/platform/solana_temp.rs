@@ -79,7 +79,7 @@ impl<'a> Solana<'a> {
         let mut total_result = AllocateResult::Ready;
 
         for action in actions {
-            if let Action::EvmSetCode { address, code, .. } = action {
+            if let Action::EvmEndCreate { address, code } = action {
                 let result = self.allocate_contract(*address, code).await?;
 
                 if result == AllocateResult::NeedMore {
@@ -95,6 +95,7 @@ impl<'a> Solana<'a> {
     pub async fn apply_state_change(&mut self, actions: &[Action]) -> Result<()> {
         let mut original_balances = HashMap::with_capacity(16);
         let mut storage = HashMap::with_capacity(16);
+        let mut contracts = HashMap::with_capacity(8);
 
         for action in actions.iter() {
             match action {
@@ -145,13 +146,14 @@ impl<'a> Solana<'a> {
                     let mut account = self.create_balance(*address, *chain_id).await?;
                     account.increment_nonce()?;
                 }
-                Action::EvmSetCode {
-                    address,
-                    chain_id,
-                    code,
-                } => {
-                    self.initialize_allocated_contract(*address, *chain_id, code)
-                        .await?;
+                Action::EvmStartCreate { address, chain_id } => {
+                    contracts.insert(address, (chain_id, None));
+                }
+                Action::EvmEndCreate { address, code } => {
+                    let Some(contract) = contracts.get_mut(&address) else {
+                        unreachable!();
+                    };
+                    contract.1 = Some(code);
                 }
                 Action::ExternalInstruction(v) => {
                     let seeds = v
@@ -177,6 +179,13 @@ impl<'a> Solana<'a> {
             if account.balance() != balance {
                 account.increment_revision()?;
             }
+        }
+
+        // Initialize contract accounts
+        for (address, (chain_id, code)) in contracts {
+            let code = code.unwrap();
+            self.initialize_allocated_contract(*address, *chain_id, &code)
+                .await?;
         }
 
         // Update storage accounts

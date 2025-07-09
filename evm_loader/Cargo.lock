@@ -3909,6 +3909,7 @@ dependencies = [
  "strum_macros 0.26.4",
  "thiserror 1.0.69",
  "tokio",
+ "tracerdb-api",
  "tracing",
  "web3",
 ]
@@ -8680,6 +8681,18 @@ name = "tower-service"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
+
+[[package]]
+name = "tracerdb-api"
+version = "0.0.4"
+dependencies = [
+ "anyhow",
+ "jsonrpsee",
+ "serde",
+ "serde_with",
+ "solana-account-decoder",
+ "solana-sdk",
+]
 
 [[package]]
 name = "tracing"

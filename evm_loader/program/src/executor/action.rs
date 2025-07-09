@@ -44,9 +44,12 @@ pub enum Action {
         address: Address,
         chain_id: u64,
     },
-    EvmSetCode {
+    EvmStartCreate {
         address: Address,
         chain_id: u64,
+    },
+    EvmEndCreate {
+        address: Address,
         code: Vector<u8>,
     },
 }

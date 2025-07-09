@@ -7,10 +7,7 @@ use maybe_async::maybe_async;
 use solana_program::{instruction::Instruction, pubkey::Pubkey, rent::Rent};
 
 mod block_hash;
-pub use block_hash::find_slot_hash;
-pub use block_hash::find_slot_hash_provided;
 
-#[cfg(target_os = "solana")]
 mod platform_backend;
 
 /// Account storage
@@ -78,7 +75,9 @@ pub trait AccountStorage: LogCollector {
 
 #[maybe_async(?Send)]
 pub trait SyncedAccountStorage: AccountStorage {
-    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vector<u8>) -> Result<()>;
+    async fn start_create(&mut self, address: Address, chain_id: u64) -> Result<()>;
+    async fn end_create(&mut self, address: Address, code: Vector<u8>) -> Result<()>;
+
     async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
     async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()>;
     async fn transfer(

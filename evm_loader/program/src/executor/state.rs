@@ -338,7 +338,7 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         self.touch_contract(from_address);
 
         for action in &self.data.actions {
-            if let Action::EvmSetCode { address, code, .. } = action {
+            if let Action::EvmEndCreate { address, code } = action {
                 if &from_address == address {
                     return Ok(code.len());
                 }
@@ -359,7 +359,7 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         self.touch_contract(from_address);
 
         for action in &self.data.actions {
-            if let Action::EvmSetCode { address, code, .. } = action {
+            if let Action::EvmEndCreate { address, code } = action {
                 if &from_address == address {
                     return Ok(code.clone());
                 }
@@ -368,7 +368,14 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         Ok(self.backend.code(from_address).await)
     }
 
-    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vector<u8>) -> Result<()> {
+    async fn start_create(&mut self, address: Address, chain_id: u64) -> Result<()> {
+        let start_create = Action::EvmStartCreate { address, chain_id };
+        self.data.actions.push(start_create);
+
+        Ok(())
+    }
+
+    async fn end_create(&mut self, address: Address, code: Vector<u8>) -> Result<()> {
         if code.starts_with(&[0xEF]) {
             // https://eips.ethereum.org/EIPS/eip-3541
             return Err(Error::EVMObjectFormatNotSupported(address));
@@ -379,11 +386,7 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
             return Err(Error::ContractCodeSizeLimit(address, code.len()));
         }
 
-        let set_code = Action::EvmSetCode {
-            address,
-            chain_id,
-            code,
-        };
+        let set_code = Action::EvmEndCreate { address, code };
         self.data.actions.push(set_code);
 
         Ok(())
@@ -646,10 +649,7 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         self.touch_contract(contract);
 
         for action in self.data.actions.iter().rev() {
-            if let Action::EvmSetCode {
-                address, chain_id, ..
-            } = action
-            {
+            if let Action::EvmStartCreate { address, chain_id } = action {
                 if &contract == address {
                     return Ok(*chain_id);
                 }

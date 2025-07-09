@@ -579,7 +579,7 @@ impl SolanaSimulator {
         loaded_programs
     }
 
-    pub fn simulate_legacy_transaction(
+    pub fn process_legacy_transaction(
         &mut self,
         tx: solana_sdk::transaction::Transaction,
     ) -> Result<TransactionSimulationResult, Error> {

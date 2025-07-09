@@ -196,7 +196,11 @@ pub trait Platform<'a>: Sized {
 
             ContractAccount::initialize(account, program_id, address, chain_id, &[])
         } else {
-            ContractAccount::from_account(program_id, account)
+            let contract = ContractAccount::from_account(program_id, account)?;
+            assert_eq!(contract.address(), address);
+            assert_eq!(contract.chain_id(), chain_id);
+
+            Ok(contract)
         }
     }
 

@@ -49,7 +49,7 @@ impl<'a, T: Platform<'a>> AccountStorage for T {
     }
 
     async fn block_hash(&self, slot: u64) -> [u8; 32] {
-        super::block_hash::find_slot_hash(slot)
+        super::block_hash::find_slot_hash(slot, self).await.unwrap()
     }
 
     async fn rent(&self) -> Rent {
@@ -180,8 +180,13 @@ impl<'a, T: Platform<'a>> AccountStorage for T {
 
 #[maybe_async(?Send)]
 impl<'a, T: Platform<'a>> SyncedAccountStorage for T {
-    async fn set_code(&mut self, address: Address, chain_id: u64, code: Vector<u8>) -> Result<()> {
-        let mut contract = self.create_contract(address, chain_id).await?;
+    async fn start_create(&mut self, address: Address, chain_id: u64) -> Result<()> {
+        self.create_contract(address, chain_id).await?;
+        Ok(())
+    }
+
+    async fn end_create(&mut self, address: Address, code: Vector<u8>) -> Result<()> {
+        let mut contract = self.get_contract(address).await?.unwrap();
         contract.allocate_entire_code_buffer(&code)?;
         contract.set_code(&code)
     }

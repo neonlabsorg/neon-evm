@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::account_data::AccountData;
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::config::DbConfig;
+use crate::emulator_platform::EmulatorPlatform;
 use crate::rpc::Rpc;
 use crate::rpc::{CallDbClient, RpcEnum};
 use crate::sysvar::get_sysvar;
@@ -11,14 +12,11 @@ use crate::tracing::{AccountOverride, BlockOverrides};
 use crate::types::{AccountInfoLevel, EmulateFromHolderApiRequest, EmulateRequest};
 use crate::types::{FromAddress, TracerDb};
 
-use crate::{
-    account_storage::{EmulatorAccountStorage, SyncedAccountStorage},
-    errors::NeonError,
-    NeonResult,
-};
+use crate::{errors::NeonError, NeonResult};
 use ethnum::U256;
-use evm_loader::account_storage::AccountStorage;
+use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use evm_loader::error::build_revert_message;
+use evm_loader::platform::Platform;
 use evm_loader::types::{Address, Transaction, TrxView};
 use evm_loader::{
     config::{
@@ -72,7 +70,7 @@ struct Overrides {
 impl EmulateResponse {
     pub fn revert<E: ToString>(
         e: &E,
-        backend: &SyncedExecutorState<EmulatorAccountStorage<impl Rpc>>,
+        backend: &SyncedExecutorState<EmulatorPlatform<impl Rpc>>,
     ) -> Self {
         let revert_message = build_revert_message(&e.to_string());
         let exit_status = ExitStatus::Revert(revert_message);
@@ -81,13 +79,13 @@ impl EmulateResponse {
             external_solana_call: false,
             reverts_before_solana_calls: false,
             reverts_after_solana_calls: false,
-            is_timestamp_number_used: backend.backend().is_timestamp_number_used(),
+            is_timestamp_number_used: backend.backend().is_clock_used(),
             result: exit_status.into_result().unwrap_or_default(),
             steps_executed: 0,
             used_gas: 0,
             iterations: 0,
             solana_accounts: vec![],
-            logs: backend.backend().logs(),
+            logs: backend.backend().logs().to_vec(),
             accounts_data: None,
         }
     }
@@ -193,32 +191,42 @@ async fn create_rpc(
     ))
 }
 
-async fn initialize_storage<'rpc, T: Rpc + BuildConfigSimulator>(
+async fn create_platform<'rpc, T: Rpc + BuildConfigSimulator>(
     rpc: &'rpc T,
-    program_id: &Pubkey,
+    program_id: Pubkey,
     emulate_request: &EmulateRequest,
     overrides: Overrides,
-) -> NeonResult<EmulatorAccountStorage<'rpc, T>> {
-    let storage = EmulatorAccountStorage::with_accounts(
-        rpc,
-        *program_id,
-        &emulate_request.accounts,
-        emulate_request.chains.clone(),
-        overrides.blocks,
-        overrides.states,
-        overrides.solana_accounts,
-        emulate_request.tx.chain_id,
-    )
-    .await?;
+) -> NeonResult<EmulatorPlatform<&'rpc T>> {
+    let chains = match &emulate_request.chains {
+        Some(chains) => chains.clone(),
+        None => super::get_config::read_chains(rpc, program_id).await?,
+    };
 
-    // Store the from pubkey in the storage to correctly initialize the BalanceAccount.
-    let from = &emulate_request.tx.from;
-    if let FromAddress::Solana(pubkey) = from {
-        storage.add_balance_pubkey(from.address(), *pubkey);
-        info!("from is solana address: {:?}", pubkey);
+    let accounts_hint: &[Pubkey] = &emulate_request.accounts;
+    let mut platform = EmulatorPlatform::new(rpc, program_id, &chains, accounts_hint).await?;
+
+    let chain_id = emulate_request
+        .tx
+        .chain_id
+        .unwrap_or_else(|| platform.default_chain());
+
+    // Overrides
+    if let Some(block_overrides) = overrides.blocks {
+        platform.override_clock(block_overrides).await?;
+    }
+    if let Some(solana_accounts) = overrides.solana_accounts {
+        platform.override_solana_accounts(solana_accounts);
+    }
+    if let Some(states) = overrides.states {
+        platform.override_accounts(chain_id, states).await?;
     }
 
-    Ok(storage)
+    // Initialize BalanceAccount of Solana user.
+    if let FromAddress::Solana(pubkey) = emulate_request.tx.from {
+        platform.create_balance_for_solana_user(pubkey).await?;
+    }
+
+    Ok(platform)
 }
 
 async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>(
@@ -226,8 +234,8 @@ async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>
     emulate_request: &EmulateRequest,
     rpc: &'rpc T,
     overrides: Overrides,
-) -> NeonResult<(EmulatorAccountStorage<'rpc, T>, Transaction)> {
-    let storage = initialize_storage(rpc, program_id, emulate_request, overrides).await?;
+) -> NeonResult<(EmulatorPlatform<&'rpc T>, Transaction)> {
+    let mut storage = create_platform(rpc, *program_id, emulate_request, overrides).await?;
 
     let (origin, tx) = emulate_request.tx.clone().into_transaction(&storage).await;
 
@@ -235,16 +243,13 @@ async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>
     info!("tx: {:?}", tx);
 
     let chain_id = tx.chain_id().unwrap_or_else(|| storage.default_chain_id());
-
-    storage
-        .mark_balance_account(&origin, chain_id, true)
-        .await?;
+    storage.create_balance(origin, chain_id).await?;
 
     Ok((storage, tx))
 }
 
-async fn increment_nonce<T: Rpc + BuildConfigSimulator>(
-    storage: &mut EmulatorAccountStorage<'_, T>,
+async fn increment_nonce<T: Rpc>(
+    storage: &mut EmulatorPlatform<T>,
     origin: &Address,
     chain_id: u64,
 ) -> NeonResult<()> {
@@ -253,8 +258,8 @@ async fn increment_nonce<T: Rpc + BuildConfigSimulator>(
     Ok(())
 }
 
-async fn transfer_gas_limit<T: Rpc + BuildConfigSimulator>(
-    storage: &mut EmulatorAccountStorage<'_, T>,
+async fn transfer_gas_limit<T: Rpc>(
+    storage: &mut EmulatorPlatform<T>,
     tx: &Transaction,
     origin: &Address,
     chain_id: u64,
@@ -270,62 +275,69 @@ async fn transfer_gas_limit<T: Rpc + BuildConfigSimulator>(
     Ok(())
 }
 
-async fn calculate_response<T: Rpc + BuildConfigSimulator, Tr: Tracer>(
+async fn calculate_response(
     steps_executed: u64,
     exit_status: ExitStatus,
-    storage: &EmulatorAccountStorage<'_, T>,
-    tracer: Option<Tr>,
+    platform: &EmulatorPlatform<impl Rpc>,
+    tracer: Option<impl Tracer>,
     provide_account_info: Option<AccountInfoLevel>,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     debug!("Execute done, result={exit_status:?}");
     debug!("{steps_executed} steps executed");
 
-    let logs = storage.logs();
-    let execute_status = storage.execute_status;
+    let execute_status = platform.execute_status();
 
     let steps_iterations = 1.max(steps_executed.div_ceil(EVM_STEPS_MIN));
 
     let begin_end_iterations = 2;
-    let iterations: u64 = steps_iterations + begin_end_iterations + storage.realloc_iterations;
+    let iterations: u64 = steps_iterations + begin_end_iterations + platform.realloc_iterations();
     let iterations_gas = iterations * LAMPORTS_PER_SIGNATURE;
     let treasury_gas = iterations * PAYMENT_TO_TREASURE;
-    let storage_gas = storage.get_changes_in_rent()?;
+    let storage_gas = platform.required_lamports().await?;
 
     let used_gas = storage_gas + iterations_gas + treasury_gas;
 
-    let solana_accounts = storage
-        .used_accounts()
-        .iter()
-        .map(|v| SolanaAccount {
-            pubkey: v.pubkey,
-            is_writable: v.is_writable,
-        })
-        .collect::<Vec<_>>();
-
-    let mut result = (
-        EmulateResponse {
-            exit_status: exit_status.to_string(),
-            external_solana_call: execute_status.external_solana_call,
-            reverts_before_solana_calls: execute_status.reverts_before_solana_calls,
-            reverts_after_solana_calls: execute_status.reverts_after_solana_calls,
-            is_timestamp_number_used: storage.is_timestamp_number_used(),
-            steps_executed,
-            used_gas,
-            solana_accounts,
-            result: exit_status.into_result().unwrap_or_default(),
-            iterations,
-            logs,
-            accounts_data: None,
-        },
-        tracer.map(|tracer| tracer.into_traces(used_gas)),
-    );
-
-    if let Some(level) = provide_account_info {
-        result.0.accounts_data =
-            Some(provide_account_data(storage, &result.0.solana_accounts, level).await?);
+    let solana_accounts = platform.used_solana_accounts();
+    let accounts_data = if let Some(level) = provide_account_info {
+        Some(platform.provide_account_data(level)?)
+    } else {
+        None
     };
 
-    Ok(result)
+    let response = EmulateResponse {
+        exit_status: exit_status.to_string(),
+        external_solana_call: execute_status.external_solana_call,
+        reverts_before_solana_calls: execute_status.reverts_before_solana_calls,
+        reverts_after_solana_calls: execute_status.reverts_after_solana_calls,
+        is_timestamp_number_used: platform.is_clock_used(),
+        steps_executed,
+        used_gas,
+        solana_accounts,
+        result: exit_status.into_result().unwrap_or_default(),
+        iterations,
+        logs: platform.logs().to_vec(),
+        accounts_data,
+    };
+
+    let tracer_result = tracer.map(|tracer| tracer.into_traces(used_gas));
+
+    Ok((response, tracer_result))
+}
+
+pub async fn mark_timestamped_contracts<'r>(
+    storage: &EmulatorPlatform<impl Rpc>,
+    contracts: impl Iterator<Item = &'r Address>,
+) -> NeonResult<()> {
+    let clock = get_sysvar::<Clock>(storage).await?;
+
+    for address in contracts.copied() {
+        let Some(mut contract) = storage.get_contract(address).await? else {
+            continue;
+        };
+        contract.update_timestamp_used_at(&clock)?;
+    }
+
+    Ok(())
 }
 
 async fn emulate_trx<T: Tracer>(
@@ -361,7 +373,7 @@ async fn emulate_trx<T: Tracer>(
 }
 
 async fn emulate_trx_single_step<T: Tracer>(
-    storage: &mut EmulatorAccountStorage<'_, impl BuildConfigSimulator>,
+    storage: &mut EmulatorPlatform<impl Rpc>,
     tx: &Transaction,
     tracer: Option<T>,
     emulate_request: &EmulateRequest,
@@ -394,7 +406,7 @@ async fn emulate_trx_single_step<T: Tracer>(
         (exit_status, steps_executed, tracer, timestamped_contracts)
     };
 
-    storage.mark_timestamped_contracts(timestamped_contracts.keys());
+    mark_timestamped_contracts(storage, timestamped_contracts.keys()).await?;
 
     calculate_response(
         steps_executed,
@@ -406,9 +418,9 @@ async fn emulate_trx_single_step<T: Tracer>(
     .await
 }
 
-async fn prepare_origin<T: Rpc + BuildConfigSimulator>(
+async fn prepare_origin<T: Rpc>(
     origin: &Address,
-    storage: &mut EmulatorAccountStorage<'_, T>,
+    storage: &mut EmulatorPlatform<T>,
     tx: &Transaction,
     chain_id: u64,
     increase_gas_limit: bool,
@@ -602,7 +614,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
         )
     };
 
-    storage.mark_timestamped_contracts(timestamped_contracts.keys());
+    mark_timestamped_contracts(&storage, timestamped_contracts.keys()).await?;
 
     calculate_response(
         steps_executed,
@@ -612,31 +624,4 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
         emulate_request.provide_account_info,
     )
     .await
-}
-
-async fn provide_account_data(
-    storage: &EmulatorAccountStorage<'_, impl Rpc>,
-    solana_accounts: &[SolanaAccount],
-    level: AccountInfoLevel,
-) -> NeonResult<Vec<AccountData>> {
-    let pubkeys = solana_accounts
-        .iter()
-        .filter_map(|v| {
-            if v.is_writable || AccountInfoLevel::Changed != level {
-                Some(v.pubkey)
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-
-    let result = storage.get_multiple_accounts(&pubkeys).await?;
-
-    Ok(pubkeys
-        .iter()
-        .zip(result.into_iter())
-        .filter_map(|(pubkey, account)| {
-            account.map(|acc| AccountData::new_from_account(*pubkey, &acc))
-        })
-        .collect::<Vec<_>>())
 }

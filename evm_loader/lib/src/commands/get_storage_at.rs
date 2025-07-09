@@ -1,11 +1,14 @@
 use ethnum::U256;
+use evm_loader::evm::database::Database;
+use evm_loader::executor::SyncedExecutorState;
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
 
-use evm_loader::{account_storage::AccountStorage, types::Address};
+use evm_loader::types::Address;
 
 use crate::commands::get_config::BuildConfigSimulator;
-use crate::{account_storage::EmulatorAccountStorage, NeonResult};
+use crate::emulator_platform::EmulatorPlatform;
+use crate::NeonResult;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct GetStorageAtReturn(pub [u8; 32]);
@@ -16,10 +19,9 @@ pub async fn execute(
     address: Address,
     index: U256,
 ) -> NeonResult<GetStorageAtReturn> {
-    let value = EmulatorAccountStorage::new(rpc, *program_id, None, None, None, None, None)
-        .await?
-        .storage(address, index)
-        .await;
+    let mut platform = EmulatorPlatform::new(rpc, *program_id, &[], &[]).await?;
+    let executor = SyncedExecutorState::new(&mut platform).await;
 
+    let value = executor.storage(address, index).await?;
     Ok(GetStorageAtReturn(value))
 }

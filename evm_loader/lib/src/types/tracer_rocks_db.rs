@@ -12,7 +12,10 @@ use solana_sdk::{
     clock::{Slot, UnixTimestamp},
     pubkey::Pubkey,
 };
-use std::env;
+
+use crate::commands::get_neon_elf::get_elf_parameter;
+use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
+use crate::types::{DbResult, TracerDbTrait};
 use std::str::FromStr;
 use std::sync::Arc;
 use tracerdb_api::tracer_db_rpc_api::TracerDbApiClient;
@@ -24,8 +27,6 @@ pub struct AccountParams {
     pub tx_index_in_block: Option<u64>,
 }
 
-use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
-use crate::types::{DbResult, TracerDbTrait};
 // use reconnecting_jsonrpsee_ws_client::{Client, CallRetryPolicy, rpc_params, ExponentialBackoff};
 #[derive(Clone, Debug)]
 pub struct RocksDb {
@@ -89,18 +90,32 @@ impl TracerDbTrait for RocksDb {
         tx_index.ok_or_else(|| anyhow::anyhow!("get_transaction_index value is None"))
     }
 
-    async fn get_neon_revisions(&self, _pubkey: &Pubkey) -> DbResult<RevisionMap> {
-        let revision = env::var("NEON_REVISION").expect("NEON_REVISION should be set");
-
-        info!("get_neon_revisions for {revision:?}");
-        let ranges = vec![(1, 100_000, revision)];
+    async fn get_neon_revisions(&self, pubkey: &Pubkey) -> DbResult<RevisionMap> {
+        let slots = self
+            .client
+            .get_account_data_history((*pubkey).into(), None, None);
+        let time_array = slots.await.map_err(|e| {
+            anyhow::anyhow!("Failed to get account data history for pubkey {pubkey}, error: {e:?}",)
+        })?;
+        let mut ranges: Vec<(u64, u64, String)> = Vec::new();
+        let mut prev_value = 0;
+        for (slot, _) in time_array {
+            let rev = self.get_neon_revision(slot, pubkey).await?;
+            debug!("Slot: {slot}, Revision: {rev}");
+            ranges.push((slot, prev_value, rev));
+            prev_value = slot - 1;
+        }
         Ok(RevisionMap::new(ranges))
     }
 
     async fn get_neon_revision(&self, slot: Slot, pubkey: &Pubkey) -> DbResult<String> {
-        info!("get_neon_revision for {slot:?}, pubkey: {pubkey:?}");
-        let neon_revision = env!("NEON_REVISION");
-        Ok(neon_revision.to_string())
+        if let Some(acc_data) = self.get_account_at(pubkey, slot, None, None).await? {
+            let neon_revision = get_elf_parameter(acc_data.data.as_slice(), "NEON_REVISION")
+                .map_err(|e| anyhow::anyhow!("Failed to get NEON_REVISION, error: {e:?}",))?;
+            Ok(neon_revision)
+        } else {
+            anyhow::bail!("No neon revision found for {pubkey}")
+        }
     }
 
     async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<u64> {

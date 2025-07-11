@@ -10,7 +10,6 @@ use crate::evm::{Context, ExitStatus};
 use crate::platform::FAKE_OPERATOR;
 use crate::types::boxx::Boxx;
 use crate::types::Address;
-use crate::vector;
 use ethnum::{AsU256, U256};
 use maybe_async::maybe_async;
 use mpl_token_metadata::programs::MPL_TOKEN_METADATA_ID;
@@ -348,12 +347,15 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         Ok(self.backend.code_size(from_address).await)
     }
 
-    async fn code(&self, from_address: Address) -> Result<Vector<u8>> {
+    async fn use_code<R, F>(&self, from_address: Address, f: F) -> Result<R>
+    where
+        F: for<'a> FnOnce(&'a [u8]) -> R,
+    {
         if PrecompiledContracts::is_precompile_extension(&from_address) {
-            return Ok(vector![0xFE]);
+            return Ok(f(&[0xFE]));
         }
         if is_precompile_address(&from_address) {
-            return Ok(vector![]);
+            return Ok(f(&[]));
         }
 
         self.touch_contract(from_address);
@@ -361,11 +363,12 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         for action in &self.data.actions {
             if let Action::EvmEndCreate { address, code } = action {
                 if &from_address == address {
-                    return Ok(code.clone());
+                    return Ok(f(code));
                 }
             }
         }
-        Ok(self.backend.code(from_address).await)
+        let code = self.backend.code(from_address).await;
+        Ok(f(&code))
     }
 
     async fn start_create(&mut self, address: Address, chain_id: u64) -> Result<()> {
@@ -375,7 +378,7 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         Ok(())
     }
 
-    async fn end_create(&mut self, address: Address, code: Vector<u8>) -> Result<()> {
+    async fn end_create(&mut self, address: Address, code: &[u8]) -> Result<()> {
         if code.starts_with(&[0xEF]) {
             // https://eips.ethereum.org/EIPS/eip-3541
             return Err(Error::EVMObjectFormatNotSupported(address));
@@ -386,7 +389,10 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
             return Err(Error::ContractCodeSizeLimit(address, code.len()));
         }
 
-        let set_code = Action::EvmEndCreate { address, code };
+        let set_code = Action::EvmEndCreate {
+            address,
+            code: code.to_vector(acc_allocator()),
+        };
         self.data.actions.push(set_code);
 
         Ok(())
@@ -673,9 +679,11 @@ impl<B: AccountStorage> Database for ExecutorState<'_, B> {
         let action = Action::ExternalInstruction(Boxx::new_in(
             ExternalInstructionData {
                 program_id: instruction.program_id,
-                data: instruction.data.to_vector(),
-                accounts: instruction.accounts.elementwise_copy_to_vector(),
-                seeds: seeds3_to_vector(seeds),
+                data: instruction.data.to_vector(acc_allocator()),
+                accounts: instruction
+                    .accounts
+                    .elementwise_copy_to_vector(acc_allocator()),
+                seeds: seeds3_to_vector(seeds, acc_allocator()),
                 emulated_internally,
             },
             acc_allocator(),

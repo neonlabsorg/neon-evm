@@ -383,7 +383,7 @@ async fn emulate_trx_single_step<T: Tracer>(
 
     let (exit_status, steps_executed, tracer, timestamped_contracts) = {
         let mut backend = SyncedExecutorState::new(storage).await;
-        let mut evm = match Machine::new(tx, origin, &mut backend, tracer).await {
+        let mut evm = match Machine::with_tracer(tx, origin, &mut backend, tracer).await {
             Ok(evm) => evm,
             Err(e) => {
                 error!("EVM creation failed {e:?}");
@@ -504,7 +504,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
     let (exit_status, steps_executed, tracer, timestamped_contracts) = {
         let mut backend = SyncedExecutorState::new(&mut storage).await;
 
-        let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
+        let mut evm = match Machine::with_tracer(&tx, origin, &mut backend, tracer).await {
             Ok(evm) => evm,
             Err(e) => {
                 error!("EVM creation failed {e:?}");
@@ -539,7 +539,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
                 }
 
                 backend = SyncedExecutorState::new(&mut storage).await;
-                evm = match Machine::new(&tx, origin, &mut backend, tracer_result).await {
+                evm = match Machine::with_tracer(&tx, origin, &mut backend, tracer_result).await {
                     Ok(evm) => evm,
                     Err(e) => {
                         error!("EVM creation failed {e:?}");

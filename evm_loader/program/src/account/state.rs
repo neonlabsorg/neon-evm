@@ -3,17 +3,19 @@ use std::mem::size_of;
 use std::ptr::{addr_of, slice_from_raw_parts};
 
 use crate::account_storage::AccountStorage;
+use crate::allocator::{acc_allocator, StateAccountAllocator};
 use crate::config::{DEFAULT_CHAIN_ID, NO_UPDATE_TRACKING_OWNERS};
 use crate::debug::log_data;
 use crate::error::{Error, Result};
-use crate::evm::Machine;
+use crate::evm::{Machine, SolanaCallInterrupt};
 use crate::executor::{BlockParams, ExecutorStateData};
 use crate::platform::Platform;
 use crate::types::boxx::{boxx, Boxx};
-use crate::types::vector::VectorSliceExt;
+use crate::types::vector::{seeds2_to_vector, VectorSliceExt, VectorSliceSlowExt};
 use crate::types::{read_raw_utils::read_vec, Address, Transaction, TreeMap, TrxView, Vector};
 
 use ethnum::U256;
+use solana_program::instruction::Instruction;
 use solana_program::{account_info::AccountInfo, instruction::AccountMeta, pubkey::Pubkey};
 use static_assertions::const_assert_eq;
 
@@ -109,6 +111,27 @@ pub struct InterruptedState {
     pub instruction: InterruptedInstruction,
     pub signer_seeds: Vector<Vector<u8>>,
     pub lamports: Option<u64>,
+}
+
+impl InterruptedState {
+    #[allow(clippy::boxed_local)]
+    pub fn new(interrupt: SolanaCallInterrupt) -> Self {
+        let instruction: Instruction = interrupt.0;
+        let signer_seeds: Vec<&[u8]> = interrupt.1.iter().map(Vec::as_slice).collect();
+        let lamports: Option<u64> = interrupt.2;
+
+        Self {
+            instruction: InterruptedInstruction {
+                program_id: instruction.program_id,
+                accounts: instruction
+                    .accounts
+                    .elementwise_copy_to_vector(acc_allocator()),
+                data: instruction.data.to_vector(acc_allocator()),
+            },
+            signer_seeds: seeds2_to_vector(&signer_seeds, acc_allocator()),
+            lamports,
+        }
+    }
 }
 
 type VersionSignature = [u8; 40];
@@ -267,7 +290,7 @@ pub struct Root {
     pub interrupted_state: Option<InterruptedState>,
 
     pub executor_state: RefCell<Option<ExecutorStateData>>,
-    pub machine_state: RefCell<Option<Machine<crate::evm::tracing::NoopEventListener>>>,
+    pub machine_state: RefCell<Option<Machine<StateAccountAllocator>>>,
     //pub alloc : SolanaAllocator
 }
 
@@ -560,7 +583,7 @@ impl<'local, 'sol> StateAccount<'local, 'sol> {
             machine_state: None.into(),
         });
 
-        let tx_rlp = transaction_rlp.to_vector();
+        let tx_rlp = transaction_rlp.to_vector(acc_allocator());
         let (ptr, len, _) = tx_rlp.into_raw_parts();
 
         Ok(Self {
@@ -875,24 +898,24 @@ impl StateAccount<'_, '_> {
     }
 
     #[must_use]
-    pub fn evm(&self) -> Ref<Option<Machine<crate::evm::tracing::NoopEventListener>>> {
+    pub fn evm(&self) -> Ref<Option<Machine<StateAccountAllocator>>> {
         self.root_ref.machine_state.borrow()
     }
 
     #[must_use]
-    pub fn evm_ref(&self) -> Ref<Machine<crate::evm::tracing::NoopEventListener>> {
+    pub fn evm_ref(&self) -> Ref<Machine<StateAccountAllocator>> {
         Ref::map(self.root_ref.machine_state.borrow(), |x| {
             x.as_ref().unwrap()
         })
     }
 
     #[must_use]
-    pub fn evm_mut(&self) -> RefMut<Option<Machine<crate::evm::tracing::NoopEventListener>>> {
+    pub fn evm_mut(&self) -> RefMut<Option<Machine<StateAccountAllocator>>> {
         self.root_ref.machine_state.borrow_mut()
     }
 
     #[must_use]
-    pub fn evm_mut_ref(&self) -> RefMut<Machine<crate::evm::tracing::NoopEventListener>> {
+    pub fn evm_mut_ref(&self) -> RefMut<Machine<StateAccountAllocator>> {
         RefMut::map(self.root_ref.machine_state.borrow_mut(), |x| {
             x.as_mut().unwrap()
         })

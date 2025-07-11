@@ -51,7 +51,7 @@ pub async fn execute(
     for address in addresses.iter().copied() {
         let (pubkey, _) = pda::contract_address(program_id, &address);
         let chain_id = executor.contract_chain_id(address).await.ok();
-        let code = executor.code(address).await?.to_vec();
+        let code = executor.use_code(address, <[u8]>::to_vec).await?;
 
         let response = GetContractResponse::new(pubkey, chain_id, code);
         result.push(response);

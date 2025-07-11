@@ -1,10 +1,13 @@
 use super::Context;
 use crate::account::Account;
 use crate::account_storage::LogCollector;
+use crate::types::vector::VectorSliceExt;
 use crate::types::Vector;
 use crate::{error::Result, executor::OwnedAccountInfo, types::Address};
+use allocator_api2::alloc::{self, Allocator};
 use ethnum::U256;
 use maybe_async::maybe_async;
+use solana_program::keccak;
 use solana_program::{instruction::Instruction, pubkey::Pubkey, rent::Rent};
 
 #[maybe_async(?Send)]
@@ -35,10 +38,12 @@ pub trait Database: LogCollector {
     async fn burn(&mut self, address: Address, chain_id: u64, value: U256) -> Result<()>;
 
     async fn code_size(&self, address: Address) -> Result<usize>;
-    async fn code(&self, address: Address) -> Result<Vector<u8>>;
+    async fn use_code<R, F>(&self, address: Address, action: F) -> Result<R>
+    where
+        F: for<'a> FnOnce(&'a [u8]) -> R;
 
     async fn start_create(&mut self, address: Address, chain_id: u64) -> Result<()>;
-    async fn end_create(&mut self, address: Address, code: Vector<u8>) -> Result<()>;
+    async fn end_create(&mut self, address: Address, code: &[u8]) -> Result<()>;
 
     async fn storage(&self, address: Address, index: U256) -> Result<[u8; 32]>;
     async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
@@ -81,27 +86,12 @@ pub trait Database: LogCollector {
         data: &[u8],
         is_static: bool,
     ) -> Option<Result<Vec<u8>>>;
-}
 
-/// Provides convenience methods that can be implemented in terms of `Database`.
-#[maybe_async(?Send)]
-pub trait DatabaseExt {
-    /// Returns whether an account exists and is non-empty as specified in
-    /// https://eips.ethereum.org/EIPS/eip-161.
-    async fn account_exists(&self, address: Address, chain_id: u64) -> Result<bool>;
-
-    /// Returns the code hash for an address as specified in
-    /// https://eips.ethereum.org/EIPS/eip-1052.
-    async fn code_hash(&self, address: Address, chain_id: u64) -> Result<[u8; 32]>;
-}
-
-#[maybe_async(?Send)]
-impl<T: Database> DatabaseExt for T {
     async fn account_exists(&self, address: Address, chain_id: u64) -> Result<bool> {
         Ok(self.nonce(address, chain_id).await? > 0 || self.balance(address, chain_id).await? > 0)
     }
 
-    async fn code_hash(&self, address: Address, chain_id: u64) -> Result<[u8; 32]> {
+    async fn code_hash(&self, address: Address, chain_id: u64) -> Result<keccak::Hash> {
         // The function `Database::code` returns a zero-length buffer if the account exists with
         // zero-length code, but also when the account does not exist. This makes it necessary to
         // also check if the account exists when the returned buffer is empty.
@@ -109,7 +99,7 @@ impl<T: Database> DatabaseExt for T {
         // We could simplify the implementation by checking if the account exists first, but that
         // would lead to more computation in what we think is the common case where the account
         // exists and contains code.
-        let code = self.code(address).await?;
+        let code = self.code(address, alloc::Global).await?;
         let bytes_to_hash: Option<&[u8]> = if !code.is_empty() {
             Some(&*code)
         } else if self.account_exists(address, chain_id).await? {
@@ -118,8 +108,13 @@ impl<T: Database> DatabaseExt for T {
             None
         };
 
-        Ok(bytes_to_hash.map_or([0; 32], |bytes| {
-            solana_program::keccak::hash(bytes).to_bytes()
+        Ok(bytes_to_hash.map_or_else(keccak::Hash::default, |bytes| {
+            solana_program::keccak::hash(bytes)
         }))
+    }
+
+    #[inline]
+    async fn code<A: Allocator>(&self, address: Address, allocator: A) -> Result<Vector<u8, A>> {
+        self.use_code(address, |c| c.to_vector(allocator)).await
     }
 }

@@ -130,7 +130,7 @@ fn calc_solana_priority_fee(
         .checked_div(u128::from(MICRO_LAMPORTS_PER_LAMPORT))
         .and_then(|fee| u64::try_from(fee).ok())
         .ok_or(Error::PriorityFeeError(
-            "ComputeUnitLimit * ComputeUnitPrice / MicroLamportsPerLamport overflow".to_string(),
+            "ComputeUnitLimit * ComputeUnitPrice / MicroLamportsPerLamport overflow",
         ))
 }
 

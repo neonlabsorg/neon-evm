@@ -1,6 +1,6 @@
 use std::cell::RefMut;
 
-use crate::account::StateAccount;
+use crate::account::{InterruptedState, StateAccount};
 use crate::config::{EVM_STEPS_LAST_ITERATION_MAX, EVM_STEPS_MIN};
 use crate::debug::log_data;
 use crate::error::{Error, Result};
@@ -83,7 +83,7 @@ pub fn do_continue(
             let (exit_status, steps_returned) = evm.execute(step_count, &mut backend)?;
 
             if let ExitStatus::Interrupted(state) = exit_status {
-                root.interrupted_state = *state;
+                root.interrupted_state = Some(InterruptedState::new(state));
             } else if ExitStatus::StepLimit != exit_status {
                 backend.set_exit_status(exit_status);
             }

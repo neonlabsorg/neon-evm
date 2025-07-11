@@ -3,10 +3,7 @@ use crate::{
     error::{Error, Result},
     evm::database::Database,
     platform::FAKE_OPERATOR,
-    types::{
-        vector::{seeds2_to_vector, VectorSliceExt, VectorSliceSlowExt},
-        Address,
-    },
+    types::Address,
 };
 
 use arrayref::array_ref;
@@ -344,17 +341,9 @@ pub async fn execute_external_instruction<State: Database>(
     log::info!("instruction: {:?}", instruction);
 
     if !state.is_synced_state() {
-        return Err(Error::InterruptedCall(Box::new(Some(
-            crate::account::InterruptedState {
-                instruction: crate::account::InterruptedInstruction {
-                    program_id: instruction.program_id,
-                    accounts: instruction.accounts.elementwise_copy_to_vector(),
-                    data: instruction.data.to_vector(),
-                },
-                signer_seeds: seeds2_to_vector(signer_seeds), // TODO: remove heap account allocation
-                lamports: required_lamports,
-            },
-        ))));
+        let seeds: Vec<Vec<u8>> = signer_seeds.iter().map(|s| s.to_vec()).collect();
+        let interrupt = std::boxed::Box::new((instruction, seeds, required_lamports));
+        return Err(Error::InterruptedCall(interrupt));
     }
 
     let program_id = state.program_id();

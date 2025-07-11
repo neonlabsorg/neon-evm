@@ -76,7 +76,7 @@ pub trait AccountStorage: LogCollector {
 #[maybe_async(?Send)]
 pub trait SyncedAccountStorage: AccountStorage {
     async fn start_create(&mut self, address: Address, chain_id: u64) -> Result<()>;
-    async fn end_create(&mut self, address: Address, code: Vector<u8>) -> Result<()>;
+    async fn end_create(&mut self, address: Address, code: &[u8]) -> Result<()>;
 
     async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()>;
     async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()>;

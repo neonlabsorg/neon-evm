@@ -1,9 +1,9 @@
 //! Error types
 #![allow(clippy::use_self)]
 
-use crate::account::InterruptedState;
 use crate::allocator::acc_allocator;
 use crate::debug::log_data;
+use crate::evm::SolanaCallInterrupt;
 use crate::types::{Address, Vector};
 use ethnum::U256;
 use solana_program::{
@@ -283,7 +283,7 @@ pub enum Error {
     PriorityFeeParsingError(String),
 
     #[error("Priority fee calculation error: {0}")]
-    PriorityFeeError(String),
+    PriorityFeeError(&'static str),
 
     #[error("Transaction Tree - not ready for destruction")]
     TreeAccountNotReadyForDestruction,
@@ -364,7 +364,7 @@ pub enum Error {
     UnsuppotedNeonTransactionType(u8),
 
     #[error("Solana programs was interrupted")]
-    InterruptedCall(#[serde(skip)] Box<Option<InterruptedState>>),
+    InterruptedCall(#[serde(skip)] SolanaCallInterrupt),
 
     #[error("Transaction tree - transaction invalid too much nodes")]
     TreeAccountTxInvalidTooMuchNodes,

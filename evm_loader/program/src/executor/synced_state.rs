@@ -20,7 +20,6 @@ use crate::evm::Context;
 use crate::executor::action;
 use crate::executor::ExecutorStateData;
 use crate::types::{Address, TreeMap, Vector};
-use crate::vector;
 
 enum Action {
     SetTransientStorage {
@@ -193,22 +192,26 @@ impl<B: SyncedAccountStorage> Database for SyncedExecutorState<'_, B> {
         Ok(self.backend.code_size(from_address).await)
     }
 
-    async fn code(&self, from_address: Address) -> Result<Vector<u8>> {
+    async fn use_code<R, F>(&self, from_address: Address, action: F) -> Result<R>
+    where
+        F: for<'a> FnOnce(&'a [u8]) -> R,
+    {
         if PrecompiledContracts::is_precompile_extension(&from_address) {
-            return Ok(vector![0xFE]);
+            return Ok(action(&[0xFE]));
         }
         if is_precompile_address(&from_address) {
-            return Ok(vector![]);
+            return Ok(action(&[]));
         }
 
-        Ok(self.backend.code(from_address).await)
+        let code = self.backend.code(from_address).await;
+        Ok(action(&code))
     }
 
     async fn start_create(&mut self, address: Address, chain_id: u64) -> Result<()> {
         self.backend.start_create(address, chain_id).await
     }
 
-    async fn end_create(&mut self, address: Address, code: Vector<u8>) -> Result<()> {
+    async fn end_create(&mut self, address: Address, code: &[u8]) -> Result<()> {
         if code.starts_with(&[0xEF]) {
             // https://eips.ethereum.org/EIPS/eip-3541
             return Err(Error::EVMObjectFormatNotSupported(address));

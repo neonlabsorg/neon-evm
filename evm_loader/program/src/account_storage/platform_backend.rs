@@ -5,11 +5,11 @@ use solana_program::{clock::Clock, instruction::Instruction, pubkey::Pubkey, ren
 use crate::{
     account::{Account, StorageCellSeed},
     account_storage::{AccountStorage, LogCollector, SyncedAccountStorage},
+    allocator::acc_allocator,
     error::Result,
     executor::OwnedAccountInfo,
     platform::{KeysIndex, Platform, FAKE_OPERATOR},
     types::{vector::VectorSliceExt, Address, Vector},
-    vector,
 };
 
 #[maybe_async(?Send)]
@@ -131,10 +131,10 @@ impl<'a, T: Platform<'a>> AccountStorage for T {
     }
 
     async fn code(&self, address: Address) -> Vector<u8> {
-        self.get_contract(address)
-            .await
-            .unwrap()
-            .map_or_else(|| vector![], |a| a.code().to_vector())
+        self.get_contract(address).await.unwrap().map_or_else(
+            || Vector::new_in(acc_allocator()),
+            |a| a.code().to_vector(acc_allocator()),
+        )
     }
 
     async fn storage(&self, address: Address, index: U256) -> [u8; 32] {
@@ -185,10 +185,10 @@ impl<'a, T: Platform<'a>> SyncedAccountStorage for T {
         Ok(())
     }
 
-    async fn end_create(&mut self, address: Address, code: Vector<u8>) -> Result<()> {
+    async fn end_create(&mut self, address: Address, code: &[u8]) -> Result<()> {
         let mut contract = self.get_contract(address).await?.unwrap();
-        contract.allocate_entire_code_buffer(&code)?;
-        contract.set_code(&code)
+        contract.allocate_entire_code_buffer(code)?;
+        contract.set_code(code)
     }
 
     async fn set_storage(&mut self, address: Address, index: U256, value: [u8; 32]) -> Result<()> {

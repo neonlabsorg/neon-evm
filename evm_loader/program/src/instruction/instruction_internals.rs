@@ -4,16 +4,14 @@ use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 
 use crate::account::{AllocateResult, Holder, Operator, StateAccount};
-use crate::allocator::acc_allocator;
+use crate::allocator::{acc_allocator, StateAccountAllocator};
 use crate::debug::log_data;
 use crate::error::Result;
-use crate::evm::tracing::NoopEventListener;
 use crate::evm::{ExitStatus, Machine};
 use crate::executor::precompile_extension::call_solana::execute_external_instruction;
 use crate::executor::{Action, ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::gasometer::Gasometer;
 use crate::platform::{Platform, Solana};
-use crate::types::vector::VectorSliceExt;
 use crate::types::Vector;
 use crate::types::{Transaction, TrxView};
 
@@ -21,7 +19,7 @@ use solana_program::instruction::Instruction;
 
 pub type SyncedEvmBackend<'a, 'r> = SyncedExecutorState<'r, Solana<'a>>;
 pub type EvmBackend<'a, 'r> = ExecutorState<'r, Solana<'a>>;
-pub type Evm = Machine<NoopEventListener>;
+pub type Evm = Machine<StateAccountAllocator>;
 
 pub fn allocate_evm(
     trx: &Transaction,
@@ -37,9 +35,12 @@ pub fn allocate_evm(
     *state_data = Some(ExecutorStateData::new(account_storage));
     let mut evm_backend =
         ExecutorState::new(account_storage, state_data.deref_mut().as_mut().unwrap());
-    storage
-        .evm_mut()
-        .replace(Evm::new(trx, storage.trx_origin(), &mut evm_backend, None)?);
+    storage.evm_mut().replace(Evm::new_in(
+        trx,
+        storage.trx_origin(),
+        &mut evm_backend,
+        acc_allocator(),
+    )?);
 
     Ok(())
 }
@@ -62,11 +63,11 @@ pub fn reinit_evm(
         if parsed_tx.is_none() {
             parsed_tx.replace(Transaction::parse_from_rlp(storage.trx_rlp(), None)?);
         }
-        storage.evm_mut().replace(Evm::new(
+        storage.evm_mut().replace(Evm::new_in(
             &parsed_tx.as_ref().unwrap(),
             storage.trx_origin(),
             &mut evm_backend,
-            None,
+            acc_allocator(),
         )?);
     }
 
@@ -225,7 +226,7 @@ pub fn finalize_interrupted(
             interrupted_state.lamports,
         );
         if let Ok(return_data) = result {
-            evm.opcode_return_impl(return_data.to_vector(), &mut backend)?;
+            evm.return_from_stack_frame(&return_data, &mut backend)?;
             evm.increment_pc();
         }
         evm.execute(u64::MAX, &mut backend)?

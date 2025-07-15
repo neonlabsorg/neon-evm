@@ -1,7 +1,10 @@
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey, system_program};
 use std::{cell::RefCell, rc::Rc};
 
-use crate::account::{Account, AccountDispatch};
+use crate::{
+    account::{Account, AccountDispatch},
+    platform::FAKE_OPERATOR,
+};
 
 #[derive(Clone, Default)]
 #[repr(C)]
@@ -36,6 +39,20 @@ impl OwnedAccountInfo {
             rent_epoch: info.rent_epoch(),
         }
     }
+
+    #[must_use]
+    pub fn fake_operator() -> Self {
+        Self {
+            key: FAKE_OPERATOR,
+            is_signer: true,
+            is_writable: true,
+            lamports: 100 * 1_000_000_000,
+            data: vec![],
+            owner: system_program::ID,
+            executable: false,
+            rent_epoch: u64::MAX,
+        }
+    }
 }
 
 impl<'a> solana_program::account_info::IntoAccountInfo<'a> for &'a mut OwnedAccountInfo {
@@ -52,7 +69,3 @@ impl<'a> solana_program::account_info::IntoAccountInfo<'a> for &'a mut OwnedAcco
         }
     }
 }
-
-#[repr(C)]
-#[derive(Clone)]
-pub struct Cache {}

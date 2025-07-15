@@ -29,7 +29,7 @@ WSOL_PATH=${NEON_BIN}/wsol.json
 VALIDATOR_ARGS=(
   --reset
   --warp-slot 1
-  --log-messages-bytes-limit 50000
+  --log-messages-bytes-limit 100000
   --ticks-per-slot 16
   --upgradeable-program ${EVM_LOADER} ${EVM_LOADER_PATH} ${EVM_LOADER_AUTHORITY_KEYPAIR}
   --bpf-program ${METAPLEX} ${METAPLEX_PATH}

@@ -1,15 +1,16 @@
 use linked_list_allocator::Heap;
 use solana_program::account_info::AccountInfo;
+use solana_program::keccak;
 use solana_program::pubkey::Pubkey;
-use static_assertions::const_assert;
+use std::alloc::Layout;
 use std::cell::{Ref, RefMut};
-use std::mem::{align_of, size_of};
-use std::ptr::write_unaligned;
+use std::mem::size_of;
 
-use crate::account::{AccountDispatch, TAG_STATE_FINALIZED};
-use crate::allocator::STATE_ACCOUNT_DATA_ADDRESS;
+use crate::account::AccountDispatch;
+use crate::account::TAG_STATE_FINALIZED;
+use crate::allocator::StateAllocator;
 use crate::error::{Error, Result};
-use crate::types::{Transaction, TrxView};
+use crate::types::EncodedTransaction;
 
 use super::{AccountHeader, Operator, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_HOLDER};
 
@@ -25,34 +26,27 @@ impl AccountHeader for Header {
     const VERSION: u8 = 0;
 }
 
-pub struct Holder<'local, 'sol> {
-    account: &'local AccountInfo<'sol>,
+pub struct Holder<'sol> {
+    account: AccountInfo<'sol>,
 }
 
-// Offset of the memory cell that denotes pointer to the heap from the start of the header.
-const HEAP_PTR_OFFSET: usize = 72;
-const HEADER_OFFSET: usize = ACCOUNT_PREFIX_LEN;
-pub const BUFFER_OFFSET: usize = HEADER_OFFSET + HEAP_PTR_OFFSET + size_of::<usize>();
-
-pub const HEAP_OFFSET_OFFSET: usize = HEADER_OFFSET + HEAP_PTR_OFFSET;
-// State Account Header, State Finalized Header and Holder Account Header should have a shared
-// and fixed memory cell that denotes the offset of the persistent heap.
-// The following aserts checks that State Account Header and State Finalized Header does not overlap
-// with `heap_offset` memory cell, so writes to State Account Header do not override it.
-const_assert!(HEAP_PTR_OFFSET >= size_of::<Header>());
-const_assert!(HEAP_PTR_OFFSET >= size_of::<crate::account::state::Header>());
-const_assert!(HEAP_PTR_OFFSET >= size_of::<crate::account::state_finalized::Header>());
-
-impl<'local, 'sol> Holder<'local, 'sol> {
+impl<'sol> Holder<'sol> {
     #[must_use]
-    pub fn into_account(self) -> &'local AccountInfo<'sol> {
+    pub fn into_account(self) -> AccountInfo<'sol> {
         self.account
     }
 
-    pub fn from_account_info(
-        program_id: Pubkey,
-        account: &'local AccountInfo<'sol>,
-    ) -> Result<Self> {
+    #[must_use]
+    pub fn pubkey(&self) -> Pubkey {
+        self.account.pubkey()
+    }
+
+    pub fn from_account_info(program_id: Pubkey, account_info: &AccountInfo<'sol>) -> Result<Self> {
+        let account = account_info.clone();
+        Self::from_account(program_id, account)
+    }
+
+    pub fn from_account(program_id: Pubkey, mut account: AccountInfo<'sol>) -> Result<Self> {
         match account.tag(program_id)? {
             TAG_STATE_FINALIZED => {
                 account.init_tag(TAG_HOLDER, Header::VERSION)?;
@@ -69,11 +63,11 @@ impl<'local, 'sol> Holder<'local, 'sol> {
 
     pub fn create(
         program_id: Pubkey,
-        account: &'local AccountInfo<'sol>,
+        mut account: AccountInfo<'sol>,
         seed: &str,
         operator: &Operator,
     ) -> Result<Self> {
-        if account.owner() != program_id {
+        if account.owner != &program_id {
             return Err(Error::AccountInvalidOwner(account.pubkey(), program_id));
         }
 
@@ -85,7 +79,7 @@ impl<'local, 'sol> Holder<'local, 'sol> {
         account.validate_tag(program_id, TAG_EMPTY)?;
         account.init_tag(TAG_HOLDER, Header::VERSION)?;
 
-        let mut holder = Self::from_account_info(program_id, account)?;
+        let mut holder = Self::from_account(program_id, account)?;
         holder.update(|h| h.owner = *operator.key);
         holder.clear();
 
@@ -100,28 +94,35 @@ impl<'local, 'sol> Holder<'local, 'sol> {
         f(&mut header);
     }
 
+    fn header_size(&self) -> usize {
+        match self.account.header_version() {
+            0 => size_of::<Header>(),
+            v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
+        }
+    }
+
+    fn buffer_offset(&self) -> usize {
+        ACCOUNT_PREFIX_LEN + self.header_size()
+    }
+
     fn buffer(&self) -> Ref<[u8]> {
+        let offset = self.buffer_offset();
+
         let data = self.account.data();
-        Ref::map(data, |d| &d[BUFFER_OFFSET..])
+        Ref::map(data, |d| &d[offset..])
     }
 
     fn buffer_mut(&mut self) -> RefMut<[u8]> {
+        let offset = self.buffer_offset();
+
         let data = self.account.data_mut();
-        RefMut::map(data, |d| &mut d[BUFFER_OFFSET..])
+        RefMut::map(data, |d| &mut d[offset..])
     }
 
     pub fn clear(&mut self) {
-        {
-            let mut header: RefMut<Header> = self.account.header_mut();
-            header.transaction_hash.fill(0);
-            header.transaction_len = 0;
-        }
-        // Clear the heap ptr.
-        Self::write_heap_offset(self.account, 0);
-        {
-            let mut buffer = self.buffer_mut();
-            buffer.fill(0);
-        }
+        let mut header: RefMut<Header> = self.account.header_mut();
+        header.transaction_hash.fill(0);
+        header.transaction_len = 0;
     }
 
     pub fn write(&mut self, offset: usize, bytes: &[u8]) -> Result<()> {
@@ -152,22 +153,31 @@ impl<'local, 'sol> Holder<'local, 'sol> {
         header.transaction_len
     }
 
-    #[must_use]
-    pub fn transaction(&self) -> Ref<[u8]> {
-        let len = self.transaction_len();
+    pub fn transaction(&self) -> Result<EncodedTransaction> {
+        let stored_hash = self.transaction_hash();
 
-        let buffer = self.buffer();
-        Ref::map(buffer, |b| &b[..len])
+        let transaction = {
+            let len = self.transaction_len();
+            let buffer = self.buffer();
+            Ref::map(buffer, |b| &b[..len])
+        };
+        let transaction_hash = keccak::hash(&transaction);
+
+        if stored_hash != transaction_hash {
+            return Err(Error::HolderInvalidHash(stored_hash.0, transaction_hash.0));
+        }
+
+        Ok(EncodedTransaction::Ref(transaction, transaction_hash))
     }
 
     #[must_use]
-    pub fn transaction_hash(&self) -> [u8; 32] {
+    pub fn transaction_hash(&self) -> keccak::Hash {
         let header: Ref<Header> = self.account.header();
-        header.transaction_hash
+        keccak::Hash(header.transaction_hash)
     }
 
     pub fn update_transaction_hash(&mut self, hash: [u8; 32]) {
-        if self.transaction_hash() == hash {
+        if self.transaction_hash().to_bytes() == hash {
             return;
         }
 
@@ -181,7 +191,7 @@ impl<'local, 'sol> Holder<'local, 'sol> {
         header.owner
     }
 
-    pub fn validate_owner(&self, operator: &Operator) -> Result<()> {
+    pub fn validate(&self, operator: &Operator) -> Result<()> {
         if &self.owner() != operator.key {
             return Err(Error::HolderInvalidOwner(self.owner(), *operator.key));
         }
@@ -189,99 +199,27 @@ impl<'local, 'sol> Holder<'local, 'sol> {
         Ok(())
     }
 
-    pub fn validate_transaction(&self, trx: &Transaction) -> Result<()> {
-        if self.transaction_hash() != trx.hash() {
-            return Err(Error::HolderInvalidHash(
-                self.transaction_hash(),
-                trx.hash(),
-            ));
-        }
+    #[must_use]
+    pub fn into_allocator(mut self) -> StateAllocator {
+        let mut buffer = self.buffer_mut();
 
-        Ok(())
-    }
+        let heap_bottom = buffer.as_mut_ptr();
+        let heap_size = buffer.len();
 
-    /// Initializes the heap using the whole account data space.
-    /// Also, writes the offset of the heap object into the separate field in the header.
-    /// After this, the persistent objects can be allocated into the account data.
-    pub fn init_heap(&self, transaction_offset: usize) -> Result<()> {
-        // For this case, the account.owner is already validated to be equal to program id.
-        Self::init_holder_heap(*self.account.owner, self.account, transaction_offset)
-    }
+        let heap = unsafe {
+            let mut heap = Heap::new(heap_bottom, heap_size);
 
-    /// Associated function, see `fn init_heap`.
-    pub fn init_holder_heap(
-        program_id: Pubkey,
-        account: &AccountInfo,
-        transaction_offset: usize,
-    ) -> Result<()> {
-        // Validation: check that the passed account is a variant of Holder: Holder, State or StateFinalized.
-        // An additional owner check is happening inside the tag.
-        let tag = account.tag(program_id)?;
-        assert!(
-            tag == TAG_HOLDER || tag == crate::account::TAG_STATE || tag == TAG_STATE_FINALIZED
-        );
+            let layout = Layout::new::<Heap>();
+            let Ok(ptr) = heap.allocate_first_fit(layout) else {
+                std::alloc::handle_alloc_error(layout)
+            };
 
-        let data_ptr = account.data.borrow().as_ptr();
-        // Validation: the Holder Account used as a persistent heap, must be first in the account list.
-        assert_eq!(data_ptr as usize, STATE_ACCOUNT_DATA_ADDRESS);
+            let ptr = ptr.cast::<Heap>();
+            ptr.write(heap);
 
-        // Calculate the actual aligned heap object ptr and its offset.
-        let (heap_ptr, heap_object_offset) = {
-            // Locate heap object into the buffer with offset no less than min_heap_object_offset.
-            let mut heap_object_offset = BUFFER_OFFSET + transaction_offset;
-            let mut heap_ptr = data_ptr.wrapping_add(heap_object_offset);
-
-            // Calculate alignment and offset the heap pointer.
-            let alignment = heap_ptr.align_offset(align_of::<Heap>());
-            heap_ptr = heap_ptr.wrapping_add(alignment);
-            heap_object_offset += alignment;
-            // Validation: double check the alignment.
-            assert_eq!(heap_ptr.align_offset(align_of::<Heap>()), 0);
-
-            (heap_ptr, heap_object_offset)
+            ptr
         };
 
-        // Initialize the heap.
-        let heap_ptr = heap_ptr.cast_mut();
-        unsafe {
-            // First, zero out underlying bytes of the future heap representation.
-            heap_ptr.write_bytes(0, size_of::<Heap>());
-            // Calculate the bottom of the heap, right after the Heap object.
-            let heap_bottom = heap_ptr.add(size_of::<Heap>());
-
-            // Size of heap is equal to account data length minus the length of prefix.
-            let heap_size = account
-                .data_len()
-                .saturating_sub(heap_object_offset + size_of::<Heap>());
-            // Validation: check that heap object is within the account data.
-            assert!(heap_size > 0);
-
-            // Cast to reference and init.
-            // Zeroed memory is a valid representation of the Heap and hence we can safely do it.
-            // That's a safety reason we zeroed the memory above.
-            #[allow(clippy::cast_ptr_alignment)]
-            let heap = &mut *(heap_ptr.cast::<Heap>());
-            heap.init(heap_bottom, heap_size);
-        };
-
-        // Write the actual heap offset into the header. This memory cell is used by the allocator.
-        Self::write_heap_offset(account, heap_object_offset);
-
-        Ok(())
-    }
-
-    /// # Safety
-    /// Writes the offset of the heap object to a special memory cell.
-    fn write_heap_offset(account: &AccountInfo<'_>, offset: usize) {
-        #[allow(clippy::cast_ptr_alignment)]
-        let heap_offset_memcell = account
-            .data
-            .borrow_mut()
-            .as_mut_ptr()
-            .wrapping_add(HEAP_OFFSET_OFFSET)
-            .cast::<usize>();
-        unsafe {
-            write_unaligned(heap_offset_memcell, offset);
-        }
+        StateAllocator::new(heap.as_ptr())
     }
 }

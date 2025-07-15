@@ -1,5 +1,8 @@
 use evm_loader::{
-    account::pda, evm::database::Database, executor::SyncedExecutorState, types::Address,
+    account::pda,
+    evm::database::Database,
+    executor::{ExecutorStateData, SyncedExecutorState},
+    types::Address,
 };
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
@@ -46,7 +49,8 @@ pub async fn execute(
     let chains = super::get_config::read_chains(rpc, *program_id).await?;
 
     let mut platform = EmulatorPlatform::new(rpc, *program_id, &chains, &pubkeys).await?;
-    let executor = SyncedExecutorState::new(&mut platform).await;
+    let mut executor_data = ExecutorStateData::new();
+    let executor = SyncedExecutorState::new(&mut platform, &mut executor_data);
 
     for address in addresses.iter().copied() {
         let (pubkey, _) = pda::contract_address(program_id, &address);

@@ -1,3 +1,4 @@
+use allocator_api2::alloc::Allocator;
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::pubkey;
@@ -7,19 +8,17 @@ use solana_program::{
 };
 
 use crate::account::{
-    pda, Account, AccountDispatch, AllocateResult, BalanceAccount, ContractAccount, StorageCell,
-    StorageCellSeed, ZeroInit, TAG_EMPTY,
+    pda, Account, AccountDispatch, AllocateResult, BalanceAccount, ContractAccount, Root,
+    StorageCell, StorageCellSeed, ZeroInit, TAG_EMPTY,
 };
 use crate::error::Result;
-use crate::types::{Address, Transaction, TrxView};
+use crate::types::{Address, Transaction};
 
 mod keys_index;
 pub use keys_index::{CachedKeysIndex, DefaultKeysIndex, KeysIndex};
 
 #[cfg(target_os = "solana")]
 mod solana;
-#[cfg(target_os = "solana")]
-mod solana_temp;
 #[cfg(target_os = "solana")]
 pub use solana::Solana;
 
@@ -41,7 +40,16 @@ impl OriginId for (Address, &Transaction) {
     }
 
     fn chain_id(&self) -> Option<u64> {
-        self.1.chain_id()
+        self.1.try_chain_id()
+    }
+}
+impl<A: Allocator + Copy> OriginId for &Root<A> {
+    fn address(&self) -> Address {
+        self.origin()
+    }
+
+    fn chain_id(&self) -> Option<u64> {
+        self.tx_chain_id()
     }
 }
 
@@ -246,10 +254,7 @@ pub trait Platform<'a>: Sized {
     async fn get_storage(&self, contract: Address, index: U256) -> Result<Option<StorageCell<'a>>> {
         let program_id = self.program_id();
 
-        let base = self.keys().contract(contract);
-
-        let storage_seed = StorageCellSeed::new(index);
-        let pubkey = Pubkey::create_with_seed(&base, &storage_seed, &program_id)?;
+        let pubkey = self.keys().storage(contract, index);
 
         let account = self.get_account(pubkey).await?;
         if account.is_system_owned() {

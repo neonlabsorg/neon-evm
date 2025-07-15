@@ -1,17 +1,12 @@
 use crate::account::{
-    AccountDispatch, AccountsStatus, Operator, OperatorBalance, OperatorBalanceValidator,
-    StateAccount, Treasury, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED,
-    TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
+    AccountDispatch, Holder, Operator, OperatorBalance, StateAccount, Treasury, TAG_HOLDER,
+    TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
 };
-use crate::debug::log_data;
 use crate::error::{Error, Result};
-use crate::gasometer::Gasometer;
-use crate::instruction::instruction_internals::holder_parse_trx;
-use crate::instruction::transaction_step::{do_begin, do_continue};
 use crate::platform::Solana;
-use crate::types::TrxView;
+use crate::transaction_process::transaction_step;
+
 use arrayref::array_ref;
-use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
@@ -27,82 +22,44 @@ pub fn process_inner(
     increase_gas_limit: bool,
 ) -> Result<()> {
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
-    let step_count = u64::from(u32::from_le_bytes(*array_ref![instruction, 4, 4]));
+    let step_limit = u64::from(u32::from_le_bytes(*array_ref![instruction, 4, 4]));
 
-    let holder_or_storage = accounts[0].clone();
-
+    let holder_info = accounts[0].clone();
     let operator = Operator::from_account_info(&accounts[1])?;
     let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
     let operator_balance = OperatorBalance::try_from_account_info(program_id, &accounts[3])?;
 
-    operator_balance.validate_owner(&operator)?;
+    let mut solana = Solana::new(accounts, operator.clone(), operator_balance)?;
+    solana.pay_to_treasury(treasury)?;
 
-    let mut accounts_db = Solana::new(&accounts[1..], operator.clone(), operator_balance.clone())?;
-
-    match holder_or_storage.tag(program_id)? {
+    match holder_info.tag(program_id)? {
         TAG_HOLDER => {
-            let (mut trx, tx_rlp) =
-                holder_parse_trx(&holder_or_storage, &operator, program_id, false)?;
-            let origin = trx.recover_caller_address()?;
+            let holder = Holder::from_account(program_id, holder_info)?;
+            holder.validate(&operator)?;
 
-            operator_balance.validate_transaction(&trx)?;
-            let miner_address = operator_balance.miner(origin);
+            let rlp = holder.transaction()?.into_owned();
+            let owner = holder.owner();
+            let account = holder.into_account();
 
-            log_data(&[b"HASH", &trx.hash]);
-            log_data(&[b"MINER", miner_address.as_bytes()]);
+            solana.use_gasometer(|g| g.record_write_to_holder(&rlp));
 
+            let mut state = StateAccount::new(account, owner, rlp, &mut solana)?;
             if increase_gas_limit {
-                assert!(trx.chain_id().is_none());
-                trx.use_gas_limit_multiplier();
+                let mut root = state.root_mut();
+                root.increase_gas_limit_for_transactions_without_chain_id(&mut solana)?;
             }
 
-            let mut gasometer = Gasometer::new(U256::ZERO, &operator)?;
-            gasometer.record_address_lookup_table(accounts);
-            gasometer.record_write_to_holder(&trx);
-
-            accounts_db.pay_to_treasury(treasury)?;
-
-            let storage = StateAccount::new(
-                program_id,
-                &holder_or_storage,
-                &accounts_db,
-                origin,
-                &trx,
-                tx_rlp.as_slice(),
-                None,
-            )?;
-
-            do_begin(trx, accounts_db, storage, gasometer)
+            transaction_step::start_iterative(solana, state)
         }
         TAG_STATE => {
-            let (storage, accounts_status, parsed_trx) =
-                StateAccount::restore(program_id, &holder_or_storage, &accounts_db)?;
-
-            operator_balance.validate_transaction(storage.trx())?;
-            let miner_address = operator_balance.miner(storage.trx_origin());
-
-            log_data(&[b"HASH", &storage.trx().hash()]);
-            log_data(&[b"MINER", miner_address.as_bytes()]);
-
-            let gasometer = Gasometer::new(storage.gas_used(), &operator)?;
-
-            accounts_db.pay_to_treasury(treasury)?;
-
-            let reset = accounts_status != AccountsStatus::Ok;
-            do_continue(
-                step_count,
-                accounts_db,
-                storage,
-                gasometer,
-                reset,
-                parsed_trx,
-            )
+            let state = StateAccount::restore(holder_info, &mut solana)?;
+            transaction_step::execute_iterative(solana, state, step_limit)
         }
         TAG_SCHEDULED_STATE_CANCELLED | TAG_SCHEDULED_STATE_FINALIZED => {
-            Err(Error::ScheduledTxAlreadyComplete(*holder_or_storage.key))
+            Err(Error::ScheduledTxAlreadyComplete(holder_info.pubkey()))
         }
         TAG_STATE_FINALIZED => Err(Error::StorageAccountFinalized),
-        _ => Err(Error::AccountInvalidTag(*holder_or_storage.key, TAG_HOLDER)),
+        _ => Err(Error::AccountInvalidTag(holder_info.pubkey(), TAG_HOLDER)),
     }?;
 
     Ok(())

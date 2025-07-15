@@ -2,17 +2,113 @@ use ethnum::U256;
 use maybe_async::maybe_async;
 use rlp::{DecoderError, Rlp};
 use serde::{Deserialize, Serialize};
+use solana_program::keccak;
 use std::convert::TryInto;
 
 use crate::account::TransactionTree;
-use crate::{
-    account_storage::AccountStorage, config::GAS_LIMIT_MULTIPLIER_NO_CHAINID, error::Error,
-};
+use crate::error::Error;
+use crate::evm::database::Database;
+use crate::platform::Platform;
 
 use super::Address;
 
 use super::read_raw_utils::ReconstructRaw;
 use evm_loader_macro::ReconstructRaw;
+
+pub enum EncodedTransaction<'a> {
+    Owned(Vec<u8>, keccak::Hash),
+    Ref(std::cell::Ref<'a, [u8]>, keccak::Hash),
+    RawRef(&'a [u8], keccak::Hash),
+}
+
+impl<'a> EncodedTransaction<'a> {
+    #[must_use]
+    pub fn from_rlp(rlp: &'a [u8]) -> Self {
+        let hash = keccak::hash(rlp);
+        EncodedTransaction::RawRef(rlp, hash)
+    }
+
+    #[must_use]
+    pub fn into_owned(self) -> EncodedTransaction<'static> {
+        match self {
+            EncodedTransaction::Owned(rlp, hash) => EncodedTransaction::Owned(rlp, hash),
+            EncodedTransaction::Ref(rlp, hash) => EncodedTransaction::Owned(rlp.to_vec(), hash),
+            EncodedTransaction::RawRef(rlp, hash) => EncodedTransaction::Owned(rlp.to_vec(), hash),
+        }
+    }
+
+    #[must_use]
+    pub fn rlp_len(&self) -> usize {
+        self.rlp().len()
+    }
+
+    #[must_use]
+    pub fn rlp(&self) -> &[u8] {
+        match self {
+            EncodedTransaction::Owned(rlp, _) => rlp.as_ref(),
+            EncodedTransaction::Ref(rlp, _) => rlp.as_ref(),
+            EncodedTransaction::RawRef(rlp, _) => rlp,
+        }
+    }
+
+    #[must_use]
+    pub fn hash(&self) -> &keccak::Hash {
+        match self {
+            Self::Owned(_, hash) | Self::Ref(_, hash) | Self::RawRef(_, hash) => hash,
+        }
+    }
+
+    pub fn decode(self) -> Result<Transaction, Error> {
+        let (transaction_type, rlp_bytes) = TransactionEnvelope::get_type(self.rlp());
+        let rlp = Rlp::new(rlp_bytes);
+
+        match transaction_type {
+            None | Some(TransactionEnvelope::Legacy) => {
+                let tx = rlp.as_val::<LegacyTx>()?;
+                let signed_hash = Transaction::calculate_legacy_signature(&rlp, tx.chain_id)?;
+
+                Ok(Transaction {
+                    transaction: TransactionPayload::Legacy(tx),
+                    byte_len: self.rlp().len(),
+                    hash: self.hash().to_bytes(),
+                    signed_hash,
+                })
+            }
+            Some(TransactionEnvelope::AccessList) => {
+                let tx = rlp.as_val::<AccessListTx>()?;
+                let signed_hash = Transaction::eip2718_signed_hash(&[0x01], &rlp, 8)?;
+
+                Ok(Transaction {
+                    transaction: TransactionPayload::AccessList(tx),
+                    byte_len: self.rlp().len(),
+                    hash: self.hash().to_bytes(),
+                    signed_hash,
+                })
+            }
+            Some(TransactionEnvelope::DynamicFee) => {
+                let tx = rlp.as_val::<DynamicFeeTx>()?;
+                let signed_hash = Transaction::eip2718_signed_hash(&[0x02], &rlp, 9)?;
+
+                Ok(Transaction {
+                    transaction: TransactionPayload::DynamicFee(tx),
+                    byte_len: self.rlp().len(),
+                    hash: self.hash().to_bytes(),
+                    signed_hash,
+                })
+            }
+            Some(TransactionEnvelope::Scheduled) => {
+                let tx = rlp.as_val::<ScheduledTx>()?;
+
+                Ok(Transaction {
+                    transaction: TransactionPayload::Scheduled(tx),
+                    byte_len: self.rlp().len(),
+                    hash: self.hash().to_bytes(),
+                    signed_hash: [0_u8; 32],
+                })
+            }
+        }
+    }
+}
 
 #[repr(transparent)]
 #[derive(
@@ -336,98 +432,6 @@ impl rlp::Decodable for DynamicFeeTx {
     }
 }
 
-/// A "shell" representation of `ScheduledTx` without the persistent Vectors.
-///
-/// Intended for use in cases when there's no heap account.
-/// TODO: rework the whole transaction to be able to use `ScheduledTx` when account heap is absent.
-#[derive(Debug)]
-#[repr(C)]
-pub struct ScheduledTxShell {
-    pub payer: Address,
-    pub sender: Option<Address>,
-    pub nonce: u64,
-    pub index: u16,
-    pub intent: Option<Address>,
-    pub target: Option<Address>,
-    pub value: U256,
-    pub chain_id: U256,
-    pub gas_limit: U256,
-    pub max_fee_per_gas: U256,
-    pub max_priority_fee_per_gas: U256,
-    pub hash: [u8; 32],
-}
-
-impl ScheduledTxShell {
-    pub fn from_rlp(message: &[u8]) -> crate::error::Result<Self> {
-        use solana_program::keccak::hashv;
-
-        let (tx_type, tx_body) = TransactionEnvelope::get_type(message);
-        tx_type
-            .map(|f| f == TransactionEnvelope::Scheduled)
-            .ok_or(crate::error::Error::TreeAccountTxInvalidType)?;
-
-        let rlp = rlp::Rlp::new(tx_body);
-        let hash = hashv(&[&[0x7f, 0x01], tx_body]).to_bytes();
-        ScheduledTxShell::decode(&rlp, hash).map_err(Error::from)
-    }
-
-    fn decode(rlp: &rlp::Rlp, hash: [u8; 32]) -> Result<Self, rlp::DecoderError> {
-        let rlp_len = {
-            let info = rlp.payload_info()?;
-            info.header_len + info.value_len
-        };
-
-        if rlp.as_raw().len() != rlp_len {
-            return Err(rlp::DecoderError::RlpInconsistentLengthAndData);
-        }
-
-        let payer: Address = rlp.at(0)?.as_val()?;
-        let sender: Option<Address> = decode_optional_address(&rlp.at(1)?)?;
-
-        let nonce: u64 = rlp.val_at(2)?;
-        let index: u16 = rlp.val_at(3)?;
-
-        let intent: Option<Address> = decode_optional_address(&rlp.at(4)?)?;
-        // index 5 is skipped (intent_call_data).
-        let target: Option<Address> = decode_optional_address(&rlp.at(6)?)?;
-        // index 7 is skipped (call_data).
-
-        let value: U256 = u256(&rlp.at(8)?)?;
-        let chain_id: U256 = u256(&rlp.at(9)?)?;
-
-        let gas_limit: U256 = u256(&rlp.at(10)?)?;
-        let max_fee_per_gas: U256 = u256(&rlp.at(11)?)?;
-        let max_priority_fee_per_gas: U256 = u256(&rlp.at(12)?)?;
-
-        if max_fee_per_gas < max_priority_fee_per_gas {
-            return Err(rlp::DecoderError::Custom(
-                "max_fee_per_gas < max_priority_fee_per_gas",
-            ));
-        }
-
-        if rlp.at(13).is_ok() {
-            return Err(rlp::DecoderError::RlpIncorrectListLen);
-        }
-
-        let tx = ScheduledTxShell {
-            payer,
-            sender,
-            nonce,
-            index,
-            intent,
-            target,
-            value,
-            chain_id,
-            gas_limit,
-            max_fee_per_gas,
-            max_priority_fee_per_gas,
-            hash,
-        };
-
-        Ok(tx)
-    }
-}
-
 #[derive(Debug, ReconstructRaw)]
 #[repr(C)]
 pub struct ScheduledTx {
@@ -446,7 +450,6 @@ pub struct ScheduledTx {
     pub max_priority_fee_per_gas: U256,
 }
 
-// TODO remove if unused in the end. Possibly, the Transaction::hash() can be used instead.
 impl ScheduledTx {
     #[must_use]
     pub fn hash(&self) -> [u8; 32] {
@@ -546,30 +549,6 @@ pub enum TransactionPayload {
     Scheduled(ScheduledTx),
 }
 
-pub trait TrxView {
-    fn hash(&self) -> [u8; 32];
-
-    fn gas_price(&self) -> U256;
-
-    fn chain_id(&self) -> Option<u64>;
-
-    fn is_scheduled_tx(&self) -> bool;
-
-    fn nonce(&self) -> u64;
-
-    fn gas_limit_in_tokens(&self) -> Result<U256, Error> {
-        self.gas_price()
-            .checked_mul(self.gas_limit())
-            .ok_or(Error::IntegerOverflow)
-    }
-
-    fn gas_limit(&self) -> U256;
-
-    fn target(&self) -> Option<Address>;
-
-    fn value(&self) -> U256;
-}
-
 #[derive(Debug)]
 #[repr(C)]
 pub struct Transaction {
@@ -579,13 +558,14 @@ pub struct Transaction {
     pub signed_hash: [u8; 32],
 }
 
-impl TrxView for Transaction {
-    fn hash(&self) -> [u8; 32] {
+impl Transaction {
+    #[must_use]
+    pub fn hash(&self) -> [u8; 32] {
         self.hash
     }
 
     #[must_use]
-    fn gas_price(&self) -> U256 {
+    pub fn gas_price(&self) -> U256 {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { gas_price, .. })
             | TransactionPayload::AccessList(AccessListTx { gas_price, .. }) => gas_price,
@@ -599,7 +579,7 @@ impl TrxView for Transaction {
     }
 
     #[must_use]
-    fn chain_id(&self) -> Option<u64> {
+    pub fn try_chain_id(&self) -> Option<u64> {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { chain_id, .. }) => chain_id,
             TransactionPayload::AccessList(AccessListTx { chain_id, .. })
@@ -611,7 +591,20 @@ impl TrxView for Transaction {
         .expect("chain_id < u64::max")
     }
 
-    fn is_scheduled_tx(&self) -> bool {
+    #[must_use]
+    pub fn chain_id<'a>(&self, platform: &impl Platform<'a>) -> u64 {
+        self.try_chain_id()
+            .unwrap_or_else(|| platform.default_chain())
+    }
+
+    #[must_use]
+    pub fn chain_id_with_database(&self, database: &impl Database) -> u64 {
+        self.try_chain_id()
+            .unwrap_or_else(|| database.default_chain_id())
+    }
+
+    #[must_use]
+    pub fn is_scheduled_tx(&self) -> bool {
         if let TransactionPayload::Scheduled(_) = self.transaction {
             return true;
         }
@@ -619,7 +612,7 @@ impl TrxView for Transaction {
     }
 
     #[must_use]
-    fn nonce(&self) -> u64 {
+    pub fn nonce(&self) -> u64 {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { nonce, .. })
             | TransactionPayload::AccessList(AccessListTx { nonce, .. })
@@ -629,7 +622,7 @@ impl TrxView for Transaction {
     }
 
     #[must_use]
-    fn gas_limit(&self) -> U256 {
+    pub fn gas_limit(&self) -> U256 {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { gas_limit, .. })
             | TransactionPayload::AccessList(AccessListTx { gas_limit, .. })
@@ -638,7 +631,8 @@ impl TrxView for Transaction {
         }
     }
 
-    fn target(&self) -> Option<Address> {
+    #[must_use]
+    pub fn target(&self) -> Option<Address> {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { target, .. })
             | TransactionPayload::AccessList(AccessListTx { target, .. })
@@ -648,7 +642,7 @@ impl TrxView for Transaction {
     }
 
     #[must_use]
-    fn value(&self) -> U256 {
+    pub fn value(&self) -> U256 {
         match self.transaction {
             TransactionPayload::Legacy(LegacyTx { value, .. })
             | TransactionPayload::AccessList(AccessListTx { value, .. })
@@ -660,72 +654,6 @@ impl TrxView for Transaction {
 
 impl Transaction {
     pub const SCHEDULED_TX_TYPE: u8 = 0x80; // 0x7f (max envelope tx type) + 0x01 (scheduled tx subtype)
-
-    fn from_payload(
-        transaction_type: Option<TransactionEnvelope>,
-        chain_id: Option<U256>,
-        transaction_rlp: &rlp::Rlp,
-        transaction: TransactionPayload,
-    ) -> Result<Self, rlp::DecoderError> {
-        use solana_program::keccak::{hash, hashv, Hash};
-
-        let (hash, signed_hash) = match transaction_type {
-            // Legacy transaction wrapped in envelope
-            Some(TransactionEnvelope::Legacy) => {
-                let Hash(hash) = hashv(&[&[0x00], transaction_rlp.as_raw()]);
-                let signed_hash = Self::calculate_legacy_signature(transaction_rlp, chain_id)?;
-
-                (hash, signed_hash)
-            }
-            // Access List transaction
-            Some(TransactionEnvelope::AccessList) => {
-                let Hash(hash) = hashv(&[&[0x01], transaction_rlp.as_raw()]);
-                let signed_hash = Self::eip2718_signed_hash(&[0x01], transaction_rlp, 8)?;
-
-                (hash, signed_hash)
-            }
-            // Dynamic Fee transaction
-            Some(TransactionEnvelope::DynamicFee) => {
-                let Hash(hash) = hashv(&[&[0x02], transaction_rlp.as_raw()]);
-                let signed_hash = Self::eip2718_signed_hash(&[0x02], transaction_rlp, 9)?;
-
-                (hash, signed_hash)
-            }
-            // Scheduled transaction
-            Some(TransactionEnvelope::Scheduled) => {
-                let Hash(hash) = hashv(&[&[0x7f, 0x01], transaction_rlp.as_raw()]);
-                (hash, [0_u8; 32])
-            }
-            // Legacy trasaction
-            None => {
-                let Hash(hash) = hash(transaction_rlp.as_raw());
-                let signed_hash = Self::calculate_legacy_signature(transaction_rlp, chain_id)?;
-
-                (hash, signed_hash)
-            }
-        };
-
-        let info = transaction_rlp.payload_info()?;
-        let byte_len = if transaction_type.is_none() {
-            // Legacy transaction
-            info.header_len + info.value_len
-        } else {
-            let subtype_present = match transaction_type.as_ref().unwrap() {
-                TransactionEnvelope::Scheduled => 1,
-                _ => 0,
-            };
-
-            // Transaction in the type envelope
-            info.header_len + info.value_len + 1 + subtype_present // + 1 byte for type + 1 byte if subtype is used.
-        };
-
-        Ok(Transaction {
-            transaction,
-            byte_len,
-            hash,
-            signed_hash,
-        })
-    }
 
     fn eip2718_signed_hash(
         transaction_type: &[u8],
@@ -888,103 +816,14 @@ impl Transaction {
 }
 
 impl Transaction {
-    pub fn parse_from_rlp(
-        transaction: &[u8],
-        check_is_scheduled: Option<bool>,
-    ) -> Result<Self, Error> {
-        let (transaction_type, transaction) = TransactionEnvelope::get_type(transaction);
-
-        match check_is_scheduled {
-            Some(true) => {
-                if transaction_type != Some(TransactionEnvelope::Scheduled) {
-                    panic_with_error!(Error::NotScheduledTransaction);
-                }
-            }
-            Some(false) => {
-                if transaction_type == Some(TransactionEnvelope::Scheduled) {
-                    panic_with_error!(Error::NotClassicTransaction);
-                }
-            }
-            None => {}
-        };
-
-        let tx = match transaction_type {
-            Some(TransactionEnvelope::Legacy) => {
-                let legacy_tx = rlp::decode::<LegacyTx>(transaction).map_err(Error::from)?;
-                let chain_id = legacy_tx.chain_id;
-                let tx = TransactionPayload::Legacy(legacy_tx);
-                Transaction::from_payload(
-                    Some(TransactionEnvelope::Legacy),
-                    chain_id,
-                    &rlp::Rlp::new(transaction),
-                    tx,
-                )?
-            }
-            Some(TransactionEnvelope::AccessList) => {
-                let access_list_tx =
-                    rlp::decode::<AccessListTx>(transaction).map_err(Error::from)?;
-                let chain_id = access_list_tx.chain_id;
-                let tx = TransactionPayload::AccessList(access_list_tx);
-                Transaction::from_payload(
-                    Some(TransactionEnvelope::AccessList),
-                    Some(chain_id),
-                    &rlp::Rlp::new(transaction),
-                    tx,
-                )?
-            }
-            Some(TransactionEnvelope::DynamicFee) => {
-                let dynamic_fee_tx =
-                    rlp::decode::<DynamicFeeTx>(transaction).map_err(Error::from)?;
-                let chain_id = dynamic_fee_tx.chain_id;
-                let tx = TransactionPayload::DynamicFee(dynamic_fee_tx);
-                Transaction::from_payload(
-                    Some(TransactionEnvelope::DynamicFee),
-                    Some(chain_id),
-                    &rlp::Rlp::new(transaction),
-                    tx,
-                )?
-            }
-            Some(TransactionEnvelope::Scheduled) => {
-                let scheduled_tx = rlp::decode::<ScheduledTx>(transaction).map_err(Error::from)?;
-                let chain_id = scheduled_tx.chain_id;
-                let tx = TransactionPayload::Scheduled(scheduled_tx);
-                Transaction::from_payload(
-                    Some(TransactionEnvelope::Scheduled),
-                    Some(chain_id),
-                    &rlp::Rlp::new(transaction),
-                    tx,
-                )?
-            }
-            None => {
-                let legacy_tx = rlp::decode::<LegacyTx>(transaction).map_err(Error::from)?;
-                let chain_id = legacy_tx.chain_id;
-                let tx = TransactionPayload::Legacy(legacy_tx);
-                Transaction::from_payload(None, chain_id, &rlp::Rlp::new(transaction), tx)?
-            }
-        };
-
-        Ok(tx)
-    }
-
-    pub fn scheduled_from_rlp(transaction: &[u8]) -> Result<Self, Error> {
-        // Forbid constructing ScheduledTx via `from_rlp`, so it doesn't interfere with the "classic"
-        // Neon instructions and native Eth transactions.
-        // Use `scheduled_from_rlp` instead.
-        // N.B. Panic, instead of error, because usage would indicate a bug rather than an error.
-        Self::parse_from_rlp(transaction, Some(true))
-    }
-
-    pub fn from_rlp(transaction: &[u8]) -> Result<Self, Error> {
-        // Forbid constructing classic Eth transactions via code-path dedicated for scheduled txns.
-        // Use `scheduled_from_rlp` instead.
-        // N.B. Panic instead of error- usage would indicate a bug in the caller's code
-        // (e.g. Neon Proxy) rather than an error.
-        Self::parse_from_rlp(transaction, Some(false))
-    }
-
     pub fn recover_caller_address(&self) -> Result<Address, Error> {
         use solana_program::keccak::{hash, Hash};
         use solana_program::secp256k1_recover::secp256k1_recover;
+
+        if let TransactionPayload::Scheduled(ref scheduled) = self.transaction {
+            let origin = scheduled.sender.unwrap_or(scheduled.payer);
+            return Ok(origin);
+        }
 
         let signature = [self.r().to_be_bytes(), self.s().to_be_bytes()].concat();
         let public_key = secp256k1_recover(&self.signed_hash(), self.recovery_id(), &signature)?;
@@ -1074,32 +913,16 @@ impl Transaction {
         }
     }
 
-    pub fn use_gas_limit_multiplier(&mut self) {
-        let gas_multiplier = U256::from(GAS_LIMIT_MULTIPLIER_NO_CHAINID);
-
-        match &mut self.transaction {
-            TransactionPayload::AccessList(AccessListTx { gas_limit, .. })
-            | TransactionPayload::DynamicFee(DynamicFeeTx { gas_limit, .. })
-            | TransactionPayload::Scheduled(ScheduledTx { gas_limit, .. })
-            | TransactionPayload::Legacy(LegacyTx { gas_limit, .. }) => {
-                *gas_limit = gas_limit.saturating_mul(gas_multiplier);
-            }
-        }
-    }
-
-    #[allow(async_fn_in_trait)]
     #[maybe_async]
-    pub async fn validate(
+    pub async fn validate<'a>(
         &self,
         origin: Address,
-        backend: &impl AccountStorage,
+        platform: &impl Platform<'a>,
         tree: Option<&TransactionTree<'_>>,
     ) -> Result<(), crate::error::Error> {
-        let chain_id = self
-            .chain_id()
-            .unwrap_or_else(|| backend.default_chain_id());
+        let chain_id = self.chain_id(platform);
 
-        if !backend.is_valid_chain_id(chain_id) {
+        if !platform.chains().any(|c| c.id == chain_id) {
             return Err(Error::InvalidChainId(chain_id));
         }
 
@@ -1115,10 +938,17 @@ impl Transaction {
         //
         // Scheduled transactions:
         // payer's nonce (origin) validated only for the first transaction in the tree
-        let origin_nonce = backend.nonce(origin, chain_id).await;
-
         let validate_nonce = tree.map_or(true, TransactionTree::is_not_started);
-        if validate_nonce && (origin_nonce != self.nonce()) {
+        if !validate_nonce {
+            return Ok(());
+        }
+
+        let origin_nonce = platform
+            .get_balance(origin, chain_id)
+            .await?
+            .map_or(0_u64, |a| a.nonce());
+
+        if origin_nonce != self.nonce() {
             let error = Error::InvalidTransactionNonce(origin, origin_nonce, self.nonce());
             return Err(error);
         }

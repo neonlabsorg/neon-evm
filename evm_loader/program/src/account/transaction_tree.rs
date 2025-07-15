@@ -211,7 +211,8 @@ impl<'a> TransactionTree<'a> {
         // Init data
         account.init_tag(TAG_TRANSACTION_TREE, Header::VERSION)?;
 
-        let mut tree = Self::from_account(crate::ID, account.into())?;
+        let account: Account<'a> = account.into();
+        let mut tree = Self { account };
         {
             let mut header: RefMut<HeaderV0> = tree.account.header_mut();
             header.payer = init.payer;
@@ -407,9 +408,7 @@ impl<'a> TransactionTree<'a> {
     }
 
     #[must_use]
-    pub fn prepare_exit_status(
-        result: &ExitStatus,
-    ) -> Option<(Status, solana_program::keccak::Hash)> {
+    pub fn prepare_exit_status(result: &ExitStatus) -> (Status, solana_program::keccak::Hash) {
         use solana_program::keccak::hash as keccak256;
 
         let (status, result_hash) = match result {
@@ -417,10 +416,10 @@ impl<'a> TransactionTree<'a> {
             ExitStatus::Return(result) => (Status::Success, keccak256(result)),
             ExitStatus::Revert(result) => (Status::Failed, keccak256(result)),
             ExitStatus::Cancel => (Status::Failed, keccak256(&[])),
-            ExitStatus::Interrupted(_) | ExitStatus::StepLimit => return None,
+            ExitStatus::Interrupted(_) | ExitStatus::StepLimit => unreachable!(),
         };
 
-        Some((status, result_hash))
+        (status, result_hash)
     }
 
     pub fn end_transaction(
@@ -488,6 +487,12 @@ impl<'a> TransactionTree<'a> {
         header.max_priority_fee_per_gas
     }
 
+    pub fn gas_limit(&self, transaction_hash: [u8; 32]) -> Result<U256> {
+        let index = self.find_node(transaction_hash)?;
+        let node = self.node(index);
+        Ok(node.gas_limit)
+    }
+
     #[must_use]
     pub fn total_gas_limit(&self) -> U256 {
         self.nodes()
@@ -542,6 +547,24 @@ impl<'a> TransactionTree<'a> {
             .ok_or(Error::IntegerOverflow)?;
 
         Ok(())
+    }
+
+    pub fn burn_gas(&mut self, gas: U256, gas_price: U256) -> Result<()> {
+        assert_eq!(self.max_fee_per_gas(), gas_price);
+
+        let Some(tokens) = gas.checked_mul(gas_price) else {
+            return Err(Error::IntegerOverflow);
+        };
+        self.burn(tokens)
+    }
+
+    pub fn refund_gas(&mut self, gas: U256, gas_price: U256) -> Result<()> {
+        assert_eq!(self.max_fee_per_gas(), gas_price);
+
+        let Some(tokens) = gas.checked_mul(gas_price) else {
+            return Err(Error::IntegerOverflow);
+        };
+        self.mint(tokens)
     }
 
     #[must_use]

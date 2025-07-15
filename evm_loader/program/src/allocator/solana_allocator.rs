@@ -1,11 +1,10 @@
-use std::mem::{align_of, size_of};
+use std::ops::Range;
 use std::slice;
 
 use linked_list_allocator::Heap;
 use solana_program::entrypoint::HEAP_START_ADDRESS;
 use static_assertions::{const_assert, const_assert_eq};
 
-use crate::allocator::STATE_ACCOUNT_DATA_ADDRESS;
 use std::alloc::Layout;
 use std::ptr::NonNull;
 
@@ -22,62 +21,38 @@ cfg_if::cfg_if! {
     }
 }
 
+const SOLANA_HEAP_RANGE: Range<usize> = Range {
+    start: SOLANA_HEAP_START_ADDRESS,
+    end: SOLANA_HEAP_START_ADDRESS + SOLANA_HEAP_SIZE,
+};
+
 const_assert!(HEAP_START_ADDRESS < (usize::MAX as u64));
-
-const_assert_eq!(SOLANA_HEAP_START_ADDRESS % align_of::<Heap>(), 0);
-
-// Configure State/Holder Account heap: the offset of the heap object is at HEAP_OBJECT_OFFSET_PTR address.
-#[allow(clippy::cast_possible_truncation)]
-const HEAP_OBJECT_OFFSET_PTR: usize = STATE_ACCOUNT_DATA_ADDRESS + crate::account::HEAP_OFFSET_PTR;
+const_assert_eq!(SOLANA_HEAP_START_ADDRESS % std::mem::align_of::<Heap>(), 0);
 
 #[derive(Copy, Clone)]
 pub struct SolanaAllocator {
     heap: *mut Heap,
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 impl SolanaAllocator {
-    pub unsafe fn from_slice(slice: &mut [u8]) -> Result<Self, ()> {
-        let mut heap = Heap::from_slice(unsafe { std::mem::transmute(slice) });
-        let ptr = heap.allocate_first_fit(Layout::new::<Heap>())?;
-        unsafe {
-            let heap_ref: &mut Heap = &mut *ptr.as_ptr().cast::<Heap>();
-            *heap_ref = heap
-        }
-        Ok(SolanaAllocator {
-            heap: ptr.as_ptr().cast::<Heap>(),
-        })
+    pub fn new(heap: *mut Heap) -> Self {
+        Self { heap }
     }
 
-    #[cfg(target_os = "solana")]
-    pub fn static_account_alloc() -> Self {
-        let heap_object_offset_ptr = HEAP_OBJECT_OFFSET_PTR as *const usize;
-        let heap_object_offset = unsafe { std::ptr::read_unaligned(heap_object_offset_ptr) };
-        let heap_ptr: *mut Heap = (STATE_ACCOUNT_DATA_ADDRESS + heap_object_offset) as *mut Heap;
-        // Unlike SolanaAllocator, AccountAllocator do not init account heap here.
-        // It's account's responsibility to initialize it itself (likely during
-        // Holder/StateAccount creation), because account knows its size and thus can
-        // correctly specify heap size.
-
-        SolanaAllocator { heap: heap_ptr }
+    unsafe fn alloc_impl(&self, layout: Layout) -> Result<NonNull<u8>, ()> {
+        let heap = &mut *self.heap;
+        heap.allocate_first_fit(layout)
     }
 
-    fn heap(&self) -> &mut Heap {
-        unsafe { &mut *self.heap }
-    }
-
-    fn alloc_impl(&self, layout: Layout) -> Result<NonNull<u8>, ()> {
-        self.heap().allocate_first_fit(layout)
-    }
-
-    fn dealloc_impl(&self, ptr: *mut u8, layout: Layout) {
-        unsafe {
-            self.heap().deallocate(NonNull::new_unchecked(ptr), layout);
-        }
+    unsafe fn dealloc_impl(&self, ptr: *mut u8, layout: Layout) {
+        let heap = &mut *self.heap;
+        heap.deallocate(NonNull::new_unchecked(ptr), layout);
     }
 
     fn error_msg(&self) -> &'static str {
         let ptr = self.heap as usize;
-        if ptr >= SOLANA_HEAP_START_ADDRESS && ptr < SOLANA_HEAP_START_ADDRESS + SOLANA_HEAP_SIZE {
+        if SOLANA_HEAP_RANGE.contains(&ptr) {
             "Solana heap allocator out of memory"
         } else {
             "EVM Account Allocator out of memory"
@@ -104,7 +79,11 @@ unsafe impl std::alloc::GlobalAlloc for SolanaAllocator {
         let ptr = self.alloc(layout);
 
         if !ptr.is_null() {
+            #[cfg(target_os = "solana")]
             solana_program::syscalls::sol_memset_(ptr, 0, layout.size() as u64);
+
+            #[cfg(not(target_os = "solana"))]
+            ptr.write_bytes(0, layout.size());
         }
 
         ptr
@@ -117,7 +96,11 @@ unsafe impl std::alloc::GlobalAlloc for SolanaAllocator {
         if !new_ptr.is_null() {
             let copy_bytes = std::cmp::min(layout.size(), new_size);
 
+            #[cfg(target_os = "solana")]
             solana_program::syscalls::sol_memcpy_(new_ptr, ptr, copy_bytes as u64);
+
+            #[cfg(not(target_os = "solana"))]
+            ptr.copy_to_nonoverlapping(new_ptr, copy_bytes);
 
             self.dealloc(ptr, layout);
         }
@@ -145,19 +128,21 @@ unsafe impl allocator_api2::alloc::Allocator for SolanaAllocator {
     }
 }
 
+#[cfg(target_os = "solana")]
 struct StaticAllocator {
     start_address: usize,
     heap_size: usize,
 }
 
+#[cfg(target_os = "solana")]
 impl StaticAllocator {
     fn maybe_init(&self) -> SolanaAllocator {
         let heap_ptr: *mut Heap = self.start_address as *mut Heap;
         let heap = unsafe { &mut *heap_ptr };
 
         if heap.bottom().is_null() {
-            let start = (self.start_address + size_of::<Heap>()) as *mut u8;
-            let size = self.heap_size - size_of::<Heap>();
+            let start = (self.start_address + std::mem::size_of::<Heap>()) as *mut u8;
+            let size = self.heap_size - std::mem::size_of::<Heap>();
             unsafe { heap.init(start, size) };
         }
 
@@ -165,6 +150,7 @@ impl StaticAllocator {
     }
 }
 
+#[cfg(target_os = "solana")]
 unsafe impl std::alloc::GlobalAlloc for StaticAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         self.maybe_init().alloc(layout)
@@ -183,6 +169,7 @@ unsafe impl std::alloc::GlobalAlloc for StaticAllocator {
     }
 }
 
+#[cfg(target_os = "solana")]
 #[global_allocator]
 static DEFAULT: StaticAllocator = StaticAllocator {
     start_address: SOLANA_HEAP_START_ADDRESS,

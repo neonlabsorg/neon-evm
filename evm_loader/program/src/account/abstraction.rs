@@ -121,7 +121,7 @@ impl AccountHeader for NoHeader {
 #[enum_dispatch(Account)]
 pub trait AccountDispatch<'a> {
     fn data(&self) -> Ref<[u8]>;
-    fn data_mut(&self) -> RefMut<[u8]>; // TODO Make self mutable after state.rs refactor
+    fn data_mut(&mut self) -> RefMut<[u8]>;
 
     fn data_len(&self) -> usize;
     fn original_data_len(&self) -> usize;
@@ -159,8 +159,7 @@ pub trait AccountDispatch<'a> {
         }
     }
 
-    // TODO Make self mutable after state.rs refactor
-    fn init_tag(&self, tag: u8, header_version: u8) -> Result<()> {
+    fn init_tag(&mut self, tag: u8, header_version: u8) -> Result<()> {
         let mut data = self.data_mut();
         assert!(data.len() >= ACCOUNT_PREFIX_LEN);
 
@@ -199,8 +198,7 @@ pub trait AccountDispatch<'a> {
     }
 
     #[inline]
-    // TODO Make self mutable after state.rs refactor
-    fn section_mut<T>(&self, offset: usize) -> RefMut<T> {
+    fn section_mut<T>(&mut self, offset: usize) -> RefMut<T> {
         let begin = offset;
         let end = begin + std::mem::size_of::<T>();
 
@@ -259,8 +257,7 @@ pub trait AccountDispatch<'a> {
     }
 
     #[inline]
-    fn header_mut<T: AccountHeader>(&self) -> RefMut<T> {
-        // TODO Make self mutable after state.rs refactor
+    fn header_mut<T: AccountHeader>(&mut self) -> RefMut<T> {
         self.section_mut(ACCOUNT_PREFIX_LEN)
     }
 
@@ -305,7 +302,7 @@ impl<'a> AccountDispatch<'a> for AccountInfo<'a> {
         Ref::map(data, |data| &data[..])
     }
 
-    fn data_mut(&self) -> RefMut<[u8]> {
+    fn data_mut(&mut self) -> RefMut<[u8]> {
         let data = self.data.borrow_mut();
         RefMut::map(data, |data| &mut data[..])
     }
@@ -354,7 +351,7 @@ impl AccountDispatch<'_> for SharedAccount {
         Ref::map(account, |a| a.data.as_slice())
     }
 
-    fn data_mut(&self) -> RefMut<[u8]> {
+    fn data_mut(&mut self) -> RefMut<[u8]> {
         self.modified.set(true);
 
         let mut account = self.account.borrow_mut();

@@ -1,28 +1,24 @@
-use super::Context;
-use crate::account::Account;
-use crate::account_storage::LogCollector;
-use crate::types::vector::VectorSliceExt;
-use crate::types::Vector;
-use crate::{error::Result, executor::OwnedAccountInfo, types::Address};
-use allocator_api2::alloc::{self, Allocator};
+use crate::{
+    error::Result,
+    types::{vector::VectorSliceExt, Address, Vector},
+};
+use allocator_api2::alloc::Allocator;
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::keccak;
-use solana_program::{instruction::Instruction, pubkey::Pubkey, rent::Rent};
+
+use super::Context;
 
 #[maybe_async(?Send)]
-pub trait Database: LogCollector {
-    fn is_synced_state(&self) -> bool;
-    fn program_id(&self) -> Pubkey;
-    fn operator(&self) -> Pubkey;
-    fn chain_id_to_token(&self, chain_id: u64) -> Pubkey;
-    fn contract_pubkey(&self, address: Address) -> (Pubkey, u8);
-
+pub trait Database {
     fn default_chain_id(&self) -> u64;
-    fn is_valid_chain_id(&self, chain_id: u64) -> bool;
     async fn contract_chain_id(&self, address: Address) -> Result<u64>;
-
-    async fn solana_user_address(&self, address: Address) -> Result<Option<Pubkey>>;
+    async fn log_event<const N: usize>(
+        &mut self,
+        address: Address,
+        topics: [[u8; 32]; N],
+        data: &[u8],
+    ) -> Result<()>;
 
     async fn nonce(&self, address: Address, chain_id: u64) -> Result<u64>;
     async fn increment_nonce(&mut self, address: Address, chain_id: u64) -> Result<()>;
@@ -35,7 +31,6 @@ pub trait Database: LogCollector {
         chain_id: u64,
         value: U256,
     ) -> Result<()>;
-    async fn burn(&mut self, address: Address, chain_id: u64, value: U256) -> Result<()>;
 
     async fn code_size(&self, address: Address) -> Result<usize>;
     async fn use_code<R, F>(&self, address: Address, action: F) -> Result<R>
@@ -56,28 +51,9 @@ pub trait Database: LogCollector {
         value: [u8; 32],
     ) -> Result<()>;
 
-    async fn block_hash(&self, number: U256) -> Result<[u8; 32]>;
-    async fn block_number(&self, current_contract: Address) -> Result<U256>;
-    async fn block_timestamp(&self, current_contract: Address) -> Result<U256>;
-    fn rent(&self) -> &Rent;
-    fn return_data(&self) -> Option<(Pubkey, Vec<u8>)>;
-    fn set_return_data(&mut self, data: &[u8]);
-
-    async fn external_account(&self, address: Pubkey) -> Result<OwnedAccountInfo>;
-    async fn map_solana_account<F, R>(&self, address: &Pubkey, action: F) -> R
-    where
-        F: FnOnce(&Account) -> R;
-
-    fn snapshot(&mut self);
-    fn revert_snapshot(&mut self);
-    fn commit_snapshot(&mut self);
-
-    async fn queue_external_instruction(
-        &mut self,
-        instruction: Instruction,
-        seeds: &[&[&[u8]]],
-        emulated_internally: bool,
-    ) -> Result<()>;
+    async fn block_hash(&self, number: U256, context: &Context) -> Result<[u8; 32]>;
+    async fn block_number(&self, context: &Context) -> Result<U256>;
+    async fn block_timestamp(&self, context: &Context) -> Result<U256>;
 
     async fn precompile_extension(
         &mut self,
@@ -87,30 +63,20 @@ pub trait Database: LogCollector {
         is_static: bool,
     ) -> Option<Result<Vec<u8>>>;
 
+    fn snapshot(&mut self);
+    fn revert_snapshot(&mut self);
+    fn commit_snapshot(&mut self);
+
     async fn account_exists(&self, address: Address, chain_id: u64) -> Result<bool> {
         Ok(self.nonce(address, chain_id).await? > 0 || self.balance(address, chain_id).await? > 0)
     }
 
     async fn code_hash(&self, address: Address, chain_id: u64) -> Result<keccak::Hash> {
-        // The function `Database::code` returns a zero-length buffer if the account exists with
-        // zero-length code, but also when the account does not exist. This makes it necessary to
-        // also check if the account exists when the returned buffer is empty.
-        //
-        // We could simplify the implementation by checking if the account exists first, but that
-        // would lead to more computation in what we think is the common case where the account
-        // exists and contains code.
-        let code = self.code(address, alloc::Global).await?;
-        let bytes_to_hash: Option<&[u8]> = if !code.is_empty() {
-            Some(&*code)
-        } else if self.account_exists(address, chain_id).await? {
-            Some(&[])
-        } else {
-            None
-        };
+        if !self.account_exists(address, chain_id).await? {
+            return Ok(keccak::Hash::default());
+        }
 
-        Ok(bytes_to_hash.map_or_else(keccak::Hash::default, |bytes| {
-            solana_program::keccak::hash(bytes)
-        }))
+        self.use_code(address, keccak::hash).await
     }
 
     #[inline]

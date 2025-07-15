@@ -106,6 +106,13 @@ impl<'a> StorageCell<'a> {
         Ok(Self { account })
     }
 
+    /// # Safety
+    /// It's a caller responsibility to validate the account tag
+    #[must_use]
+    pub unsafe fn from_account_unchecked(account: Account<'a>) -> Self {
+        Self { account }
+    }
+
     pub fn initialize(mut account: Account<'a>, program_id: Pubkey) -> Result<Self> {
         assert_eq!(account.data_len(), Self::required_account_size(0));
         assert!(account.validate_tag(program_id, TAG_EMPTY).is_ok());

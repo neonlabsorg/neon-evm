@@ -80,6 +80,13 @@ impl<'a> BalanceAccount<'a> {
         Ok(Self { account })
     }
 
+    /// # Safety
+    /// It's a caller responsibility to validate the account tag
+    #[must_use]
+    pub unsafe fn from_account_unchecked(account: Account<'a>) -> Self {
+        Self { account }
+    }
+
     pub fn initialize(
         mut account: Account<'a>,
         program_id: Pubkey,

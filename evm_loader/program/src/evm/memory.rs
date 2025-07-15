@@ -58,7 +58,7 @@ impl<A: Allocator> Memory<A> {
     }
 
     #[inline]
-    fn realloc(&mut self, offset: usize, length: usize) -> Result<(), Error> {
+    pub fn realloc(&mut self, offset: usize, length: usize) -> Result<(), Error> {
         let required_size = offset
             .checked_add(length)
             .ok_or(Error::MemoryAccessOutOfLimits(offset, length))?;

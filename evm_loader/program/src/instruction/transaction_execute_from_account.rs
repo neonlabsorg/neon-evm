@@ -19,7 +19,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
 
     holder.validate(&operator)?;
 
-    let mut solana = Solana::new(accounts, operator, operator_balance)?;
+    let mut solana = Solana::new(&accounts[1..], operator, operator_balance)?;
 
     let rlp = holder.transaction()?;
     solana.use_gasometer(|g| g.record_write_to_holder(&rlp));

@@ -144,5 +144,5 @@ fn execute(program_id: Pubkey, accounts: Accounts, address: Address, chain_id: u
     let mut balance_account: BalanceAccount = solana.create_balance(address, chain_id)?;
     balance_account.mint(deposit)?;
 
-    Ok(())
+    solana.update_accounts_lamports()
 }

@@ -27,7 +27,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
             let holder_owner = holder.owner();
             let holder_info = holder.into_account();
 
-            let mut solana = Solana::new(accounts, operator, operator_balance)?;
+            let mut solana = Solana::new(&accounts[1..], operator, operator_balance)?;
             solana.use_gasometer(|g| g.record_write_to_holder(&rlp));
 
             scheduled::start(tree_index, rlp, holder_info, holder_owner, solana, tree)

@@ -98,9 +98,53 @@ impl<'a> Solana<'a> {
         info
     }
 
-    // Explicitly sync all accounts lamports
-    pub fn sync_lamports(self) {
-        // see `impl Drop for Solana<'_>`
+    pub fn update_accounts_lamports(&mut self) -> Result<()> {
+        let rent = Rent::get()?;
+        let mut expanded_accounts = Vec::with_capacity(self.sorted_account_infos.len());
+
+        for account in &self.sorted_account_infos {
+            if !crate::check_id(account.owner) {
+                continue;
+            }
+
+            let original_data_len = unsafe { account.original_data_len() };
+            if original_data_len == account.data_len() {
+                continue;
+            }
+
+            let minimum_balance = rent.minimum_balance(account.data_len());
+            if account.lamports() >= minimum_balance {
+                continue;
+            }
+
+            let lamports = minimum_balance - account.lamports();
+            expanded_accounts.push((account, lamports));
+        }
+
+        if expanded_accounts.is_empty() {
+            return Ok(());
+        }
+
+        // We collect all lamports to a single account and distribute them later
+        // This is required avoid multiple calls to `invoke_signed`
+        // Because the number of `invoke_signed` in the transaction is limited
+        let (collector, _) = expanded_accounts[0];
+        let total_lamports = expanded_accounts.iter().fold(0_u64, |total, v| total + v.1);
+
+        let operator: &AccountInfo = &self.operator.info;
+        let system: &AccountInfo = self.find_account_info(system_program::ID);
+        invoke_signed_unchecked(
+            &system_instruction::transfer(operator.key, collector.key, total_lamports),
+            &[system.clone(), operator.clone(), collector.clone()],
+            &[],
+        )?;
+
+        for (account, lamports) in expanded_accounts {
+            **collector.lamports.borrow_mut() -= lamports;
+            **account.lamports.borrow_mut() += lamports;
+        }
+
+        Ok(())
     }
 
     pub fn use_gasometer<R, F>(&mut self, action: F) -> R
@@ -241,56 +285,6 @@ impl<'a> Solana<'a> {
             &[],
         )
         .map_err(Error::from)
-    }
-}
-
-impl Drop for Solana<'_> {
-    fn drop(&mut self) {
-        let rent = Rent::get().unwrap();
-        let mut expanded_accounts = Vec::with_capacity(self.sorted_account_infos.len());
-
-        for account in &self.sorted_account_infos {
-            if !crate::check_id(account.owner) {
-                continue;
-            }
-
-            let original_data_len = unsafe { account.original_data_len() };
-            if original_data_len == account.data_len() {
-                continue;
-            }
-
-            let minimum_balance = rent.minimum_balance(account.data_len());
-            if account.lamports() >= minimum_balance {
-                continue;
-            }
-
-            let lamports = minimum_balance - account.lamports();
-            expanded_accounts.push((account, lamports));
-        }
-
-        if expanded_accounts.is_empty() {
-            return;
-        }
-
-        // We collect all lamports to a single account and distribute them later
-        // This is required avoid multiple calls to `invoke_signed`
-        // Because the number of `invoke_signed` in the transaction is limited
-        let (collector, _) = expanded_accounts[0];
-        let total_lamports = expanded_accounts.iter().fold(0_u64, |total, v| total + v.1);
-
-        let operator: &AccountInfo = &self.operator.info;
-        let system: &AccountInfo = self.find_account_info(system_program::ID);
-        invoke_signed_unchecked(
-            &system_instruction::transfer(operator.key, collector.key, total_lamports),
-            &[system.clone(), operator.clone(), collector.clone()],
-            &[],
-        )
-        .unwrap();
-
-        for (account, lamports) in expanded_accounts {
-            **collector.lamports.borrow_mut() -= lamports;
-            **account.lamports.borrow_mut() += lamports;
-        }
     }
 }
 

@@ -18,7 +18,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     holder.validate(&operator)?;
     let rlp = holder.transaction()?;
 
-    let mut solana = Solana::new(accounts, operator, operator_balance)?;
+    let mut solana = Solana::new(&accounts[1..], operator, operator_balance)?;
     solana.use_gasometer(|g| g.record_write_to_holder(&rlp));
 
     scheduled::skip(tree_index, rlp, tree, solana)

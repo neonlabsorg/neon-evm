@@ -29,7 +29,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
                 program_id, holder, &operator, &rlp,
             )?;
 
-            let solana = Solana::new(accounts, operator, operator_balance)?;
+            let solana = Solana::new(&accounts[1..], operator, operator_balance)?;
             scheduled::start(tree_index, rlp, holder, holder_owner, solana, tree)
         }
         TAG_STATE => Err(Error::ScheduledTxAlreadyInProgress(holder.pubkey())),

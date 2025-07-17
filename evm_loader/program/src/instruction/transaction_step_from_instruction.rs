@@ -49,7 +49,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
     let operator_balance = OperatorBalance::try_from_account_info(program_id, &accounts[3])?;
 
-    let mut solana = Solana::new(accounts, operator.clone(), operator_balance)?;
+    let mut solana = Solana::new(&accounts[1..], operator.clone(), operator_balance)?;
     solana.pay_to_treasury(treasury)?;
 
     match holder_info.tag(program_id)? {

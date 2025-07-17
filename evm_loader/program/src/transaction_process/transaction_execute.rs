@@ -37,6 +37,7 @@ pub fn execute(
 
     backend.commit_state_to_solana()?;
 
+    solana.update_accounts_lamports()?;
     solana.use_gasometer(|g| g.record_solana_transaction_cost(trx.gas_limit()))?;
     solana.reward_operator_from_origin(origin, &trx)?;
 
@@ -69,6 +70,7 @@ pub fn execute_with_solana_call(
 
     backend.commit_timestamps_to_solana()?;
 
+    solana.update_accounts_lamports()?;
     solana.use_gasometer(|g| g.record_solana_transaction_cost(trx.gas_limit()))?;
     solana.reward_operator_from_origin(origin, &trx)?;
 

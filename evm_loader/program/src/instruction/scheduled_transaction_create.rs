@@ -194,5 +194,5 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let required_balance = payment_from_balance(&mut tree, &mut user, required_balance)?;
     payment_from_signer(&mut tree, &signer, &system, &pool, required_balance)?;
 
-    Ok(())
+    solana.update_accounts_lamports()
 }

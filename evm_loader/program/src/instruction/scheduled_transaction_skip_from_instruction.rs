@@ -19,7 +19,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
 
     holder.validate(&operator)?;
 
-    let solana = Solana::new(accounts, operator, operator_balance)?;
+    let solana = Solana::new(&accounts[1..], operator, operator_balance)?;
 
     let encoded_transaction = EncodedTransaction::from_rlp(message);
     scheduled::skip(tree_index, encoded_transaction, tree, solana)

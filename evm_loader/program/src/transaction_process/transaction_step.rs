@@ -111,6 +111,7 @@ pub fn start_iterative(mut solana: Solana, mut state: StateAccount) -> Result<()
     root.increment_steps_executed(0)?;
 
     // Spend gas
+    solana.update_accounts_lamports()?;
     solana.use_gasometer(|g| g.record_solana_transaction_cost(root.gas_limit()))?;
     solana.reward_operator_from_holder(&mut root)
 }
@@ -143,6 +144,7 @@ pub fn execute_iterative(
     };
 
     // Spend gas
+    solana.update_accounts_lamports()?;
     solana.use_gasometer(|g| g.record_solana_transaction_cost(root.gas_limit()))?;
     solana.reward_operator_from_holder(&mut root)?;
 

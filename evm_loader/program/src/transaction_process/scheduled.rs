@@ -36,6 +36,7 @@ pub fn skip(
     log_data(&[b"HASH", &tx.hash]);
     solana.log_miner_address(tree.payer());
 
+    solana.update_accounts_lamports()?;
     solana.use_gasometer(|g| g.record_solana_transaction_cost(tx.gas_limit()))?;
     solana.reward_operator_from_tree(&mut tree, tx.hash)
 }
@@ -67,6 +68,7 @@ pub fn start<'a>(
         origin.increment_nonce()?;
     }
 
+    solana.update_accounts_lamports()?;
     solana.use_gasometer(|g| g.record_solana_transaction_cost(tx.gas_limit()))?;
     solana.reward_operator_from_holder(&mut root)?;
 

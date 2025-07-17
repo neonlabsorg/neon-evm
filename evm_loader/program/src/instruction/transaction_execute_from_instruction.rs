@@ -27,7 +27,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let trx = encoded_tansaction.decode()?;
     let origin = trx.recover_caller_address()?;
 
-    let mut solana = Solana::new(accounts, operator, operator_balance)?;
+    let mut solana = Solana::new(&accounts[1..], operator, operator_balance)?;
 
     log_data(&[b"HASH", &trx.hash()]);
     solana.log_miner_address(origin);

@@ -8,7 +8,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], _instruction: &[u8]
 
     let mut state_account = StateAccount::from_account(program_id, accounts[0].clone())?;
     let mut tree = TransactionTree::from_account_info(program_id, &accounts[1])?;
-    let _operator = Operator::from_account_info(&accounts[2])?;
+    let operator = Operator::from_account_info(&accounts[2])?;
 
     let tx_hash = state_account.transaction_hash();
 
@@ -31,7 +31,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], _instruction: &[u8]
     let Some(exit_status) = root.plain_data.scheduled_exit_status else {
         return Err(Error::ScheduledTxNoExitStatus(state_account_pubkey));
     };
-    tree.end_transaction(tx_hash.0, exit_status)?;
+    tree.end_transaction(tx_hash.0, exit_status, &operator)?;
 
     root.refund_unused_gas_to_tree(&mut tree)?;
 

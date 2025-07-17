@@ -9,7 +9,7 @@ pub use abstraction::{
 };
 pub use ether_balance::{BalanceAccount, Header as BalanceHeader};
 pub use ether_contract::{AllocateResult, ContractAccount, Header as ContractHeader};
-pub use ether_storage::{StorageCell, StorageCellSeed};
+pub use ether_storage::{Cell, StorageCell, StorageCellSeed};
 pub use holder::{Header as HolderHeader, Holder};
 pub use operator::Operator;
 pub use operator_balance::{OperatorBalance, OperatorBalanceValidator};

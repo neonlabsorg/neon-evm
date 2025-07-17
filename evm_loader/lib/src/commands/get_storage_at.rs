@@ -1,6 +1,6 @@
 use ethnum::U256;
 use evm_loader::evm::database::Database;
-use evm_loader::executor::SyncedExecutorState;
+use evm_loader::executor::{ExecutorStateData, SyncedExecutorState};
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
 
@@ -20,7 +20,8 @@ pub async fn execute(
     index: U256,
 ) -> NeonResult<GetStorageAtReturn> {
     let mut platform = EmulatorPlatform::new(rpc, *program_id, &[], &[]).await?;
-    let executor = SyncedExecutorState::new(&mut platform).await;
+    let mut executor_data = ExecutorStateData::new();
+    let executor = SyncedExecutorState::new(&mut platform, &mut executor_data);
 
     let value = executor.storage(address, index).await?;
     Ok(GetStorageAtReturn(value))

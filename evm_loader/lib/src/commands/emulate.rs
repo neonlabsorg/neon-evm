@@ -14,10 +14,12 @@ use crate::types::{FromAddress, TracerDb};
 
 use crate::{errors::NeonError, NeonResult};
 use ethnum::U256;
-use evm_loader::account_storage::{AccountStorage, SyncedAccountStorage};
 use evm_loader::error::build_revert_message;
+use evm_loader::evm::database::Database;
+use evm_loader::executor::precompile_extension::PrecompileDatabase;
+use evm_loader::executor::ExecutorStateData;
 use evm_loader::platform::Platform;
-use evm_loader::types::{Address, Transaction, TrxView};
+use evm_loader::types::{Address, Transaction};
 use evm_loader::{
     config::{
         EVM_STEPS_MIN, GAS_LIMIT_MULTIPLIER_NO_CHAINID, LAMPORTS_PER_SIGNATURE, PAYMENT_TO_TREASURE,
@@ -25,7 +27,7 @@ use evm_loader::{
     evm::{ExitStatus, Machine},
     executor::SyncedExecutorState,
 };
-use log::{debug, error, info};
+use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::{hex::Hex, serde_as, DisplayFromStr};
@@ -68,24 +70,21 @@ struct Overrides {
 }
 
 impl EmulateResponse {
-    pub fn revert<E: ToString>(
-        e: &E,
-        backend: &SyncedExecutorState<EmulatorPlatform<impl Rpc>>,
-    ) -> Self {
-        let revert_message = build_revert_message(&e.to_string());
+    pub fn revert<E: std::error::Error>(error: E, platform: &EmulatorPlatform<impl Rpc>) -> Self {
+        let revert_message = build_revert_message(&error.to_string());
         let exit_status = ExitStatus::Revert(revert_message);
         Self {
             exit_status: exit_status.to_string(),
             external_solana_call: false,
             reverts_before_solana_calls: false,
             reverts_after_solana_calls: false,
-            is_timestamp_number_used: backend.backend().is_clock_used(),
+            is_timestamp_number_used: platform.is_clock_used(),
             result: exit_status.into_result().unwrap_or_default(),
             steps_executed: 0,
             used_gas: 0,
             iterations: 0,
             solana_accounts: vec![],
-            logs: backend.backend().logs().to_vec(),
+            logs: platform.logs().to_vec(),
             accounts_data: None,
         }
     }
@@ -155,25 +154,19 @@ pub async fn execute<T: Tracer>(
     rpc: &impl BuildConfigSimulator,
     db_config: Option<&DbConfig>,
     program_id: &Pubkey,
-    emulate_request: EmulateRequest,
+    request: EmulateRequest,
     tracer: Option<T>,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
-    let step_limit = emulate_request.step_limit.unwrap_or(100_000);
+    let step_limit = request.step_limit.unwrap_or(100_000);
 
-    let result = emulate_trx(
-        &emulate_request,
-        db_config,
-        program_id,
-        step_limit,
-        tracer,
-        rpc,
-    )
-    .await?;
-
-    Ok(result)
+    if request.execution_map.is_none() {
+        emulate_trx_single_step(rpc, *program_id, tracer, request, step_limit).await
+    } else {
+        emulate_trx_multiple_steps(db_config, *program_id, tracer, request, step_limit).await
+    }
 }
 
-async fn create_rpc(
+async fn create_tracer_rpc(
     db_config: Option<&DbConfig>,
     block: u64,
     index: Option<u64>,
@@ -229,52 +222,6 @@ async fn create_platform<'rpc, T: Rpc + BuildConfigSimulator>(
     Ok(platform)
 }
 
-async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>(
-    program_id: &Pubkey,
-    emulate_request: &EmulateRequest,
-    rpc: &'rpc T,
-    overrides: Overrides,
-) -> NeonResult<(EmulatorPlatform<&'rpc T>, Transaction)> {
-    let mut storage = create_platform(rpc, *program_id, emulate_request, overrides).await?;
-
-    let (origin, tx) = emulate_request.tx.clone().into_transaction(&storage).await;
-
-    info!("origin: {:?}", origin);
-    info!("tx: {:?}", tx);
-
-    let chain_id = tx.chain_id().unwrap_or_else(|| storage.default_chain_id());
-    storage.create_balance(origin, chain_id).await?;
-
-    Ok((storage, tx))
-}
-
-async fn increment_nonce<T: Rpc>(
-    storage: &mut EmulatorPlatform<T>,
-    origin: &Address,
-    chain_id: u64,
-) -> NeonResult<()> {
-    storage.increment_nonce(*origin, chain_id).await?;
-
-    Ok(())
-}
-
-async fn transfer_gas_limit<T: Rpc>(
-    storage: &mut EmulatorPlatform<T>,
-    tx: &Transaction,
-    origin: &Address,
-    chain_id: u64,
-    increase_gas_limit: bool,
-) -> NeonResult<()> {
-    let mut gas_limit = tx.gas_limit_in_tokens()?;
-
-    if increase_gas_limit {
-        gas_limit = gas_limit.saturating_mul(U256::from(GAS_LIMIT_MULTIPLIER_NO_CHAINID));
-    }
-    storage.burn(*origin, chain_id, gas_limit).await?;
-
-    Ok(())
-}
-
 async fn calculate_response(
     steps_executed: u64,
     exit_status: ExitStatus,
@@ -324,103 +271,51 @@ async fn calculate_response(
     Ok((response, tracer_result))
 }
 
-pub async fn mark_timestamped_contracts<'r>(
-    storage: &EmulatorPlatform<impl Rpc>,
-    contracts: impl Iterator<Item = &'r Address>,
-) -> NeonResult<()> {
-    let clock = get_sysvar::<Clock>(storage).await?;
-
-    for address in contracts.copied() {
-        let Some(mut contract) = storage.get_contract(address).await? else {
-            continue;
-        };
-        contract.update_timestamp_used_at(&clock)?;
-    }
-
-    Ok(())
-}
-
-async fn emulate_trx<T: Tracer>(
-    emulate_request: &EmulateRequest,
-    db_config: Option<&DbConfig>,
-    program_id: &Pubkey,
-    step_limit: u64,
-    tracer: Option<T>,
+async fn emulate_trx_single_step(
     rpc: &impl BuildConfigSimulator,
-) -> NeonResult<(EmulateResponse, Option<Value>)> {
-    info!("tx_params: {:?}", emulate_request.tx);
-
-    if emulate_request.execution_map.is_none() {
-        let overrides = init_overrides(emulate_request);
-        let (mut storage, tx) =
-            initialize_storage_and_transaction(program_id, emulate_request, rpc, overrides).await?;
-
-        let chain_id = emulate_request
-            .tx
-            .chain_id
-            .unwrap_or_else(|| storage.default_chain_id());
-        let from = emulate_request.tx.from.address();
-
-        increment_nonce(&mut storage, &from, chain_id).await?;
-
-        let result =
-            emulate_trx_single_step(&mut storage, &tx, tracer, emulate_request, step_limit).await?;
-
-        return Ok(result);
-    }
-
-    emulate_trx_multiple_steps(db_config, program_id, tracer, emulate_request, step_limit).await
-}
-
-async fn emulate_trx_single_step<T: Tracer>(
-    storage: &mut EmulatorPlatform<impl Rpc>,
-    tx: &Transaction,
-    tracer: Option<T>,
-    emulate_request: &EmulateRequest,
+    program_id: Pubkey,
+    tracer: Option<impl Tracer>,
+    request: EmulateRequest,
     step_limit: u64,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
-    let origin = emulate_request.tx.from.address();
+    let overrides = init_overrides(&request);
+    let mut platform = create_platform(rpc, program_id, &request, overrides).await?;
+    let (origin, transaction) = request.tx.into_transaction(&platform).await?;
 
-    let (exit_status, steps_executed, tracer, timestamped_contracts) = {
-        let mut backend = SyncedExecutorState::new(storage).await;
-        let mut evm = match Machine::with_tracer(tx, origin, &mut backend, tracer).await {
-            Ok(evm) => evm,
-            Err(e) => {
-                error!("EVM creation failed {e:?}");
-                return Ok((EmulateResponse::revert(&e, &backend), None));
-            }
-        };
+    let mut database_data = ExecutorStateData::new();
+    let mut database = SyncedExecutorState::new(&mut platform, &mut database_data);
 
-        let (exit_status, steps_executed) = evm.execute(step_limit, &mut backend).await?;
-        let tracer = evm.into_tracer();
+    let chain_id = transaction.chain_id_with_database(&database);
+    database.increment_nonce(origin, chain_id).await?;
 
-        if exit_status == ExitStatus::StepLimit {
-            error!("Step_limit={step_limit} exceeded");
-            return Ok((
-                EmulateResponse::revert(&NeonError::TooManySteps, &backend),
-                None,
-            ));
-        }
-
-        let timestamped_contracts = backend.timestamped_contracts.take();
-        (exit_status, steps_executed, tracer, timestamped_contracts)
+    let mut evm = match Machine::with_tracer(&transaction, origin, &mut database, tracer).await {
+        Ok(evm) => evm,
+        Err(e) => return Ok((EmulateResponse::revert(e, &platform), None)),
     };
 
-    mark_timestamped_contracts(storage, timestamped_contracts.keys()).await?;
+    let (exit_status, steps_executed) = evm.execute(step_limit, &mut database).await?;
 
+    if exit_status == ExitStatus::StepLimit {
+        let error = NeonError::TooManySteps;
+        return Ok((EmulateResponse::revert(error, &platform), None));
+    }
+
+    database.commit_timestamps_to_solana().await?;
+
+    let tracer = evm.into_tracer();
     calculate_response(
         steps_executed,
         exit_status,
-        storage,
+        &platform,
         tracer,
-        emulate_request.provide_account_info,
+        request.provide_account_info,
     )
     .await
 }
 
-async fn prepare_origin<T: Rpc>(
-    origin: &Address,
-    storage: &mut EmulatorPlatform<T>,
+async fn prepare_origin_before_multi_step(
+    origin: Address,
+    database: &mut impl PrecompileDatabase,
     tx: &Transaction,
     chain_id: u64,
     increase_gas_limit: bool,
@@ -429,24 +324,32 @@ async fn prepare_origin<T: Rpc>(
     if is_skd_transaction {
         // Increment origin's nonce only once for the whole execution tree.
         let tx_nonce = tx.nonce();
-        let origin_nonce = storage.nonce(*origin, chain_id).await;
+        let origin_nonce = database.nonce(origin, chain_id).await?;
 
         if origin_nonce == tx_nonce {
-            increment_nonce(storage, origin, chain_id).await?;
+            database.increment_nonce(origin, chain_id).await?;
         }
     } else {
-        increment_nonce(storage, origin, chain_id).await?;
-        transfer_gas_limit(storage, tx, origin, chain_id, increase_gas_limit).await?;
+        database.increment_nonce(origin, chain_id).await?;
+
+        let mut gas_limit = tx.gas_limit();
+        if increase_gas_limit {
+            gas_limit = gas_limit.saturating_mul(U256::from(GAS_LIMIT_MULTIPLIER_NO_CHAINID));
+        }
+
+        let tokens = gas_limit * tx.gas_limit();
+        database.burn(origin, chain_id, tokens).await?;
     }
 
     Ok(())
 }
 
+#[allow(clippy::drop_non_drop)] // Drop is used here to limit the scope
 async fn emulate_trx_multiple_steps<T: Tracer>(
     db_config: Option<&DbConfig>,
-    program_id: &Pubkey,
+    program_id: Pubkey,
     tracer: Option<T>,
-    emulate_request: &EmulateRequest,
+    emulate_request: EmulateRequest,
     step_limit: u64,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     let execution_map = emulate_request
@@ -456,7 +359,6 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
     let is_skd_transaction = execution_map.is_skd_transaction;
 
-    let origin = emulate_request.tx.from.address();
     let (block, index) = {
         let step = execution_map
             .steps
@@ -466,11 +368,11 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
         (step.block, step.index)
     };
 
-    let mut rpc = create_rpc(db_config, block, index).await?;
+    let mut rpc = create_tracer_rpc(db_config, block, index).await?;
 
     let clock = get_sysvar::<Clock>(&rpc).await?;
 
-    let mut overrides = init_overrides(emulate_request);
+    let mut overrides = init_overrides(&emulate_request);
 
     let block_number = execution_map.block_number.or(Some(clock.slot));
     let block_timestamp = execution_map.block_timestamp.or(Some(clock.unix_timestamp));
@@ -481,19 +383,21 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
         ..Default::default()
     });
 
-    let (mut storage, mut tx) =
-        initialize_storage_and_transaction(program_id, emulate_request, &rpc, overrides.clone())
-            .await?;
+    let mut platform =
+        create_platform(&rpc, program_id, &emulate_request, overrides.clone()).await?;
 
-    let chain_id = emulate_request
-        .tx
-        .chain_id
-        .unwrap_or_else(|| storage.default_chain_id());
-    let increase_gas_limit = emulate_request.tx.chain_id.is_none();
+    let tx_params = emulate_request.tx.clone();
+    let (origin, tx) = tx_params.into_transaction(&platform).await?;
+    let chain_id = tx.chain_id(&platform);
 
-    prepare_origin(
-        &origin,
-        &mut storage,
+    let increase_gas_limit = tx.try_chain_id().is_none(); // TODO: check for a marker in execution map instead of transaction
+
+    let mut database_data = ExecutorStateData::new();
+    let mut database = SyncedExecutorState::new(&mut platform, &mut database_data);
+
+    prepare_origin_before_multi_step(
+        origin,
+        &mut database,
         &tx,
         chain_id,
         increase_gas_limit,
@@ -501,49 +405,46 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
     )
     .await?;
 
-    let (exit_status, steps_executed, tracer, timestamped_contracts) = {
-        let mut backend = SyncedExecutorState::new(&mut storage).await;
-
-        let mut evm = match Machine::with_tracer(&tx, origin, &mut backend, tracer).await {
+    let (exit_status, steps_executed, tracer) = {
+        let mut evm = match Machine::with_tracer(&tx, origin, &mut database, tracer).await {
             Ok(evm) => evm,
             Err(e) => {
                 error!("EVM creation failed {e:?}");
-                return Ok((EmulateResponse::revert(&e, &backend), None));
+                return Ok((EmulateResponse::revert(&e, &platform), None));
             }
         };
 
         let mut exit_status = ExitStatus::StepLimit;
         let mut steps_executed = 0u64;
         let mut tracer_result: Option<T> = evm.take_tracer();
+
         for execution_step in &execution_map.steps {
             if execution_step.is_reset {
                 drop(evm);
-                drop(backend);
-                drop(storage);
+                drop(database);
+                drop(database_data);
+                drop(platform);
                 drop(rpc);
 
                 steps_executed = 0u64;
                 exit_status = ExitStatus::StepLimit;
 
-                rpc = create_rpc(db_config, execution_step.block, execution_step.index).await?;
-                (storage, tx) = initialize_storage_and_transaction(
-                    program_id,
-                    emulate_request,
-                    &rpc,
-                    overrides.clone(),
-                )
-                .await?;
+                rpc = create_tracer_rpc(db_config, execution_step.block, execution_step.index)
+                    .await?;
+                platform =
+                    create_platform(&rpc, program_id, &emulate_request, overrides.clone()).await?;
 
                 if let Some(ref mut tracer) = tracer_result {
                     tracer.clear(&emulate_request.tx);
                 }
 
-                backend = SyncedExecutorState::new(&mut storage).await;
-                evm = match Machine::with_tracer(&tx, origin, &mut backend, tracer_result).await {
+                database_data = ExecutorStateData::new();
+                database = SyncedExecutorState::new(&mut platform, &mut database_data);
+                evm = match Machine::with_tracer(&tx, origin, &mut database, tracer_result).await {
                     Ok(evm) => evm,
                     Err(e) => {
                         error!("EVM creation failed {e:?}");
-                        return Ok((EmulateResponse::revert(&e, &backend), None));
+                        return Ok((EmulateResponse::revert(&e, &platform), None));
                     }
                 };
                 tracer_result = evm.take_tracer();
@@ -551,22 +452,21 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
             if execution_step.is_cancel {
                 drop(evm);
-                drop(backend);
-                drop(storage);
+                drop(database);
+                drop(database_data);
+                drop(platform);
                 drop(rpc);
 
                 steps_executed = 0u64;
                 exit_status = ExitStatus::Cancel;
 
-                rpc = create_rpc(db_config, execution_step.block, execution_step.index).await?;
-                (storage, _) = initialize_storage_and_transaction(
-                    program_id,
-                    emulate_request,
-                    &rpc,
-                    overrides.clone(),
-                )
-                .await?;
-                backend = SyncedExecutorState::new(&mut storage).await;
+                rpc = create_tracer_rpc(db_config, execution_step.block, execution_step.index)
+                    .await?;
+                platform =
+                    create_platform(&rpc, program_id, &emulate_request, overrides.clone()).await?;
+
+                database_data = ExecutorStateData::new();
+                database = SyncedExecutorState::new(&mut platform, &mut database_data);
 
                 if let Some(ref mut tracer) = tracer_result {
                     tracer.cancel(&emulate_request.tx);
@@ -587,39 +487,31 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
             evm.set_tracer(tracer_result);
             let (local_exit_status, local_steps_executed) = evm
-                .execute(u64::from(execution_step.steps), &mut backend)
+                .execute(u64::from(execution_step.steps), &mut database)
                 .await?;
-
-            let local_tracer = evm.take_tracer();
 
             exit_status = local_exit_status;
             steps_executed += local_steps_executed;
-            tracer_result = local_tracer;
+            tracer_result = evm.take_tracer();
         }
 
         if exit_status == ExitStatus::StepLimit {
             error!("Step_limit={step_limit} exceeded");
             return Ok((
-                EmulateResponse::revert(&NeonError::TooManySteps, &backend),
+                EmulateResponse::revert(&NeonError::TooManySteps, &platform),
                 None,
             ));
         }
 
-        let timestamped_contracts = backend.timestamped_contracts.take();
-        (
-            exit_status,
-            steps_executed,
-            tracer_result,
-            timestamped_contracts,
-        )
+        (exit_status, steps_executed, tracer_result)
     };
 
-    mark_timestamped_contracts(&storage, timestamped_contracts.keys()).await?;
+    database.commit_timestamps_to_solana().await?;
 
     calculate_response(
         steps_executed,
         exit_status,
-        &storage,
+        &platform,
         tracer,
         emulate_request.provide_account_info,
     )

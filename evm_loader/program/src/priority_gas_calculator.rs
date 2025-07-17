@@ -2,7 +2,6 @@ use crate::config::{
     BASE_ITERATIVE_TRANSACTION_COST, EXEC_ITERATION_COST, MINIMAL_ITERATION_COUNT,
 };
 use crate::error::Error;
-use crate::types::TrxView;
 use ethnum::U256;
 use solana_compute_budget_interface::check_id as check_compute_budget_id;
 use solana_compute_budget_interface::ComputeBudgetInstruction;
@@ -39,13 +38,12 @@ const fn bitmask(length: u64) -> u64 {
 }
 
 /// Returns the Gas used for Solana Priority Fee.
-pub fn calc_priority_gas(trx: &impl TrxView) -> Result<u64, Error> {
+pub fn calc_priority_gas(gas_limit: U256) -> Result<u64, Error> {
     let priority_gas = get_compute_budget_priority_fee()?;
     if priority_gas == 0 {
         return Ok(0);
     }
 
-    let gas_limit = trx.gas_limit();
     if gas_limit >= U256::from(u64::MAX) {
         return Err(Error::GasLimitOverflow(gas_limit));
     }

@@ -13,7 +13,8 @@
     missing_docs,
     clippy::missing_panics_doc,
     clippy::missing_errors_doc,
-    unexpected_cfgs
+    unexpected_cfgs,
+    clippy::new_without_default
 )]
 
 solana_program::declare_id!(crate::config::PROGRAM_ID);
@@ -24,7 +25,6 @@ pub mod debug;
 #[macro_use]
 pub mod error;
 pub mod account;
-pub mod account_storage;
 pub mod config;
 #[cfg(target_os = "solana")]
 pub mod entrypoint;
@@ -38,6 +38,8 @@ pub mod instruction;
 pub mod types;
 pub mod platform;
 pub mod priority_gas_calculator;
+#[cfg(target_os = "solana")]
+pub mod transaction_process;
 
 // Export current solana-sdk types for downstream users who may also be building with a different
 // solana-sdk version

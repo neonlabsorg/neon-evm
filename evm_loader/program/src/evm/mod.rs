@@ -7,17 +7,12 @@ use maybe_async::maybe_async;
 use solana_program::instruction::Instruction;
 use std::{fmt::Display, ops::Range};
 
-use crate::allocator::acc_allocator;
 use crate::debug::log_data;
 use crate::error::{build_revert_message, Error, Result};
 use crate::evm::opcode::Action;
 use crate::evm::tracing::EventListener;
 use crate::evm::utils::Buffer;
-use crate::types::TrxView;
-use crate::types::{
-    vector::{Vector, VectorSliceExt},
-    Address, Transaction,
-};
+use crate::types::{Address, Transaction};
 
 use self::{database::Database, memory::Memory, stack::Stack};
 
@@ -36,8 +31,8 @@ pub type SolanaCallInterrupt = std::boxed::Box<(Instruction, Vec<Vec<u8>>, Optio
 #[repr(C)]
 pub enum ExitStatus {
     Stop,
-    Return(Vector<u8>),
-    Revert(Vector<u8>),
+    Return(Vec<u8>),
+    Revert(Vec<u8>),
     Suicide,
     Interrupted(SolanaCallInterrupt),
     StepLimit,
@@ -63,6 +58,27 @@ impl ExitStatus {
     }
 
     #[must_use]
+    pub fn code(&self) -> u8 {
+        // No idea where these numbers come from, they existed from the very beginning
+        // Keeping for backward compatibility
+        match self {
+            ExitStatus::Stop => 0x11,
+            ExitStatus::Return(_) => 0x12,
+            ExitStatus::Revert(_) => 0xd0,
+            ExitStatus::Suicide => 0x13,
+            ExitStatus::Interrupted(_) | ExitStatus::StepLimit | ExitStatus::Cancel => 0xFF,
+        }
+    }
+
+    #[must_use]
+    pub fn is_execution_finished(&self) -> bool {
+        matches!(
+            self,
+            ExitStatus::Stop | ExitStatus::Return(_) | ExitStatus::Revert(_) | ExitStatus::Suicide
+        )
+    }
+
+    #[must_use]
     pub fn is_succeed(&self) -> Option<bool> {
         match self {
             ExitStatus::Stop | ExitStatus::Return(_) | ExitStatus::Suicide => Some(true),
@@ -74,7 +90,7 @@ impl ExitStatus {
     #[must_use]
     pub fn into_result(self) -> Option<Vec<u8>> {
         match self {
-            ExitStatus::Return(v) | ExitStatus::Revert(v) => Some(v.to_vec()),
+            ExitStatus::Return(v) | ExitStatus::Revert(v) => Some(v),
             ExitStatus::Stop
             | ExitStatus::Suicide
             | ExitStatus::Interrupted(_)
@@ -176,7 +192,7 @@ where
         tracer: Option<T>,
         allocator: A,
     ) -> Result<Self> {
-        let chain_id = trx.chain_id().unwrap_or_else(|| backend.default_chain_id());
+        let chain_id = trx.chain_id_with_database(backend);
 
         if backend.balance(origin, chain_id).await? < trx.value() {
             return Err(Error::InsufficientBalance(origin, chain_id, trx.value()));
@@ -324,12 +340,12 @@ where
         let (status, step) = match self.try_call_precompile(&contract, backend).await {
             Some(Ok(value)) => {
                 self.return_from_stack_frame(&value, backend).await?;
-                let return_data = self.return_data().to_vector(acc_allocator());
+                let return_data = self.return_data().to_vec();
                 (ExitStatus::Return(return_data), 0)
             }
             Some(Err(error)) => {
                 self.revert_from_stack_frame(error, backend).await?;
-                let revert_data = self.return_data().to_vector(acc_allocator());
+                let revert_data = self.return_data().to_vec();
                 (ExitStatus::Revert(revert_data), 0)
             }
             None => self.run_loop(step_limit, backend).await?,
@@ -366,11 +382,11 @@ where
                 Action::Jump(target) => self.pc = target,
                 Action::Stop => break ExitStatus::Stop,
                 Action::Return => {
-                    let return_data = self.return_data().to_vector(acc_allocator());
+                    let return_data = self.return_data().to_vec();
                     break ExitStatus::Return(return_data);
                 }
                 Action::Revert => {
-                    let return_data = self.return_data().to_vector(acc_allocator());
+                    let return_data = self.return_data().to_vec();
                     break ExitStatus::Revert(return_data);
                 }
                 Action::Suicide => break ExitStatus::Suicide,

@@ -2,9 +2,7 @@ use allocator_api2::alloc::Allocator;
 use allocator_api2::vec::Vec;
 use allocator_api2::SliceExt;
 
-use crate::allocator::StateAccountAllocator;
-
-pub type Vector<T, A = StateAccountAllocator> = Vec<T, A>;
+pub type Vector<T, A> = Vec<T, A>;
 
 pub trait VectorVecExt<T, A: Allocator> {
     fn into_vector(self, allocator: A) -> Vec<T, A>

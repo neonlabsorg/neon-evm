@@ -5,7 +5,7 @@ use evm_loader::{
         TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE,
         TAG_STATE_FINALIZED,
     },
-    types::{Address, Transaction, TrxView},
+    types::{Address, EncodedTransaction},
 };
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
@@ -81,18 +81,18 @@ impl GetHolderResponse {
     }
 }
 
-pub fn read_holder(program_id: Pubkey, info: &AccountInfo) -> NeonResult<GetHolderResponse> {
+pub fn read_holder(program_id: Pubkey, info: AccountInfo) -> NeonResult<GetHolderResponse> {
     let data_len = info.data_len();
 
     match info.tag(program_id)? {
         TAG_HOLDER => {
-            let holder = Holder::from_account_info(program_id, info)?;
+            let holder = Holder::from_account(program_id, info)?;
 
             Ok(GetHolderResponse {
                 status: Status::Holder,
                 len: Some(data_len),
                 owner: Some(holder.owner()),
-                tx: Some(holder.transaction_hash()),
+                tx: Some(holder.transaction_hash().to_bytes()),
                 // Holder may not yet contain the transaction and empty rlp panics.
                 // TODO: check the behavior.
                 tx_type: Some(0),
@@ -100,13 +100,13 @@ pub fn read_holder(program_id: Pubkey, info: &AccountInfo) -> NeonResult<GetHold
             })
         }
         TAG_STATE_FINALIZED => {
-            let state = StateFinalizedAccount::from_account_info(program_id, info)?;
+            let state = StateFinalizedAccount::from_account(program_id, info)?;
 
             Ok(GetHolderResponse {
                 status: Status::Finalized,
                 len: Some(data_len),
                 owner: Some(state.owner()),
-                tx: Some(state.trx_hash()),
+                tx: Some(state.trx_hash().to_bytes()),
                 // transaction_type, max_fee_per_gas and max_priority_fee_per_gas are not needed
                 // when transaction is already finalized.
                 // Also, the data about transaction is already not in the holder anymore.
@@ -122,27 +122,28 @@ pub fn read_holder(program_id: Pubkey, info: &AccountInfo) -> NeonResult<GetHold
                 TAG_SCHEDULED_STATE_CANCELLED => Status::ScheduledCanceled,
                 _ => unreachable!(),
             };
-            // StateAccount::from_account doesn't work here because state contains heap
-            // and transaction inside state account has been allocated via this heap.
-            // Data should be read by pointers with offsets.
-            let (plain, accounts, tx_rlp) = StateAccount::get_state_account_view(program_id, info)?;
-            let tx = Transaction::parse_from_rlp(tx_rlp.as_slice(), None)?;
+
+            let state = StateAccount::from_account(program_id, info)?;
+            let (plain, block_params, accounts, tx_rlp) = state.get_state_account_view()?;
+            let tx = EncodedTransaction::from_rlp(&tx_rlp).decode()?;
 
             let tx_params = TxParams::from_transaction(plain.origin, &tx);
+
+            let owner = state.owner();
 
             Ok(GetHolderResponse {
                 status,
                 len: Some(data_len),
-                owner: Some(plain.owner),
+                owner: Some(owner),
                 tx: Some(tx.hash()),
                 tx_data: Some(tx_params),
                 tx_type: Some(tx.tx_type()),
                 max_fee_per_gas: tx.max_fee_per_gas(),
                 max_priority_fee_per_gas: tx.max_priority_fee_per_gas(),
-                chain_id: tx.chain_id(),
+                chain_id: plain.tx_chain_id,
                 origin: Some(plain.origin),
                 tree_account: plain.tree_account,
-                block_params: Some(plain.block_params),
+                block_params: block_params.map(|p| (p.timestamp, p.number)),
                 accounts: Some(accounts),
                 steps_executed: plain.steps_executed,
             })
@@ -162,5 +163,5 @@ pub async fn execute(
     };
 
     let info = account_info(&address, &mut account);
-    Ok(read_holder(*program_id, &info).unwrap_or_else(GetHolderResponse::error))
+    Ok(read_holder(*program_id, info).unwrap_or_else(GetHolderResponse::error))
 }

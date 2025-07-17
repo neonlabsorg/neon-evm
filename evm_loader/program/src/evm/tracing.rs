@@ -117,12 +117,12 @@ macro_rules! return_vm {
             crate::evm::tracing::Event::EndVM {
                 context: $self.context,
                 chain_id: $self.chain_id,
-                status: $status($crate::types::vector::VectorSliceExt::to_vector(
+                status: $status(
                     $self
                         .memory
-                        .slice($self.return_data.start, $self.return_data.len()),
-                    $crate::allocator::acc_allocator()
-                ))
+                        .slice($self.return_data.start, $self.return_data.len())
+                        .to_vec()
+                )
             }
         );
     };

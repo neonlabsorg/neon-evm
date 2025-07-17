@@ -679,7 +679,7 @@ where
         let block_hash = {
             let block_number = self.stack.pop_u256()?;
 
-            backend.block_hash(block_number).await?
+            backend.block_hash(block_number, &self.context).await?
         };
 
         self.stack.push_array(&block_hash)?;
@@ -699,7 +699,7 @@ where
     /// current block's Unix timestamp in seconds
     #[maybe_async]
     pub async fn opcode_timestamp(&mut self, backend: &mut impl Database) -> Result<Action> {
-        let timestamp = backend.block_timestamp(self.context.contract).await?;
+        let timestamp = backend.block_timestamp(&self.context).await?;
 
         self.stack.push_u256(timestamp)?;
 
@@ -709,7 +709,7 @@ where
     /// current block's number
     #[maybe_async]
     pub async fn opcode_number(&mut self, backend: &mut impl Database) -> Result<Action> {
-        let block_number = backend.block_number(self.context.contract).await?;
+        let block_number = backend.block_number(&self.context).await?;
 
         self.stack.push_u256(block_number)?;
 
@@ -1045,7 +1045,7 @@ where
             topics
         };
 
-        backend.collect_log(address.as_bytes(), topics, data).await;
+        backend.log_event(address, topics, data).await?;
 
         Ok(Action::Continue)
     }
@@ -1366,6 +1366,7 @@ where
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
+        self.memory.realloc(offset, length)?;
         self.return_data = offset..(offset + length);
 
         if self.reason == Reason::Create {
@@ -1407,6 +1408,7 @@ where
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
+        self.memory.realloc(offset, length)?;
         self.return_data = offset..(offset + length);
 
         log_data(&[b"EXIT", b"REVERT", self.return_data()]);

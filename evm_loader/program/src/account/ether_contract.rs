@@ -63,19 +63,13 @@ pub type Storage = [[u8; 32]; STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT];
 pub type Code = [u8];
 
 pub struct ContractAccount<'a> {
-    pub account: Account<'a>, // TODO: make it private after emulator changes
+    account: Account<'a>,
 }
 
 impl<'a> ContractAccount<'a> {
     #[must_use]
-    pub fn required_account_size(code: &[u8]) -> usize {
+    pub const fn required_account_size(code: &[u8]) -> usize {
         ACCOUNT_PREFIX_LEN + size_of::<Header>() + size_of::<Storage>() + code.len()
-    }
-
-    #[must_use]
-    pub fn required_header_realloc(&self) -> usize {
-        let allocated_header_size = self.header_size();
-        size_of::<Header>().saturating_sub(allocated_header_size)
     }
 
     pub fn from_account_info(program_id: Pubkey, account: &AccountInfo<'a>) -> Result<Self> {

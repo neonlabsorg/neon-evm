@@ -7,8 +7,6 @@ use crate::{
 use ethnum::U256;
 use solana_program::pubkey::Pubkey;
 
-// TODO: TEST GLOBAL CACHE
-
 // Program Derived Addresses for all account types in the program.
 // Caution: When adding new account types, make sure no collisions occur with existing seeds.
 //          Using a unique prefix for each account type is recommended.

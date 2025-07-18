@@ -27,8 +27,6 @@ use super::{
 // Account Layout
 // ----------------
 // Header
-//   - version_signature: 40 bytes
-//   - transaction_len: 8 bytes
 // ---------------
 // Transaction Hash: 32 bytes
 // Transaction RLP: `transaction_len` bytes

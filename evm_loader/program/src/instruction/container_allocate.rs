@@ -24,7 +24,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     // Transfer lamports to the container account
     let rent = Rent::get()?;
     let minimum_balance = rent.minimum_balance(container_info.data_len());
-    let required_lamports = container_info.lamports().saturating_sub(minimum_balance);
+    let required_lamports = minimum_balance.saturating_sub(container_info.lamports());
 
     if required_lamports > 0 {
         system.transfer(&operator, container_info, required_lamports)?;

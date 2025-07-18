@@ -399,7 +399,7 @@ impl<'a> ContainerAccount<'a> {
         // Set key
         account.section_mut_uninit(key_offset).write(Key {
             pubkey,
-            offset: account_offset.try_into()?,
+            offset: 0,
             length: account_len.try_into()?,
         });
 
@@ -429,6 +429,7 @@ impl<'a> ContainerAccount<'a> {
 
         // Allocate space for the account
         let free_space_len = self.accounts().len() - account_offset;
+
         if free_space_len < account_len {
             let required_space = account_len - free_space_len;
             self.allocate_space_for_account(required_space)?;

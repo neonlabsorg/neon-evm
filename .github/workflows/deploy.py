@@ -46,7 +46,6 @@ RELEASE_TAG_TEMPLATE = r"[vt]{1}\d{1,2}\.\d{1,2}\.\d{1,2}"
 docker_client = docker.APIClient()
 
 NEON_TEST_IMAGE_NAME = "neon_tests"
-
 PROXY_ENDPOINT = os.environ.get("PROXY_ENDPOINT")
 NEON_TESTS_ENDPOINT = os.environ.get("NEON_TESTS_ENDPOINT")
 

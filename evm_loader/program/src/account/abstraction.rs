@@ -155,6 +155,22 @@ impl<'a> Account<'a> {
     }
 }
 
+#[cfg(not(target_os = "solana"))]
+impl Account<'_> {
+    #[must_use]
+    pub const fn as_shared_account(&self) -> &SharedAccount {
+        let Account::RawAccount(solana_account) = self else {
+            panic!("Account expected to be SharedAccount")
+        };
+
+        let RawAccount::SharedAccount(shared_account) = solana_account else {
+            panic!("Account expected to be SharedAccount")
+        };
+
+        shared_account
+    }
+}
+
 #[derive(PartialEq, Eq)]
 pub enum ZeroInit {
     Zero,

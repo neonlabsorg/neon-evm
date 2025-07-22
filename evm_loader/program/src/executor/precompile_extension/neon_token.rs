@@ -7,15 +7,17 @@ use maybe_async::maybe_async;
 use solana_program::{account_info::IntoAccountInfo, pubkey::Pubkey};
 use spl_associated_token_account::get_associated_token_address;
 
-use crate::account::pda_accounts;
+use crate::account::pda;
+use crate::platform::Platform;
 
 use crate::{
     account::token,
-    account_storage::FAKE_OPERATOR,
     error::{Error, Result},
-    evm::database::Database,
+    platform::FAKE_OPERATOR,
     types::Address,
 };
+
+use super::PrecompileDatabase;
 
 // Neon token method ids:
 //--------------------------------------------------
@@ -26,8 +28,8 @@ const NEON_TOKEN_METHOD_WITHDRAW_ID: &[u8; 4] = &[0x8e, 0x19, 0x89, 0x9e];
 const NEON_TOKEN_METHOD_WITHDRAW_ON_CHAIN_ID: &[u8; 4] = &[0x78, 0xdb, 0x67, 0x06];
 
 #[maybe_async]
-pub async fn neon_token<State: Database>(
-    state: &mut State,
+pub async fn neon_token(
+    state: &mut impl PrecompileDatabase,
     address: &Address,
     input: &[u8],
     context: &crate::evm::Context,
@@ -90,8 +92,8 @@ pub async fn neon_token<State: Database>(
 }
 
 #[maybe_async]
-async fn withdraw<State: Database>(
-    state: &mut State,
+async fn withdraw(
+    state: &mut impl PrecompileDatabase,
     source: Address,
     chain_id: u64,
     target: Pubkey,
@@ -101,7 +103,12 @@ async fn withdraw<State: Database>(
         return Err(Error::Custom("Neon Withdraw: value == 0".to_string()));
     }
 
-    let mint_address = state.chain_id_to_token(chain_id);
+    let mint_address = {
+        let Some(mint_chain) = state.chains().find(|c| c.id == chain_id) else {
+            return Err(Error::InvalidChainId(chain_id));
+        };
+        mint_chain.token
+    };
 
     let mut mint_account = state.external_account(mint_address).await?;
     let mint_data = {
@@ -137,13 +144,11 @@ async fn withdraw<State: Database>(
         let create_associated =
             create_associated_token_account(&FAKE_OPERATOR, &target, &mint_address, &spl_token::ID);
 
-        state
-            .queue_external_instruction(create_associated, &[], true)
-            .await?;
+        state.queue_invoke(create_associated, &[]).await?;
     }
 
-    let (authority, bump_seed) = pda_accounts::main_pool_authority(state.program_id());
-    let authority_seeds: &[&[u8]] = pda_accounts::main_pool_authority_seeds!(bump_seed);
+    let (authority, bump_seed) = pda::main_pool_authority(&state.program_id());
+    let authority_seeds: &[&[u8]] = pda::main_pool_authority_seeds!(bump_seed);
 
     let pool = get_associated_token_address(&authority, &mint_address);
 
@@ -159,9 +164,7 @@ async fn withdraw<State: Database>(
     )?;
 
     state.burn(source, chain_id, value).await?;
-    state
-        .queue_external_instruction(transfer, &[authority_seeds], true)
-        .await?;
+    state.queue_invoke(transfer, &[authority_seeds]).await?;
 
     Ok(())
 }

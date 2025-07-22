@@ -1,14 +1,17 @@
 use evm_loader::{
-    account::ContractAccount, executor::precompile_extension::PrecompiledContracts, types::Address,
+    account::pda,
+    evm::database::Database,
+    executor::{ExecutorStateData, SyncedExecutorState},
+    types::Address,
 };
 use serde::{Deserialize, Serialize};
-use solana_sdk::{account::Account, pubkey::Pubkey};
+use solana_sdk::pubkey::Pubkey;
 
-use crate::{account_storage::account_info, NeonResult};
+use crate::{
+    commands::get_config::BuildConfigSimulator, emulator_platform::EmulatorPlatform, NeonResult,
+};
 
 use serde_with::{hex::Hex, serde_as, DisplayFromStr};
-
-use super::get_config::BuildConfigSimulator;
 
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize)]
@@ -22,60 +25,39 @@ pub struct GetContractResponse {
 
 impl GetContractResponse {
     #[must_use]
-    pub const fn empty(solana_address: Pubkey) -> Self {
+    pub const fn new(pubkey: Pubkey, chain_id: Option<u64>, code: Vec<u8>) -> Self {
         Self {
-            solana_address,
-            chain_id: None,
-            code: vec![],
+            solana_address: pubkey,
+            chain_id,
+            code,
         }
-    }
-}
-
-fn read_account(
-    program_id: &Pubkey,
-    solana_address: Pubkey,
-    account: Option<Account>,
-) -> GetContractResponse {
-    let Some(mut account) = account else {
-        return GetContractResponse::empty(solana_address);
-    };
-
-    let account_info = account_info(&solana_address, &mut account);
-    let Ok(contract) = ContractAccount::from_account(*program_id, account_info.into()) else {
-        //return read_legacy_account(program_id, legacy_chain_id, solana_address, account);
-        return GetContractResponse::empty(solana_address);
-    };
-
-    let chain_id = Some(contract.chain_id());
-    let code = contract.code().to_vec();
-
-    GetContractResponse {
-        solana_address,
-        chain_id,
-        code,
     }
 }
 
 pub async fn execute(
     rpc: &impl BuildConfigSimulator,
     program_id: &Pubkey,
-    account_addresses: &[Address],
+    addresses: &[Address],
 ) -> NeonResult<Vec<GetContractResponse>> {
-    let pubkeys: Vec<_> = account_addresses
+    let mut result = Vec::with_capacity(addresses.len());
+
+    let pubkeys: Vec<_> = addresses
         .iter()
         .map(|a| a.find_solana_address(program_id).0)
         .collect();
 
-    let accounts = rpc.get_multiple_accounts(&pubkeys).await?;
+    let chains = super::get_config::read_chains(rpc, *program_id).await?;
 
-    let mut result = Vec::with_capacity(accounts.len());
-    for ((key, account), account_address) in
-        pubkeys.into_iter().zip(accounts).zip(account_addresses)
-    {
-        let mut response = read_account(program_id, key, account);
-        if PrecompiledContracts::is_precompile_extension(account_address) {
-            response.code = vec![0xfe];
-        }
+    let mut platform = EmulatorPlatform::new(rpc, *program_id, &chains, &pubkeys).await?;
+    let mut executor_data = ExecutorStateData::new();
+    let executor = SyncedExecutorState::new(&mut platform, &mut executor_data);
+
+    for address in addresses.iter().copied() {
+        let (pubkey, _) = pda::contract_address(program_id, &address);
+        let chain_id = executor.contract_chain_id(address).await.ok();
+        let code = executor.use_code(address, <[u8]>::to_vec).await?;
+
+        let response = GetContractResponse::new(pubkey, chain_id, code);
         result.push(response);
     }
 

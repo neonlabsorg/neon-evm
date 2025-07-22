@@ -1,23 +1,25 @@
 use crate::account_data::AccountData;
 use crate::config::RocksDbConfig;
+use anyhow::anyhow;
 use async_trait::async_trait;
-use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::Serialize;
-use jsonrpsee::rpc_params;
 use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
-use serde_json::from_str;
 use solana_account_decoder::UiDataSliceConfig;
+use solana_sdk::hash::Hash;
 use solana_sdk::signature::Signature;
 use solana_sdk::{
     account::Account,
     clock::{Slot, UnixTimestamp},
     pubkey::Pubkey,
 };
-use std::env;
+
+use crate::commands::get_neon_elf::get_elf_parameter;
+use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
+use crate::types::{DbResult, TracerDbTrait};
 use std::str::FromStr;
 use std::sync::Arc;
+use tracerdb_api::tracer_db_rpc_api::TracerDbApiClient;
 use tracing::{debug, info};
-
 #[derive(Clone, Serialize)]
 pub struct AccountParams {
     pub pubkey: Pubkey,
@@ -25,8 +27,6 @@ pub struct AccountParams {
     pub tx_index_in_block: Option<u64>,
 }
 
-use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
-use crate::types::{DbResult, TracerDbTrait};
 // use reconnecting_jsonrpsee_ws_client::{Client, CallRetryPolicy, rpc_params, ExponentialBackoff};
 #[derive(Clone, Debug)]
 pub struct RocksDb {
@@ -42,11 +42,6 @@ impl RocksDb {
         let port = &config.rocksdb_port;
         let url = format!("ws://{host}:{port}");
 
-        // match Client::builder()
-        //     .retry_policy(
-        //     ExponentialBackoff::from_millis(100)
-        //         .max_delay(Duration::from_secs(10))
-        //         .take(3),)
         match WsClientBuilder::default().build(&url).await {
             Ok(client) => {
                 let arc_c = Arc::new(client);
@@ -61,33 +56,18 @@ impl RocksDb {
 #[async_trait]
 impl TracerDbTrait for RocksDb {
     async fn get_block_time(&self, slot: Slot) -> DbResult<UnixTimestamp> {
-        let response: String = self
-            .client
-            .request("get_block_time", rpc_params![slot])
-            .await?;
-        info!(
-            "get_block_time for slot {:?} response: {:?}",
-            slot, response
-        );
-        Ok(i64::from_str(response.as_str())?)
+        self.client
+            .get_block_time(slot)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Block time value is None"))
     }
 
     async fn get_earliest_rooted_slot(&self) -> DbResult<u64> {
-        let response: String = self
-            .client
-            .request("get_earliest_rooted_slot", rpc_params![])
-            .await?;
-        info!("get_earliest_rooted_slot response: {:?}", response);
-        Ok(u64::from_str(response.as_str())?)
+        Ok(self.client.get_earliest_rooted_slot().await?)
     }
 
     async fn get_latest_block(&self) -> DbResult<u64> {
-        let response: String = self
-            .client
-            .request("get_last_rooted_slot", rpc_params![])
-            .await?;
-        info!("get_latest_block response: {:?}", response);
-        Ok(u64::from_str(response.as_str())?)
+        Ok(self.client.get_earliest_rooted_slot().await?)
     }
 
     async fn get_account_at(
@@ -98,55 +78,53 @@ impl TracerDbTrait for RocksDb {
         maybe_bin_slice: Option<UiDataSliceConfig>,
     ) -> DbResult<Option<Account>> {
         info!("get_account_at {pubkey:?}, slot: {slot:?}, tx_index: {tx_index_in_block:?}, bin_slice: {maybe_bin_slice:?}");
-
-        let response: String = self
+        Ok(self
             .client
-            .request(
-                "get_account",
-                rpc_params![pubkey.to_string(), slot, tx_index_in_block, maybe_bin_slice],
-            )
-            .await?;
-
-        let account = from_str::<Option<Account>>(response.as_str())?;
-        account.as_ref().map_or_else(|| {
-            info!("Got None for Account by {pubkey:?}");
-        }, |account| {
-            info!("Got Account by {pubkey:?} owner: {:?} lamports: {:?} executable: {:?} rent_epoch: {:?}", account.owner, account.lamports, account.executable, account.rent_epoch);
-        });
-
-        Ok(account)
+            .get_account((*pubkey).into(), slot, tx_index_in_block, maybe_bin_slice)
+            .await?
+            .map(Account::from))
     }
 
     async fn get_transaction_index(&self, signature: Signature) -> DbResult<u64> {
-        let response: String = self
-            .client
-            .request("get_transaction_index", rpc_params![signature.to_string()])
-            .await?;
-        info!("get_transaction_index response: {:?}", response);
-        Ok(u64::from_str(response.as_str())?)
+        let tx_index = self.client.get_transaction_index(signature.into()).await?;
+        tx_index.ok_or_else(|| anyhow::anyhow!("get_transaction_index value is None"))
     }
 
-    async fn get_neon_revisions(&self, _pubkey: &Pubkey) -> DbResult<RevisionMap> {
-        let revision = env::var("NEON_REVISION").expect("NEON_REVISION should be set");
-
-        info!("get_neon_revisions for {revision:?}");
-        let ranges = vec![(1, 100_000, revision)];
+    async fn get_neon_revisions(&self, pubkey: &Pubkey) -> DbResult<RevisionMap> {
+        let slots = self
+            .client
+            .get_account_data_history((*pubkey).into(), None, None);
+        let time_array = slots.await.map_err(|e| {
+            anyhow::anyhow!("Failed to get account data history for pubkey {pubkey}, error: {e:?}",)
+        })?;
+        let mut ranges: Vec<(u64, u64, String)> = Vec::new();
+        let mut prev_value = 0;
+        for (slot, _) in time_array {
+            let rev = self.get_neon_revision(slot, pubkey).await?;
+            debug!("Slot: {slot}, Revision: {rev}");
+            ranges.push((slot, prev_value, rev));
+            prev_value = slot - 1;
+        }
         Ok(RevisionMap::new(ranges))
     }
 
     async fn get_neon_revision(&self, slot: Slot, pubkey: &Pubkey) -> DbResult<String> {
-        info!("get_neon_revision for {slot:?}, pubkey: {pubkey:?}");
-        let neon_revision = env!("NEON_REVISION");
-        Ok(neon_revision.to_string())
+        if let Some(acc_data) = self.get_account_at(pubkey, slot, None, None).await? {
+            let neon_revision = get_elf_parameter(acc_data.data.as_slice(), "NEON_REVISION")
+                .map_err(|e| anyhow::anyhow!("Failed to get NEON_REVISION, error: {e:?}",))?;
+            Ok(neon_revision)
+        } else {
+            anyhow::bail!("No neon revision found for {pubkey}")
+        }
     }
 
     async fn get_slot_by_blockhash(&self, blockhash: String) -> DbResult<u64> {
-        let response: String = self
-            .client
-            .request("get_slot_by_blockhash", rpc_params![blockhash])
-            .await?;
-        info!("response: {:?}", response);
-        Ok(from_str(response.as_str())?)
+        let hash = Hash::from_str(&blockhash).map_err(|e| anyhow!(e))?;
+
+        self.client
+            .get_slot_by_blockhash(hash.into())
+            .await?
+            .ok_or_else(|| anyhow!("get_slot_by_blockhash value is None"))
     }
 
     async fn get_sync_status(&self) -> DbResult<EthSyncStatus> {
@@ -158,21 +136,19 @@ impl TracerDbTrait for RocksDb {
         sol_sig: &[u8],
         slot: u64,
     ) -> DbResult<Vec<AccountData>> {
-        let signature = Signature::try_from(sol_sig)?;
-        let response: String = self
+        let signature =
+            Signature::try_from(sol_sig).map_err(|e| anyhow!("Invalid signature format: {}", e))?;
+        let response = self
             .client
-            .request(
-                "get_accounts_in_transaction",
-                rpc_params![signature.to_string(), slot],
-            )
+            .get_accounts_in_transaction(signature.into(), Some(slot))
             .await?;
-
-        let response: Vec<(&str, Account)> = from_str(response.as_str())?;
         debug!("Accounts in response: {:?}", response);
         let account_data_vec = response
-            .iter()
+            .into_iter()
             .map(|(pubkey, acc)| {
-                AccountData::new_from_account(Pubkey::from_str(pubkey).unwrap(), acc)
+                let pk = Pubkey::from(pubkey);
+                let acc: Account = acc.into();
+                AccountData::new_from_account(pk, &acc)
             })
             .collect();
         Ok(account_data_vec)

@@ -1,10 +1,10 @@
 use std::cell::{Ref, RefMut};
 use std::mem::size_of;
 
-use crate::config::ACCOUNT_SEED_VERSION;
+use crate::account::pda;
 use crate::{
     error::{Error, Result},
-    types::{Address, Transaction, TrxView},
+    types::Address,
 };
 use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent};
@@ -84,19 +84,12 @@ impl<'a> OperatorBalance<'a> {
         }
 
         // Create a new account
-        let program_seeds: &[&[u8]] = &[
-            &[ACCOUNT_SEED_VERSION],
-            operator.key.as_ref(),
-            address.as_bytes(),
-            &U256::from(chain_id).to_be_bytes(),
-            &[bump_seed],
-        ];
-
+        let seeds: &[&[u8]] = pda::operator_seeds!(operator.key, address, chain_id, bump_seed);
         system.create_pda_account(
             &crate::ID,
             operator,
             &account,
-            program_seeds,
+            seeds,
             Self::required_account_size(),
             rent,
         )?;
@@ -216,13 +209,13 @@ impl<'a> OperatorBalance<'a> {
 }
 
 pub trait OperatorBalanceValidator {
-    fn validate(&self, operator: &Operator, trx: &Transaction) -> Result<()> {
+    fn validate(&self, operator: &Operator, chain_id: u64) -> Result<()> {
         self.validate_owner(operator)?;
-        self.validate_transaction(trx)
+        self.validate_chain_id(chain_id)
     }
 
     fn validate_owner(&self, operator: &Operator) -> Result<()>;
-    fn validate_transaction(&self, trx: &impl TrxView) -> Result<()>;
+    fn validate_chain_id(&self, chain_id: u64) -> Result<()>;
 
     fn miner(&self, origin: Address) -> Address;
 }
@@ -233,16 +226,10 @@ impl OperatorBalanceValidator for Option<OperatorBalance<'_>> {
         balance.validate_owner(operator)
     }
 
-    fn validate_transaction(&self, trx: &impl TrxView) -> Result<()> {
-        if self.is_none() && (trx.gas_price() != U256::ZERO) {
-            return Err(Error::OperatorBalanceMissing);
-        }
-
-        if let Some(balance) = self {
-            let chain_id = trx.chain_id().unwrap_or(crate::config::DEFAULT_CHAIN_ID);
-            if balance.chain_id() != chain_id {
-                return Err(Error::OperatorBalanceInvalidChainId);
-            }
+    fn validate_chain_id(&self, chain_id: u64) -> Result<()> {
+        let Some(balance) = self else { return Ok(()) };
+        if balance.chain_id() != chain_id {
+            return Err(Error::OperatorBalanceInvalidChainId);
         }
 
         Ok(())

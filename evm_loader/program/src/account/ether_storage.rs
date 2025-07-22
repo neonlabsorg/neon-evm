@@ -1,25 +1,24 @@
 use std::cell::{Ref, RefMut};
+use std::cmp::Ordering;
 use std::mem::size_of;
 
 use super::{
-    Account, AccountDispatch, AccountHeader, AccountsDB, NoHeader, ZeroInit, ACCOUNT_PREFIX_LEN,
-    TAG_EMPTY, TAG_STORAGE_CELL,
+    Account, AccountDispatch, AccountHeader, NoHeader, ZeroInit, ACCOUNT_PREFIX_LEN, TAG_EMPTY,
+    TAG_STORAGE_CELL,
 };
 use crate::error::{Error, Result};
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
-use solana_program::{pubkey::Pubkey, rent::Rent};
+use solana_program::pubkey::Pubkey;
 
 #[derive(Copy, Clone)]
-pub struct StorageCellAddress {
-    base: Pubkey,
+pub struct StorageCellSeed {
     seed: [u8; 32],
-    pubkey: Pubkey,
 }
 
-impl StorageCellAddress {
+impl StorageCellSeed {
     #[must_use]
-    fn make_seed(index: &U256) -> [u8; 32] {
+    fn make_seed(index: U256) -> [u8; 32] {
         let mut buffer = [0_u8; 32];
 
         let index_bytes = index.to_be_bytes();
@@ -47,27 +46,17 @@ impl StorageCellAddress {
     }
 
     #[must_use]
-    pub fn new(program_id: &Pubkey, base: &Pubkey, index: &U256) -> Self {
-        let seed_buffer = Self::make_seed(index);
-        let seed = unsafe { std::str::from_utf8_unchecked(&seed_buffer) };
-
-        let pubkey = Pubkey::create_with_seed(base, seed, program_id).unwrap();
-
-        Self {
-            base: *base,
-            seed: seed_buffer,
-            pubkey,
-        }
+    pub fn new(index: U256) -> Self {
+        let seed = Self::make_seed(index);
+        Self { seed }
     }
+}
 
-    #[must_use]
-    pub fn seed(&self) -> &str {
+impl std::ops::Deref for StorageCellSeed {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
         unsafe { std::str::from_utf8_unchecked(&self.seed) }
-    }
-
-    #[must_use]
-    pub fn pubkey(&self) -> &Pubkey {
-        &self.pubkey
     }
 }
 
@@ -117,43 +106,21 @@ impl<'a> StorageCell<'a> {
         Ok(Self { account })
     }
 
-    pub fn create(
-        address: StorageCellAddress,
-        allocate_cells: usize,
-        accounts: &AccountsDB<'a>,
-        signer_seeds: &[&[u8]],
-        rent: &Rent,
-    ) -> Result<Self> {
-        let base_account = accounts.get(&address.base);
-        let cell_account = accounts.get(&address.pubkey);
-
-        assert!(allocate_cells <= u8::MAX.into());
-        let space = Self::required_account_size(allocate_cells);
-
-        let system = accounts.system();
-
-        system.create_account_with_seed(
-            &crate::ID,
-            accounts.operator(),
-            base_account,
-            signer_seeds,
-            cell_account,
-            address.seed(),
-            space,
-            rent,
-        )?;
-
-        let account = cell_account.clone().into();
-        Self::initialize(account, crate::ID)
+    /// # Safety
+    /// It's a caller responsibility to validate the account tag
+    #[must_use]
+    pub unsafe fn from_account_unchecked(account: Account<'a>) -> Self {
+        Self { account }
     }
 
     pub fn initialize(mut account: Account<'a>, program_id: Pubkey) -> Result<Self> {
+        assert_eq!(account.data_len(), Self::required_account_size(0));
         assert!(account.validate_tag(program_id, TAG_EMPTY).is_ok());
 
         account.init_tag(TAG_STORAGE_CELL, Header::VERSION)?;
         {
             let mut header: RefMut<Header> = account.header_mut();
-            header.revision = 1; // TODO: set it to zero after AccountStorage changes
+            header.revision = 0; // Empty account without cells, no need to increment revision
         }
 
         Ok(Self { account })
@@ -172,14 +139,13 @@ impl<'a> StorageCell<'a> {
         }
     }
 
-    fn header_upgrade(&mut self, rent: &Rent, db: &AccountsDB<'a>) -> Result<()> {
+    fn header_upgrade(&mut self) -> Result<()> {
         match self.account.header_version() {
             0 | 1 => {
-                self.account.expand_header::<NoHeader, Header>(rent, db)?;
+                self.account.expand_header::<NoHeader, Header>()?;
             }
             HeaderWithRevision::VERSION => {
-                self.account
-                    .expand_header::<HeaderWithRevision, Header>(rent, db)?;
+                self.account.expand_header::<HeaderWithRevision, Header>()?;
             }
             v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
         }
@@ -230,6 +196,7 @@ impl<'a> StorageCell<'a> {
             }
         })
     }
+
     #[must_use]
     pub fn get(&self, subindex: u8) -> [u8; 32] {
         for cell in &*self.cells() {
@@ -243,36 +210,65 @@ impl<'a> StorageCell<'a> {
         [0_u8; 32]
     }
 
-    pub fn update(&mut self, subindex: u8, value: &[u8; 32]) -> Result<()> {
-        // todo: if value is zero - destroy cell
-
-        for cell in &mut *self.cells_mut() {
-            if cell.subindex != subindex {
-                continue;
+    fn get_mut(&mut self, subindex: u8) -> Option<RefMut<[u8; 32]>> {
+        let cells = self.cells_mut();
+        RefMut::filter_map(cells, |cells| {
+            for cell in cells {
+                if cell.subindex == subindex {
+                    return Some(&mut cell.value);
+                }
             }
+            None
+        })
+        .ok()
+    }
 
-            cell.value.copy_from_slice(value);
-            return Ok(());
-        }
-
-        if value == &[0u8; 32] {
-            return Ok(());
-        }
-
+    fn allocate_cell(&mut self) -> Result<RefMut<Cell>> {
         let new_len = self.account.data_len() + size_of::<Cell>(); // new_len <= 8.25 kb
         self.account.reallocate(new_len, ZeroInit::Uninit)?;
 
-        let mut cells = self.cells_mut();
+        let cells = self.cells_mut();
+        let filter_result = RefMut::filter_map(cells, <[Cell]>::last_mut);
 
-        let last_cell = cells.last_mut().unwrap();
-        last_cell.subindex = subindex;
-        last_cell.value.copy_from_slice(value);
-
-        Ok(())
+        // SAFETY: We just allocated a new cell, filter_map will never fail
+        // Use unwrap_unchecked instead of unwrap beacause [Cell] does not implement Debug
+        Ok(unsafe { filter_result.unwrap_unchecked() })
     }
 
-    pub fn sync_lamports(&mut self, rent: &Rent, accounts: &AccountsDB<'a>) -> Result<()> {
-        self.account.sync_lamports(rent, accounts)
+    pub fn update(&mut self, subindex: u8, value: &[u8; 32]) -> Result<()> {
+        let need_revision_increment = 'revision: {
+            // Try to find an existing cell with the same subindex
+            if let Some(mut cell) = self.get_mut(subindex) {
+                if cell.cmp(value) == Ordering::Equal {
+                    // Cell already exists with the same value, do nothing
+                    break 'revision false;
+                }
+
+                // Update the existing cell and increment revision
+                cell.copy_from_slice(value);
+                break 'revision true;
+            }
+
+            // Existing cell not found
+
+            // If the value is zero, do not allocate a new cell
+            if value.cmp(&[0_u8; 32]) == Ordering::Equal {
+                break 'revision false;
+            }
+
+            // Value is not zero, allocate a new cell
+            let mut cell = self.allocate_cell()?;
+            cell.subindex = subindex;
+            cell.value.copy_from_slice(value);
+
+            true
+        };
+
+        if need_revision_increment {
+            self.increment_revision()?;
+        }
+
+        Ok(())
     }
 
     #[must_use]
@@ -285,9 +281,9 @@ impl<'a> StorageCell<'a> {
         header.revision
     }
 
-    pub fn increment_revision(&mut self, rent: &Rent, db: &AccountsDB<'a>) -> Result<()> {
+    pub fn increment_revision(&mut self) -> Result<()> {
         if self.account.header_version() < HeaderWithRevision::VERSION {
-            self.header_upgrade(rent, db)?;
+            self.header_upgrade()?;
         }
 
         let mut header: RefMut<HeaderWithRevision> = self.account.header_mut();

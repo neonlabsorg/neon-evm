@@ -1,3 +1,4 @@
+use allocator_api2::alloc::Allocator;
 use maybe_async::maybe_async;
 
 use crate::error::Result;
@@ -15,11 +16,6 @@ mod ecrecover;
 mod ripemd160;
 mod sha256;
 
-// const _SYSTEM_ACCOUNT_ERC20_WRAPPER: Address    = Address([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01]);
-// const SYSTEM_ACCOUNT_QUERY: Address             = Address([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x02]);
-// const SYSTEM_ACCOUNT_NEON_TOKEN: Address        = Address([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x03]);
-// const SYSTEM_ACCOUNT_SPL_TOKEN: Address         = Address([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x04]);
-// const SYSTEM_ACCOUNT_METAPLEX: Address          = Address([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x05]);
 const SYSTEM_ACCOUNT_ECRECOVER: Address = Address([
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01,
 ]);
@@ -62,8 +58,9 @@ pub fn is_precompile_address(address: &Address) -> bool {
         || *address == SYSTEM_ACCOUNT_BLAKE2F
 }
 
-impl<T> Machine<T>
+impl<A, T> Machine<A, T>
 where
+    A: Allocator + Copy,
     T: EventListener,
 {
     #[must_use]
@@ -88,13 +85,15 @@ where
         address: &Address,
         backend: &mut impl Database,
     ) -> Option<Result<Vec<u8>>> {
-        let value = Self::standard_precompile(address, &self.call_data);
+        let call_data = self.call_data.as_slice(&self.parent);
+
+        let value = Self::standard_precompile(address, call_data);
         if let Some(value) = value {
             return Some(Ok(value));
         }
 
         backend
-            .precompile_extension(&self.context, address, &self.call_data, self.is_static)
+            .precompile_extension(&self.context, address, call_data, self.is_static)
             .await
     }
 }

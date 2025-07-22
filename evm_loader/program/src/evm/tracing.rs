@@ -4,8 +4,6 @@ use super::{Context, ExitStatus};
 use crate::evm::database::Database;
 use crate::evm::opcode_table::Opcode;
 
-pub struct NoopEventListener;
-
 #[maybe_async(?Send)]
 pub trait EventListener {
     async fn event(
@@ -16,7 +14,7 @@ pub trait EventListener {
 }
 
 #[maybe_async(?Send)]
-impl EventListener for NoopEventListener {
+impl EventListener for () {
     async fn event(
         &mut self,
         _executor_state: &impl Database,
@@ -49,3 +47,111 @@ pub enum Event {
         return_data: Vec<u8>,
     },
 }
+
+macro_rules! tracing_event {
+    ($self:expr, $backend:expr, $event:expr) => {
+        #[cfg(not(target_os = "solana"))]
+        if let Some(tracer) = &mut $self.tracer {
+            tracer.event($backend, $event).await?;
+        }
+    };
+}
+
+macro_rules! begin_vm {
+    ($self:expr, $backend:expr, $context:expr, $chain_id:expr, $input:expr, $opcode:expr) => {
+        $crate::evm::tracing::tracing_event!(
+            $self,
+            $backend,
+            crate::evm::tracing::Event::BeginVM {
+                context: $context,
+                chain_id: $chain_id,
+                input: $input.to_vec(),
+                opcode: $opcode
+            }
+        );
+    };
+    ($self:expr, $backend:expr, $context:expr, $chain_id:expr, $input:expr) => {
+        $crate::evm::tracing::begin_vm!(
+            $self,
+            $backend,
+            $context,
+            $chain_id,
+            $input,
+            $self.execution_code.get_u8($self.pc, &$self.parent).into()
+        );
+    };
+}
+
+macro_rules! begin_vm_inner {
+    ($self:expr, $backend:expr, $context:expr, $chain_id:expr, $input_offset:expr, $input_len:expr) => {
+        $crate::evm::tracing::begin_vm!(
+            $self,
+            $backend,
+            $context,
+            $chain_id,
+            $self.memory.slice($input_offset, $input_len),
+            $self.execution_code.get_u8($self.pc, &$self.parent).into()
+        );
+    };
+}
+
+macro_rules! stop_vm {
+    ($self:expr, $backend:expr, $status:expr) => {
+        $crate::evm::tracing::tracing_event!(
+            $self,
+            $backend,
+            crate::evm::tracing::Event::EndVM {
+                context: $self.context,
+                chain_id: $self.chain_id,
+                status: $status
+            }
+        );
+    };
+}
+
+macro_rules! return_vm {
+    ($self:expr, $backend:expr, $status:expr) => {
+        $crate::evm::tracing::tracing_event!(
+            $self,
+            $backend,
+            crate::evm::tracing::Event::EndVM {
+                context: $self.context,
+                chain_id: $self.chain_id,
+                status: $status(
+                    $self
+                        .memory
+                        .slice($self.return_data.start, $self.return_data.len())
+                        .to_vec()
+                )
+            }
+        );
+    };
+}
+
+macro_rules! begin_step {
+    ($self:expr, $backend:expr) => {
+        $crate::evm::tracing::tracing_event!(
+            $self,
+            $backend,
+            crate::evm::tracing::Event::BeginStep {
+                context: $self.context,
+                chain_id: $self.chain_id,
+                opcode: $self.execution_code.get_u8($self.pc, &$self.parent).into(),
+                pc: $self.pc,
+                stack: $self.stack.to_vec(),
+                memory: $self.memory.to_vec(),
+                return_data: $self
+                    .child
+                    .as_ref()
+                    .map_or(vec![], |c| c.return_data().to_vec())
+            }
+        );
+    };
+}
+
+pub(crate) use begin_step;
+pub(crate) use begin_vm;
+pub(crate) use begin_vm_inner;
+pub(crate) use return_vm;
+pub(crate) use stop_vm;
+pub(crate) use tracing_event;

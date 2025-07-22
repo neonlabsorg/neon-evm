@@ -2,21 +2,20 @@ pub use address::Address;
 pub use execution_map::{ExecutionMap, ExecutionStep};
 pub use transaction::AccessListTx;
 pub use transaction::DynamicFeeTx;
+pub use transaction::EncodedTransaction;
 pub use transaction::LegacyTx;
 pub use transaction::ScheduledTx;
-pub use transaction::ScheduledTxShell;
 pub use transaction::StorageKey;
 pub use transaction::Transaction;
 pub use transaction::TransactionPayload;
-pub use transaction::TrxView;
 pub use tree_map::TreeMap;
 pub use vector::Vector;
 
 mod address;
 mod transaction;
 pub mod tree_map;
+pub mod tree_map_cell;
 #[macro_use]
 pub mod vector;
-pub mod boxx;
 pub mod execution_map;
 pub mod read_raw_utils;

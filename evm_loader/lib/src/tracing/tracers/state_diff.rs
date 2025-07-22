@@ -37,10 +37,6 @@ pub struct States {
     pub pre: Account,
 }
 
-fn map_code(buffer: &[u8]) -> Bytes {
-    buffer.to_vec().into()
-}
-
 pub(crate) fn to_web3_u256(v: U256) -> web3::types::U256 {
     web3::types::U256::from(v.to_be_bytes())
 }
@@ -111,7 +107,7 @@ impl EventListener for StateDiffTracer {
                             balance: to_web3_u256(
                                 executor_state.balance(*address, chain_id).await?,
                             ),
-                            code: map_code(&executor_state.code(*address).await?),
+                            code: executor_state.use_code(*address, |c| c.into()).await?,
                             nonce: executor_state.nonce(*address, chain_id).await?,
                             storage: {
                                 let mut new_storage = BTreeMap::new();
@@ -235,7 +231,7 @@ impl StateDiffTracer {
                     post: Account::default(),
                     pre: Account {
                         balance: to_web3_u256(executor_state.balance(address, chain_id).await?),
-                        code: map_code(&executor_state.code(address).await?),
+                        code: executor_state.use_code(address, |c| c.into()).await?,
                         nonce: executor_state.nonce(address, chain_id).await?,
                         storage: BTreeMap::new(),
                     },

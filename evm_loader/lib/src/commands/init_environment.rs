@@ -17,7 +17,7 @@ use {
         Config,
     },
     evm_loader::{
-        account::{pda_accounts, MainTreasury, Treasury},
+        account::{pda, MainTreasury, Treasury},
         config::TREASURY_POOL_SEED,
     },
     log::{error, info, warn},
@@ -199,7 +199,7 @@ pub async fn execute(
     executor.checkpoint(config.commitment).await?;
 
     //====================== Create 'Deposit' NEON-token balance ======================================================
-    let (deposit_authority, _) = pda_accounts::main_pool_authority(&config.evm_loader);
+    let (deposit_authority, _) = pda::main_pool_authority(&config.evm_loader);
     let chains = super::get_config::read_chains(client, config.evm_loader).await?;
     for chain in chains {
         let pool = get_associated_token_address(&deposit_authority, &chain.token);

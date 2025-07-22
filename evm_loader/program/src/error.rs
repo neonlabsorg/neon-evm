@@ -1,10 +1,9 @@
 //! Error types
 #![allow(clippy::use_self)]
 
-use crate::account::InterruptedState;
-use crate::allocator::acc_allocator;
 use crate::debug::log_data;
-use crate::types::{Address, Vector};
+use crate::evm::SolanaCallInterrupt;
+use crate::types::Address;
 use ethnum::U256;
 use solana_program::{
     program_error::ProgramError,
@@ -283,7 +282,7 @@ pub enum Error {
     PriorityFeeParsingError(String),
 
     #[error("Priority fee calculation error: {0}")]
-    PriorityFeeError(String),
+    PriorityFeeError(&'static str),
 
     #[error("Transaction Tree - not ready for destruction")]
     TreeAccountNotReadyForDestruction,
@@ -354,8 +353,8 @@ pub enum Error {
     #[error("Account {0} - invalid header version {1}")]
     AccountInvalidHeader(Pubkey, u8),
 
-    #[error("Revert after Solana Call is not supported")]
-    RevertAfterSolanaCall,
+    #[error("Revert with Solana Call is not supported")]
+    RevertWithSolanaCall,
 
     #[error("Unsupported EIP-2718 Transaction type | First byte: {0}")]
     UnsuppotedEthereumTransactionType(u8),
@@ -364,7 +363,7 @@ pub enum Error {
     UnsuppotedNeonTransactionType(u8),
 
     #[error("Solana programs was interrupted")]
-    InterruptedCall(#[serde(skip)] Box<Option<InterruptedState>>),
+    InterruptedCall(#[serde(skip)] SolanaCallInterrupt),
 
     #[error("Transaction tree - transaction invalid too much nodes")]
     TreeAccountTxInvalidTooMuchNodes,
@@ -374,6 +373,9 @@ pub enum Error {
 
     #[error("Gas Limit is too big: {0}")]
     GasLimitOverflow(#[serde(with = "ethnum::serde::bytes::le")] U256),
+
+    #[error("Step limit {0} below minimum {1}")]
+    StepLimitBellowMinimum(u64, u64),
 }
 
 impl Error {
@@ -485,7 +487,7 @@ pub fn print_revert_message(msg: &[u8]) {
 }
 
 #[must_use]
-pub fn build_revert_message(msg: &str) -> Vector<u8> {
+pub fn build_revert_message(msg: &str) -> Vec<u8> {
     let data_len = if msg.len() % 32 == 0 {
         std::cmp::max(msg.len(), 32)
     } else {
@@ -493,7 +495,7 @@ pub fn build_revert_message(msg: &str) -> Vector<u8> {
     };
 
     let capacity = 4 + 32 + 32 + data_len;
-    let mut result = Vector::with_capacity_in(capacity, acc_allocator());
+    let mut result = Vec::with_capacity(capacity);
     result.extend_from_slice(&[0x08, 0xc3, 0x79, 0xa0]); // Error(string) function selector
 
     let offset = U256::new(0x20);

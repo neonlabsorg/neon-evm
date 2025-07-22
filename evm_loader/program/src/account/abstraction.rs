@@ -1,10 +1,12 @@
 use std::{
-    cell::{Ref, RefMut},
+    cell::{Cell, Ref, RefCell, RefMut},
     mem::MaybeUninit,
+    rc::Rc,
 };
 
 use enum_dispatch::enum_dispatch;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, system_program};
+use solana_account::ReadableAccount;
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey, system_program};
 
 use crate::error::{Error, Result};
 
@@ -12,10 +14,94 @@ const TAG_OFFSET: usize = 0;
 const HEADER_VERSION_OFFSET: usize = 1;
 pub const ACCOUNT_PREFIX_LEN: usize = 1/*tag*/ + 1/*header version*/;
 
+#[derive(Clone)]
+pub struct SharedAccount {
+    key: Pubkey,
+    original_data_len: usize,
+    backup: Rc<solana_account::Account>,
+    account: Rc<RefCell<solana_account::Account>>,
+    modified: Rc<Cell<bool>>,
+}
+
+impl SharedAccount {
+    #[must_use]
+    pub fn new(pubkey: Pubkey, account: &impl ReadableAccount) -> Self {
+        let account: solana_account::Account = account.to_account_shared_data().into();
+
+        Self {
+            key: pubkey,
+            original_data_len: account.data.len(),
+            backup: Rc::new(account.clone()),
+            account: Rc::new(RefCell::new(account)),
+            modified: Rc::new(Cell::new(false)),
+        }
+    }
+
+    #[must_use]
+    pub fn new_empty(pubkey: Pubkey) -> Self {
+        let empty_account = solana_account::Account::default();
+        Self::new(pubkey, &empty_account)
+    }
+
+    #[must_use]
+    pub fn deep_clone(&self) -> Self {
+        let account = self.account.borrow().clone();
+
+        Self {
+            key: self.key,
+            original_data_len: self.original_data_len,
+            backup: Rc::new(account.clone()),
+            account: Rc::new(RefCell::new(account)),
+            modified: Rc::clone(&self.modified), // modified once, modified everywhere
+        }
+    }
+
+    pub fn mark_modified(&self) {
+        self.modified.set(true);
+    }
+
+    #[must_use]
+    pub fn is_modified(&self) -> bool {
+        self.modified.get()
+    }
+
+    pub fn assign(&self, owner: Pubkey) {
+        let mut account = self.account.borrow_mut();
+        account.owner = owner;
+    }
+
+    pub fn update(&self, other: &impl ReadableAccount) {
+        let mut account = self.account.borrow_mut();
+        account.owner = *other.owner();
+        account.data = other.data().to_vec();
+        account.lamports = other.lamports();
+        account.executable = other.executable();
+    }
+
+    pub fn revert(&self) {
+        let backup = solana_account::Account::clone(&self.backup);
+        self.account.replace(backup);
+    }
+}
+
+impl From<&SharedAccount> for solana_account::Account {
+    fn from(account: &SharedAccount) -> Self {
+        Self {
+            lamports: account.lamports(),
+            data: account.data().to_vec(),
+            owner: account.owner(),
+            executable: account.is_executable(),
+            rent_epoch: account.rent_epoch(),
+        }
+    }
+}
+
 #[enum_dispatch]
 #[derive(Clone)]
 pub enum Account<'a> {
     AccountInfo(AccountInfo<'a>),
+    #[cfg(not(target_os = "solana"))]
+    SharedAccount(SharedAccount),
 }
 
 #[derive(PartialEq, Eq)]
@@ -35,7 +121,7 @@ impl AccountHeader for NoHeader {
 #[enum_dispatch(Account)]
 pub trait AccountDispatch<'a> {
     fn data(&self) -> Ref<[u8]>;
-    fn data_mut(&self) -> RefMut<[u8]>; // TODO Make self mutable after state.rs refactor
+    fn data_mut(&mut self) -> RefMut<[u8]>;
 
     fn data_len(&self) -> usize;
     fn original_data_len(&self) -> usize;
@@ -49,7 +135,6 @@ pub trait AccountDispatch<'a> {
     fn is_executable(&self) -> bool;
 
     fn reallocate(&mut self, new_size: usize, zero_init: ZeroInit) -> Result<()>;
-    fn sync_lamports(&mut self, rent: &Rent, db: &super::AccountsDB<'a>) -> Result<()>;
 
     fn tag(&self, program_id: Pubkey) -> Result<u8> {
         if self.owner() != program_id {
@@ -74,8 +159,7 @@ pub trait AccountDispatch<'a> {
         }
     }
 
-    // TODO Make self mutable after state.rs refactor
-    fn init_tag(&self, tag: u8, header_version: u8) -> Result<()> {
+    fn init_tag(&mut self, tag: u8, header_version: u8) -> Result<()> {
         let mut data = self.data_mut();
         assert!(data.len() >= ACCOUNT_PREFIX_LEN);
 
@@ -114,8 +198,7 @@ pub trait AccountDispatch<'a> {
     }
 
     #[inline]
-    // TODO Make self mutable after state.rs refactor
-    fn section_mut<T>(&self, offset: usize) -> RefMut<T> {
+    fn section_mut<T>(&mut self, offset: usize) -> RefMut<T> {
         let begin = offset;
         let end = begin + std::mem::size_of::<T>();
 
@@ -174,8 +257,7 @@ pub trait AccountDispatch<'a> {
     }
 
     #[inline]
-    fn header_mut<T: AccountHeader>(&self) -> RefMut<T> {
-        // TODO Make self mutable after state.rs refactor
+    fn header_mut<T: AccountHeader>(&mut self) -> RefMut<T> {
         self.section_mut(ACCOUNT_PREFIX_LEN)
     }
 
@@ -184,11 +266,7 @@ pub trait AccountDispatch<'a> {
         self.section_mut_uninit(ACCOUNT_PREFIX_LEN)
     }
 
-    fn expand_header<From: AccountHeader, To: AccountHeader>(
-        &mut self,
-        rent: &Rent,
-        db: &super::AccountsDB<'a>,
-    ) -> Result<()> {
+    fn expand_header<From: AccountHeader, To: AccountHeader>(&mut self) -> Result<()> {
         let from_len = std::mem::size_of::<From>();
         let to_len = std::mem::size_of::<To>();
 
@@ -202,7 +280,6 @@ pub trait AccountDispatch<'a> {
         assert!(required_len >= data_len);
 
         self.reallocate(required_len, ZeroInit::Uninit)?;
-        self.sync_lamports(rent, db)?;
 
         {
             let mut account_data = self.data_mut();
@@ -225,7 +302,7 @@ impl<'a> AccountDispatch<'a> for AccountInfo<'a> {
         Ref::map(data, |data| &data[..])
     }
 
-    fn data_mut(&self) -> RefMut<[u8]> {
+    fn data_mut(&mut self) -> RefMut<[u8]> {
         let data = self.data.borrow_mut();
         RefMut::map(data, |data| &mut data[..])
     }
@@ -264,26 +341,66 @@ impl<'a> AccountDispatch<'a> for AccountInfo<'a> {
 
     fn reallocate(&mut self, new_size: usize, zero_init: ZeroInit) -> Result<()> {
         self.realloc(new_size, zero_init == ZeroInit::Zero)?;
-
         Ok(())
     }
+}
 
-    fn sync_lamports(&mut self, rent: &Rent, accounts: &super::AccountsDB<'a>) -> Result<()> {
-        let original_data_len = unsafe { self.original_data_len() };
-        if original_data_len == self.data_len() {
-            return Ok(());
-        }
+impl AccountDispatch<'_> for SharedAccount {
+    fn data(&self) -> Ref<[u8]> {
+        let account = self.account.borrow();
+        Ref::map(account, |a| a.data.as_slice())
+    }
 
-        let minimum_balance = rent.minimum_balance(self.data_len());
-        if self.lamports() >= minimum_balance {
-            return Ok(());
-        }
+    fn data_mut(&mut self) -> RefMut<[u8]> {
+        self.modified.set(true);
 
-        let system = accounts.system();
-        let operator = accounts.operator();
+        let mut account = self.account.borrow_mut();
+        RefMut::map(account, |a| a.data.as_mut_slice())
+    }
 
-        let lamports = minimum_balance - self.lamports();
-        system.transfer(operator, self, lamports)?;
+    fn data_len(&self) -> usize {
+        let account = self.account.borrow();
+        account.data.len()
+    }
+
+    fn original_data_len(&self) -> usize {
+        self.original_data_len
+    }
+
+    fn pubkey(&self) -> Pubkey {
+        self.key
+    }
+
+    fn owner(&self) -> Pubkey {
+        let account = self.account.borrow();
+        account.owner
+    }
+
+    fn is_system_owned(&self) -> bool {
+        let account = self.account.borrow();
+        solana_program::system_program::check_id(&account.owner)
+    }
+
+    fn lamports(&self) -> u64 {
+        let account = self.account.borrow();
+        account.lamports
+    }
+
+    fn rent_epoch(&self) -> u64 {
+        let account = self.account.borrow();
+        account.rent_epoch
+    }
+
+    fn is_executable(&self) -> bool {
+        let account = self.account.borrow();
+        account.executable
+    }
+
+    fn reallocate(&mut self, new_size: usize, _: ZeroInit) -> Result<()> {
+        self.modified.set(true);
+
+        let mut account = self.account.borrow_mut();
+        account.data.resize(new_size, 0); // No limits on SharedAccount reallocation
 
         Ok(())
     }

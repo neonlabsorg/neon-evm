@@ -1,4 +1,4 @@
-use crate::account::pda_accounts;
+use crate::account::pda;
 use crate::error::{Error, Result};
 use solana_program::{account_info::AccountInfo, program_pack::Pack, pubkey::Pubkey};
 use std::ops::Deref;
@@ -34,7 +34,7 @@ impl<'a> Treasury<'a> {
 
     #[must_use]
     pub fn address(program_id: Pubkey, index: u32) -> (Pubkey, u8) {
-        pda_accounts::aux_treasury_pool_address(&program_id, index)
+        pda::aux_treasury_pool_address(&program_id, index)
     }
 
     #[must_use]
@@ -53,6 +53,12 @@ impl<'a> Deref for Treasury<'a> {
 
     fn deref(&self) -> &Self::Target {
         &self.info
+    }
+}
+
+impl<'a> From<Treasury<'a>> for AccountInfo<'a> {
+    fn from(val: Treasury<'a>) -> Self {
+        val.info
     }
 }
 
@@ -83,7 +89,7 @@ impl<'a> MainTreasury<'a> {
 
     #[must_use]
     pub fn address(program_id: Pubkey) -> (Pubkey, u8) {
-        pda_accounts::main_treasury_pool_address(&program_id)
+        pda::main_treasury_pool_address(&program_id)
     }
 
     #[must_use]

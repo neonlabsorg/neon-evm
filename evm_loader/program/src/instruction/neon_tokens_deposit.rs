@@ -1,14 +1,13 @@
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::program::invoke_signed;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 use spl_associated_token_account::get_associated_token_address;
 
-use crate::account::{
-    pda_accounts, program, token, AccountsDB, BalanceAccount, Operator, ACCOUNT_SEED_VERSION,
-};
+use crate::account::{pda, program, token, BalanceAccount, Operator};
 use crate::config::CHAIN_ID_LIST;
 use crate::error::{Error, Result};
+use crate::platform::{Platform, Solana};
 use crate::types::Address;
 
 struct Accounts<'a> {
@@ -82,7 +81,7 @@ fn validate(
         return Err(Error::AccountInvalidKey(mint, expected_mint));
     }
 
-    let (authority_address, _) = pda_accounts::main_pool_authority(&program_id);
+    let (authority_address, _) = pda::main_pool_authority(&program_id);
     let expected_pool = get_associated_token_address(&authority_address, &mint);
     if pool != expected_pool {
         return Err(Error::AccountInvalidKey(pool, expected_pool));
@@ -109,13 +108,8 @@ fn validate(
 }
 
 fn execute(program_id: Pubkey, accounts: Accounts, address: Address, chain_id: u64) -> Result<()> {
-    let (_, bump_seed) = address.find_balance_address(&program_id, chain_id);
-    let signer_seeds: &[&[u8]] = &[
-        &[ACCOUNT_SEED_VERSION],
-        address.as_bytes(),
-        &U256::from(chain_id).to_be_bytes(),
-        &[bump_seed],
-    ];
+    let (_, bump_seed) = pda::balance_address(&program_id, &address, chain_id);
+    let signer_seeds: &[&[u8]] = pda::balance_seeds!(&address, chain_id, bump_seed);
 
     let instruction = spl_token::instruction::transfer(
         accounts.token_program.key,
@@ -141,22 +135,14 @@ fn execute(program_id: Pubkey, accounts: Accounts, address: Address, chain_id: u
     let additional_decimals: u32 = (18 - token_decimals).into();
     let deposit = U256::from(accounts.source.delegated_amount) * 10_u128.pow(additional_decimals);
 
-    let accounts_db = AccountsDB::new(
-        &[
-            accounts.balance_account.clone(),
-            accounts.contract_account.clone(),
-        ],
+    let mut solana = Solana::new(
+        &[accounts.balance_account, accounts.system_program.clone()],
         accounts.operator,
         None,
-        Some(accounts.system_program),
-        None,
-    );
+    )?;
 
-    let rent = Rent::get()?;
-
-    let mut balance_account = BalanceAccount::create(address, chain_id, &accounts_db, None, &rent)?;
-    balance_account.increment_revision(&rent, &accounts_db)?;
+    let mut balance_account: BalanceAccount = solana.create_balance(address, chain_id)?;
     balance_account.mint(deposit)?;
 
-    Ok(())
+    solana.update_accounts_lamports()
 }

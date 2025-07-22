@@ -6,9 +6,10 @@ use maybe_async::maybe_async;
 
 use crate::{
     error::{Error, Result},
-    evm::database::Database,
     types::Address,
 };
+
+use super::PrecompileDatabase;
 
 //-------------------------------------------
 // NeonAccount method current ids:
@@ -16,8 +17,8 @@ use crate::{
 // "b2aebe3c": "solanaAddress(address)"
 
 #[maybe_async]
-pub async fn neon_account<State: Database>(
-    state: &State,
+pub async fn neon_account(
+    state: &impl PrecompileDatabase,
     address: &Address,
     input: &[u8],
     context: &crate::evm::Context,
@@ -51,8 +52,8 @@ pub async fn neon_account<State: Database>(
 }
 
 #[maybe_async]
-async fn is_solana_user<State: Database>(state: &State, address: Address) -> Result<Vec<u8>> {
-    let pubkey = state.solana_user_address(address).await?;
+async fn is_solana_user(state: &impl PrecompileDatabase, address: Address) -> Result<Vec<u8>> {
+    let pubkey = state.solana_user_pubkey(address).await?;
     let result = if pubkey.is_some() {
         U256::ONE.to_be_bytes()
     } else {
@@ -63,8 +64,8 @@ async fn is_solana_user<State: Database>(state: &State, address: Address) -> Res
 }
 
 #[maybe_async]
-async fn solana_address<State: Database>(state: &State, address: Address) -> Result<Vec<u8>> {
-    let pubkey = state.solana_user_address(address).await?;
+async fn solana_address(state: &impl PrecompileDatabase, address: Address) -> Result<Vec<u8>> {
+    let pubkey = state.solana_user_pubkey(address).await?;
     let result = pubkey.unwrap_or_default().to_bytes();
 
     Ok(result.to_vec())

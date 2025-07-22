@@ -8,11 +8,10 @@ use crate::account::state_root::AccountsStatus;
 use crate::allocator::StateAllocator;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
-#[cfg(not(target_os = "platform"))]
-use crate::executor::BlockParams;
 use crate::platform::Platform;
 use crate::types::{EncodedTransaction, Transaction};
 
+use evm_loader_macro::version_signature;
 use linked_list_allocator::Heap;
 use maybe_async::maybe_async;
 use solana_program::keccak;
@@ -43,6 +42,7 @@ use super::{
 // ---------------
 
 type VersionSignature = [u8; 40];
+const VALID_VERSION_SIGNATURE: VersionSignature = version_signature!();
 
 #[repr(C, packed)]
 struct Offsets {
@@ -69,15 +69,6 @@ struct Header {
     pub owner: Pubkey,
     pub account_memory_address: u64,
     pub offsets: Offsets,
-}
-
-impl Header {
-    fn valid_version_signature() -> VersionSignature {
-        let mut result: VersionSignature = [0; 40];
-        let state = env!("NEON_REVISION").as_bytes();
-        result[..state.len()].copy_from_slice(state);
-        result
-    }
 }
 
 impl AccountHeader for Header {
@@ -185,9 +176,9 @@ impl<'a> StateAccount<'a> {
         if status == AccountsStatus::NeedRestart {
             log_data(&[b"RESET"]);
             unsafe {
+                state.reset_header();
                 state.initialize_heap();
                 state.reset_root(platform).await?;
-                state.reset_header_signature();
             }
         }
 
@@ -211,7 +202,7 @@ impl<'a> StateAccount<'a> {
             let header: Ref<Header> = self.account.header();
             header.version_signature
         };
-        if version_signature != Header::valid_version_signature() {
+        if version_signature != VALID_VERSION_SIGNATURE {
             return Ok(AccountsStatus::NeedRestart);
         }
 
@@ -377,7 +368,7 @@ impl<'a> StateAccount<'a> {
 
         let mut header_section = self.account.header_mut_uninit::<Header>();
         header_section.write(Header {
-            version_signature: Header::valid_version_signature(),
+            version_signature: VALID_VERSION_SIGNATURE,
             owner,
             account_memory_address,
             offsets,
@@ -385,9 +376,15 @@ impl<'a> StateAccount<'a> {
     }
 
     /// SAFETY: This functions should be called with previously valid header
-    unsafe fn reset_header_signature(&mut self) {
+    unsafe fn reset_header(&mut self) {
+        // Recalculate Heap offset because `size_of::<Root>()` may change
+        let root_offset = self.offsets().root;
+        let heap_offset = self.align_offset::<Heap>(root_offset + size_of::<Root>());
+
+        // Reset the header
         let mut header: RefMut<Header> = self.account.header_mut();
-        header.version_signature = Header::valid_version_signature();
+        header.version_signature = VALID_VERSION_SIGNATURE;
+        header.offsets.heap_object = heap_offset;
     }
 
     /// SAFETY: This functions should be called only once after `initialize_header`
@@ -465,15 +462,15 @@ impl<'a> StateAccount<'a> {
     }
 }
 
-#[cfg(not(target_os = "platform"))]
+#[cfg(not(target_os = "solana"))]
 type StateAccountCoreApiView = (
     super::state_root::PlainData,
-    Option<BlockParams>,
+    Option<crate::executor::BlockParams>,
     Vec<Pubkey>,
     Vec<u8>, //tx rlp
 );
 
-#[cfg(not(target_os = "platform"))]
+#[cfg(not(target_os = "solana"))]
 impl StateAccount<'_> {
     pub fn get_state_account_view(&self) -> Result<StateAccountCoreApiView> {
         use super::state_root::AccountRevision;

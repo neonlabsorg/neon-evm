@@ -3,12 +3,11 @@ use std::mem::size_of;
 
 use super::treasury::Treasury;
 use super::{
-    pda, Account, AccountDispatch, AccountHeader, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN,
-    TAG_TRANSACTION_TREE,
+    pda, program, Account, AccountDispatch, AccountHeader, BalanceAccount, Operator,
+    ACCOUNT_PREFIX_LEN, TAG_TRANSACTION_TREE,
 };
-use crate::account::program;
 use crate::config::{
-    BASE_ITERATIVE_TRANSACTION_COST, TREE_ACCOUNT_DESTROY_FEE, TREE_ACCOUNT_FINISH_TRANSACTION_GAS,
+    BASE_ITERATIVE_TRANSACTION_COST, TREE_ACCOUNT_DESTROY_FEE, TREE_ACCOUNT_FINISH_TRANSACTION_FEE,
     TREE_ACCOUNT_TIMEOUT,
 };
 use crate::error::{Error, Result};
@@ -136,9 +135,7 @@ impl<'a> TransactionTree<'a> {
         clock: &Clock,
     ) -> Result<Self> {
         const MIN_FEE_PER_GAS: U256 = U256::new(1_100_000_000);
-        const MIN_GAS_LIMIT: U256 = U256::new(
-            BASE_ITERATIVE_TRANSACTION_COST as u128 + TREE_ACCOUNT_FINISH_TRANSACTION_GAS as u128,
-        );
+        const MIN_GAS_LIMIT: U256 = U256::new(BASE_ITERATIVE_TRANSACTION_COST as u128);
         const TREE_ACCOUNT_MAX_NODES: usize = 16;
 
         // Validate account
@@ -206,12 +203,16 @@ impl<'a> TransactionTree<'a> {
             space,
             rent,
         )?;
-        system.transfer(destroy_fee_payer, &account, TREE_ACCOUNT_DESTROY_FEE)?;
+
+        let nodes_len = nodes.len() as u64;
+        let fee = TREE_ACCOUNT_DESTROY_FEE + (nodes_len * TREE_ACCOUNT_FINISH_TRANSACTION_FEE);
+        system.transfer(destroy_fee_payer, &account, fee)?;
 
         // Init data
         account.init_tag(TAG_TRANSACTION_TREE, Header::VERSION)?;
 
-        let mut tree = Self::from_account(crate::ID, account.into())?;
+        let account: Account<'a> = account.into();
+        let mut tree = Self { account };
         {
             let mut header: RefMut<HeaderV0> = tree.account.header_mut();
             header.payer = init.payer;
@@ -407,9 +408,7 @@ impl<'a> TransactionTree<'a> {
     }
 
     #[must_use]
-    pub fn prepare_exit_status(
-        result: &ExitStatus,
-    ) -> Option<(Status, solana_program::keccak::Hash)> {
+    pub fn prepare_exit_status(result: &ExitStatus) -> (Status, solana_program::keccak::Hash) {
         use solana_program::keccak::hash as keccak256;
 
         let (status, result_hash) = match result {
@@ -417,16 +416,17 @@ impl<'a> TransactionTree<'a> {
             ExitStatus::Return(result) => (Status::Success, keccak256(result)),
             ExitStatus::Revert(result) => (Status::Failed, keccak256(result)),
             ExitStatus::Cancel => (Status::Failed, keccak256(&[])),
-            ExitStatus::Interrupted(_) | ExitStatus::StepLimit => return None,
+            ExitStatus::Interrupted(_) | ExitStatus::StepLimit => unreachable!(),
         };
 
-        Some((status, result_hash))
+        (status, result_hash)
     }
 
     pub fn end_transaction(
         &mut self,
         hash: [u8; 32],
         result: (Status, solana_program::keccak::Hash),
+        operator: &Operator<'a>,
     ) -> Result<()> {
         use solana_program::keccak::Hash;
 
@@ -449,6 +449,27 @@ impl<'a> TransactionTree<'a> {
         self.update_last_slot(&clock);
 
         self.decrease_parent_count(child_index, status);
+        self.pay_for_end_transaction(operator)
+    }
+
+    fn pay_for_end_transaction(&self, operator: &Operator<'a>) -> Result<()> {
+        let rent = Rent::get()?;
+        let minimum_balance = rent.minimum_balance(self.account.data_len());
+
+        let available_lamports = self
+            .account
+            .lamports()
+            .saturating_sub(minimum_balance)
+            .saturating_sub(TREE_ACCOUNT_DESTROY_FEE);
+
+        if available_lamports < TREE_ACCOUNT_FINISH_TRANSACTION_FEE {
+            return Ok(()); // Not enough funds. This could happen if working with old tree account.
+        }
+
+        let account_info: AccountInfo<'a> = self.account.clone().try_into()?;
+
+        **account_info.lamports.borrow_mut() -= TREE_ACCOUNT_FINISH_TRANSACTION_FEE;
+        **operator.lamports.borrow_mut() += TREE_ACCOUNT_FINISH_TRANSACTION_FEE;
 
         Ok(())
     }
@@ -486,6 +507,12 @@ impl<'a> TransactionTree<'a> {
     pub fn max_priority_fee_per_gas(&self) -> U256 {
         let header: Ref<HeaderV0> = self.account.header();
         header.max_priority_fee_per_gas
+    }
+
+    pub fn gas_limit(&self, transaction_hash: [u8; 32]) -> Result<U256> {
+        let index = self.find_node(transaction_hash)?;
+        let node = self.node(index);
+        Ok(node.gas_limit)
     }
 
     #[must_use]
@@ -542,6 +569,24 @@ impl<'a> TransactionTree<'a> {
             .ok_or(Error::IntegerOverflow)?;
 
         Ok(())
+    }
+
+    pub fn burn_gas(&mut self, gas: U256, gas_price: U256) -> Result<()> {
+        assert_eq!(self.max_fee_per_gas(), gas_price);
+
+        let Some(tokens) = gas.checked_mul(gas_price) else {
+            return Err(Error::IntegerOverflow);
+        };
+        self.burn(tokens)
+    }
+
+    pub fn refund_gas(&mut self, gas: U256, gas_price: U256) -> Result<()> {
+        assert_eq!(self.max_fee_per_gas(), gas_price);
+
+        let Some(tokens) = gas.checked_mul(gas_price) else {
+            return Err(Error::IntegerOverflow);
+        };
+        self.mint(tokens)
     }
 
     #[must_use]

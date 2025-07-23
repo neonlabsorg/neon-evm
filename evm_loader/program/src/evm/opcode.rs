@@ -1,46 +1,43 @@
 #![allow(clippy::needless_pass_by_ref_mut)]
-
-use std::mem::ManuallyDrop;
-
 /// <https://ethereum.github.io/yellowpaper/paper.pdf>
+use allocator_api2::alloc::Allocator;
 use ethnum::{I256, U256};
 use maybe_async::maybe_async;
+use solana_program::keccak;
 
-use super::{
-    begin_vm,
-    database::{Database, DatabaseExt},
-    end_vm, tracing_event, Context, Machine, Reason,
-};
-use crate::evm::tracing::EventListener;
-use crate::types::vector::VectorSliceExt;
-use crate::types::Vector;
-use crate::{account::InterruptedState, allocator::acc_allocator};
-use crate::{
-    debug::log_data,
-    error::{Error, Result},
-    types::Address,
-};
+use super::tracing::{return_vm, stop_vm};
+use super::SolanaCallInterrupt;
+use super::{database::Database, Context, Machine, Reason};
+use crate::debug::log_data;
+use crate::error::{Error, Result};
+use crate::evm::tracing::{begin_vm_inner, EventListener};
+use crate::evm::utils::Buffer;
+use crate::types::Address;
 
 #[derive(Eq, PartialEq)]
 pub enum Action {
     Continue,
     Jump(usize),
     Stop,
-    Return(Vector<u8>),
-    Revert(Vector<u8>),
+    Return,
+    Revert,
     Suicide,
-    Interrupted(Box<Option<InterruptedState>>),
+    Interrupted(SolanaCallInterrupt),
     Noop,
 }
 
 #[allow(clippy::unused_async)]
-impl<T: EventListener> Machine<T> {
+impl<A, T> Machine<A, T>
+where
+    A: Allocator + Copy,
+    T: EventListener,
+{
     /// Unknown instruction
     #[maybe_async]
     pub async fn opcode_unknown(&mut self, _backend: &mut impl Database) -> Result<Action> {
         Err(Error::UnknownOpcode(
             self.context.contract,
-            self.execution_code[self.pc],
+            self.execution_code.get_u8(self.pc, &self.parent),
         ))
     }
 
@@ -531,11 +528,11 @@ impl<T: EventListener> Machine<T> {
     pub async fn opcode_calldataload(&mut self, _backend: &mut impl Database) -> Result<Action> {
         let index = self.stack.pop_usize()?;
 
-        if let Some(buffer) = self.call_data.get(index..index + 32) {
+        if let Some(buffer) = self.call_data.get(index..index + 32, &self.parent) {
             let buffer = arrayref::array_ref![buffer, 0, 32];
             self.stack.push_array(buffer)?;
         } else {
-            let source = self.call_data.get(index..).unwrap_or(&[]);
+            let source = self.call_data.get(index.., &self.parent).unwrap_or(&[]);
             let len = source.len(); // len < 32
 
             let mut buffer = [0_u8; 32];
@@ -563,8 +560,9 @@ impl<T: EventListener> Machine<T> {
         let data_offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
+        let call_data = self.call_data.as_slice(&self.parent);
         self.memory
-            .write_buffer(memory_offset, length, &self.call_data, data_offset)?;
+            .write_buffer(memory_offset, length, call_data, data_offset)?;
 
         Ok(Action::Continue)
     }
@@ -585,8 +583,9 @@ impl<T: EventListener> Machine<T> {
         let data_offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
+        let code = self.execution_code.as_slice(&self.parent);
         self.memory
-            .write_buffer(memory_offset, length, &self.execution_code, data_offset)?;
+            .write_buffer(memory_offset, length, code, data_offset)?;
 
         Ok(Action::Continue)
     }
@@ -622,10 +621,12 @@ impl<T: EventListener> Machine<T> {
         let data_offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let code = backend.code(address).await?;
+        let write_code_to_memory = |code: &[u8]| {
+            self.memory
+                .write_buffer(memory_offset, length, code, data_offset)
+        };
 
-        self.memory
-            .write_buffer(memory_offset, length, &code, data_offset)?;
+        backend.use_code(address, write_code_to_memory).await??;
 
         Ok(Action::Continue)
     }
@@ -633,7 +634,8 @@ impl<T: EventListener> Machine<T> {
     /// Byzantium hardfork, EIP-211: the size of the returned data from the last external call, in bytes
     #[maybe_async]
     pub async fn opcode_returndatasize(&mut self, _backend: &mut impl Database) -> Result<Action> {
-        self.stack.push_usize(self.return_data.len())?;
+        let length = self.child.as_ref().map_or(0, |c| c.return_data.len());
+        self.stack.push_usize(length)?;
 
         Ok(Action::Continue)
     }
@@ -645,12 +647,14 @@ impl<T: EventListener> Machine<T> {
         let data_offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        if data_offset.saturating_add(length) > self.return_data.len() {
+        let data: &[u8] = self.child.as_ref().map_or(&[], |c| c.return_data());
+
+        if data_offset.saturating_add(length) > data.len() {
             return Err(Error::ReturnDataCopyOverflow(data_offset, length));
         }
 
         self.memory
-            .write_buffer(memory_offset, length, &self.return_data, data_offset)?;
+            .write_buffer(memory_offset, length, data, data_offset)?;
 
         Ok(Action::Continue)
     }
@@ -658,7 +662,7 @@ impl<T: EventListener> Machine<T> {
     /// Constantinople hardfork, EIP-1052: hash of the contract bytecode at addr
     #[maybe_async]
     pub async fn opcode_extcodehash(&mut self, backend: &mut impl Database) -> Result<Action> {
-        let code_hash = {
+        let keccak::Hash(code_hash) = {
             let address = self.stack.pop_address()?;
             backend.code_hash(address, self.chain_id).await?
         };
@@ -675,7 +679,7 @@ impl<T: EventListener> Machine<T> {
         let block_hash = {
             let block_number = self.stack.pop_u256()?;
 
-            backend.block_hash(block_number).await?
+            backend.block_hash(block_number, &self.context).await?
         };
 
         self.stack.push_array(&block_hash)?;
@@ -695,7 +699,7 @@ impl<T: EventListener> Machine<T> {
     /// current block's Unix timestamp in seconds
     #[maybe_async]
     pub async fn opcode_timestamp(&mut self, backend: &mut impl Database) -> Result<Action> {
-        let timestamp = backend.block_timestamp(self.context.contract).await?;
+        let timestamp = backend.block_timestamp(&self.context).await?;
 
         self.stack.push_u256(timestamp)?;
 
@@ -705,7 +709,7 @@ impl<T: EventListener> Machine<T> {
     /// current block's number
     #[maybe_async]
     pub async fn opcode_number(&mut self, backend: &mut impl Database) -> Result<Action> {
-        let block_number = backend.block_number(self.context.contract).await?;
+        let block_number = backend.block_number(&self.context).await?;
 
         self.stack.push_u256(block_number)?;
 
@@ -877,7 +881,7 @@ impl<T: EventListener> Machine<T> {
 
         let value = self.stack.pop_usize()?;
 
-        if self.execution_code.get(value) == Some(&JUMPDEST) {
+        if self.execution_code.get(value, &self.parent) == Some(&JUMPDEST) {
             Ok(Action::Jump(value))
         } else {
             Err(Error::InvalidJump(self.context.contract, value))
@@ -896,7 +900,7 @@ impl<T: EventListener> Machine<T> {
             return Ok(Action::Continue);
         }
 
-        if self.execution_code.get(value) == Some(&JUMPDEST) {
+        if self.execution_code.get(value, &self.parent) == Some(&JUMPDEST) {
             Ok(Action::Jump(value))
         } else {
             Err(Error::InvalidJump(self.context.contract, value))
@@ -949,7 +953,7 @@ impl<T: EventListener> Machine<T> {
             return Err(Error::PushOutOfBounds(self.context.contract));
         }
 
-        let value = unsafe { *self.execution_code.get_unchecked(self.pc + 1) };
+        let value = unsafe { *self.execution_code.get_unchecked(self.pc + 1, &self.parent) };
 
         self.stack.push_byte(value)?;
 
@@ -967,7 +971,7 @@ impl<T: EventListener> Machine<T> {
         }
 
         let value = unsafe {
-            let ptr = self.execution_code.as_ptr().add(self.pc + 1);
+            let ptr = self.execution_code.as_ptr(&self.parent).add(self.pc + 1);
             &*ptr.cast::<[u8; N]>()
         };
 
@@ -984,7 +988,7 @@ impl<T: EventListener> Machine<T> {
         }
 
         let value = unsafe {
-            let ptr = self.execution_code.as_ptr().add(self.pc + 1);
+            let ptr = self.execution_code.as_ptr(&self.parent).add(self.pc + 1);
             &*ptr.cast::<[u8; 32]>()
         };
 
@@ -1041,7 +1045,7 @@ impl<T: EventListener> Machine<T> {
             topics
         };
 
-        backend.collect_log(address.as_bytes(), topics, data).await;
+        backend.log_event(address, topics, data).await?;
 
         Ok(Action::Continue)
     }
@@ -1111,10 +1115,9 @@ impl<T: EventListener> Machine<T> {
             .increment_nonce(self.context.contract, chain_id)
             .await?;
 
-        self.return_data = Vector::<u8>::new_in(acc_allocator());
-        self.return_range = 0..0;
+        self.child_return_into = 0..0;
 
-        let init_code = self.memory.read(offset, length)?.to_vector();
+        let init_code = Buffer::ParentMemory { offset, length };
 
         let context = Context {
             caller: self.context.contract,
@@ -1124,14 +1127,14 @@ impl<T: EventListener> Machine<T> {
             code_address: None,
         };
 
-        begin_vm!(self, backend, context, chain_id, init_code);
+        begin_vm_inner!(self, backend, context, chain_id, offset, length);
 
         self.fork(
             Reason::Create,
             chain_id,
             context,
             init_code,
-            Vector::new_in(acc_allocator()),
+            Buffer::from_slice_in(&[], self.allocator),
             None,
         );
         backend.snapshot();
@@ -1144,6 +1147,7 @@ impl<T: EventListener> Machine<T> {
             return Err(Error::DeployToExistingAccount(address, self.context.caller));
         }
 
+        backend.start_create(address, chain_id).await?;
         backend.increment_nonce(address, chain_id).await?;
         backend
             .transfer(self.context.caller, address, chain_id, value)
@@ -1163,11 +1167,10 @@ impl<T: EventListener> Machine<T> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Vector::<u8>::new_in(acc_allocator());
-        self.return_range = return_offset..(return_offset + return_length);
+        self.child_return_into = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read(args_offset, args_length)?.to_vector();
-        let code = backend.code(address).await?;
+        let call_data = Buffer::from_memory(args_offset, args_length);
+        let code = backend.code(address, self.allocator).await?;
 
         let chain_id = self.context.contract_chain_id;
         let context = Context {
@@ -1178,13 +1181,13 @@ impl<T: EventListener> Machine<T> {
             code_address: Some(address),
         };
 
-        begin_vm!(self, backend, context, chain_id, call_data);
+        begin_vm_inner!(self, backend, context, chain_id, args_offset, args_length);
 
         self.fork(
             Reason::Call,
             chain_id,
             context,
-            code,
+            Buffer::from_vec(code),
             call_data,
             Some(gas_limit),
         );
@@ -1214,11 +1217,10 @@ impl<T: EventListener> Machine<T> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Vector::<u8>::new_in(acc_allocator());
-        self.return_range = return_offset..(return_offset + return_length);
+        self.child_return_into = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read(args_offset, args_length)?.to_vector();
-        let code = backend.code(address).await?;
+        let call_data = Buffer::from_memory(args_offset, args_length);
+        let code = backend.code(address, self.allocator).await?;
 
         let chain_id = self.context.contract_chain_id;
         let context = Context {
@@ -1228,13 +1230,13 @@ impl<T: EventListener> Machine<T> {
             ..self.context
         };
 
-        begin_vm!(self, backend, context, chain_id, call_data);
+        begin_vm_inner!(self, backend, context, chain_id, args_offset, args_length);
 
         self.fork(
             Reason::Call,
             chain_id,
             context,
-            code,
+            Buffer::from_vec(code),
             call_data,
             Some(gas_limit),
         );
@@ -1264,24 +1266,30 @@ impl<T: EventListener> Machine<T> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Vector::<u8>::new_in(acc_allocator());
-        self.return_range = return_offset..(return_offset + return_length);
+        self.child_return_into = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read(args_offset, args_length)?.to_vector();
-        let code = backend.code(address).await?;
+        let call_data = Buffer::from_memory(args_offset, args_length);
+        let code = backend.code(address, self.allocator).await?;
 
         let context = Context {
             code_address: Some(address),
             ..self.context
         };
 
-        begin_vm!(self, backend, context, self.chain_id, call_data);
+        begin_vm_inner!(
+            self,
+            backend,
+            context,
+            self.chain_id,
+            args_offset,
+            args_length
+        );
 
         self.fork(
             Reason::Call,
             self.chain_id,
             context,
-            code,
+            Buffer::from_vec(code),
             call_data,
             Some(gas_limit),
         );
@@ -1303,11 +1311,10 @@ impl<T: EventListener> Machine<T> {
         let return_offset = self.stack.pop_usize()?;
         let return_length = self.stack.pop_usize()?;
 
-        self.return_data = Vector::<u8>::new_in(acc_allocator());
-        self.return_range = return_offset..(return_offset + return_length);
+        self.child_return_into = return_offset..(return_offset + return_length);
 
-        let call_data = self.memory.read(args_offset, args_length)?.to_vector();
-        let code = backend.code(address).await?;
+        let call_data = Buffer::from_memory(args_offset, args_length);
+        let code = backend.code(address, self.allocator).await?;
 
         let chain_id = self.context.contract_chain_id;
         let context = Context {
@@ -1318,13 +1325,13 @@ impl<T: EventListener> Machine<T> {
             code_address: Some(address),
         };
 
-        begin_vm!(self, backend, context, chain_id, call_data);
+        begin_vm_inner!(self, backend, context, chain_id, args_offset, args_length);
 
         self.fork(
             Reason::Call,
             chain_id,
             context,
-            code,
+            Buffer::from_vec(code),
             call_data,
             Some(gas_limit),
         );
@@ -1346,10 +1353,7 @@ impl<T: EventListener> Machine<T> {
         address: &Address,
     ) -> Result<Action> {
         match self.try_call_precompile(address, backend).await {
-            Some(Ok(return_data)) => {
-                self.opcode_return_impl(return_data.to_vector(), backend)
-                    .await
-            }
+            Some(Ok(return_data)) => self.return_from_stack_frame(&return_data, backend).await,
             Some(Err(Error::InterruptedCall(state))) => Ok(Action::Interrupted(state)),
             Some(Err(e)) => Err(e),
             None => Ok(Action::Noop),
@@ -1362,52 +1366,39 @@ impl<T: EventListener> Machine<T> {
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let return_data = self.memory.read(offset, length)?.to_vector();
+        self.memory.realloc(offset, length)?;
+        self.return_data = offset..(offset + length);
 
-        self.opcode_return_impl(return_data, backend).await
-    }
-
-    /// Halt execution returning output data
-    #[maybe_async]
-    pub async fn opcode_return_impl(
-        &mut self,
-        return_data: Vector<u8>,
-        backend: &mut impl Database,
-    ) -> Result<Action> {
         if self.reason == Reason::Create {
-            backend
-                .set_code(self.context.contract, self.chain_id, return_data.clone())
-                .await?;
+            let code = self.memory.slice(offset, length);
+            backend.end_create(self.context.contract, code).await?;
         }
 
-        backend.commit_snapshot();
         log_data(&[b"EXIT", b"RETURN"]);
+        backend.commit_snapshot();
 
-        end_vm!(
-            self,
-            backend,
-            super::ExitStatus::Return(return_data.clone())
-        );
+        return_vm!(self, backend, super::ExitStatus::Return);
 
         if self.parent.is_none() {
-            return Ok(Action::Return(return_data));
+            return Ok(Action::Return);
         }
 
-        let mut returned = self.join();
-        match returned.reason {
-            Reason::Call => {
-                self.memory.write_range(&self.return_range, &return_data)?;
-                self.stack.push_bool(true)?; // success
+        self.join();
+        let child = self.child.as_ref().unwrap();
 
-                self.return_data = return_data;
+        match child.reason {
+            Reason::Call => {
+                let buffer = child.memory.slice(offset, length);
+
+                self.memory.write_range(&self.child_return_into, buffer)?;
+                self.stack.push_bool(true)?; // success
             }
             Reason::Create => {
-                let address = returned.context.contract;
+                let address = child.context.contract;
                 self.stack.push_address(&address)?;
             }
         }
 
-        unsafe { ManuallyDrop::drop(&mut returned) };
         Ok(Action::Continue)
     }
 
@@ -1417,45 +1408,31 @@ impl<T: EventListener> Machine<T> {
         let offset = self.stack.pop_usize()?;
         let length = self.stack.pop_usize()?;
 
-        let return_data = self.memory.read(offset, length)?.to_vector();
+        self.memory.realloc(offset, length)?;
+        self.return_data = offset..(offset + length);
 
-        self.opcode_revert_impl(return_data, backend).await
-    }
-
-    #[maybe_async]
-    pub async fn opcode_revert_impl(
-        &mut self,
-        return_data: Vector<u8>,
-        backend: &mut impl Database,
-    ) -> Result<Action> {
-        log_data(&[b"EXIT", b"REVERT", &return_data]);
+        log_data(&[b"EXIT", b"REVERT", self.return_data()]);
         backend.revert_snapshot();
 
-        end_vm!(
-            self,
-            backend,
-            super::ExitStatus::Revert(return_data.clone())
-        );
+        return_vm!(self, backend, super::ExitStatus::Revert);
 
         if self.parent.is_none() {
-            return Ok(Action::Revert(return_data));
+            return Ok(Action::Revert);
         }
 
-        let mut returned = self.join();
-        match returned.reason {
+        self.join();
+        let child = self.child.as_ref().unwrap();
+
+        match child.reason {
             Reason::Call => {
-                self.memory.write_range(&self.return_range, &return_data)?;
+                let buffer = child.memory.slice(offset, length);
+
+                self.memory.write_range(&self.child_return_into, buffer)?;
                 self.stack.push_bool(false)?; // fail
             }
             Reason::Create => {
                 self.stack.push_zero()?;
             }
-        }
-
-        self.return_data = return_data;
-
-        unsafe {
-            ManuallyDrop::drop(&mut returned);
         }
 
         Ok(Action::Continue)
@@ -1466,7 +1443,7 @@ impl<T: EventListener> Machine<T> {
     pub async fn opcode_invalid(&mut self, _backend: &mut impl Database) -> Result<Action> {
         Err(Error::InvalidOpcode(
             self.context.contract,
-            self.execution_code[self.pc],
+            self.execution_code.get_u8(self.pc, &self.parent),
         ))
     }
 
@@ -1485,28 +1462,26 @@ impl<T: EventListener> Machine<T> {
             .transfer(self.context.contract, address, chain_id, value)
             .await?;
 
-        backend.commit_snapshot();
         log_data(&[b"EXIT", b"SENDALL"]);
+        backend.commit_snapshot();
 
-        end_vm!(self, backend, super::ExitStatus::Suicide);
+        stop_vm!(self, backend, super::ExitStatus::Suicide);
 
         if self.parent.is_none() {
             return Ok(Action::Suicide);
         }
 
-        let mut returned = self.join();
-        match returned.reason {
+        self.join();
+        let child = self.child.as_ref().unwrap();
+
+        match child.reason {
             Reason::Call => {
-                self.memory.write_range(&self.return_range, &[])?;
+                self.memory.write_range(&self.child_return_into, &[])?;
                 self.stack.push_bool(true)?; // success
             }
             Reason::Create => {
                 self.stack.push_zero()?;
             }
-        }
-
-        unsafe {
-            ManuallyDrop::drop(&mut returned);
         }
 
         Ok(Action::Continue)
@@ -1515,28 +1490,26 @@ impl<T: EventListener> Machine<T> {
     /// Halts execution of the contract
     #[maybe_async]
     pub async fn opcode_stop(&mut self, backend: &mut impl Database) -> Result<Action> {
-        backend.commit_snapshot();
         log_data(&[b"EXIT", b"STOP"]);
+        backend.commit_snapshot();
 
-        end_vm!(self, backend, super::ExitStatus::Stop);
+        stop_vm!(self, backend, super::ExitStatus::Stop);
 
         if self.parent.is_none() {
             return Ok(Action::Stop);
         }
 
-        let mut returned = self.join();
-        match returned.reason {
+        self.join();
+        let child = self.child.as_ref().unwrap();
+
+        match child.reason {
             Reason::Call => {
-                self.memory.write_range(&self.return_range, &[])?;
+                self.memory.write_range(&self.child_return_into, &[])?;
                 self.stack.push_bool(true)?; // success
             }
             Reason::Create => {
                 self.stack.push_zero()?;
             }
-        }
-
-        unsafe {
-            ManuallyDrop::drop(&mut returned);
         }
 
         Ok(Action::Continue)

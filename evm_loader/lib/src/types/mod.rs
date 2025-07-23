@@ -11,23 +11,21 @@ use crate::tracing::TraceCallConfig;
 use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
 pub use crate::types::tracer_ch_db::ClickHouseDb;
 pub use crate::types::tracer_rocks_db::RocksDb;
+use crate::NeonResult;
 use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
 use ethnum::U256;
+use evm_loader::platform::Platform;
 use evm_loader::solana_program::clock::{Slot, UnixTimestamp};
 pub use evm_loader::types::Address;
+use evm_loader::types::{AccessListTx, DynamicFeeTx, ExecutionMap, LegacyTx, TransactionPayload};
 use evm_loader::types::{StorageKey, Transaction};
-use evm_loader::{
-    account_storage::AccountStorage,
-    types::{AccessListTx, DynamicFeeTx, ExecutionMap, LegacyTx, TransactionPayload},
-};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
 use solana_sdk::account::{AccountSharedData, ReadableAccount};
 
 use crate::rpc::SliceConfig;
-use evm_loader::types::TrxView;
 use solana_sdk::signature::Signature;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::HashMap;
@@ -174,12 +172,19 @@ pub struct TxParams {
 }
 
 impl TxParams {
-    pub async fn into_transaction(self, backend: &impl AccountStorage) -> (Address, Transaction) {
-        let chain_id = self.chain_id.unwrap_or_else(|| backend.default_chain_id());
-
+    pub async fn into_transaction<'a>(
+        self,
+        platform: &impl Platform<'a>,
+    ) -> NeonResult<(Address, Transaction)> {
         let from = self.from.address();
-        let origin_nonce = backend.nonce(from, chain_id).await;
-        let nonce = self.nonce.unwrap_or(origin_nonce);
+        let chain_id = self.chain_id.unwrap_or_else(|| platform.default_chain());
+
+        let origin = platform.get_balance(from, chain_id).await?;
+        let nonce = self
+            .nonce
+            .or_else(|| origin.map(|b| b.nonce()))
+            .unwrap_or(0);
+
         let max_fee_per_gas = self.max_fee_per_gas.unwrap_or(U256::ZERO);
 
         let payload = if max_fee_per_gas != U256::ZERO {
@@ -250,7 +255,7 @@ impl TxParams {
             signed_hash: [0; 32],
         };
 
-        (from, tx)
+        Ok((from, tx))
     }
 
     #[must_use]
@@ -267,7 +272,7 @@ impl TxParams {
             gas_price: Some(tx.gas_price()),
             max_fee_per_gas: tx.max_fee_per_gas(),
             max_priority_fee_per_gas: tx.max_priority_fee_per_gas(),
-            chain_id: tx.chain_id(),
+            chain_id: tx.try_chain_id(),
             access_list: None,
             actual_gas_used: None,
         }

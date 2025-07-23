@@ -175,7 +175,7 @@ impl ConfigInstructionSimulator for SolanaSimulator {
         let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer_pubkey));
         transaction.message.recent_blockhash = self.blockhash();
 
-        let r = self.simulate_legacy_transaction(transaction)?;
+        let r = self.process_legacy_transaction(transaction)?;
         if let Err(e) = r.result {
             return Err(e.into());
         }

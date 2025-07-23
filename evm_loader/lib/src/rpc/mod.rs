@@ -1,8 +1,10 @@
+mod cached_client;
 mod db_call_client;
-mod emulator_client;
+mod platform_client;
 mod validator_client;
 use crate::commands::get_config::GetConfigResponse;
 
+pub use cached_client::CachedRpc;
 pub use db_call_client::CallDbClient;
 use tracing::trace;
 pub use validator_client::CloneRpcClient;
@@ -82,6 +84,32 @@ pub trait Rpc {
         -> ClientResult<Vec<Option<Account>>>;
 
     async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>>;
+}
+
+#[async_trait(?Send)]
+impl<R: Rpc> Rpc for &R {
+    async fn get_account_slice(
+        &self,
+        key: &Pubkey,
+        slice: Option<SliceConfig>,
+    ) -> ClientResult<Option<Account>> {
+        Rpc::get_account_slice(*self, key, slice).await
+    }
+
+    async fn get_account(&self, key: &Pubkey) -> ClientResult<Option<Account>> {
+        Rpc::get_account(*self, key).await
+    }
+
+    async fn get_multiple_accounts(
+        &self,
+        pubkeys: &[Pubkey],
+    ) -> ClientResult<Vec<Option<Account>>> {
+        Rpc::get_multiple_accounts(*self, pubkeys).await
+    }
+
+    async fn get_deactivated_solana_features(&self) -> ClientResult<Vec<Pubkey>> {
+        Rpc::get_deactivated_solana_features(*self).await
+    }
 }
 
 #[enum_dispatch(BuildConfigSimulator, Rpc)]

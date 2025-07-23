@@ -1,52 +1,36 @@
-use crate::allocator::{acc_allocator, StateAccountAllocator};
+use allocator_api2::alloc::Allocator;
+use allocator_api2::vec::Vec;
 use allocator_api2::SliceExt;
 
-pub type Vector<T> = allocator_api2::vec::Vec<T, StateAccountAllocator>;
+pub type Vector<T, A> = Vec<T, A>;
 
-#[macro_export]
-macro_rules! vector {
-    () => (
-        allocator_api2::vec::Vec::new_in($crate::allocator::acc_allocator())
-    );
-    ($elem:expr; $n:expr) => (
-        allocator_api2::vec::from_elem_in($elem, $n, $crate::allocator::acc_allocator())
-    );
-    ($($x:expr),+ $(,)?) => (
-        allocator_api2::boxed::Box::<[_], $crate::allocator::StateAccountAllocator>::into_vec(
-            allocator_api2::boxed::Box::slice(
-                allocator_api2::boxed::Box::new_in([$($x),+], $crate::allocator::acc_allocator())
-            )
-        )
-    );
-}
-
-pub trait VectorVecExt<T> {
-    fn into_vector(self) -> Vector<T>
+pub trait VectorVecExt<T, A: Allocator> {
+    fn into_vector(self, allocator: A) -> Vec<T, A>
     where
         T: Copy + Default;
 }
 
-pub trait VectorSliceExt<T> {
-    fn to_vector(&self) -> Vector<T>
+pub trait VectorSliceExt<T, A: Allocator> {
+    fn to_vector(&self, allocator: A) -> Vec<T, A>
     where
         T: Copy + Default;
 }
 
-pub trait VectorVecSlowExt<T> {
-    fn elementwise_copy_into_vector(self) -> Vector<T>
+pub trait VectorVecSlowExt<T, A: Allocator> {
+    fn elementwise_copy_into_vector(self, allocator: A) -> Vec<T, A>
     where
         T: Clone;
 }
 
-pub trait VectorSliceSlowExt<T> {
-    fn elementwise_copy_to_vector(&self) -> Vector<T>
+pub trait VectorSliceSlowExt<T, A: Allocator> {
+    fn elementwise_copy_to_vector(&self, allocator: A) -> Vec<T, A>
     where
         T: Clone;
 }
 
-impl<T: Copy> VectorVecExt<T> for Vec<T> {
-    fn into_vector(self) -> Vector<T> {
-        let mut ret = Vector::with_capacity_in(self.len(), crate::allocator::acc_allocator());
+impl<T: Copy, A: Allocator> VectorVecExt<T, A> for std::vec::Vec<T> {
+    fn into_vector(self, allocator: A) -> Vec<T, A> {
+        let mut ret = Vec::with_capacity_in(self.len(), allocator);
         // SAFETY:
         // allocated above with the capacity of `self.len()`, and initialize to `self.len()` in
         // ptr::copy_to_non_overlapping below.
@@ -59,9 +43,9 @@ impl<T: Copy> VectorVecExt<T> for Vec<T> {
     }
 }
 
-impl<T: Copy> VectorSliceExt<T> for [T] {
-    fn to_vector(&self) -> Vector<T> {
-        let mut ret = Vector::with_capacity_in(self.len(), crate::allocator::acc_allocator());
+impl<T: Copy, A: Allocator> VectorSliceExt<T, A> for [T] {
+    fn to_vector(&self, allocator: A) -> Vec<T, A> {
+        let mut ret = Vec::with_capacity_in(self.len(), allocator);
         // SAFETY:
         // allocated above with the capacity of `self.len()`, and initialize to `self.len()` in
         // ptr::copy_to_non_overlapping below.
@@ -74,18 +58,18 @@ impl<T: Copy> VectorSliceExt<T> for [T] {
     }
 }
 
-impl<T> VectorSliceSlowExt<T> for [T] {
-    fn elementwise_copy_to_vector(&self) -> Vector<T>
+impl<T, A: Allocator> VectorSliceSlowExt<T, A> for [T] {
+    fn elementwise_copy_to_vector(&self, allocator: A) -> Vec<T, A>
     where
         T: Clone,
     {
-        SliceExt::to_vec_in(self, acc_allocator())
+        SliceExt::to_vec_in(self, allocator)
     }
 }
 
-impl<T> VectorVecSlowExt<T> for Vec<T> {
-    fn elementwise_copy_into_vector(self) -> Vector<T> {
-        let mut ret = Vector::with_capacity_in(self.len(), acc_allocator());
+impl<T, A: Allocator> VectorVecSlowExt<T, A> for std::vec::Vec<T> {
+    fn elementwise_copy_into_vector(self, allocator: A) -> Vec<T, A> {
+        let mut ret = Vec::with_capacity_in(self.len(), allocator);
         for item in self {
             ret.push(item);
         }
@@ -93,22 +77,23 @@ impl<T> VectorVecSlowExt<T> for Vec<T> {
     }
 }
 
-#[must_use]
-pub fn seeds2_to_vector(seeds: &[&[u8]]) -> Vector<Vector<u8>> {
-    let mut ret = Vector::with_capacity_in(seeds.len(), acc_allocator());
+pub fn seeds2_to_vector<A: Allocator + Copy>(seeds: &[&[u8]], allocator: A) -> Vec<Vec<u8, A>, A> {
+    let mut ret = Vec::with_capacity_in(seeds.len(), allocator);
     for seed in seeds {
-        ret.push(seed.to_vector());
+        ret.push(seed.to_vector(allocator));
     }
     ret
 }
 
-#[must_use]
-pub fn seeds3_to_vector(program_seeds: &[&[&[u8]]]) -> Vector<Vector<Vector<u8>>> {
-    let mut ret = Vector::with_capacity_in(program_seeds.len(), acc_allocator());
+pub fn seeds3_to_vector<A: Allocator + Copy>(
+    program_seeds: &[&[&[u8]]],
+    allocator: A,
+) -> Vec<Vec<Vec<u8, A>, A>, A> {
+    let mut ret = Vec::with_capacity_in(program_seeds.len(), allocator);
     for account_seeds in program_seeds {
-        let mut inner = Vector::with_capacity_in(account_seeds.len(), acc_allocator());
+        let mut inner = Vec::with_capacity_in(account_seeds.len(), allocator);
         for seed in *account_seeds {
-            inner.push(seed.to_vector());
+            inner.push(seed.to_vector(allocator));
         }
 
         ret.push(inner);

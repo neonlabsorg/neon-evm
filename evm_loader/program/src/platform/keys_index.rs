@@ -1,14 +1,19 @@
 use crate::{
-    account::pda,
-    types::{btree_map_cell::BTreeMapCell, Address},
+    account::{pda, StorageCellSeed},
+    types::{tree_map_cell::TreeMapCell, Address},
 };
+use allocator_api2::alloc;
+use ethnum::U256;
 use solana_program::pubkey::Pubkey;
 
 pub trait KeysIndex {
     fn balance_bump(&self, address: Address, chain_id: u64) -> (Pubkey, u8);
     fn balance(&self, address: Address, chain_id: u64) -> Pubkey;
+
     fn contract_bump(&self, address: Address) -> (Pubkey, u8);
     fn contract(&self, address: Address) -> Pubkey;
+
+    fn storage(&self, contract: Address, index: U256) -> Pubkey;
 }
 
 pub struct DefaultKeysIndex {
@@ -42,12 +47,19 @@ impl KeysIndex for DefaultKeysIndex {
     fn contract_bump(&self, address: Address) -> (Pubkey, u8) {
         pda::contract_address(&self.program_id, &address)
     }
+
+    #[inline]
+    fn storage(&self, contract: Address, index: U256) -> Pubkey {
+        let base = self.contract(contract);
+        let storage_seed = StorageCellSeed::new(index);
+        Pubkey::create_with_seed(&base, &storage_seed, &self.program_id).unwrap()
+    }
 }
 
 pub struct CachedKeysIndex {
     program_id: Pubkey,
-    balance_cache: BTreeMapCell<(Address, u64), (Pubkey, u8)>,
-    contract_cache: BTreeMapCell<Address, (Pubkey, u8)>,
+    balance_cache: TreeMapCell<(Address, u64), (Pubkey, u8), alloc::Global>,
+    contract_cache: TreeMapCell<Address, (Pubkey, u8), alloc::Global>,
 }
 
 impl CachedKeysIndex {
@@ -55,8 +67,8 @@ impl CachedKeysIndex {
     pub fn new(program_id: Pubkey) -> Self {
         Self {
             program_id,
-            balance_cache: BTreeMapCell::new(),
-            contract_cache: BTreeMapCell::new(),
+            balance_cache: TreeMapCell::with_capacity(64),
+            contract_cache: TreeMapCell::with_capacity(32),
         }
     }
 }
@@ -83,5 +95,12 @@ impl KeysIndex for CachedKeysIndex {
         self.contract_cache.get_or_insert(address, |address| {
             pda::contract_address(&self.program_id, address)
         })
+    }
+
+    #[inline]
+    fn storage(&self, contract: Address, index: U256) -> Pubkey {
+        let base = self.contract(contract);
+        let storage_seed = StorageCellSeed::new(index);
+        Pubkey::create_with_seed(&base, &storage_seed, &self.program_id).unwrap()
     }
 }

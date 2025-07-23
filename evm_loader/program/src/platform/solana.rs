@@ -1,22 +1,23 @@
 #![allow(irrefutable_let_patterns)]
-use std::collections::HashMap;
-
+use ethnum::U256;
 use solana_program::{
     account_info::AccountInfo, instruction::Instruction, log::sol_log_data,
     program::invoke_signed_unchecked, pubkey::Pubkey, rent::Rent, system_instruction,
     system_program, sysvar::Sysvar,
 };
+use std::collections::HashMap;
 
 use crate::{
     account::{
         Account, AccountDispatch, BalanceAccount, Operator, OperatorBalance,
-        OperatorBalanceValidator, Treasury,
+        OperatorBalanceValidator, Root, TransactionTree, Treasury,
     },
     config::PAYMENT_TO_TREASURE,
     debug::log_data,
     error::{Error, Result},
+    gasometer::Gasometer,
     platform::keys_index::KeysIndex,
-    types::Address,
+    types::{Address, Transaction},
 };
 
 use super::{keys_index::CachedKeysIndex, Chain, InvokeMode, Platform, FAKE_OPERATOR};
@@ -28,6 +29,7 @@ pub struct Solana<'a> {
     pub operator: Operator<'a>,
     pub operator_balance: Option<OperatorBalance<'a>>,
     keys_index: CachedKeysIndex,
+    gasometer: Gasometer,
 }
 
 impl<'a> Solana<'a> {
@@ -44,6 +46,9 @@ impl<'a> Solana<'a> {
             balance.validate_owner(&operator)?;
         }
 
+        let mut gasometer = Gasometer::new(&operator);
+        gasometer.record_address_lookup_table(&sorted_account_infos);
+
         Ok(Self {
             sorted_account_infos,
             containers_index: HashMap::new(), // TODO
@@ -51,6 +56,7 @@ impl<'a> Solana<'a> {
             operator,
             operator_balance,
             keys_index: CachedKeysIndex::new(crate::ID),
+            gasometer,
         })
     }
 
@@ -92,9 +98,163 @@ impl<'a> Solana<'a> {
         info
     }
 
-    // Explicitly sync all accounts lamports
-    pub fn sync_lamports(self) {
-        // see `impl Drop for Solana<'_>`
+    pub fn update_accounts_lamports(&mut self) -> Result<()> {
+        let rent = Rent::get()?;
+        let mut expanded_accounts = Vec::with_capacity(self.sorted_account_infos.len());
+
+        for account in &self.sorted_account_infos {
+            if !crate::check_id(account.owner) {
+                continue;
+            }
+
+            let original_data_len = unsafe { account.original_data_len() };
+            if original_data_len == account.data_len() {
+                continue;
+            }
+
+            let minimum_balance = rent.minimum_balance(account.data_len());
+            if account.lamports() >= minimum_balance {
+                continue;
+            }
+
+            let lamports = minimum_balance - account.lamports();
+            expanded_accounts.push((account, lamports));
+        }
+
+        if expanded_accounts.is_empty() {
+            return Ok(());
+        }
+
+        // We collect all lamports to a single account and distribute them later
+        // This is required avoid multiple calls to `invoke_signed`
+        // Because the number of `invoke_signed` in the transaction is limited
+        let (collector, _) = expanded_accounts[0];
+        let total_lamports = expanded_accounts.iter().fold(0_u64, |total, v| total + v.1);
+
+        let operator: &AccountInfo = &self.operator.info;
+        let system: &AccountInfo = self.find_account_info(system_program::ID);
+        invoke_signed_unchecked(
+            &system_instruction::transfer(operator.key, collector.key, total_lamports),
+            &[system.clone(), operator.clone(), collector.clone()],
+            &[],
+        )?;
+
+        for (account, lamports) in expanded_accounts {
+            **collector.lamports.borrow_mut() -= lamports;
+            **account.lamports.borrow_mut() += lamports;
+        }
+
+        Ok(())
+    }
+
+    pub fn use_gasometer<R, F>(&mut self, action: F) -> R
+    where
+        F: FnOnce(&mut Gasometer) -> R,
+    {
+        action(&mut self.gasometer)
+    }
+
+    pub fn reward_operator_from_holder(&mut self, state: &mut Root) -> Result<()> {
+        let chain_id = state.tx_chain_id().unwrap_or_else(|| self.default_chain());
+
+        let gas = self.gasometer.collect_gas(&self.operator);
+
+        state.consume_gas(gas)?;
+        let total_gas = state.gas_used();
+
+        log_data(&[b"GAS", &gas.to_le_bytes(), &total_gas.to_le_bytes()]);
+
+        let gas_price = state.gas_price();
+        let Some(tokens) = gas.checked_mul(gas_price) else {
+            return Err(Error::IntegerOverflow);
+        };
+
+        if tokens == U256::ZERO {
+            return Ok(());
+        }
+
+        let Some(balance) = self.operator_balance.as_mut() else {
+            return Err(Error::OperatorBalanceMissing);
+        };
+
+        if balance.chain_id() != chain_id {
+            return Err(Error::OperatorBalanceInvalidChainId);
+        }
+
+        balance.mint(tokens)
+    }
+
+    pub fn reward_operator_from_tree(
+        &mut self,
+        tree: &mut TransactionTree,
+        transaction_hash: [u8; 32],
+    ) -> Result<()> {
+        let gas_limit = tree.gas_limit(transaction_hash)?;
+        let gas = self.gasometer.collect_gas(&self.operator);
+
+        if gas > gas_limit {
+            return Err(Error::OutOfGas(gas_limit, gas));
+        }
+
+        log_data(&[b"GAS", &gas.to_le_bytes(), &gas.to_le_bytes()]);
+
+        let gas_price = tree.max_fee_per_gas();
+        let Some(tokens) = gas.checked_mul(gas_price) else {
+            return Err(Error::IntegerOverflow);
+        };
+
+        if tokens == U256::ZERO {
+            return Ok(());
+        }
+
+        let Some(balance) = self.operator_balance.as_mut() else {
+            return Err(Error::OperatorBalanceMissing);
+        };
+
+        if balance.chain_id() != tree.chain_id() {
+            return Err(Error::OperatorBalanceInvalidChainId);
+        }
+
+        tree.burn(tokens)?;
+        balance.mint(tokens)
+    }
+
+    pub fn reward_operator_from_origin(
+        &mut self,
+        origin: Address,
+        transaction: &Transaction,
+    ) -> Result<()> {
+        let chain_id = transaction.chain_id(self);
+
+        let gas_limit = transaction.gas_limit();
+        let gas = self.gasometer.collect_gas(&self.operator);
+
+        if gas > gas_limit {
+            return Err(Error::OutOfGas(gas_limit, gas));
+        }
+
+        log_data(&[b"GAS", &gas.to_le_bytes(), &gas.to_le_bytes()]);
+
+        let gas_price = transaction.gas_price();
+        let Some(tokens) = gas.checked_mul(gas_price) else {
+            return Err(Error::IntegerOverflow);
+        };
+
+        if tokens == U256::ZERO {
+            return Ok(());
+        }
+
+        let mut origin_balance: BalanceAccount = self.create_balance(origin, chain_id)?;
+        let Some(operator_balance) = self.operator_balance.as_mut() else {
+            return Err(Error::OperatorBalanceMissing);
+        };
+
+        if operator_balance.chain_id() != chain_id {
+            return Err(Error::OperatorBalanceInvalidChainId);
+        }
+
+        origin_balance.burn(tokens)?;
+        operator_balance.mint(tokens)
     }
 
     pub fn withdraw_operator_balance(&mut self) -> Result<()> {
@@ -125,56 +285,6 @@ impl<'a> Solana<'a> {
             &[],
         )
         .map_err(Error::from)
-    }
-}
-
-impl Drop for Solana<'_> {
-    fn drop(&mut self) {
-        let rent = Rent::get().unwrap();
-        let mut expanded_accounts = Vec::with_capacity(self.sorted_account_infos.len());
-
-        for account in &self.sorted_account_infos {
-            if !crate::check_id(account.owner) {
-                continue;
-            }
-
-            let original_data_len = unsafe { account.original_data_len() };
-            if original_data_len == account.data_len() {
-                continue;
-            }
-
-            let minimum_balance = rent.minimum_balance(account.data_len());
-            if account.lamports() >= minimum_balance {
-                continue;
-            }
-
-            let lamports = minimum_balance - account.lamports();
-            expanded_accounts.push((account, lamports));
-        }
-
-        if expanded_accounts.is_empty() {
-            return;
-        }
-
-        // We collect all lamports to a single account and distribute them later
-        // This is required avoid multiple calls to `invoke_signed`
-        // Because the number of `invoke_signed` in the transaction is limited
-        let (collector, _) = expanded_accounts[0];
-        let total_lamports = expanded_accounts.iter().fold(0_u64, |total, v| total + v.1);
-
-        let operator: &AccountInfo = &self.operator.info;
-        let system: &AccountInfo = self.find_account_info(system_program::ID);
-        invoke_signed_unchecked(
-            &system_instruction::transfer(operator.key, collector.key, total_lamports),
-            &[system.clone(), operator.clone(), collector.clone()],
-            &[],
-        )
-        .unwrap();
-
-        for (account, lamports) in expanded_accounts {
-            **collector.lamports.borrow_mut() -= lamports;
-            **account.lamports.borrow_mut() += lamports;
-        }
     }
 }
 

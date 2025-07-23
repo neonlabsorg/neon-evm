@@ -1,23 +1,18 @@
-#![allow(clippy::trait_duplication_in_bounds)]
-#![allow(clippy::type_repetition_in_bounds)]
-#![allow(clippy::unsafe_derive_deserialize)]
-#![allow(clippy::future_not_send)]
+#![allow(unused_mut)]
 
-use crate::account::InterruptedState;
-use crate::allocator::acc_allocator;
-use crate::types::vector::VectorSliceExt;
-use crate::types::TrxView;
+use allocator_api2::alloc::{self, Allocator};
+use allocator_api2::boxed::Box;
 use ethnum::U256;
 use maybe_async::maybe_async;
-use std::{fmt::Display, mem::ManuallyDrop, ops::Range};
+use solana_program::instruction::Instruction;
+use std::{fmt::Display, ops::Range};
 
-use crate::{
-    debug::log_data,
-    error::{build_revert_message, Error, Result},
-    evm::opcode::Action,
-    types::{Address, Transaction, Vector},
-};
-use crate::{evm::tracing::EventListener, types::boxx::Boxx};
+use crate::debug::log_data;
+use crate::error::{build_revert_message, Error, Result};
+use crate::evm::opcode::Action;
+use crate::evm::tracing::EventListener;
+use crate::evm::utils::Buffer;
+use crate::types::{Address, Transaction};
 
 use self::{database::Database, memory::Memory, stack::Stack};
 
@@ -30,95 +25,16 @@ mod stack;
 pub mod tracing;
 mod utils;
 
-macro_rules! tracing_event {
-    ($self:expr, $backend:expr, $event:expr) => {
-        #[cfg(not(target_os = "solana"))]
-        if let Some(tracer) = &mut $self.tracer {
-            tracer.event($backend, $event).await?;
-        }
-    };
-}
-
-macro_rules! begin_vm {
-    ($self:expr, $backend:expr, $context:expr, $chain_id:expr, $input:expr, $opcode:expr) => {
-        tracing_event!(
-            $self,
-            $backend,
-            crate::evm::tracing::Event::BeginVM {
-                context: $context,
-                chain_id: $chain_id,
-                input: $input.to_vec(),
-                opcode: $opcode
-            }
-        );
-    };
-    ($self:expr, $backend:expr, $context:expr, $chain_id:expr, $input:expr) => {
-        begin_vm!(
-            $self,
-            $backend,
-            $context,
-            $chain_id,
-            $input,
-            $self
-                .execution_code
-                .get($self.pc)
-                .copied()
-                .unwrap_or_default()
-                .into()
-        );
-    };
-}
-
-macro_rules! end_vm {
-    ($self:expr, $backend:expr, $status:expr) => {
-        tracing_event!(
-            $self,
-            $backend,
-            crate::evm::tracing::Event::EndVM {
-                context: $self.context,
-                chain_id: $self.chain_id,
-                status: $status
-            }
-        );
-    };
-}
-
-macro_rules! begin_step {
-    ($self:expr, $backend:expr) => {
-        tracing_event!(
-            $self,
-            $backend,
-            crate::evm::tracing::Event::BeginStep {
-                context: $self.context,
-                chain_id: $self.chain_id,
-                opcode: $self
-                    .execution_code
-                    .get($self.pc)
-                    .copied()
-                    .unwrap_or_default()
-                    .into(),
-                pc: $self.pc,
-                stack: $self.stack.to_vec(),
-                memory: $self.memory.to_vec(),
-                return_data: $self.return_data.to_vec()
-            }
-        );
-    };
-}
-
-pub(crate) use begin_step;
-pub(crate) use begin_vm;
-pub(crate) use end_vm;
-pub(crate) use tracing_event;
+pub type SolanaCallInterrupt = std::boxed::Box<(Instruction, Vec<Vec<u8>>, Option<u64>)>;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[repr(C)]
 pub enum ExitStatus {
     Stop,
-    Return(Vector<u8>),
-    Revert(Vector<u8>),
+    Return(Vec<u8>),
+    Revert(Vec<u8>),
     Suicide,
-    Interrupted(Box<Option<InterruptedState>>),
+    Interrupted(SolanaCallInterrupt),
     StepLimit,
     Cancel,
 }
@@ -142,6 +58,27 @@ impl ExitStatus {
     }
 
     #[must_use]
+    pub fn code(&self) -> u8 {
+        // No idea where these numbers come from, they existed from the very beginning
+        // Keeping for backward compatibility
+        match self {
+            ExitStatus::Stop => 0x11,
+            ExitStatus::Return(_) => 0x12,
+            ExitStatus::Revert(_) => 0xd0,
+            ExitStatus::Suicide => 0x13,
+            ExitStatus::Interrupted(_) | ExitStatus::StepLimit | ExitStatus::Cancel => 0xFF,
+        }
+    }
+
+    #[must_use]
+    pub fn is_execution_finished(&self) -> bool {
+        matches!(
+            self,
+            ExitStatus::Stop | ExitStatus::Return(_) | ExitStatus::Revert(_) | ExitStatus::Suicide
+        )
+    }
+
+    #[must_use]
     pub fn is_succeed(&self) -> Option<bool> {
         match self {
             ExitStatus::Stop | ExitStatus::Return(_) | ExitStatus::Suicide => Some(true),
@@ -153,7 +90,7 @@ impl ExitStatus {
     #[must_use]
     pub fn into_result(self) -> Option<Vec<u8>> {
         match self {
-            ExitStatus::Return(v) | ExitStatus::Revert(v) => Some(v.to_vec()),
+            ExitStatus::Return(v) | ExitStatus::Revert(v) => Some(v),
             ExitStatus::Stop
             | ExitStatus::Suicide
             | ExitStatus::Interrupted(_)
@@ -181,7 +118,11 @@ pub struct Context {
 }
 
 #[repr(C)]
-pub struct Machine<T: EventListener> {
+pub struct Machine<A, T = ()>
+where
+    A: Allocator + Copy,
+    T: EventListener,
+{
     origin: Address,
     chain_id: u64,
     context: Context,
@@ -189,49 +130,81 @@ pub struct Machine<T: EventListener> {
     gas_price: U256,
     gas_limit: U256,
 
-    execution_code: Vector<u8>,
-    call_data: Vector<u8>,
-    return_data: Vector<u8>,
-    return_range: Range<usize>,
+    execution_code: Buffer<A>,
+    call_data: Buffer<A>,
+    return_data: Range<usize>,
+    child_return_into: Range<usize>,
 
-    stack: Stack,
-    memory: Memory,
+    stack: Stack<A>,
+    memory: Memory<A>,
     pc: usize,
 
     is_static: bool,
     reason: Reason,
 
-    parent: Option<Boxx<Self>>,
+    parent: Option<Box<Self, A>>,
+    child: Option<Box<Self, A>>,
 
+    allocator: A,
     tracer: Option<T>,
 }
 
-impl<T: EventListener> Machine<T> {
+impl<A> Machine<A, ()>
+where
+    A: Allocator + Copy,
+{
     #[maybe_async]
-    pub async fn new(
+    pub async fn new_in(
+        trx: &Transaction,
+        origin: Address,
+        backend: &mut impl Database,
+        allocator: A,
+    ) -> Result<Self> {
+        Self::with_tracer_in(trx, origin, backend, None, allocator).await
+    }
+}
+
+impl<T> Machine<alloc::Global, T>
+where
+    T: EventListener,
+{
+    #[maybe_async]
+    pub async fn with_tracer(
         trx: &Transaction,
         origin: Address,
         backend: &mut impl Database,
         tracer: Option<T>,
     ) -> Result<Self> {
-        let trx_chain_id = trx.chain_id().unwrap_or_else(|| backend.default_chain_id());
+        Self::with_tracer_in(trx, origin, backend, tracer, alloc::Global).await
+    }
+}
 
-        if backend.balance(origin, trx_chain_id).await? < trx.value() {
-            return Err(Error::InsufficientBalance(
-                origin,
-                trx_chain_id,
-                trx.value(),
-            ));
+impl<A, T> Machine<A, T>
+where
+    A: Allocator + Copy,
+    T: EventListener,
+{
+    #[maybe_async]
+    pub async fn with_tracer_in(
+        trx: &Transaction,
+        origin: Address,
+        backend: &mut impl Database,
+        tracer: Option<T>,
+        allocator: A,
+    ) -> Result<Self> {
+        let chain_id = trx.chain_id_with_database(backend);
+
+        if backend.balance(origin, chain_id).await? < trx.value() {
+            return Err(Error::InsufficientBalance(origin, chain_id, trx.value()));
         }
 
         if trx.target().is_some() {
-            Self::new_call(trx_chain_id, trx, origin, backend, tracer).await
+            Self::new_call(chain_id, trx, origin, backend, tracer, allocator).await
         } else {
-            Self::new_create(trx_chain_id, trx, origin, backend, tracer).await
+            Self::new_create(chain_id, trx, origin, backend, tracer, allocator).await
         }
     }
 
-    #[allow(unused_mut)]
     #[maybe_async]
     async fn new_call(
         chain_id: u64,
@@ -239,6 +212,7 @@ impl<T: EventListener> Machine<T> {
         origin: Address,
         backend: &mut impl Database,
         tracer: Option<T>,
+        allocator: A,
     ) -> Result<Self> {
         assert!(trx.target().is_some());
 
@@ -251,7 +225,7 @@ impl<T: EventListener> Machine<T> {
             .transfer(origin, target, chain_id, trx.value())
             .await?;
 
-        let execution_code = backend.code(target).await?;
+        let execution_code = backend.code(target, allocator).await?;
         let mut machine = Self {
             origin,
             chain_id,
@@ -264,31 +238,33 @@ impl<T: EventListener> Machine<T> {
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
-            execution_code,
-            call_data: trx.call_data().to_vector(),
-            return_data: Vector::<u8>::new_in(acc_allocator()),
-            return_range: 0..0,
-            stack: Stack::new(),
-            memory: Memory::new(),
+            execution_code: Buffer::from_vec(execution_code),
+            call_data: Buffer::from_slice_in(trx.call_data(), allocator),
+            return_data: 0..0,
+            child_return_into: 0..0,
+            stack: Stack::new_in(allocator),
+            memory: Memory::new_in(allocator),
             pc: 0_usize,
             is_static: false,
             reason: Reason::Call,
             parent: None,
+            child: None,
+            allocator,
             tracer,
         };
-        begin_vm!(
+
+        tracing::begin_vm!(
             machine,
             backend,
             machine.context,
             machine.chain_id,
-            machine.call_data.to_vec(),
+            trx.call_data(),
             opcode_table::CALL
         );
 
         Ok(machine)
     }
 
-    #[allow(unused_mut)]
     #[maybe_async]
     async fn new_create(
         chain_id: u64,
@@ -296,6 +272,7 @@ impl<T: EventListener> Machine<T> {
         origin: Address,
         backend: &mut impl Database,
         tracer: Option<T>,
+        allocator: A,
     ) -> Result<Self> {
         assert!(trx.target().is_none());
 
@@ -309,10 +286,12 @@ impl<T: EventListener> Machine<T> {
 
         backend.snapshot();
 
+        backend.start_create(target, chain_id).await?;
         backend.increment_nonce(target, chain_id).await?;
         backend
             .transfer(origin, target, chain_id, trx.value())
             .await?;
+
         let mut machine = Self {
             origin,
             chain_id,
@@ -325,24 +304,26 @@ impl<T: EventListener> Machine<T> {
             },
             gas_price: trx.gas_price(),
             gas_limit: trx.gas_limit(),
-            return_data: Vector::<u8>::new_in(acc_allocator()),
-            return_range: 0..0,
-            stack: Stack::new(),
-            memory: Memory::new(),
+            return_data: 0..0,
+            child_return_into: 0..0,
+            stack: Stack::new_in(allocator),
+            memory: Memory::new_in(allocator),
             pc: 0_usize,
             is_static: false,
             reason: Reason::Create,
-            execution_code: trx.call_data().to_vector(),
-            call_data: Vector::new_in(acc_allocator()),
+            execution_code: Buffer::from_slice_in(trx.call_data(), allocator),
+            call_data: Buffer::from_slice_in(&[], allocator),
             parent: None,
+            child: None,
+            allocator,
             tracer,
         };
-        begin_vm!(
+        tracing::begin_vm!(
             machine,
             backend,
             machine.context,
             machine.chain_id,
-            machine.execution_code.to_vec(),
+            trx.call_data(),
             opcode_table::CREATE
         );
 
@@ -358,15 +339,14 @@ impl<T: EventListener> Machine<T> {
         let contract = self.context.contract;
         let (status, step) = match self.try_call_precompile(&contract, backend).await {
             Some(Ok(value)) => {
-                backend.commit_snapshot();
-                end_vm!(self, backend, ExitStatus::Return(value.to_vector()));
-                (ExitStatus::Return(value.to_vector()), 0)
+                self.return_from_stack_frame(&value, backend).await?;
+                let return_data = self.return_data().to_vec();
+                (ExitStatus::Return(return_data), 0)
             }
-            Some(Err(e)) => {
-                backend.revert_snapshot();
-                let message = build_revert_message(&e.to_string());
-                end_vm!(self, backend, ExitStatus::Revert(message.clone()));
-                (ExitStatus::Revert(message), 0)
+            Some(Err(error)) => {
+                self.revert_from_stack_frame(error, backend).await?;
+                let revert_data = self.return_data().to_vec();
+                (ExitStatus::Revert(revert_data), 0)
             }
             None => self.run_loop(step_limit, backend).await?,
         };
@@ -388,28 +368,27 @@ impl<T: EventListener> Machine<T> {
             }
             step += 1;
 
-            let opcode = self
-                .execution_code
-                .get(self.pc)
-                .copied()
-                .unwrap_or_default();
+            let opcode = self.execution_code.get_u8(self.pc, &self.parent);
 
-            begin_step!(self, backend);
+            tracing::begin_step!(self, backend);
 
             let opcode_result = match self.execute_opcode(backend, opcode).await {
                 Ok(result) => result,
-                Err(e) => {
-                    let message = build_revert_message(&e.to_string());
-                    self.opcode_revert_impl(message, backend).await?
-                }
+                Err(error) => self.revert_from_stack_frame(error, backend).await?,
             };
 
             match opcode_result {
                 Action::Continue => self.pc += 1,
                 Action::Jump(target) => self.pc = target,
                 Action::Stop => break ExitStatus::Stop,
-                Action::Return(value) => break ExitStatus::Return(value),
-                Action::Revert(value) => break ExitStatus::Revert(value),
+                Action::Return => {
+                    let return_data = self.return_data().to_vec();
+                    break ExitStatus::Return(return_data);
+                }
+                Action::Revert => {
+                    let return_data = self.return_data().to_vec();
+                    break ExitStatus::Revert(return_data);
+                }
                 Action::Suicide => break ExitStatus::Suicide,
                 Action::Interrupted(state) => {
                     break ExitStatus::Interrupted(state);
@@ -421,54 +400,142 @@ impl<T: EventListener> Machine<T> {
         Ok((status, step))
     }
 
+    fn new_child(
+        &self,
+        reason: Reason,
+        chain_id: u64,
+        context: Context,
+        execution_code: Buffer<A>,
+        call_data: Buffer<A>,
+        gas_limit: U256,
+    ) -> Box<Self, A> {
+        let allocator = self.allocator;
+
+        let machine = Self {
+            origin: self.origin,
+            chain_id,
+            context,
+            gas_price: self.gas_price,
+            gas_limit,
+            execution_code,
+            call_data,
+            return_data: 0..0,
+            child_return_into: 0..0,
+            stack: Stack::new_in(allocator),
+            memory: Memory::new_in(allocator),
+            pc: 0_usize,
+            is_static: self.is_static,
+            reason,
+            parent: None,
+            child: None,
+            tracer: None,
+            allocator,
+        };
+        Box::new_in(machine, allocator)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reset_child(
+        &self,
+        mut child: Box<Self, A>,
+        reason: Reason,
+        chain_id: u64,
+        context: Context,
+        execution_code: Buffer<A>,
+        call_data: Buffer<A>,
+        gas_limit: U256,
+    ) -> Box<Self, A> {
+        child.reason = reason;
+        child.chain_id = chain_id;
+        child.context = context;
+        child.execution_code = execution_code;
+        child.call_data = call_data;
+        child.gas_limit = gas_limit;
+        child.is_static = self.is_static;
+        child.return_data = 0..0;
+        child.pc = 0;
+
+        child.memory.reset();
+        child.stack.reset();
+
+        if let Some(grandchild) = child.child.as_mut() {
+            grandchild.return_data = 0..0;
+        }
+
+        child
+    }
+
     fn fork(
         &mut self,
         reason: Reason,
         chain_id: u64,
         context: Context,
-        execution_code: Vector<u8>,
-        call_data: Vector<u8>,
+        execution_code: Buffer<A>,
+        call_data: Buffer<A>,
         gas_limit: Option<U256>,
     ) {
-        let mut other = Self {
-            origin: self.origin,
-            chain_id,
-            context,
-            gas_price: self.gas_price,
-            gas_limit: gas_limit.unwrap_or(self.gas_limit),
-            execution_code,
-            call_data,
-            return_data: Vector::<u8>::new_in(acc_allocator()),
-            return_range: 0..0,
-            stack: Stack::new(),
-            memory: Memory::new(),
-            pc: 0_usize,
-            is_static: self.is_static,
-            reason,
-            parent: None,
-            tracer: self.tracer.take(),
+        let gas_limit = gas_limit.unwrap_or(self.gas_limit);
+
+        #[rustfmt::skip]
+        let mut other = if let Some(mut child) = self.child.take() {
+            // Reuse the existing child, so we don't need to allocate stack and memory again.
+            self.reset_child(child, reason, chain_id, context, execution_code, call_data, gas_limit)
+        } else {
+            self.new_child(reason, chain_id, context, execution_code, call_data, gas_limit)
         };
 
+        let tracer = self.take_tracer();
+        other.set_tracer(tracer);
+
         core::mem::swap(self, &mut other);
-        self.parent = Some(crate::types::boxx::boxx(other));
+        self.parent = Some(other);
     }
 
-    fn join(&mut self) -> ManuallyDrop<Boxx<Self>> {
+    fn join(&mut self) {
         assert!(self.parent.is_some());
 
         let mut other = self.parent.take().unwrap();
         core::mem::swap(self, other.as_mut());
 
         self.tracer = other.tracer.take();
-
-        ManuallyDrop::new(other)
+        self.child = Some(other);
     }
 
-    // backend and exit_status might not be used because end_vm! macros won't run on target_os is not solana
-    #[allow(unused_variables)]
-    pub async fn end_vm(&mut self, backend: &impl Database, exit_status: ExitStatus) -> Result<()> {
-        end_vm!(self, backend, exit_status);
-        Ok(())
+    pub fn return_data(&self) -> &[u8] {
+        let offset = self.return_data.start;
+        let length = self.return_data.len();
+
+        self.memory.slice(offset, length)
+    }
+
+    #[maybe_async]
+    pub async fn return_from_stack_frame(
+        &mut self,
+        return_data: &[u8],
+        backend: &mut impl Database,
+    ) -> Result<Action> {
+        self.memory.write(0, return_data)?;
+
+        self.stack.push_usize(return_data.len())?;
+        self.stack.push_zero()?; // offset
+
+        self.opcode_return(backend).await
+    }
+
+    #[maybe_async]
+    pub async fn revert_from_stack_frame(
+        &mut self,
+        error: impl std::error::Error,
+        backend: &mut impl Database,
+    ) -> Result<Action> {
+        let message = build_revert_message(&error.to_string());
+
+        self.memory.write(0, &message)?;
+
+        self.stack.push_usize(message.len())?;
+        self.stack.push_zero()?; // offset
+
+        self.opcode_revert(backend).await
     }
 
     pub fn set_tracer(&mut self, tracer: Option<T>) {

@@ -25,6 +25,5 @@ pub fn process(_program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     };
 
     solana.create_balance(address, chain_id)?;
-
-    Ok(())
+    solana.update_accounts_lamports()
 }

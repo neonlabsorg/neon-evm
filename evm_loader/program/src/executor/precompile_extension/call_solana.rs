@@ -1,21 +1,21 @@
 use crate::{
-    account::pda,
+    account::{pda, InterruptedState},
     error::{Error, Result},
-    evm::database::Database,
-    platform::FAKE_OPERATOR,
-    types::{
-        vector::{seeds2_to_vector, VectorSliceExt, VectorSliceSlowExt},
-        Address,
-    },
+    platform::{KeysIndex, FAKE_OPERATOR},
+    types::Address,
 };
 
+use allocator_api2::alloc::Allocator;
 use arrayref::array_ref;
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
+    system_instruction,
 };
+
+use super::PrecompileDatabase;
 
 // "cfd51d32": "createResource(bytes32,uint64,uint64,bytes32)"
 // "154d4aa5": "getNeonAddress(address)"
@@ -36,8 +36,8 @@ use solana_program::{
 
 #[maybe_async]
 #[allow(clippy::too_many_lines)]
-pub async fn call_solana<State: Database>(
-    state: &mut State,
+pub async fn call_solana(
+    state: &mut impl PrecompileDatabase,
     address: &Address,
     input: &[u8],
     context: &crate::evm::Context,
@@ -58,8 +58,7 @@ pub async fn call_solana<State: Database>(
     let (selector, input) = input.split_at(4);
     let selector: [u8; 4] = selector.try_into()?;
 
-    #[cfg(not(target_os = "solana"))]
-    log::info!("Call arguments: {}", hex::encode(input));
+    debug_print!("Call arguments: {}", hex::encode(input));
 
     match selector {
         // "09c5eabe": "execute(bytes)",
@@ -73,10 +72,10 @@ pub async fn call_solana<State: Database>(
                 bincode::deserialize(&input[32 + offset..]).map_err(|_| Error::OutOfBounds)?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_address(&program_id, &signer);
+            let (_, bump_seed) = state.keys().contract_bump(signer);
             let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
-            execute_external_instruction(state, context, instruction, seeds, None).await
+            execute_instruction(state, context, instruction, seeds, None).await
         }
         // "c549a7af": "execute(uint64,bytes)",
         [0xc5, 0x49, 0xa7, 0xaf] => {
@@ -90,17 +89,10 @@ pub async fn call_solana<State: Database>(
                 bincode::deserialize(&input[offset + 32..]).map_err(|_| Error::OutOfBounds)?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_address(&program_id, &signer);
+            let (_, bump_seed) = state.keys().contract_bump(signer);
             let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
-            execute_external_instruction(
-                state,
-                context,
-                instruction,
-                seeds,
-                Some(required_lamports),
-            )
-            .await
+            execute_instruction(state, context, instruction, seeds, Some(required_lamports)).await
         }
 
         // "260e40bc": "executeWithSeed(bytes32,bytes)",
@@ -117,7 +109,7 @@ pub async fn call_solana<State: Database>(
             let (_, bump_seed) = pda::contract_auth_address(&program_id, &signer, salt);
             let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
 
-            execute_external_instruction(state, context, instruction, seeds, None).await
+            execute_instruction(state, context, instruction, seeds, None).await
         }
 
         // "32607450": "executeWithSeed(uint64,bytes32,bytes)",
@@ -135,14 +127,7 @@ pub async fn call_solana<State: Database>(
             let (_, bump_seed) = pda::contract_auth_address(&program_id, &signer, salt);
             let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
 
-            execute_external_instruction(
-                state,
-                context,
-                instruction,
-                seeds,
-                Some(required_lamports),
-            )
-            .await
+            execute_instruction(state, context, instruction, seeds, Some(required_lamports)).await
         }
 
         // "aeed7f1e": "execute(uint64,(bytes32,(bytes32,bool,bool)[],bytes))",
@@ -156,17 +141,10 @@ pub async fn call_solana<State: Database>(
             let instruction = read_instruction(&input[instruction_offset..])?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_address(&program_id, &signer);
+            let (_, bump_seed) = state.keys().contract_bump(signer);
             let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
-            execute_external_instruction(
-                state,
-                context,
-                instruction,
-                seeds,
-                Some(required_lamports),
-            )
-            .await
+            execute_instruction(state, context, instruction, seeds, Some(required_lamports)).await
         }
 
         // "a5754fda": "execute((bytes32,(bytes32,bool,bool)[],bytes))",
@@ -179,10 +157,10 @@ pub async fn call_solana<State: Database>(
             let instruction = read_instruction(&input[instruction_offset..])?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_address(&program_id, &signer);
+            let (_, bump_seed) = state.keys().contract_bump(signer);
             let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
-            execute_external_instruction(state, context, instruction, seeds, None).await
+            execute_instruction(state, context, instruction, seeds, None).await
         }
 
         // "8ea46ee8": "executeWithSeed(bytes32,(bytes32,(bytes32,bool,bool)[],bytes))",
@@ -199,7 +177,7 @@ pub async fn call_solana<State: Database>(
             let (_, bump_seed) = pda::contract_auth_address(&program_id, &signer, salt);
             let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
 
-            execute_external_instruction(state, context, instruction, seeds, None).await
+            execute_instruction(state, context, instruction, seeds, None).await
         }
 
         // "add378af": "executeWithSeed(uint64,bytes32,(bytes32,(bytes32,bool,bool)[],bytes))",
@@ -217,20 +195,13 @@ pub async fn call_solana<State: Database>(
             let (_, bump_seed) = pda::contract_auth_address(&program_id, &signer, salt);
             let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
 
-            execute_external_instruction(
-                state,
-                context,
-                instruction,
-                seeds,
-                Some(required_lamports),
-            )
-            .await
+            execute_instruction(state, context, instruction, seeds, Some(required_lamports)).await
         }
 
         // "154d4aa5": "getNeonAddress(address)"
         [0x15, 0x4d, 0x4a, 0xa5] => {
             let neon_addess = Address::from(*array_ref![input, 12, 20]);
-            let sol_address = state.contract_pubkey(neon_addess).0;
+            let (sol_address, _) = state.keys().contract_bump(neon_addess);
             Ok(sol_address.to_bytes().to_vec())
         }
 
@@ -333,34 +304,43 @@ pub async fn call_solana<State: Database>(
 }
 
 #[maybe_async]
-pub async fn execute_external_instruction<State: Database>(
-    state: &mut State,
+pub async fn execute_from_interrupt<A: Allocator>(
+    state: &mut impl PrecompileDatabase,
+    context: &crate::evm::Context,
+    interrupt: &InterruptedState<A>,
+) -> Result<Vec<u8>> {
+    let instruction = interrupt.instruction();
+    let signer_seeds = interrupt.seeds();
+    let required_lamports = interrupt.lamports();
+
+    execute_instruction(
+        state,
+        context,
+        instruction,
+        &signer_seeds,
+        required_lamports,
+    )
+    .await
+}
+
+#[maybe_async]
+pub async fn execute_instruction(
+    state: &mut impl PrecompileDatabase,
     context: &crate::evm::Context,
     instruction: Instruction,
     signer_seeds: &[&[u8]],
     required_lamports: Option<u64>,
 ) -> Result<Vec<u8>> {
-    #[cfg(not(target_os = "solana"))]
-    log::info!("instruction: {:?}", instruction);
+    debug_print!("instruction: {:?}", instruction);
 
-    if !state.is_synced_state() {
-        return Err(Error::InterruptedCall(Box::new(Some(
-            crate::account::InterruptedState {
-                instruction: crate::account::InterruptedInstruction {
-                    program_id: instruction.program_id,
-                    accounts: instruction.accounts.elementwise_copy_to_vector(),
-                    data: instruction.data.to_vector(),
-                },
-                signer_seeds: seeds2_to_vector(signer_seeds), // TODO: remove heap account allocation
-                lamports: required_lamports,
-            },
-        ))));
+    if state.is_iterative_mode() {
+        let seeds: Vec<Vec<u8>> = signer_seeds.iter().map(|s| s.to_vec()).collect();
+        let interrupt = std::boxed::Box::new((instruction, seeds, required_lamports));
+        return Err(Error::InterruptedCall(interrupt));
     }
 
     let program_id = state.program_id();
     let called_program = instruction.program_id;
-
-    state.set_return_data(&[]);
 
     if called_program == program_id {
         return Err(Error::RecursiveCall);
@@ -384,43 +364,27 @@ pub async fn execute_external_instruction<State: Database>(
     if required_payer {
         let payer_seeds: &[&[u8]] = pda::contract_payer_seeds!(&context.caller, payer_bump_seed);
 
-        let payer = state.external_account(payer_pubkey).await?;
-        if match required_lamports {
-            Some(balance) => payer.lamports < balance,
-            None => true,
-        } {
-            let transfer_instruction = solana_program::system_instruction::transfer(
-                &FAKE_OPERATOR,
-                &payer_pubkey,
-                match required_lamports {
-                    Some(balance) => balance - payer.lamports,
-                    None => state.external_account(state.operator()).await?.lamports,
-                },
-            );
-            state
-                .queue_external_instruction(transfer_instruction, &[], false)
-                .await?;
-        }
+        // transfer lamports to the payer account
+        let lamports = match required_lamports {
+            Some(lamports) => lamports,
+            None => state.real_lamports(state.operator()).await?,
+        };
 
-        state
-            .queue_external_instruction(instruction, &[signer_seeds, payer_seeds], false)
-            .await?;
+        let transfer = system_instruction::transfer(&FAKE_OPERATOR, &payer_pubkey, lamports);
+        state.invoke(transfer, &[]).await?;
 
-        let payer = state.external_account(payer_pubkey).await?;
-        if payer.lamports > 0 {
-            let transfer_instruction = solana_program::system_instruction::transfer(
-                &payer_pubkey,
-                &FAKE_OPERATOR,
-                payer.lamports,
-            );
-            state
-                .queue_external_instruction(transfer_instruction, &[payer_seeds], false)
-                .await?;
+        // execute the instruction
+        let seeds: &[&[&[u8]]] = &[signer_seeds, payer_seeds];
+        state.invoke(instruction, seeds).await?;
+
+        // transfer lamports from the payer account
+        let lamports = state.real_lamports(payer_pubkey).await?;
+        if lamports > 0 {
+            let transfer = system_instruction::transfer(&payer_pubkey, &FAKE_OPERATOR, lamports);
+            state.invoke(transfer, &[payer_seeds]).await?;
         }
     } else {
-        state
-            .queue_external_instruction(instruction, &[signer_seeds], false)
-            .await?;
+        state.invoke(instruction, &[signer_seeds]).await?;
     }
 
     let (_, return_data) = state

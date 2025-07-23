@@ -48,12 +48,12 @@ impl AccountHeader for HeaderWithSolanaAddress {
 pub type Header = HeaderWithSolanaAddress;
 
 pub struct BalanceAccount<'a> {
-    pub account: Account<'a>, // TODO: make it private after emulator changes
+    account: Account<'a>,
 }
 
 impl<'a> BalanceAccount<'a> {
     #[must_use]
-    pub fn required_account_size(is_solana_user: bool) -> usize {
+    pub const fn required_account_size(is_solana_user: bool) -> usize {
         let header_size = if is_solana_user {
             size_of::<HeaderWithSolanaAddress>()
         } else {
@@ -61,12 +61,6 @@ impl<'a> BalanceAccount<'a> {
         };
 
         ACCOUNT_PREFIX_LEN + header_size
-    }
-
-    #[must_use]
-    pub fn required_header_realloc(&self) -> usize {
-        let allocated_header_size = self.header_size();
-        size_of::<Header>().saturating_sub(allocated_header_size)
     }
 
     pub fn from_account_info(program_id: Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
@@ -78,6 +72,13 @@ impl<'a> BalanceAccount<'a> {
         account.validate_tag(program_id, TAG_ACCOUNT_BALANCE)?;
 
         Ok(Self { account })
+    }
+
+    /// # Safety
+    /// It's a caller responsibility to validate the account tag
+    #[must_use]
+    pub unsafe fn from_account_unchecked(account: Account<'a>) -> Self {
+        Self { account }
     }
 
     pub fn initialize(
@@ -133,15 +134,6 @@ impl<'a> BalanceAccount<'a> {
         }
 
         Ok(Self { account })
-    }
-
-    fn header_size(&self) -> usize {
-        match self.account.header_version() {
-            0 | 1 => size_of::<HeaderV0>(),
-            HeaderWithRevision::VERSION => size_of::<HeaderWithRevision>(),
-            HeaderWithSolanaAddress::VERSION => size_of::<HeaderWithSolanaAddress>(),
-            v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
-        }
     }
 
     fn header_upgrade(&mut self) -> Result<()> {

@@ -124,6 +124,8 @@ pub enum NeonError {
     StrumParseError(#[from] strum::ParseError),
     #[error("Solana Simulator error {0:?}")]
     SolanaSimulatorError(#[from] crate::solana_simulator::Error),
+    #[error("Solana RPC returned empty account for pubkey {0:?}")]
+    RpcReturnedEmptyAccount(Pubkey),
 }
 
 impl NeonError {
@@ -171,6 +173,7 @@ impl NeonError {
             NeonError::StrumParseError(_) => 264,
             NeonError::SolanaSimulatorError(_) => 265,
             NeonError::RocksDb(_) => 266,
+            NeonError::RpcReturnedEmptyAccount(_) => 267,
         }
     }
 }

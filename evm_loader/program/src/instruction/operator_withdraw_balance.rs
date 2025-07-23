@@ -13,5 +13,6 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], _instruction: &[u8]
     // #3 Target balance account
 
     let mut solana = Solana::new(accounts, operator, Some(operator_balance))?;
-    solana.withdraw_operator_balance()
+    solana.withdraw_operator_balance()?;
+    solana.update_accounts_lamports()
 }

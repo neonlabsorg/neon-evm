@@ -5,19 +5,17 @@ use crate::error::Result;
 use solana_program::account_info::AccountInfo;
 
 pub use abstraction::{
-    Account, AccountDispatch, AccountHeader, NoHeader, ZeroInit, ACCOUNT_PREFIX_LEN,
+    Account, AccountDispatch, AccountHeader, NoHeader, SharedAccount, ZeroInit, ACCOUNT_PREFIX_LEN,
 };
 pub use ether_balance::{BalanceAccount, Header as BalanceHeader};
 pub use ether_contract::{AllocateResult, ContractAccount, Header as ContractHeader};
-pub use ether_storage::{StorageCell, StorageCellSeed};
+pub use ether_storage::{Cell, StorageCell, StorageCellSeed};
 pub use holder::{Header as HolderHeader, Holder};
 pub use operator::Operator;
 pub use operator_balance::{OperatorBalance, OperatorBalanceValidator};
-pub use state::{
-    AccountsStatus, InterruptedInstruction, InterruptedState, PlainData as PlainStateHeader,
-    StateAccount,
-};
+pub use state::StateAccount;
 pub use state_finalized::{Header as StateFinalizedHeader, StateFinalizedAccount};
+pub use state_root::{InterruptedState, Root};
 pub use transaction_tree::{
     NodeInitializer, Status as TransactionTreeNodeStatus, TransactionTree, TreeInitializer,
     NO_CHILD_TRANSACTION,
@@ -35,14 +33,13 @@ pub mod pda;
 pub mod program;
 mod state;
 mod state_finalized;
+mod state_root;
 pub mod token;
 mod transaction_tree;
 mod treasury;
 
-pub const HEAP_OFFSET_PTR: usize = holder::HEAP_OFFSET_OFFSET;
-
 pub const TAG_EMPTY: u8 = 0;
-pub const TAG_STATE: u8 = 25;
+pub const TAG_STATE: u8 = 26;
 pub const TAG_STATE_FINALIZED: u8 = 32;
 pub const TAG_SCHEDULED_STATE_FINALIZED: u8 = 35;
 pub const TAG_SCHEDULED_STATE_CANCELLED: u8 = 38;

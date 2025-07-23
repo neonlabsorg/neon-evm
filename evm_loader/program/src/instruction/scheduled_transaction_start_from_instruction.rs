@@ -1,16 +1,13 @@
 use crate::account::{
-    AccountDispatch, Holder, Operator, OperatorBalance, OperatorBalanceValidator, StateAccount,
-    TransactionTree, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED,
-    TAG_STATE, TAG_STATE_FINALIZED,
+    AccountDispatch, Operator, OperatorBalance, TransactionTree, TAG_HOLDER,
+    TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
 };
-use crate::debug::log_data;
 use crate::error::{Error, Result};
-use crate::gasometer::Gasometer;
-use crate::instruction::scheduled_transaction_start::{do_scheduled_start, validate_scheduled_tx};
+use crate::instruction::transaction_step_from_instruction;
 use crate::platform::Solana;
-use crate::types::Transaction;
+use crate::transaction_process::scheduled;
+use crate::types::EncodedTransaction;
 use arrayref::array_ref;
-use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
@@ -20,51 +17,25 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let message = &instruction[4..];
 
     let holder = accounts[0].clone();
-    let transaction_tree = TransactionTree::from_account_info(program_id, &accounts[1])?;
+    let tree = TransactionTree::from_account_info(program_id, &accounts[1])?;
     let operator = Operator::from_account_info(&accounts[2])?;
     let operator_balance = OperatorBalance::try_from_account_info(program_id, &accounts[3])?;
 
-    operator_balance.validate_owner(&operator)?;
-
-    let accounts_db = Solana::new(&accounts[1..], operator.clone(), operator_balance.clone())?;
-
     match holder.tag(program_id)? {
         TAG_HOLDER | TAG_STATE_FINALIZED => {
-            // TODO clarify how it works with STATE_FINALIZED.
-            Holder::init_holder_heap(program_id, &holder, 0)?;
-            let trx = Transaction::scheduled_from_rlp(message)?;
+            let rlp = EncodedTransaction::from_rlp(message);
 
-            let scheduled_trx = validate_scheduled_tx(&trx, tree_index)?;
-
-            let origin = scheduled_trx.payer;
-
-            operator_balance.validate_transaction(&trx)?;
-            let miner_address = operator_balance.miner(origin);
-
-            log_data(&[b"HASH", &trx.hash]);
-            log_data(&[b"MINER", miner_address.as_bytes()]);
-
-            let mut gasometer = Gasometer::new(U256::ZERO, &operator)?;
-            gasometer.record_address_lookup_table(accounts);
-
-            let storage = StateAccount::new(
-                program_id,
-                &holder,
-                &accounts_db,
-                origin,
-                &trx,
-                message,
-                Some(transaction_tree.pubkey()),
+            let (holder, holder_owner) = transaction_step_from_instruction::validate_holder(
+                program_id, holder, &operator, &rlp,
             )?;
 
-            do_scheduled_start(&trx, accounts_db, storage, transaction_tree, gasometer)
+            let solana = Solana::new(&accounts[1..], operator, operator_balance)?;
+            scheduled::start(tree_index, rlp, holder, holder_owner, solana, tree)
         }
-        TAG_STATE => Err(Error::ScheduledTxAlreadyInProgress(*holder.key)),
+        TAG_STATE => Err(Error::ScheduledTxAlreadyInProgress(holder.pubkey())),
         TAG_SCHEDULED_STATE_FINALIZED | TAG_SCHEDULED_STATE_CANCELLED => {
             Err(Error::StorageAccountFinalized)
         }
-        _ => Err(Error::AccountInvalidTag(*holder.key, TAG_HOLDER)),
-    }?;
-
-    Ok(())
+        _ => Err(Error::AccountInvalidTag(holder.pubkey(), TAG_HOLDER)),
+    }
 }

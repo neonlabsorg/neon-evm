@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::account_data::AccountData;
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::config::DbConfig;
+use crate::emulator_platform::EmulatorPlatform;
 use crate::rpc::Rpc;
 use crate::rpc::{CallDbClient, RpcEnum};
 use crate::sysvar::get_sysvar;
@@ -11,15 +12,14 @@ use crate::tracing::{AccountOverride, BlockOverrides};
 use crate::types::{AccountInfoLevel, EmulateFromHolderApiRequest, EmulateRequest};
 use crate::types::{FromAddress, TracerDb};
 
-use crate::{
-    account_storage::{EmulatorAccountStorage, SyncedAccountStorage},
-    errors::NeonError,
-    NeonResult,
-};
+use crate::{errors::NeonError, NeonResult};
 use ethnum::U256;
-use evm_loader::account_storage::AccountStorage;
 use evm_loader::error::build_revert_message;
-use evm_loader::types::{Address, Transaction, TrxView};
+use evm_loader::evm::database::Database;
+use evm_loader::executor::precompile_extension::PrecompileDatabase;
+use evm_loader::executor::ExecutorStateData;
+use evm_loader::platform::Platform;
+use evm_loader::types::{Address, Transaction};
 use evm_loader::{
     config::{
         EVM_STEPS_MIN, GAS_LIMIT_MULTIPLIER_NO_CHAINID, LAMPORTS_PER_SIGNATURE, PAYMENT_TO_TREASURE,
@@ -27,7 +27,7 @@ use evm_loader::{
     evm::{ExitStatus, Machine},
     executor::SyncedExecutorState,
 };
-use log::{debug, error, info};
+use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::{hex::Hex, serde_as, DisplayFromStr};
@@ -70,24 +70,21 @@ struct Overrides {
 }
 
 impl EmulateResponse {
-    pub fn revert<E: ToString>(
-        e: &E,
-        backend: &SyncedExecutorState<EmulatorAccountStorage<impl Rpc>>,
-    ) -> Self {
-        let revert_message = build_revert_message(&e.to_string());
+    pub fn revert<E: std::error::Error>(error: E, platform: &EmulatorPlatform<impl Rpc>) -> Self {
+        let revert_message = build_revert_message(&error.to_string());
         let exit_status = ExitStatus::Revert(revert_message);
         Self {
             exit_status: exit_status.to_string(),
             external_solana_call: false,
             reverts_before_solana_calls: false,
             reverts_after_solana_calls: false,
-            is_timestamp_number_used: backend.backend().is_timestamp_number_used(),
+            is_timestamp_number_used: platform.is_clock_used(),
             result: exit_status.into_result().unwrap_or_default(),
             steps_executed: 0,
             used_gas: 0,
             iterations: 0,
             solana_accounts: vec![],
-            logs: backend.backend().logs(),
+            logs: platform.logs().to_vec(),
             accounts_data: None,
         }
     }
@@ -157,25 +154,19 @@ pub async fn execute<T: Tracer>(
     rpc: &impl BuildConfigSimulator,
     db_config: Option<&DbConfig>,
     program_id: &Pubkey,
-    emulate_request: EmulateRequest,
+    request: EmulateRequest,
     tracer: Option<T>,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
-    let step_limit = emulate_request.step_limit.unwrap_or(100_000);
+    let step_limit = request.step_limit.unwrap_or(100_000);
 
-    let result = emulate_trx(
-        &emulate_request,
-        db_config,
-        program_id,
-        step_limit,
-        tracer,
-        rpc,
-    )
-    .await?;
-
-    Ok(result)
+    if request.execution_map.is_none() {
+        emulate_trx_single_step(rpc, *program_id, tracer, request, step_limit).await
+    } else {
+        emulate_trx_multiple_steps(db_config, *program_id, tracer, request, step_limit).await
+    }
 }
 
-async fn create_rpc(
+async fn create_tracer_rpc(
     db_config: Option<&DbConfig>,
     block: u64,
     index: Option<u64>,
@@ -193,222 +184,138 @@ async fn create_rpc(
     ))
 }
 
-async fn initialize_storage<'rpc, T: Rpc + BuildConfigSimulator>(
+async fn create_platform<'rpc, T: Rpc + BuildConfigSimulator>(
     rpc: &'rpc T,
-    program_id: &Pubkey,
+    program_id: Pubkey,
     emulate_request: &EmulateRequest,
     overrides: Overrides,
-) -> NeonResult<EmulatorAccountStorage<'rpc, T>> {
-    let storage = EmulatorAccountStorage::with_accounts(
-        rpc,
-        *program_id,
-        &emulate_request.accounts,
-        emulate_request.chains.clone(),
-        overrides.blocks,
-        overrides.states,
-        overrides.solana_accounts,
-        emulate_request.tx.chain_id,
-    )
-    .await?;
+) -> NeonResult<EmulatorPlatform<&'rpc T>> {
+    let chains = match &emulate_request.chains {
+        Some(chains) => chains.clone(),
+        None => super::get_config::read_chains(rpc, program_id).await?,
+    };
 
-    // Store the from pubkey in the storage to correctly initialize the BalanceAccount.
-    let from = &emulate_request.tx.from;
-    if let FromAddress::Solana(pubkey) = from {
-        storage.add_balance_pubkey(from.address(), *pubkey);
-        info!("from is solana address: {:?}", pubkey);
+    let accounts_hint: &[Pubkey] = &emulate_request.accounts;
+    let mut platform = EmulatorPlatform::new(rpc, program_id, &chains, accounts_hint).await?;
+
+    let chain_id = emulate_request
+        .tx
+        .chain_id
+        .unwrap_or_else(|| platform.default_chain());
+
+    // Overrides
+    if let Some(block_overrides) = overrides.blocks {
+        platform.override_clock(block_overrides).await?;
+    }
+    if let Some(solana_accounts) = overrides.solana_accounts {
+        platform.override_solana_accounts(solana_accounts);
+    }
+    if let Some(states) = overrides.states {
+        platform.override_accounts(chain_id, states).await?;
     }
 
-    Ok(storage)
-}
-
-async fn initialize_storage_and_transaction<'rpc, T: Rpc + BuildConfigSimulator>(
-    program_id: &Pubkey,
-    emulate_request: &EmulateRequest,
-    rpc: &'rpc T,
-    overrides: Overrides,
-) -> NeonResult<(EmulatorAccountStorage<'rpc, T>, Transaction)> {
-    let storage = initialize_storage(rpc, program_id, emulate_request, overrides).await?;
-
-    let (origin, tx) = emulate_request.tx.clone().into_transaction(&storage).await;
-
-    info!("origin: {:?}", origin);
-    info!("tx: {:?}", tx);
-
-    let chain_id = tx.chain_id().unwrap_or_else(|| storage.default_chain_id());
-
-    storage
-        .mark_balance_account(&origin, chain_id, true)
-        .await?;
-
-    Ok((storage, tx))
-}
-
-async fn increment_nonce<T: Rpc + BuildConfigSimulator>(
-    storage: &mut EmulatorAccountStorage<'_, T>,
-    origin: &Address,
-    chain_id: u64,
-) -> NeonResult<()> {
-    storage.increment_nonce(*origin, chain_id).await?;
-
-    Ok(())
-}
-
-async fn transfer_gas_limit<T: Rpc + BuildConfigSimulator>(
-    storage: &mut EmulatorAccountStorage<'_, T>,
-    tx: &Transaction,
-    origin: &Address,
-    chain_id: u64,
-    increase_gas_limit: bool,
-) -> NeonResult<()> {
-    let mut gas_limit = tx.gas_limit_in_tokens()?;
-
-    if increase_gas_limit {
-        gas_limit = gas_limit.saturating_mul(U256::from(GAS_LIMIT_MULTIPLIER_NO_CHAINID));
+    // Initialize BalanceAccount of Solana user.
+    if let FromAddress::Solana(pubkey) = emulate_request.tx.from {
+        platform.create_balance_for_solana_user(pubkey).await?;
     }
-    storage.burn(*origin, chain_id, gas_limit).await?;
 
-    Ok(())
+    Ok(platform)
 }
 
-async fn calculate_response<T: Rpc + BuildConfigSimulator, Tr: Tracer>(
+async fn calculate_response(
     steps_executed: u64,
     exit_status: ExitStatus,
-    storage: &EmulatorAccountStorage<'_, T>,
-    tracer: Option<Tr>,
+    platform: &EmulatorPlatform<impl Rpc>,
+    tracer: Option<impl Tracer>,
     provide_account_info: Option<AccountInfoLevel>,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     debug!("Execute done, result={exit_status:?}");
     debug!("{steps_executed} steps executed");
 
-    let logs = storage.logs();
-    let execute_status = storage.execute_status;
+    let execute_status = platform.execute_status();
 
     let steps_iterations = 1.max(steps_executed.div_ceil(EVM_STEPS_MIN));
 
     let begin_end_iterations = 2;
-    let iterations: u64 = steps_iterations + begin_end_iterations + storage.realloc_iterations;
+    let iterations: u64 = steps_iterations + begin_end_iterations + platform.realloc_iterations();
     let iterations_gas = iterations * LAMPORTS_PER_SIGNATURE;
     let treasury_gas = iterations * PAYMENT_TO_TREASURE;
-    let storage_gas = storage.get_changes_in_rent()?;
+    let storage_gas = platform.required_lamports().await?;
 
     let used_gas = storage_gas + iterations_gas + treasury_gas;
 
-    let solana_accounts = storage
-        .used_accounts()
-        .iter()
-        .map(|v| SolanaAccount {
-            pubkey: v.pubkey,
-            is_writable: v.is_writable,
-        })
-        .collect::<Vec<_>>();
-
-    let mut result = (
-        EmulateResponse {
-            exit_status: exit_status.to_string(),
-            external_solana_call: execute_status.external_solana_call,
-            reverts_before_solana_calls: execute_status.reverts_before_solana_calls,
-            reverts_after_solana_calls: execute_status.reverts_after_solana_calls,
-            is_timestamp_number_used: storage.is_timestamp_number_used(),
-            steps_executed,
-            used_gas,
-            solana_accounts,
-            result: exit_status.into_result().unwrap_or_default(),
-            iterations,
-            logs,
-            accounts_data: None,
-        },
-        tracer.map(|tracer| tracer.into_traces(used_gas)),
-    );
-
-    if let Some(level) = provide_account_info {
-        result.0.accounts_data =
-            Some(provide_account_data(storage, &result.0.solana_accounts, level).await?);
+    let solana_accounts = platform.used_solana_accounts();
+    let accounts_data = if let Some(level) = provide_account_info {
+        Some(platform.provide_account_data(level)?)
+    } else {
+        None
     };
 
-    Ok(result)
+    let response = EmulateResponse {
+        exit_status: exit_status.to_string(),
+        external_solana_call: execute_status.external_solana_call,
+        reverts_before_solana_calls: execute_status.reverts_before_solana_calls,
+        reverts_after_solana_calls: execute_status.reverts_after_solana_calls,
+        is_timestamp_number_used: platform.is_clock_used(),
+        steps_executed,
+        used_gas,
+        solana_accounts,
+        result: exit_status.into_result().unwrap_or_default(),
+        iterations,
+        logs: platform.logs().to_vec(),
+        accounts_data,
+    };
+
+    let tracer_result = tracer.map(|tracer| tracer.into_traces(used_gas));
+
+    Ok((response, tracer_result))
 }
 
-async fn emulate_trx<T: Tracer>(
-    emulate_request: &EmulateRequest,
-    db_config: Option<&DbConfig>,
-    program_id: &Pubkey,
-    step_limit: u64,
-    tracer: Option<T>,
+async fn emulate_trx_single_step(
     rpc: &impl BuildConfigSimulator,
+    program_id: Pubkey,
+    tracer: Option<impl Tracer>,
+    request: EmulateRequest,
+    step_limit: u64,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
-    info!("tx_params: {:?}", emulate_request.tx);
+    let overrides = init_overrides(&request);
+    let mut platform = create_platform(rpc, program_id, &request, overrides).await?;
+    let (origin, transaction) = request.tx.into_transaction(&platform).await?;
 
-    if emulate_request.execution_map.is_none() {
-        let overrides = init_overrides(emulate_request);
-        let (mut storage, tx) =
-            initialize_storage_and_transaction(program_id, emulate_request, rpc, overrides).await?;
+    let mut database_data = ExecutorStateData::new();
+    let mut database = SyncedExecutorState::new(&mut platform, &mut database_data);
 
-        let chain_id = emulate_request
-            .tx
-            .chain_id
-            .unwrap_or_else(|| storage.default_chain_id());
-        let from = emulate_request.tx.from.address();
+    let chain_id = transaction.chain_id_with_database(&database);
+    database.increment_nonce(origin, chain_id).await?;
 
-        increment_nonce(&mut storage, &from, chain_id).await?;
+    let mut evm = match Machine::with_tracer(&transaction, origin, &mut database, tracer).await {
+        Ok(evm) => evm,
+        Err(e) => return Ok((EmulateResponse::revert(e, &platform), None)),
+    };
 
-        let result =
-            emulate_trx_single_step(&mut storage, &tx, tracer, emulate_request, step_limit).await?;
+    let (exit_status, steps_executed) = evm.execute(step_limit, &mut database).await?;
 
-        return Ok(result);
+    if exit_status == ExitStatus::StepLimit {
+        let error = NeonError::TooManySteps;
+        return Ok((EmulateResponse::revert(error, &platform), None));
     }
 
-    emulate_trx_multiple_steps(db_config, program_id, tracer, emulate_request, step_limit).await
-}
+    database.commit_timestamps_to_solana().await?;
 
-async fn emulate_trx_single_step<T: Tracer>(
-    storage: &mut EmulatorAccountStorage<'_, impl BuildConfigSimulator>,
-    tx: &Transaction,
-    tracer: Option<T>,
-    emulate_request: &EmulateRequest,
-    step_limit: u64,
-) -> NeonResult<(EmulateResponse, Option<Value>)> {
-    let origin = emulate_request.tx.from.address();
-
-    let (exit_status, steps_executed, tracer, timestamped_contracts) = {
-        let mut backend = SyncedExecutorState::new(storage).await;
-        let mut evm = match Machine::new(tx, origin, &mut backend, tracer).await {
-            Ok(evm) => evm,
-            Err(e) => {
-                error!("EVM creation failed {e:?}");
-                return Ok((EmulateResponse::revert(&e, &backend), None));
-            }
-        };
-
-        let (exit_status, steps_executed) = evm.execute(step_limit, &mut backend).await?;
-        let tracer = evm.into_tracer();
-
-        if exit_status == ExitStatus::StepLimit {
-            error!("Step_limit={step_limit} exceeded");
-            return Ok((
-                EmulateResponse::revert(&NeonError::TooManySteps, &backend),
-                None,
-            ));
-        }
-
-        let timestamped_contracts = backend.timestamped_contracts.take();
-        (exit_status, steps_executed, tracer, timestamped_contracts)
-    };
-
-    storage.mark_timestamped_contracts(timestamped_contracts.keys());
-
+    let tracer = evm.into_tracer();
     calculate_response(
         steps_executed,
         exit_status,
-        storage,
+        &platform,
         tracer,
-        emulate_request.provide_account_info,
+        request.provide_account_info,
     )
     .await
 }
 
-async fn prepare_origin<T: Rpc + BuildConfigSimulator>(
-    origin: &Address,
-    storage: &mut EmulatorAccountStorage<'_, T>,
+async fn prepare_origin_before_multi_step(
+    origin: Address,
+    database: &mut impl PrecompileDatabase,
     tx: &Transaction,
     chain_id: u64,
     increase_gas_limit: bool,
@@ -417,24 +324,32 @@ async fn prepare_origin<T: Rpc + BuildConfigSimulator>(
     if is_skd_transaction {
         // Increment origin's nonce only once for the whole execution tree.
         let tx_nonce = tx.nonce();
-        let origin_nonce = storage.nonce(*origin, chain_id).await;
+        let origin_nonce = database.nonce(origin, chain_id).await?;
 
         if origin_nonce == tx_nonce {
-            increment_nonce(storage, origin, chain_id).await?;
+            database.increment_nonce(origin, chain_id).await?;
         }
     } else {
-        increment_nonce(storage, origin, chain_id).await?;
-        transfer_gas_limit(storage, tx, origin, chain_id, increase_gas_limit).await?;
+        database.increment_nonce(origin, chain_id).await?;
+
+        let mut gas_limit = tx.gas_limit();
+        if increase_gas_limit {
+            gas_limit = gas_limit.saturating_mul(U256::from(GAS_LIMIT_MULTIPLIER_NO_CHAINID));
+        }
+
+        let tokens = gas_limit * tx.gas_limit();
+        database.burn(origin, chain_id, tokens).await?;
     }
 
     Ok(())
 }
 
+#[allow(clippy::drop_non_drop)] // Drop is used here to limit the scope
 async fn emulate_trx_multiple_steps<T: Tracer>(
     db_config: Option<&DbConfig>,
-    program_id: &Pubkey,
+    program_id: Pubkey,
     tracer: Option<T>,
-    emulate_request: &EmulateRequest,
+    emulate_request: EmulateRequest,
     step_limit: u64,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     let execution_map = emulate_request
@@ -444,7 +359,6 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
     let is_skd_transaction = execution_map.is_skd_transaction;
 
-    let origin = emulate_request.tx.from.address();
     let (block, index) = {
         let step = execution_map
             .steps
@@ -454,11 +368,11 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
         (step.block, step.index)
     };
 
-    let mut rpc = create_rpc(db_config, block, index).await?;
+    let mut rpc = create_tracer_rpc(db_config, block, index).await?;
 
     let clock = get_sysvar::<Clock>(&rpc).await?;
 
-    let mut overrides = init_overrides(emulate_request);
+    let mut overrides = init_overrides(&emulate_request);
 
     let block_number = execution_map.block_number.or(Some(clock.slot));
     let block_timestamp = execution_map.block_timestamp.or(Some(clock.unix_timestamp));
@@ -469,19 +383,21 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
         ..Default::default()
     });
 
-    let (mut storage, mut tx) =
-        initialize_storage_and_transaction(program_id, emulate_request, &rpc, overrides.clone())
-            .await?;
+    let mut platform =
+        create_platform(&rpc, program_id, &emulate_request, overrides.clone()).await?;
 
-    let chain_id = emulate_request
-        .tx
-        .chain_id
-        .unwrap_or_else(|| storage.default_chain_id());
-    let increase_gas_limit = emulate_request.tx.chain_id.is_none();
+    let tx_params = emulate_request.tx.clone();
+    let (origin, tx) = tx_params.into_transaction(&platform).await?;
+    let chain_id = tx.chain_id(&platform);
 
-    prepare_origin(
-        &origin,
-        &mut storage,
+    let increase_gas_limit = tx.try_chain_id().is_none(); // TODO: check for a marker in execution map instead of transaction
+
+    let mut database_data = ExecutorStateData::new();
+    let mut database = SyncedExecutorState::new(&mut platform, &mut database_data);
+
+    prepare_origin_before_multi_step(
+        origin,
+        &mut database,
         &tx,
         chain_id,
         increase_gas_limit,
@@ -489,49 +405,46 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
     )
     .await?;
 
-    let (exit_status, steps_executed, tracer, timestamped_contracts) = {
-        let mut backend = SyncedExecutorState::new(&mut storage).await;
-
-        let mut evm = match Machine::new(&tx, origin, &mut backend, tracer).await {
+    let (exit_status, steps_executed, tracer) = {
+        let mut evm = match Machine::with_tracer(&tx, origin, &mut database, tracer).await {
             Ok(evm) => evm,
             Err(e) => {
                 error!("EVM creation failed {e:?}");
-                return Ok((EmulateResponse::revert(&e, &backend), None));
+                return Ok((EmulateResponse::revert(&e, &platform), None));
             }
         };
 
         let mut exit_status = ExitStatus::StepLimit;
         let mut steps_executed = 0u64;
         let mut tracer_result: Option<T> = evm.take_tracer();
+
         for execution_step in &execution_map.steps {
             if execution_step.is_reset {
                 drop(evm);
-                drop(backend);
-                drop(storage);
+                drop(database);
+                drop(database_data);
+                drop(platform);
                 drop(rpc);
 
                 steps_executed = 0u64;
                 exit_status = ExitStatus::StepLimit;
 
-                rpc = create_rpc(db_config, execution_step.block, execution_step.index).await?;
-                (storage, tx) = initialize_storage_and_transaction(
-                    program_id,
-                    emulate_request,
-                    &rpc,
-                    overrides.clone(),
-                )
-                .await?;
+                rpc = create_tracer_rpc(db_config, execution_step.block, execution_step.index)
+                    .await?;
+                platform =
+                    create_platform(&rpc, program_id, &emulate_request, overrides.clone()).await?;
 
                 if let Some(ref mut tracer) = tracer_result {
                     tracer.clear(&emulate_request.tx);
                 }
 
-                backend = SyncedExecutorState::new(&mut storage).await;
-                evm = match Machine::new(&tx, origin, &mut backend, tracer_result).await {
+                database_data = ExecutorStateData::new();
+                database = SyncedExecutorState::new(&mut platform, &mut database_data);
+                evm = match Machine::with_tracer(&tx, origin, &mut database, tracer_result).await {
                     Ok(evm) => evm,
                     Err(e) => {
                         error!("EVM creation failed {e:?}");
-                        return Ok((EmulateResponse::revert(&e, &backend), None));
+                        return Ok((EmulateResponse::revert(&e, &platform), None));
                     }
                 };
                 tracer_result = evm.take_tracer();
@@ -539,22 +452,21 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
             if execution_step.is_cancel {
                 drop(evm);
-                drop(backend);
-                drop(storage);
+                drop(database);
+                drop(database_data);
+                drop(platform);
                 drop(rpc);
 
                 steps_executed = 0u64;
                 exit_status = ExitStatus::Cancel;
 
-                rpc = create_rpc(db_config, execution_step.block, execution_step.index).await?;
-                (storage, _) = initialize_storage_and_transaction(
-                    program_id,
-                    emulate_request,
-                    &rpc,
-                    overrides.clone(),
-                )
-                .await?;
-                backend = SyncedExecutorState::new(&mut storage).await;
+                rpc = create_tracer_rpc(db_config, execution_step.block, execution_step.index)
+                    .await?;
+                platform =
+                    create_platform(&rpc, program_id, &emulate_request, overrides.clone()).await?;
+
+                database_data = ExecutorStateData::new();
+                database = SyncedExecutorState::new(&mut platform, &mut database_data);
 
                 if let Some(ref mut tracer) = tracer_result {
                     tracer.cancel(&emulate_request.tx);
@@ -575,68 +487,33 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
             evm.set_tracer(tracer_result);
             let (local_exit_status, local_steps_executed) = evm
-                .execute(u64::from(execution_step.steps), &mut backend)
+                .execute(u64::from(execution_step.steps), &mut database)
                 .await?;
-
-            let local_tracer = evm.take_tracer();
 
             exit_status = local_exit_status;
             steps_executed += local_steps_executed;
-            tracer_result = local_tracer;
+            tracer_result = evm.take_tracer();
         }
 
         if exit_status == ExitStatus::StepLimit {
             error!("Step_limit={step_limit} exceeded");
             return Ok((
-                EmulateResponse::revert(&NeonError::TooManySteps, &backend),
+                EmulateResponse::revert(&NeonError::TooManySteps, &platform),
                 None,
             ));
         }
 
-        let timestamped_contracts = backend.timestamped_contracts.take();
-        (
-            exit_status,
-            steps_executed,
-            tracer_result,
-            timestamped_contracts,
-        )
+        (exit_status, steps_executed, tracer_result)
     };
 
-    storage.mark_timestamped_contracts(timestamped_contracts.keys());
+    database.commit_timestamps_to_solana().await?;
 
     calculate_response(
         steps_executed,
         exit_status,
-        &storage,
+        &platform,
         tracer,
         emulate_request.provide_account_info,
     )
     .await
-}
-
-async fn provide_account_data(
-    storage: &EmulatorAccountStorage<'_, impl Rpc>,
-    solana_accounts: &[SolanaAccount],
-    level: AccountInfoLevel,
-) -> NeonResult<Vec<AccountData>> {
-    let pubkeys = solana_accounts
-        .iter()
-        .filter_map(|v| {
-            if v.is_writable || AccountInfoLevel::Changed != level {
-                Some(v.pubkey)
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-
-    let result = storage.get_multiple_accounts(&pubkeys).await?;
-
-    Ok(pubkeys
-        .iter()
-        .zip(result.into_iter())
-        .filter_map(|(pubkey, account)| {
-            account.map(|acc| AccountData::new_from_account(*pubkey, &acc))
-        })
-        .collect::<Vec<_>>())
 }

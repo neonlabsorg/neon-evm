@@ -14,10 +14,11 @@ use solana_program::pubkey::Pubkey;
 use crate::{
     account::pda,
     error::{Error, Result},
-    evm::database::Database,
-    platform::FAKE_OPERATOR,
+    platform::{KeysIndex, FAKE_OPERATOR},
     types::Address,
 };
+
+use super::PrecompileDatabase;
 
 // "[0xc5, 0x73, 0x50, 0xc6]": "createMetadata(bytes32,string,string,string)"
 // "[0x4a, 0xe8, 0xb6, 0x6b]": "createMasterEdition(bytes32,uint64)"
@@ -28,8 +29,8 @@ use crate::{
 // "[0x6b, 0xaa, 0x03, 0x30]": "symbol(bytes32)"
 
 #[maybe_async]
-pub async fn metaplex<State: Database>(
-    state: &mut State,
+pub async fn metaplex(
+    state: &mut impl PrecompileDatabase,
     address: &Address,
     input: &[u8],
     context: &crate::evm::Context,
@@ -146,9 +147,9 @@ fn read_string(input: &[u8], offset_position: usize, max_length: usize) -> Resul
 }
 
 #[maybe_async]
-async fn create_metadata<State: Database>(
+async fn create_metadata(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &mut impl PrecompileDatabase,
     mint: Pubkey,
     name: String,
     symbol: String,
@@ -157,7 +158,7 @@ async fn create_metadata<State: Database>(
     let program_id = state.program_id();
     let signer = context.caller;
 
-    let (signer_pubkey, bump_seed) = pda::contract_address(&program_id, &signer);
+    let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
     let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);
@@ -191,17 +192,15 @@ async fn create_metadata<State: Database>(
         })
         .instruction();
 
-    state
-        .queue_external_instruction(instruction, &[seeds], true)
-        .await?;
+    state.queue_invoke(instruction, &[seeds]).await?;
 
     Ok(metadata_pubkey.to_bytes().to_vec())
 }
 
 #[maybe_async]
-async fn create_master_edition<State: Database>(
+async fn create_master_edition(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &mut impl PrecompileDatabase,
     mint: Pubkey,
     max_supply: Option<u64>,
 ) -> Result<Vec<u8>> {
@@ -229,17 +228,15 @@ async fn create_master_edition<State: Database>(
 
     let instruction = instruction_builder.instruction();
 
-    state
-        .queue_external_instruction(instruction, &[seeds], true)
-        .await?;
+    state.queue_invoke(instruction, &[seeds]).await?;
 
     Ok(edition_pubkey.to_bytes().to_vec())
 }
 
 #[maybe_async]
-async fn is_initialized<State: Database>(
+async fn is_initialized(
     context: &crate::evm::Context,
-    state: &State,
+    state: &impl PrecompileDatabase,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let is_initialized = metadata(context, state, mint)
@@ -250,9 +247,9 @@ async fn is_initialized<State: Database>(
 }
 
 #[maybe_async]
-async fn is_nft<State: Database>(
+async fn is_nft(
     context: &crate::evm::Context,
-    state: &State,
+    state: &impl PrecompileDatabase,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let is_nft = metadata(context, state, mint).await?.map_or_else(
@@ -264,9 +261,9 @@ async fn is_nft<State: Database>(
 }
 
 #[maybe_async]
-async fn uri<State: Database>(
+async fn uri(
     context: &crate::evm::Context,
-    state: &State,
+    state: &impl PrecompileDatabase,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let uri = metadata(context, state, mint)
@@ -277,9 +274,9 @@ async fn uri<State: Database>(
 }
 
 #[maybe_async]
-async fn token_name<State: Database>(
+async fn token_name(
     context: &crate::evm::Context,
-    state: &State,
+    state: &impl PrecompileDatabase,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let token_name = metadata(context, state, mint)
@@ -290,9 +287,9 @@ async fn token_name<State: Database>(
 }
 
 #[maybe_async]
-async fn symbol<State: Database>(
+async fn symbol(
     context: &crate::evm::Context,
-    state: &State,
+    state: &impl PrecompileDatabase,
     mint: Pubkey,
 ) -> Result<Vec<u8>> {
     let symbol = metadata(context, state, mint)
@@ -303,9 +300,9 @@ async fn symbol<State: Database>(
 }
 
 #[maybe_async]
-async fn metadata<State: Database>(
+async fn metadata(
     _context: &crate::evm::Context,
-    state: &State,
+    state: &impl PrecompileDatabase,
     mint: Pubkey,
 ) -> Result<Option<Metadata>> {
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);

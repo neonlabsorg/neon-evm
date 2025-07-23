@@ -9,7 +9,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], _instruction: &[u8]
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1]) }?;
 
     let holder = Holder::from_account_info(program_id, &holder_info)?;
-    holder.validate_owner(&operator)?;
+    holder.validate(&operator)?;
     unsafe { delete(&holder_info, &operator) }
 
     Ok(())

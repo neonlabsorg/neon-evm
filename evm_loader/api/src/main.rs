@@ -28,6 +28,7 @@ use crate::api_server::handlers::emulate_multiple::emulate_multiple;
 use crate::api_server::handlers::get_balance::get_balance;
 use crate::api_server::handlers::get_balance::get_balance_with_pubkey;
 use crate::api_server::handlers::get_config::get_config;
+use crate::api_server::handlers::get_container::get_container;
 use crate::api_server::handlers::get_contract::get_contract;
 use crate::api_server::handlers::get_holder::get_holder_account_data;
 use crate::api_server::handlers::get_storage_at::get_storage_at;
@@ -88,6 +89,7 @@ async fn main() -> NeonApiResult<()> {
                 .service(get_config)
                 .service(get_holder_account_data)
                 .service(get_transaction_tree)
+                .service(get_container)
                 .service(trace)
                 .service(simulate_solana)
                 .wrap(RequestIdentifier::with_uuid()),

@@ -68,4 +68,6 @@ pub enum LibMethod {
     GetTransactionTree,
     #[strum(serialize = "emulate_mutiple")]
     EmulateMultiple,
+    #[strum(serialize = "container")]
+    GetContainer,
 }

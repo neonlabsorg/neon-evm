@@ -153,13 +153,13 @@ impl<'sol> Holder<'sol> {
         header.transaction_len
     }
 
-    pub fn transaction(&self) -> Result<EncodedTransaction> {
+    pub fn transaction(&self) -> Result<EncodedTransaction<'static>> {
         let stored_hash = self.transaction_hash();
 
         let transaction = {
             let len = self.transaction_len();
             let buffer = self.buffer();
-            Ref::map(buffer, |b| &b[..len])
+            buffer[..len].to_vec()
         };
         let transaction_hash = keccak::hash(&transaction);
 
@@ -167,7 +167,7 @@ impl<'sol> Holder<'sol> {
             return Err(Error::HolderInvalidHash(stored_hash.0, transaction_hash.0));
         }
 
-        Ok(EncodedTransaction::Ref(transaction, transaction_hash))
+        Ok(EncodedTransaction::Owned(transaction, transaction_hash))
     }
 
     #[must_use]

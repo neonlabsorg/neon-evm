@@ -52,7 +52,7 @@ thiserror = "1.0"
 arrayref = "0.3.8"
 hex = "0.4.3"
 ripemd = "0.1"
-rlp = "0.5"
+alloy-rlp = { version = "0.3", features = ["derive"] }
 static_assertions = "1"
 borsh = "1.5.2"
 borsh010 = { version = "0.10.4", package = "borsh" }

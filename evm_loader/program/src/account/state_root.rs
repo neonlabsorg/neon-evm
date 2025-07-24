@@ -15,7 +15,7 @@ use crate::evm::{ExitStatus, Machine, SolanaCallInterrupt};
 use crate::executor::{ExecutorState, ExecutorStateData, TouchedAccounts};
 use crate::platform::Platform;
 use crate::types::vector::{seeds2_to_vector, VectorSliceExt, VectorSliceSlowExt};
-use crate::types::{Address, Transaction, TreeMap, Vector};
+use crate::types::{Address, Transaction, TransactionType, TreeMap, Vector};
 
 use super::{
     BalanceAccount, ContractAccount, StorageCell, TransactionTree, TAG_ACCOUNT_BALANCE,
@@ -173,9 +173,9 @@ impl PlainData {
         0
     }
 
-    pub fn new(tx: &Transaction, origin: Address, tree: Option<&TransactionTree>) -> Self {
+    pub fn new(tx: &dyn Transaction, origin: Address, tree: Option<&TransactionTree>) -> Self {
         assert!(
-            !(tx.is_scheduled_tx() ^ tree.is_some()),
+            !(tx.is(TransactionType::Scheduled) ^ tree.is_some()),
             "Tree account should be present iff it's a scheduled transaction."
         );
 
@@ -183,7 +183,7 @@ impl PlainData {
             layout_version: Self::layout_version(),
             origin,
             tree_account: tree.map(TransactionTree::pubkey),
-            tx_chain_id: tx.try_chain_id(),
+            tx_chain_id: tx.chain_id(),
             gas_used: U256::ZERO,
             gas_limit: tx.gas_limit(),
             gas_price: tx.gas_price(),
@@ -226,7 +226,7 @@ pub struct Root<A: Allocator + Copy = StateAllocator> {
 #[maybe_async]
 impl<A: Allocator + Copy> Root<A> {
     pub async fn new<'a>(
-        transaction: &Transaction,
+        transaction: &dyn Transaction,
         origin: Address,
         tree: Option<&mut TransactionTree<'a>>,
         solana: &mut (impl Platform<'a> + 'a),
@@ -251,7 +251,7 @@ impl<A: Allocator + Copy> Root<A> {
     ///  Everything related to the state reset is extremely unsafe. Be careful
     pub async unsafe fn new_after_reset<'a>(
         &self,
-        transaction: &Transaction,
+        transaction: &dyn Transaction,
         solana: &mut (impl Platform<'a> + 'a),
         allocator: A,
     ) -> Result<Self> {
@@ -268,7 +268,7 @@ impl<A: Allocator + Copy> Root<A> {
 
     async fn new_with_plain_data<'a>(
         plain_data: PlainData,
-        transaction: &Transaction,
+        transaction: &dyn Transaction,
         solana: &mut (impl Platform<'a> + 'a),
         allocator: A,
     ) -> Result<Self> {
@@ -293,7 +293,7 @@ impl<A: Allocator + Copy> Root<A> {
     }
 
     async fn construct_machine<'a>(
-        trx: &Transaction,
+        trx: &dyn Transaction,
         origin: Address,
         solana: &mut (impl Platform<'a> + 'a),
         allocator: A,

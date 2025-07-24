@@ -12,7 +12,7 @@ use crate::config::{
 };
 use crate::error::{Error, Result};
 use crate::evm::ExitStatus;
-use crate::types::{Address, Transaction, TransactionPayload};
+use crate::types::{Address, ScheduledTransaction};
 use ethnum::U256;
 use solana_program::{
     account_info::AccountInfo, clock::Clock, pubkey::Pubkey, rent::Rent, system_program,
@@ -118,7 +118,7 @@ impl<'a> TransactionTree<'a> {
     #[must_use]
     pub fn find_address(
         program_id: &Pubkey,
-        payer: Address,
+        payer: &Address,
         chain_id: u64,
         nonce: u64,
     ) -> (Pubkey, u8) {
@@ -139,7 +139,7 @@ impl<'a> TransactionTree<'a> {
         const TREE_ACCOUNT_MAX_NODES: usize = 16;
 
         // Validate account
-        let (pubkey, bump) = Self::find_address(&crate::ID, init.payer, init.chain_id, init.nonce);
+        let (pubkey, bump) = Self::find_address(&crate::ID, &init.payer, init.chain_id, init.nonce);
         if account.key != &pubkey {
             return Err(Error::AccountInvalidKey(*account.key, pubkey));
         }
@@ -293,15 +293,12 @@ impl<'a> TransactionTree<'a> {
         unsafe { super::delete_with_treasury(&account_info, treasury) }
     }
 
-    fn validate_transaction(&self, tx: &Transaction) -> Result<u16> {
-        let hash = tx.hash;
+    fn validate_transaction(&self, tx: &dyn ScheduledTransaction) -> Result<()> {
+        let tx_chain_id = tx
+            .chain_id()
+            .expect("Scheduled transaction must have chain_id");
 
-        let TransactionPayload::Scheduled(tx) = &tx.transaction else {
-            return Err(Error::TreeAccountTxInvalidType);
-        };
-
-        let tx_chain_id: u64 = tx.chain_id.try_into()?;
-        let (pubkey, _) = Self::find_address(&crate::ID, tx.payer, tx_chain_id, tx.nonce);
+        let (pubkey, _) = Self::find_address(&crate::ID, tx.payer(), tx_chain_id, tx.nonce());
         if pubkey != self.account.pubkey() {
             return Err(Error::TreeAccountTxInvalidData);
         }
@@ -310,55 +307,55 @@ impl<'a> TransactionTree<'a> {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        if tx.index as usize >= self.nodes().len() {
+        if tx.index() as usize >= self.nodes().len() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        let node = self.node(tx.index);
-        if node.transaction_hash != hash {
+        let node = self.node(tx.index());
+        if &node.transaction_hash != tx.hash() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        if node.sender != tx.sender.unwrap_or(tx.payer) {
+        if &node.sender != tx.sender().unwrap_or_else(|| tx.payer()) {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
         let gas_limit = node.gas_limit; // Copy from unaligned
-        if gas_limit != tx.gas_limit {
+        if gas_limit != tx.gas_limit() {
             return Err(Error::TreeAccountTxInvalidData);
         }
         let value = node.value;
-        if value != tx.value {
+        if value != tx.value() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        if tx.payer != self.payer() {
+        if tx.payer() != &self.payer() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        if tx.max_fee_per_gas != self.max_fee_per_gas() {
+        if tx.max_fee_per_gas() != self.max_fee_per_gas() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        if tx.max_priority_fee_per_gas != self.max_priority_fee_per_gas() {
+        if tx.max_priority_fee_per_gas() != self.max_priority_fee_per_gas() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
         // We don't support intents at the moment
-        if tx.intent.is_some() {
+        if tx.intent().is_some() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        if !tx.intent_call_data.is_empty() {
+        if !tx.intent_call_data().is_empty() {
             return Err(Error::TreeAccountTxInvalidData);
         }
 
-        Ok(tx.index)
+        Ok(())
     }
 
-    pub fn start_transaction(&mut self, tx: &Transaction) -> Result<()> {
-        let index = self.validate_transaction(tx)?;
-        let mut node = self.node_mut(index);
+    pub fn start_transaction(&mut self, tx: &dyn ScheduledTransaction) -> Result<()> {
+        self.validate_transaction(tx)?;
+        let mut node = self.node_mut(tx.index());
 
         if node.status != Status::NotStarted {
             return Err(Error::TreeAccountTxInvalidStatus);
@@ -379,9 +376,9 @@ impl<'a> TransactionTree<'a> {
         Ok(())
     }
 
-    pub fn skip_transaction(&mut self, tx: &Transaction) -> Result<()> {
-        let index = self.validate_transaction(tx)?;
-        let mut node = self.node_mut(index);
+    pub fn skip_transaction(&mut self, tx: &dyn ScheduledTransaction) -> Result<()> {
+        self.validate_transaction(tx)?;
+        let mut node = self.node_mut(tx.index());
 
         if node.status != Status::NotStarted {
             return Err(Error::TreeAccountTxInvalidStatus);
@@ -424,7 +421,7 @@ impl<'a> TransactionTree<'a> {
 
     pub fn end_transaction(
         &mut self,
-        hash: [u8; 32],
+        hash: &[u8; 32],
         result: (Status, solana_program::keccak::Hash),
         operator: &Operator<'a>,
     ) -> Result<()> {
@@ -509,7 +506,7 @@ impl<'a> TransactionTree<'a> {
         header.max_priority_fee_per_gas
     }
 
-    pub fn gas_limit(&self, transaction_hash: [u8; 32]) -> Result<U256> {
+    pub fn gas_limit(&self, transaction_hash: &[u8; 32]) -> Result<U256> {
         let index = self.find_node(transaction_hash)?;
         let node = self.node(index);
         Ok(node.gas_limit)
@@ -685,11 +682,11 @@ impl<'a> TransactionTree<'a> {
         RefMut::map(nodes, |nodes| &mut nodes[index as usize])
     }
 
-    pub fn find_node(&self, hash: [u8; 32]) -> Result<u16> {
+    pub fn find_node(&self, hash: &[u8; 32]) -> Result<u16> {
         let nodes = self.nodes();
         let index = nodes
             .iter()
-            .position(|node| node.transaction_hash == hash)
+            .position(|node| &node.transaction_hash == hash)
             .ok_or(Error::TreeAccountTxNotFound)?;
 
         let index: u16 = index.try_into()?;

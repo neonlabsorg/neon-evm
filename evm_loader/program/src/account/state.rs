@@ -9,7 +9,7 @@ use crate::allocator::StateAllocator;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::platform::Platform;
-use crate::types::{EncodedTransaction, Transaction};
+use crate::types::{validate_transaction, EncodedTransaction, Transaction};
 
 use evm_loader_macro::version_signature;
 use linked_list_allocator::Heap;
@@ -133,23 +133,23 @@ impl<'a> StateAccount<'a> {
         Ok(state)
     }
 
-    pub async fn new_with_tree(
+    pub async fn new_with_tree<'tx>(
         account: AccountInfo<'a>,
         owner: Pubkey,
-        transaction: EncodedTransaction<'_>,
+        transaction: EncodedTransaction<'tx>,
         platform: &mut (impl Platform<'a> + 'a),
         tree: &mut TransactionTree<'a>,
-    ) -> Result<(Self, Transaction)> {
+    ) -> Result<(Self, Box<dyn Transaction + 'tx>)> {
         Self::new_inner(account, owner, transaction, platform, Some(tree)).await
     }
 
-    async fn new_inner(
+    async fn new_inner<'tx>(
         mut account: AccountInfo<'a>,
         owner: Pubkey,
-        transaction: EncodedTransaction<'_>,
+        transaction: EncodedTransaction<'tx>,
         platform: &mut (impl Platform<'a> + 'a),
         tree: Option<&mut TransactionTree<'a>>,
-    ) -> Result<(Self, Transaction)> {
+    ) -> Result<(Self, Box<dyn Transaction + 'tx>)> {
         account.init_tag(TAG_STATE, Header::VERSION)?;
         let mut state = Self {
             account,
@@ -316,7 +316,7 @@ impl<'a> StateAccount<'a> {
     }
 
     #[must_use]
-    pub fn transaction(&self) -> EncodedTransaction<'_> {
+    pub fn transaction(&self) -> EncodedTransaction<'static> {
         let (hash_range, rlp_range) = self.offsets().transaction();
 
         let data = self.account.data();
@@ -325,9 +325,9 @@ impl<'a> StateAccount<'a> {
             let hash_bytes = &data[hash_range];
             keccak::Hash(hash_bytes.try_into().unwrap())
         };
-        let rlp = Ref::map(data, |d| &d[rlp_range]);
+        let rlp = data[rlp_range].to_vec();
 
-        EncodedTransaction::Ref(rlp, hash)
+        EncodedTransaction::Owned(rlp, hash)
     }
 
     #[must_use]
@@ -362,7 +362,7 @@ impl<'a> StateAccount<'a> {
     }
 
     /// SAFETY: This functions should be called only once
-    unsafe fn initialize_header(&mut self, owner: Pubkey, transaction: &EncodedTransaction<'_>) {
+    unsafe fn initialize_header(&mut self, owner: Pubkey, transaction: &EncodedTransaction) {
         let account_memory_address = self.account.memory_address();
         let offsets = self.calculate_offsets(transaction.rlp_len());
 
@@ -417,27 +417,25 @@ impl<'a> StateAccount<'a> {
     }
 
     /// SAFETY: This functions should be called only once after `initialize_heap`
-    async unsafe fn initialize_root(
+    async unsafe fn initialize_root<'tx>(
         &mut self,
-        encoded_transaction: EncodedTransaction<'_>,
+        encoded_transaction: EncodedTransaction<'tx>,
         tree: Option<&mut TransactionTree<'a>>,
         platform: &mut (impl Platform<'a> + 'a),
-    ) -> Result<Transaction> {
+    ) -> Result<Box<dyn Transaction + 'tx>> {
         let allocator = StateAllocator::new(self.heap());
 
-        let transaction = encoded_transaction.decode()?;
-        let origin = transaction.recover_caller_address()?;
+        let tx = encoded_transaction.decode()?;
+        let origin = tx.recover_caller_address()?;
 
-        transaction
-            .validate(origin, platform, tree.as_deref())
-            .await?;
+        validate_transaction(tx.as_ref(), origin, platform, tree.as_deref()).await?;
 
         let offset = self.offsets().root;
 
         let mut root_section = self.account.section_mut_uninit::<Root>(offset);
-        root_section.write(Root::new(&transaction, origin, tree, platform, allocator).await?);
+        root_section.write(Root::new(tx.as_ref(), origin, tree, platform, allocator).await?);
 
-        Ok(transaction)
+        Ok(tx)
     }
 
     /// SAFETY: This functions should be called only once after `initialize_heap` and with previously valid root
@@ -452,7 +450,9 @@ impl<'a> StateAccount<'a> {
             // Old Root is not valid. Reading from it may cause undefined behavior.
             // Can only be used to create a new one.
             let old_root = self.account.section::<Root>(offset);
-            old_root.new_after_reset(&tx, platform, allocator).await?
+            old_root
+                .new_after_reset(tx.as_ref(), platform, allocator)
+                .await?
         };
 
         let mut root_section = self.account.section_mut_uninit::<Root>(offset);

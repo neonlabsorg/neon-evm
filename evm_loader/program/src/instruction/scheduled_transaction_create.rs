@@ -7,7 +7,7 @@ use crate::config::SOL_CHAIN_ID;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::platform::{Platform, Solana};
-use crate::types::{Address, EncodedTransaction, ScheduledTx};
+use crate::types::{Address, EncodedTransaction, ScheduledTransaction};
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::account_info::AccountInfo;
@@ -17,34 +17,34 @@ use solana_program::rent::Rent;
 use solana_program::sysvar::Sysvar;
 use spl_associated_token_account::get_associated_token_address;
 
-fn validate_scheduled_tx(tx: &ScheduledTx, payer: Address) -> Result<U256> {
-    if tx.payer != payer {
+fn validate_scheduled_tx(tx: &dyn ScheduledTransaction, payer: &Address) -> Result<U256> {
+    if tx.payer() != payer {
         return Err(Error::TreeAccountTxInvalidData);
     }
 
-    if tx.sender.is_some() {
+    if tx.sender().is_some() {
         return Err(Error::TreeAccountTxInvalidData);
     }
 
-    if tx.index != 0 {
+    if tx.index() != 0 {
         return Err(Error::TreeAccountTxInvalidData);
     }
 
-    if tx.intent.is_some() {
+    if tx.intent().is_some() {
         return Err(Error::TreeAccountTxInvalidData);
     }
-    if !tx.intent_call_data.is_empty() {
-        return Err(Error::TreeAccountTxInvalidData);
-    }
-
-    if tx.chain_id != U256::from(SOL_CHAIN_ID) {
+    if !tx.intent_call_data().is_empty() {
         return Err(Error::TreeAccountTxInvalidData);
     }
 
-    let Some(required_gas) = tx.gas_limit.checked_mul(tx.max_fee_per_gas) else {
+    if tx.chain_id() != Some(SOL_CHAIN_ID) {
+        return Err(Error::TreeAccountTxInvalidData);
+    }
+
+    let Some(required_gas) = tx.gas_limit().checked_mul(tx.max_fee_per_gas()) else {
         return Err(Error::TreeAccountTxInvalidData);
     };
-    let Some(required_balance) = required_gas.checked_add(tx.value) else {
+    let Some(required_balance) = required_gas.checked_add(tx.value()) else {
         return Err(Error::TreeAccountTxInvalidData);
     };
 
@@ -145,17 +145,17 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     // Validate Transaction
     let encoded_transaction = EncodedTransaction::from_rlp(message);
     let tx = encoded_transaction.decode()?;
+    let Some(tx) = tx.as_scheduled() else {
+        return Err(Error::NotScheduledTransaction);
+    };
 
-    let tx_hash = tx.hash;
-    log_data(&[b"HASH", &tx_hash]);
-
-    let tx = tx.if_scheduled().unwrap();
+    log_data(&[b"HASH", tx.hash()]);
 
     validate_pool(&pool)?;
 
     let payer_pubkey = *signer.key;
     let payer = Address::from_solana_address(&payer_pubkey);
-    let required_balance = validate_scheduled_tx(tx, payer)?;
+    let required_balance = validate_scheduled_tx(tx, &payer)?;
 
     // Create Balance Account if not exists
     let rent = Rent::get()?;
@@ -164,23 +164,23 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let mut solana = Solana::new(accounts, signer.clone(), None)?;
     let mut user: BalanceAccount = solana.create_balance_for_solana_user(payer_pubkey)?;
 
-    validate_nonce(&user, tx.nonce)?;
+    validate_nonce(&user, tx.nonce())?;
 
     // Create Tree Account
     let mut tree = TransactionTree::create(
         TreeInitializer {
             payer,
-            nonce: tx.nonce,
+            nonce: tx.nonce(),
             chain_id: SOL_CHAIN_ID,
-            max_fee_per_gas: tx.max_fee_per_gas,
-            max_priority_fee_per_gas: tx.max_priority_fee_per_gas,
+            max_fee_per_gas: tx.max_fee_per_gas(),
+            max_priority_fee_per_gas: tx.max_priority_fee_per_gas(),
             nodes: vec![NodeInitializer {
-                transaction_hash: tx_hash,
-                sender: tx.payer,
+                transaction_hash: *tx.hash(),
+                sender: *tx.payer(),
                 child: NO_CHILD_TRANSACTION,
                 success_execute_limit: 0,
-                gas_limit: tx.gas_limit,
-                value: tx.value,
+                gas_limit: tx.gas_limit(),
+                value: tx.value(),
             }],
         },
         tree,

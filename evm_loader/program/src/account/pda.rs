@@ -27,7 +27,7 @@ pub fn aux_treasury_pool_address(program_id: &Pubkey, index: u32) -> (Pubkey, u8
 #[must_use]
 pub fn tree_account_address(
     program_id: &Pubkey,
-    payer: Address,
+    payer: &Address,
     chain_id: u64,
     nonce: u64,
 ) -> (Pubkey, u8) {

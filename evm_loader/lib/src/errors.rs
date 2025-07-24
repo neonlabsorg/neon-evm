@@ -126,6 +126,8 @@ pub enum NeonError {
     SolanaSimulatorError(#[from] crate::solana_simulator::Error),
     #[error("Solana RPC returned empty account for pubkey {0:?}")]
     RpcReturnedEmptyAccount(Pubkey),
+    #[error("TryFromIntError {0}")]
+    TryFromIntError(#[from] std::num::TryFromIntError),
 }
 
 impl NeonError {
@@ -174,6 +176,7 @@ impl NeonError {
             NeonError::SolanaSimulatorError(_) => 265,
             NeonError::RocksDb(_) => 266,
             NeonError::RpcReturnedEmptyAccount(_) => 267,
+            NeonError::TryFromIntError(_) => 268,
         }
     }
 }

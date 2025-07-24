@@ -8,7 +8,7 @@ use crate::rpc::Rpc;
 use crate::rpc::{CallDbClient, RpcEnum};
 use crate::sysvar::get_sysvar;
 use crate::tracing::tracers::{Tracer, TracerTypeEnum};
-use crate::tracing::{AccountOverride, BlockOverrides};
+use crate::tracing::{AccountOverride, BlockOverrides, TraceCallConfig, TraceConfig};
 use crate::types::{AccountInfoLevel, EmulateFromHolderApiRequest, EmulateRequest};
 use crate::types::{FromAddress, TracerDb};
 
@@ -121,33 +121,55 @@ pub async fn execute_from_holder(
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     let holder_key = emulate_request.holder_pubkey;
 
-    let response = crate::commands::get_holder::execute(rpc, program_id, holder_key).await?;
+    let response = super::get_holder::execute(rpc, program_id, holder_key).await?;
 
-    match response.status {
-        crate::commands::get_holder::Status::Empty => Err(NeonError::AccountNotFound(holder_key)),
-        crate::commands::get_holder::Status::Active => {
-            execute(
-                rpc,
-                None,
-                program_id,
-                EmulateRequest {
-                    tx: response
-                        .tx_data
-                        .ok_or(NeonError::AccountInvalidStatus(holder_key))?,
-                    step_limit: emulate_request.step_limit,
-                    chains: emulate_request.chains,
-                    trace_config: None,
-                    accounts: response.accounts.unwrap_or(Vec::new()),
-                    solana_overrides: None,
-                    provide_account_info: None,
-                    execution_map: None,
-                },
-                None::<TracerTypeEnum>,
-            )
-            .await
-        }
-        _ => Err(NeonError::AccountInvalidStatus(holder_key)),
+    if response.status == super::get_holder::Status::Empty {
+        return Err(NeonError::AccountNotFound(holder_key));
     }
+
+    if response.status != super::get_holder::Status::Active {
+        return Err(NeonError::AccountInvalidStatus(holder_key));
+    }
+
+    let Some((timestamp, block_number)) = response.block_params else {
+        return Err(NeonError::AccountInvalidStatus(holder_key));
+    };
+
+    let Some(origin) = response.origin else {
+        return Err(NeonError::AccountInvalidStatus(holder_key));
+    };
+
+    let Some(tx) = response.tx_data else {
+        return Err(NeonError::AccountInvalidStatus(holder_key));
+    };
+    let Some(nonce) = tx.nonce else {
+        return Err(NeonError::AccountInvalidStatus(holder_key));
+    };
+
+    let block_overrides = BlockOverrides {
+        time: Some(timestamp.try_into()?),
+        number: Some(block_number.try_into()?),
+        ..Default::default()
+    };
+
+    let state_overrides = HashMap::from([(origin, AccountOverride::with_nonce(nonce))]);
+
+    let request = EmulateRequest {
+        tx,
+        step_limit: emulate_request.step_limit,
+        chains: emulate_request.chains,
+        trace_config: Some(TraceCallConfig {
+            trace_config: TraceConfig::default(),
+            block_overrides: Some(block_overrides),
+            state_overrides: Some(state_overrides),
+        }),
+        accounts: response.accounts.unwrap_or_default(),
+        solana_overrides: None,
+        provide_account_info: None,
+        execution_map: None,
+    };
+
+    execute(rpc, None, program_id, request, None::<TracerTypeEnum>).await
 }
 
 pub async fn execute<T: Tracer>(

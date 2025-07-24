@@ -5,22 +5,22 @@ use crate::error::{Error, Result};
 use crate::evm::{ExitStatus, Machine};
 use crate::executor::{ExecutorState, ExecutorStateData, SyncedExecutorState};
 use crate::platform::{Platform, Solana};
-use crate::types::{Address, Transaction};
+use crate::types::{validate_transaction, Address, Transaction};
 
 pub fn execute(
     mut solana: Solana,
-    trx: Transaction,
+    trx: &dyn Transaction,
     origin: Address,
     allocator: StateAllocator,
 ) -> Result<()> {
-    trx.validate(origin, &solana, None)?;
-    solana.get_origin((origin, &trx))?.increment_nonce()?;
+    validate_transaction(trx, origin, &solana, None)?;
+    solana.get_origin((origin, trx))?.increment_nonce()?;
 
     let mut backend_data = ExecutorStateData::new_in(allocator);
     let mut backend = ExecutorState::new_in(&mut solana, &mut backend_data, allocator);
 
     let (exit_reason, steps_executed) = {
-        let mut evm = Machine::new_in(&trx, origin, &mut backend, allocator)?;
+        let mut evm = Machine::new_in(trx, origin, &mut backend, allocator)?;
         evm.execute(u64::MAX, &mut backend)?
     };
 
@@ -39,7 +39,7 @@ pub fn execute(
 
     solana.update_accounts_lamports()?;
     solana.use_gasometer(|g| g.record_solana_transaction_cost(trx.gas_limit()))?;
-    solana.reward_operator_from_origin(origin, &trx)?;
+    solana.reward_operator_from_origin(origin, trx)?;
 
     log_return_value(&exit_reason);
     Ok(())
@@ -47,18 +47,18 @@ pub fn execute(
 
 pub fn execute_with_solana_call(
     mut solana: Solana,
-    trx: Transaction,
+    trx: &dyn Transaction,
     origin: Address,
     allocator: StateAllocator,
 ) -> Result<()> {
-    trx.validate(origin, &solana, None)?;
-    solana.get_origin((origin, &trx))?.increment_nonce()?;
+    validate_transaction(trx, origin, &solana, None)?;
+    solana.get_origin((origin, trx))?.increment_nonce()?;
 
     let mut backend_data = ExecutorStateData::new_in(allocator);
     let mut backend = SyncedExecutorState::new_in(&mut solana, &mut backend_data, allocator);
 
     let (exit_reason, steps_executed) = {
-        let mut evm = Machine::new_in(&trx, origin, &mut backend, allocator)?;
+        let mut evm = Machine::new_in(trx, origin, &mut backend, allocator)?;
         evm.execute(u64::MAX, &mut backend)?
     };
 
@@ -72,7 +72,7 @@ pub fn execute_with_solana_call(
 
     solana.update_accounts_lamports()?;
     solana.use_gasometer(|g| g.record_solana_transaction_cost(trx.gas_limit()))?;
-    solana.reward_operator_from_origin(origin, &trx)?;
+    solana.reward_operator_from_origin(origin, trx)?;
 
     log_return_value(&exit_reason);
     Ok(())

@@ -23,7 +23,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
             let holder = Holder::from_account(program_id, holder)?;
             holder.validate(&operator)?;
 
-            let rlp = holder.transaction()?.into_owned();
+            let rlp = holder.transaction()?;
             let holder_owner = holder.owner();
             let holder_info = holder.into_account();
 

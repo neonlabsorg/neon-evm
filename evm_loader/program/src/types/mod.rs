@@ -1,13 +1,11 @@
 pub use address::Address;
 pub use execution_map::{ExecutionMap, ExecutionStep};
-pub use transaction::AccessListTx;
-pub use transaction::DynamicFeeTx;
+pub use transaction::validate_transaction;
 pub use transaction::EncodedTransaction;
-pub use transaction::LegacyTx;
-pub use transaction::ScheduledTx;
-pub use transaction::StorageKey;
+pub use transaction::PriorityFeeTransaction;
+pub use transaction::ScheduledTransaction;
 pub use transaction::Transaction;
-pub use transaction::TransactionPayload;
+pub use transaction::TransactionType;
 pub use tree_map::TreeMap;
 pub use vector::Vector;
 

@@ -297,20 +297,24 @@ async fn emulate_trx_single_step(
     rpc: &impl BuildConfigSimulator,
     program_id: Pubkey,
     tracer: Option<impl Tracer>,
-    request: EmulateRequest,
+    mut request: EmulateRequest,
     step_limit: u64,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     let overrides = init_overrides(&request);
     let mut platform = create_platform(rpc, program_id, &request, overrides).await?;
-    let (origin, transaction) = request.tx.into_transaction(&platform).await?;
+
+    request.tx.fetch_origin_nonce(&platform).await?;
+
+    let tx: &dyn Transaction = &request.tx;
+    let origin = tx.recover_caller_address()?;
 
     let mut database_data = ExecutorStateData::new();
     let mut database = SyncedExecutorState::new(&mut platform, &mut database_data);
 
-    let chain_id = transaction.chain_id_with_database(&database);
+    let chain_id = tx.chain_id().unwrap_or_else(|| database.default_chain_id());
     database.increment_nonce(origin, chain_id).await?;
 
-    let mut evm = match Machine::with_tracer(&transaction, origin, &mut database, tracer).await {
+    let mut evm = match Machine::with_tracer(tx, origin, &mut database, tracer).await {
         Ok(evm) => evm,
         Err(e) => return Ok((EmulateResponse::revert(e, &platform), None)),
     };
@@ -338,7 +342,7 @@ async fn emulate_trx_single_step(
 async fn prepare_origin_before_multi_step(
     origin: Address,
     database: &mut impl PrecompileDatabase,
-    tx: &Transaction,
+    tx: &dyn Transaction,
     chain_id: u64,
     increase_gas_limit: bool,
     is_skd_transaction: bool,
@@ -371,7 +375,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
     db_config: Option<&DbConfig>,
     program_id: Pubkey,
     tracer: Option<T>,
-    emulate_request: EmulateRequest,
+    mut emulate_request: EmulateRequest,
     step_limit: u64,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     let execution_map = emulate_request
@@ -408,11 +412,13 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
     let mut platform =
         create_platform(&rpc, program_id, &emulate_request, overrides.clone()).await?;
 
-    let tx_params = emulate_request.tx.clone();
-    let (origin, tx) = tx_params.into_transaction(&platform).await?;
-    let chain_id = tx.chain_id(&platform);
+    emulate_request.tx.fetch_origin_nonce(&platform).await?;
 
-    let increase_gas_limit = tx.try_chain_id().is_none(); // TODO: check for a marker in execution map instead of transaction
+    let tx: &dyn Transaction = &emulate_request.tx;
+    let origin = tx.recover_caller_address()?;
+
+    let chain_id = tx.chain_id().unwrap_or_else(|| platform.default_chain());
+    let increase_gas_limit = tx.chain_id().is_none(); // TODO: check for a marker in execution map instead of transaction
 
     let mut database_data = ExecutorStateData::new();
     let mut database = SyncedExecutorState::new(&mut platform, &mut database_data);
@@ -420,7 +426,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
     prepare_origin_before_multi_step(
         origin,
         &mut database,
-        &tx,
+        tx,
         chain_id,
         increase_gas_limit,
         is_skd_transaction,
@@ -428,7 +434,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
     .await?;
 
     let (exit_status, steps_executed, tracer) = {
-        let mut evm = match Machine::with_tracer(&tx, origin, &mut database, tracer).await {
+        let mut evm = match Machine::with_tracer(tx, origin, &mut database, tracer).await {
             Ok(evm) => evm,
             Err(e) => {
                 error!("EVM creation failed {e:?}");
@@ -462,7 +468,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
                 database_data = ExecutorStateData::new();
                 database = SyncedExecutorState::new(&mut platform, &mut database_data);
-                evm = match Machine::with_tracer(&tx, origin, &mut database, tracer_result).await {
+                evm = match Machine::with_tracer(tx, origin, &mut database, tracer_result).await {
                     Ok(evm) => evm,
                     Err(e) => {
                         error!("EVM creation failed {e:?}");

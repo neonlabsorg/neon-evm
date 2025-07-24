@@ -119,7 +119,7 @@ pub async fn execute(
     let payer = origin.address;
     let chain_id = origin.chain_id;
 
-    let (pubkey, _) = pda::tree_account_address(program_id, payer, chain_id, nonce);
+    let (pubkey, _) = pda::tree_account_address(program_id, &payer, chain_id, nonce);
 
     let response = rpc.get_account(&pubkey).await?;
     let Some(account) = response else {

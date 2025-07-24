@@ -187,9 +187,9 @@ impl<'a> Solana<'a> {
     pub fn reward_operator_from_tree(
         &mut self,
         tree: &mut TransactionTree,
-        transaction_hash: [u8; 32],
+        transaction_hash: &[u8; 32],
     ) -> Result<()> {
-        let gas_limit = tree.gas_limit(transaction_hash)?;
+        let gas_limit = tree.gas_limit(&transaction_hash)?;
         let gas = self.gasometer.collect_gas(&self.operator);
 
         if gas > gas_limit {
@@ -222,11 +222,11 @@ impl<'a> Solana<'a> {
     pub fn reward_operator_from_origin(
         &mut self,
         origin: Address,
-        transaction: &Transaction,
+        tx: &dyn Transaction,
     ) -> Result<()> {
-        let chain_id = transaction.chain_id(self);
+        let chain_id = tx.chain_id().unwrap_or_else(|| self.default_chain());
 
-        let gas_limit = transaction.gas_limit();
+        let gas_limit = tx.gas_limit();
         let gas = self.gasometer.collect_gas(&self.operator);
 
         if gas > gas_limit {
@@ -235,7 +235,7 @@ impl<'a> Solana<'a> {
 
         log_data(&[b"GAS", &gas.to_le_bytes(), &gas.to_le_bytes()]);
 
-        let gas_price = transaction.gas_price();
+        let gas_price = tx.gas_price();
         let Some(tokens) = gas.checked_mul(gas_price) else {
             return Err(Error::IntegerOverflow);
         };

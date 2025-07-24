@@ -27,11 +27,11 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let trx = rlp.decode()?;
     let origin = trx.recover_caller_address()?;
 
-    log_data(&[b"HASH", &trx.hash()]);
+    log_data(&[b"HASH", trx.hash()]);
     solana.log_miner_address(origin);
 
     let allocator = holder.into_allocator();
 
     solana.pay_to_treasury(treasury)?;
-    transaction_execute::execute(solana, trx, origin, allocator)
+    transaction_execute::execute(solana, trx.as_ref(), origin, allocator)
 }

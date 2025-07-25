@@ -1,6 +1,6 @@
 use crate::{
     account::{pda, StorageCellSeed},
-    types::{tree_map_cell::TreeMapCell, Address},
+    types::{vector::VectorMapCell, Address},
 };
 use allocator_api2::alloc;
 use ethnum::U256;
@@ -58,8 +58,8 @@ impl KeysIndex for DefaultKeysIndex {
 
 pub struct CachedKeysIndex {
     program_id: Pubkey,
-    balance_cache: TreeMapCell<(Address, u64), (Pubkey, u8), alloc::Global>,
-    contract_cache: TreeMapCell<Address, (Pubkey, u8), alloc::Global>,
+    balance_cache: VectorMapCell<(Address, u64), (Pubkey, u8), alloc::Global>,
+    contract_cache: VectorMapCell<Address, (Pubkey, u8), alloc::Global>,
 }
 
 impl CachedKeysIndex {
@@ -67,8 +67,8 @@ impl CachedKeysIndex {
     pub fn new(program_id: Pubkey) -> Self {
         Self {
             program_id,
-            balance_cache: TreeMapCell::with_capacity(64),
-            contract_cache: TreeMapCell::with_capacity(32),
+            balance_cache: VectorMapCell::with_capacity(64),
+            contract_cache: VectorMapCell::with_capacity(32),
         }
     }
 }

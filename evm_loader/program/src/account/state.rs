@@ -475,7 +475,7 @@ impl StateAccount<'_> {
     pub fn get_state_account_view(&self) -> Result<StateAccountCoreApiView> {
         use super::state_root::AccountRevision;
         use super::state_root::PlainData;
-        use crate::types::read_raw_utils;
+        use crate::types::vector::read_raw_utils;
 
         let platform_memory_address: isize = self.stored_memory_address().try_into()?;
         let local_memory_address: isize = self.account.memory_address().try_into()?;

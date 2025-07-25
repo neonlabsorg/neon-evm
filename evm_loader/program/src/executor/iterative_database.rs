@@ -1,10 +1,9 @@
-use std::collections::{btree_map, BTreeMap};
-
 use crate::account::{Account, AllocateResult};
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
 use crate::platform::{Chain, KeysIndex, Platform, FAKE_OPERATOR};
-use crate::types::vector::{seeds3_to_vector, VectorSliceExt, VectorVecExt, VectorVecSlowExt};
+use crate::types::seeds::InvokeSeeds;
+use crate::types::vector::{vector_map, VectorMap, VectorSliceExt, VectorVecExt, VectorVecSlowExt};
 use crate::types::Address;
 use allocator_api2::alloc::{self, Allocator};
 use ethnum::U256;
@@ -256,15 +255,19 @@ where
         self.state.set_transient_storage(address, index, value)
     }
 
-    async fn block_hash(&self, number: U256, context: &crate::evm::Context) -> Result<[u8; 32]> {
+    async fn block_hash(
+        &mut self,
+        number: U256,
+        context: &crate::evm::Context,
+    ) -> Result<[u8; 32]> {
         self.state.block_hash(number, context).await
     }
 
-    async fn block_number(&self, context: &crate::evm::Context) -> Result<U256> {
+    async fn block_number(&mut self, context: &crate::evm::Context) -> Result<U256> {
         self.state.block_number(context).await
     }
 
-    async fn block_timestamp(&self, context: &crate::evm::Context) -> Result<U256> {
+    async fn block_timestamp(&mut self, context: &crate::evm::Context) -> Result<U256> {
         self.state.block_timestamp(context).await
     }
 
@@ -341,7 +344,7 @@ where
             program_id: instruction.program_id,
             accounts: instruction.accounts.elementwise_copy_into_vector(allocator),
             data: instruction.data.into_vector(allocator),
-            seeds: seeds3_to_vector(seeds, allocator),
+            seeds: InvokeSeeds::new(seeds, allocator),
         };
         self.add_action(action);
 
@@ -357,13 +360,13 @@ where
             return Ok(account);
         }
 
-        let mut accounts = BTreeMap::<Pubkey, OwnedAccountInfo>::new();
+        let mut accounts = VectorMap::<Pubkey, OwnedAccountInfo>::new();
 
         for m in metas {
             self.touched_accounts.touch_solana(m.pubkey);
 
             let entry = accounts.entry(m.pubkey);
-            if let btree_map::Entry::Vacant(entry) = entry {
+            if let vector_map::Entry::Vacant(entry) = entry {
                 let account = if m.pubkey == FAKE_OPERATOR {
                     OwnedAccountInfo::fake_operator()
                 } else {
@@ -377,7 +380,7 @@ where
         self.actions()
             .apply_to_external_accounts(&rent, &mut accounts)?;
 
-        let account = accounts.remove(&pubkey).unwrap();
+        let account = accounts.into_single_value(&pubkey).unwrap();
         Ok(account)
     }
 

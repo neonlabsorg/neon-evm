@@ -76,27 +76,3 @@ impl<T, A: Allocator> VectorVecSlowExt<T, A> for std::vec::Vec<T> {
         ret
     }
 }
-
-pub fn seeds2_to_vector<A: Allocator + Copy>(seeds: &[&[u8]], allocator: A) -> Vec<Vec<u8, A>, A> {
-    let mut ret = Vec::with_capacity_in(seeds.len(), allocator);
-    for seed in seeds {
-        ret.push(seed.to_vector(allocator));
-    }
-    ret
-}
-
-pub fn seeds3_to_vector<A: Allocator + Copy>(
-    program_seeds: &[&[&[u8]]],
-    allocator: A,
-) -> Vec<Vec<Vec<u8, A>, A>, A> {
-    let mut ret = Vec::with_capacity_in(program_seeds.len(), allocator);
-    for account_seeds in program_seeds {
-        let mut inner = Vec::with_capacity_in(account_seeds.len(), allocator);
-        for seed in *account_seeds {
-            inner.push(seed.to_vector(allocator));
-        }
-
-        ret.push(inner);
-    }
-    ret
-}

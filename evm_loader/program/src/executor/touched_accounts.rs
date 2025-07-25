@@ -1,9 +1,7 @@
-use std::cmp::Ord;
-
 use crate::config::STATIC_STORAGE_LIMIT;
 use crate::evm::precompile::is_precompile_address;
 use crate::platform::{KeysIndex, FAKE_OPERATOR};
-use crate::types::tree_map_cell::TreeMapCell;
+use crate::types::vector::VectorMapCell;
 use crate::types::Address;
 use allocator_api2::alloc::{self, Allocator};
 use ethnum::U256;
@@ -12,20 +10,20 @@ use solana_program::pubkey::Pubkey;
 use super::precompile_extension::is_precompile_extension;
 
 pub struct TouchedAccounts<A: Allocator = alloc::Global> {
-    touched_solana: TreeMapCell<Pubkey, u64, A>,
-    touched_contracts: TreeMapCell<Address, u64, A>,
-    touched_balances: TreeMapCell<(Address, u64), u64, A>,
-    touched_storage: TreeMapCell<(Address, U256), u64, A>,
+    touched_solana: VectorMapCell<Pubkey, u64, A>,
+    touched_contracts: VectorMapCell<Address, u64, A>,
+    touched_balances: VectorMapCell<(Address, u64), u64, A>,
+    touched_storage: VectorMapCell<(Address, U256), u64, A>,
 }
 
 impl<A: Allocator + Copy> TouchedAccounts<A> {
     #[must_use]
     pub fn new_in(allocator: A) -> Self {
         Self {
-            touched_solana: TreeMapCell::with_capacity_in(64, allocator),
-            touched_contracts: TreeMapCell::with_capacity_in(16, allocator),
-            touched_balances: TreeMapCell::with_capacity_in(32, allocator),
-            touched_storage: TreeMapCell::with_capacity_in(64, allocator),
+            touched_solana: VectorMapCell::with_capacity_in(64, allocator),
+            touched_contracts: VectorMapCell::with_capacity_in(16, allocator),
+            touched_balances: VectorMapCell::with_capacity_in(32, allocator),
+            touched_storage: VectorMapCell::with_capacity_in(64, allocator),
         }
     }
 }
@@ -64,7 +62,7 @@ impl<A: Allocator> TouchedAccounts<A> {
         Self::touch(&self.touched_solana, pubkey, 2);
     }
 
-    fn touch<K: Ord + Copy>(map: &TreeMapCell<K, u64, A>, key: K, count: u64) {
+    fn touch<K: Ord>(map: &VectorMapCell<K, u64, A>, key: K, count: u64) {
         map.update_or_insert(key, count, |counter| *counter += count);
     }
 

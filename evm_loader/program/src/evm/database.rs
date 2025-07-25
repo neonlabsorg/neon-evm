@@ -51,9 +51,9 @@ pub trait Database {
         value: [u8; 32],
     ) -> Result<()>;
 
-    async fn block_hash(&self, number: U256, context: &Context) -> Result<[u8; 32]>;
-    async fn block_number(&self, context: &Context) -> Result<U256>;
-    async fn block_timestamp(&self, context: &Context) -> Result<U256>;
+    async fn block_hash(&mut self, number: U256, context: &Context) -> Result<[u8; 32]>;
+    async fn block_number(&mut self, context: &Context) -> Result<U256>;
+    async fn block_timestamp(&mut self, context: &Context) -> Result<U256>;
 
     async fn precompile_extension(
         &mut self,

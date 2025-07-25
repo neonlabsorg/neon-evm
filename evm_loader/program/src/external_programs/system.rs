@@ -1,8 +1,6 @@
 #![allow(clippy::cast_possible_truncation)]
 
-use std::collections::BTreeMap;
-
-use crate::executor::OwnedAccountInfo;
+use crate::{executor::OwnedAccountInfo, types::vector::VectorMap};
 use solana_program::{
     entrypoint::ProgramResult, instruction::AccountMeta, program_error::ProgramError,
     pubkey::Pubkey, system_instruction::SystemInstruction, system_program,
@@ -11,7 +9,7 @@ use solana_program::{
 pub fn emulate(
     instruction: &[u8],
     meta: &[AccountMeta],
-    accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+    accounts: &mut VectorMap<Pubkey, OwnedAccountInfo>,
 ) -> ProgramResult {
     let system_instruction: SystemInstruction = bincode::deserialize(instruction).unwrap();
     match system_instruction {

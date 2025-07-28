@@ -8,7 +8,7 @@ use crate::rpc::Rpc;
 use crate::rpc::{CallDbClient, RpcEnum};
 use crate::sysvar::get_sysvar;
 use crate::tracing::tracers::{Tracer, TracerTypeEnum};
-use crate::tracing::{AccountOverride, BlockOverrides};
+use crate::tracing::{AccountOverride, BlockOverrides, TraceCallConfig, TraceConfig};
 use crate::types::{AccountInfoLevel, EmulateFromHolderApiRequest, EmulateRequest};
 use crate::types::{FromAddress, TracerDb};
 
@@ -121,33 +121,55 @@ pub async fn execute_from_holder(
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     let holder_key = emulate_request.holder_pubkey;
 
-    let response = crate::commands::get_holder::execute(rpc, program_id, holder_key).await?;
+    let response = super::get_holder::execute(rpc, program_id, holder_key).await?;
 
-    match response.status {
-        crate::commands::get_holder::Status::Empty => Err(NeonError::AccountNotFound(holder_key)),
-        crate::commands::get_holder::Status::Active => {
-            execute(
-                rpc,
-                None,
-                program_id,
-                EmulateRequest {
-                    tx: response
-                        .tx_data
-                        .ok_or(NeonError::AccountInvalidStatus(holder_key))?,
-                    step_limit: emulate_request.step_limit,
-                    chains: emulate_request.chains,
-                    trace_config: None,
-                    accounts: response.accounts.unwrap_or(Vec::new()),
-                    solana_overrides: None,
-                    provide_account_info: None,
-                    execution_map: None,
-                },
-                None::<TracerTypeEnum>,
-            )
-            .await
-        }
-        _ => Err(NeonError::AccountInvalidStatus(holder_key)),
+    if response.status == super::get_holder::Status::Empty {
+        return Err(NeonError::AccountNotFound(holder_key));
     }
+
+    if response.status != super::get_holder::Status::Active {
+        return Err(NeonError::AccountInvalidStatus(holder_key));
+    }
+
+    let Some((timestamp, block_number)) = response.block_params else {
+        return Err(NeonError::AccountInvalidStatus(holder_key));
+    };
+
+    let Some(origin) = response.origin else {
+        return Err(NeonError::AccountInvalidStatus(holder_key));
+    };
+
+    let Some(tx) = response.tx_data else {
+        return Err(NeonError::AccountInvalidStatus(holder_key));
+    };
+    let Some(nonce) = tx.nonce else {
+        return Err(NeonError::AccountInvalidStatus(holder_key));
+    };
+
+    let block_overrides = BlockOverrides {
+        time: Some(timestamp.try_into()?),
+        number: Some(block_number.try_into()?),
+        ..Default::default()
+    };
+
+    let state_overrides = HashMap::from([(origin, AccountOverride::with_nonce(nonce))]);
+
+    let request = EmulateRequest {
+        tx,
+        step_limit: emulate_request.step_limit,
+        chains: emulate_request.chains,
+        trace_config: Some(TraceCallConfig {
+            trace_config: TraceConfig::default(),
+            block_overrides: Some(block_overrides),
+            state_overrides: Some(state_overrides),
+        }),
+        accounts: response.accounts.unwrap_or_default(),
+        solana_overrides: None,
+        provide_account_info: None,
+        execution_map: None,
+    };
+
+    execute(rpc, None, program_id, request, None::<TracerTypeEnum>).await
 }
 
 pub async fn execute<T: Tracer>(
@@ -275,20 +297,24 @@ async fn emulate_trx_single_step(
     rpc: &impl BuildConfigSimulator,
     program_id: Pubkey,
     tracer: Option<impl Tracer>,
-    request: EmulateRequest,
+    mut request: EmulateRequest,
     step_limit: u64,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     let overrides = init_overrides(&request);
     let mut platform = create_platform(rpc, program_id, &request, overrides).await?;
-    let (origin, transaction) = request.tx.into_transaction(&platform).await?;
+
+    request.tx.fetch_origin_nonce(&platform).await?;
+
+    let tx: &dyn Transaction = &request.tx;
+    let origin = tx.recover_caller_address()?;
 
     let mut database_data = ExecutorStateData::new();
     let mut database = SyncedExecutorState::new(&mut platform, &mut database_data);
 
-    let chain_id = transaction.chain_id_with_database(&database);
+    let chain_id = tx.chain_id().unwrap_or_else(|| database.default_chain_id());
     database.increment_nonce(origin, chain_id).await?;
 
-    let mut evm = match Machine::with_tracer(&transaction, origin, &mut database, tracer).await {
+    let mut evm = match Machine::with_tracer(tx, origin, &mut database, tracer).await {
         Ok(evm) => evm,
         Err(e) => return Ok((EmulateResponse::revert(e, &platform), None)),
     };
@@ -316,7 +342,7 @@ async fn emulate_trx_single_step(
 async fn prepare_origin_before_multi_step(
     origin: Address,
     database: &mut impl PrecompileDatabase,
-    tx: &Transaction,
+    tx: &dyn Transaction,
     chain_id: u64,
     increase_gas_limit: bool,
     is_skd_transaction: bool,
@@ -349,7 +375,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
     db_config: Option<&DbConfig>,
     program_id: Pubkey,
     tracer: Option<T>,
-    emulate_request: EmulateRequest,
+    mut emulate_request: EmulateRequest,
     step_limit: u64,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
     let execution_map = emulate_request
@@ -386,11 +412,13 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
     let mut platform =
         create_platform(&rpc, program_id, &emulate_request, overrides.clone()).await?;
 
-    let tx_params = emulate_request.tx.clone();
-    let (origin, tx) = tx_params.into_transaction(&platform).await?;
-    let chain_id = tx.chain_id(&platform);
+    emulate_request.tx.fetch_origin_nonce(&platform).await?;
 
-    let increase_gas_limit = tx.try_chain_id().is_none(); // TODO: check for a marker in execution map instead of transaction
+    let tx: &dyn Transaction = &emulate_request.tx;
+    let origin = tx.recover_caller_address()?;
+
+    let chain_id = tx.chain_id().unwrap_or_else(|| platform.default_chain());
+    let increase_gas_limit = tx.chain_id().is_none(); // TODO: check for a marker in execution map instead of transaction
 
     let mut database_data = ExecutorStateData::new();
     let mut database = SyncedExecutorState::new(&mut platform, &mut database_data);
@@ -398,7 +426,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
     prepare_origin_before_multi_step(
         origin,
         &mut database,
-        &tx,
+        tx,
         chain_id,
         increase_gas_limit,
         is_skd_transaction,
@@ -406,7 +434,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
     .await?;
 
     let (exit_status, steps_executed, tracer) = {
-        let mut evm = match Machine::with_tracer(&tx, origin, &mut database, tracer).await {
+        let mut evm = match Machine::with_tracer(tx, origin, &mut database, tracer).await {
             Ok(evm) => evm,
             Err(e) => {
                 error!("EVM creation failed {e:?}");
@@ -440,7 +468,7 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
                 database_data = ExecutorStateData::new();
                 database = SyncedExecutorState::new(&mut platform, &mut database_data);
-                evm = match Machine::with_tracer(&tx, origin, &mut database, tracer_result).await {
+                evm = match Machine::with_tracer(tx, origin, &mut database, tracer_result).await {
                     Ok(evm) => evm,
                     Err(e) => {
                         error!("EVM creation failed {e:?}");

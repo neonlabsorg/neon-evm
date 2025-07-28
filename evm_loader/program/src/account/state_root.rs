@@ -14,8 +14,9 @@ use crate::error::{Error, Result};
 use crate::evm::{ExitStatus, Machine, SolanaCallInterrupt};
 use crate::executor::{ExecutorState, ExecutorStateData, TouchedAccounts};
 use crate::platform::Platform;
-use crate::types::vector::{seeds2_to_vector, VectorSliceExt, VectorSliceSlowExt};
-use crate::types::{Address, Transaction, TreeMap, Vector};
+use crate::types::seeds::{Seeds, SeedsRef};
+use crate::types::vector::{vector_map::Entry, VectorMap, VectorSliceExt, VectorSliceSlowExt};
+use crate::types::{Address, Transaction, TransactionType, Vector};
 
 use super::{
     BalanceAccount, ContractAccount, StorageCell, TransactionTree, TAG_ACCOUNT_BALANCE,
@@ -80,7 +81,6 @@ impl AccountRevision {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
 #[repr(C)]
 pub struct InterruptedInstruction<A: Allocator> {
     pub program_id: Pubkey,
@@ -88,11 +88,10 @@ pub struct InterruptedInstruction<A: Allocator> {
     pub data: Vector<u8, A>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
 #[repr(C)]
 pub struct InterruptedState<A: Allocator> {
     instruction: InterruptedInstruction<A>,
-    signer_seeds: Vector<Vector<u8, A>, A>,
+    signer_seeds: Seeds,
     lamports: Option<u64>,
 }
 
@@ -110,7 +109,7 @@ impl<A: Allocator + Copy> InterruptedState<A> {
                 accounts: instruction.accounts.elementwise_copy_to_vector(allocator),
                 data: instruction.data.to_vector(allocator),
             },
-            signer_seeds: seeds2_to_vector(signer_seeds, allocator),
+            signer_seeds: Seeds::new(signer_seeds),
             lamports,
         }
     }
@@ -125,11 +124,8 @@ impl<A: Allocator> InterruptedState<A> {
         }
     }
 
-    pub fn seeds(&self) -> Vec<&[u8]> {
-        self.signer_seeds
-            .iter()
-            .map(Vector::as_slice)
-            .collect::<Vec<_>>()
+    pub fn seeds(&self) -> SeedsRef {
+        SeedsRef::new(&self.signer_seeds)
     }
 
     pub fn lamports(&self) -> Option<u64> {
@@ -173,9 +169,9 @@ impl PlainData {
         0
     }
 
-    pub fn new(tx: &Transaction, origin: Address, tree: Option<&TransactionTree>) -> Self {
+    pub fn new(tx: &dyn Transaction, origin: Address, tree: Option<&TransactionTree>) -> Self {
         assert!(
-            !(tx.is_scheduled_tx() ^ tree.is_some()),
+            !(tx.is(TransactionType::Scheduled) ^ tree.is_some()),
             "Tree account should be present iff it's a scheduled transaction."
         );
 
@@ -183,7 +179,7 @@ impl PlainData {
             layout_version: Self::layout_version(),
             origin,
             tree_account: tree.map(TransactionTree::pubkey),
-            tx_chain_id: tx.try_chain_id(),
+            tx_chain_id: tx.chain_id(),
             gas_used: U256::ZERO,
             gas_limit: tx.gas_limit(),
             gas_price: tx.gas_price(),
@@ -198,10 +194,10 @@ pub struct Root<A: Allocator + Copy = StateAllocator> {
     pub plain_data: PlainData,
 
     /// Stored revision
-    pub revisions: TreeMap<Pubkey, AccountRevision, A>,
+    pub revisions: VectorMap<Pubkey, AccountRevision, A>,
 
     /// Accounts that been read during the transaction    
-    pub touched_accounts: TreeMap<Pubkey, u64, A>,
+    pub touched_accounts: VectorMap<Pubkey, u64, A>,
 
     /// State of `execute_external_instruction` at the Solana call interruption breakpoint
     /// None if no Solana call interruption occurs
@@ -226,7 +222,7 @@ pub struct Root<A: Allocator + Copy = StateAllocator> {
 #[maybe_async]
 impl<A: Allocator + Copy> Root<A> {
     pub async fn new<'a>(
-        transaction: &Transaction,
+        transaction: &dyn Transaction,
         origin: Address,
         tree: Option<&mut TransactionTree<'a>>,
         solana: &mut (impl Platform<'a> + 'a),
@@ -251,7 +247,7 @@ impl<A: Allocator + Copy> Root<A> {
     ///  Everything related to the state reset is extremely unsafe. Be careful
     pub async unsafe fn new_after_reset<'a>(
         &self,
-        transaction: &Transaction,
+        transaction: &dyn Transaction,
         solana: &mut (impl Platform<'a> + 'a),
         allocator: A,
     ) -> Result<Self> {
@@ -268,7 +264,7 @@ impl<A: Allocator + Copy> Root<A> {
 
     async fn new_with_plain_data<'a>(
         plain_data: PlainData,
-        transaction: &Transaction,
+        transaction: &dyn Transaction,
         solana: &mut (impl Platform<'a> + 'a),
         allocator: A,
     ) -> Result<Self> {
@@ -277,8 +273,8 @@ impl<A: Allocator + Copy> Root<A> {
 
         let mut root = Self {
             plain_data,
-            revisions: TreeMap::new_in(allocator),
-            touched_accounts: TreeMap::new_in(allocator),
+            revisions: VectorMap::new_in(allocator),
+            touched_accounts: VectorMap::new_in(allocator),
             interrupted_state: None,
             executor_state,
             machine_state,
@@ -293,7 +289,7 @@ impl<A: Allocator + Copy> Root<A> {
     }
 
     async fn construct_machine<'a>(
-        trx: &Transaction,
+        trx: &dyn Transaction,
         origin: Address,
         solana: &mut (impl Platform<'a> + 'a),
         allocator: A,
@@ -477,7 +473,7 @@ impl<A: Allocator + Copy> Root<A> {
         let block_number: u64 = block.number.try_into()?;
 
         let timestamped_contracts = &self.executor_state.timestamped_contracts;
-        for address in unsafe { timestamped_contracts.keys() } {
+        for address in timestamped_contracts {
             let Some(contract) = platform.get_contract(*address).await? else {
                 continue;
             };
@@ -511,16 +507,16 @@ impl<A: Allocator + Copy> Root<A> {
         let program_id = solana.program_id();
 
         for (key, value) in touched_accounts.into_iter(solana.keys()) {
-            self.touched_accounts.update_or_insert(key, value, |v| {
-                *v += value;
-            });
+            let touch_counter = self.touched_accounts.entry(key).or_insert(0);
+            *touch_counter += value;
 
-            if let Err(hint) = self.revisions.search(&key) {
-                let account: Account<'a> = solana.get_account(key).await?;
-                let revision = AccountRevision::new(program_id, account);
-
-                // SAFETY: We just aquired the `hint` by searching revisions map
-                unsafe { self.revisions.insert_with_hint(key, revision, hint) };
+            match self.revisions.entry(key) {
+                Entry::Occupied(_) => {}
+                Entry::Vacant(entry) => {
+                    let account: Account<'a> = solana.get_account(key).await?;
+                    let revision = AccountRevision::new(program_id, account);
+                    entry.insert(revision);
+                }
             }
         }
 

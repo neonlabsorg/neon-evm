@@ -7,8 +7,6 @@ use crate::{
 use ethnum::U256;
 use solana_program::pubkey::Pubkey;
 
-// TODO: TEST GLOBAL CACHE
-
 // Program Derived Addresses for all account types in the program.
 // Caution: When adding new account types, make sure no collisions occur with existing seeds.
 //          Using a unique prefix for each account type is recommended.
@@ -29,7 +27,7 @@ pub fn aux_treasury_pool_address(program_id: &Pubkey, index: u32) -> (Pubkey, u8
 #[must_use]
 pub fn tree_account_address(
     program_id: &Pubkey,
-    payer: Address,
+    payer: &Address,
     chain_id: u64,
     nonce: u64,
 ) -> (Pubkey, u8) {

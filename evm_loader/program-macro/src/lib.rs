@@ -60,6 +60,25 @@ pub fn neon_elf_param(tokens: TokenStream) -> TokenStream {
     .into()
 }
 
+#[proc_macro]
+pub fn version_signature(_tokens: TokenStream) -> TokenStream {
+    quote!(
+        const {
+            let mut result = [0_u8; 40];
+            let revision = env!("NEON_REVISION").as_bytes();
+
+            let mut i = 0_usize;
+            while i < revision.len() {
+                result[i] = revision[i];
+                i += 1;
+            }
+
+            result
+        }
+    )
+    .into()
+}
+
 /// # Panics
 /// Panic at compile time if config file is not correct
 #[proc_macro]

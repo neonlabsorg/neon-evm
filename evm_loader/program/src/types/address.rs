@@ -23,10 +23,14 @@ impl Address {
     pub fn from_create(source: &Self, nonce: u64) -> Self {
         use solana_program::keccak::{hash, Hash};
 
-        let mut stream = rlp::RlpStream::new_list(2);
-        stream.append(source);
-        stream.append(&nonce);
-        let Hash(hash) = hash(&stream.out());
+        #[derive(alloy_rlp::RlpEncodable)]
+        struct RlpSource<'a> {
+            source: &'a Address,
+            nonce: u64,
+        }
+
+        let rlp = alloy_rlp::encode(RlpSource { source, nonce });
+        let Hash(hash) = hash(&rlp);
 
         let bytes = arrayref::array_ref![hash, 12, 20];
         Self(*bytes)
@@ -96,9 +100,25 @@ impl From<[u8; 20]> for Address {
     }
 }
 
+impl<'r> From<&'r [u8; 20]> for &'r Address {
+    fn from(value: &'r [u8; 20]) -> Self {
+        #[allow(clippy::transmute_ptr_to_ptr)]
+        // https://github.com/rust-lang/rust-clippy/issues/6372
+        unsafe {
+            std::mem::transmute(value)
+        }
+    }
+}
+
 impl From<Address> for [u8; 20] {
     fn from(value: Address) -> Self {
         value.0
+    }
+}
+
+impl<'r> From<&'r Address> for &'r [u8; 20] {
+    fn from(value: &'r Address) -> Self {
+        value.as_bytes()
     }
 }
 
@@ -118,21 +138,23 @@ impl Debug for Address {
     }
 }
 
-impl rlp::Encodable for Address {
-    fn rlp_append(&self, stream: &mut rlp::RlpStream) {
+impl alloy_rlp::Encodable for Address {
+    fn encode(&self, out: &mut dyn alloy_rlp::BufMut) {
         let Self(bytes) = self;
-        stream.encoder().encode_value(bytes);
+        bytes.encode(out);
+    }
+
+    fn length(&self) -> usize {
+        let Self(bytes) = self;
+        bytes.length()
     }
 }
+alloy_rlp::impl_max_encoded_len!(Address, 20);
 
-impl rlp::Decodable for Address {
-    fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
-        rlp.decoder().decode_value(|bytes| {
-            let array: [u8; 20] = bytes
-                .try_into()
-                .map_err(|_| rlp::DecoderError::RlpInvalidLength)?;
-            Ok(Self(array))
-        })
+impl alloy_rlp::Decodable for Address {
+    fn decode(buf: &mut &[u8]) -> alloy_rlp::Result<Self> {
+        let bytes = <[u8; 20]>::decode(buf)?;
+        Ok(Self(bytes))
     }
 }
 

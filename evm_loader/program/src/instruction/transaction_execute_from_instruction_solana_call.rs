@@ -29,9 +29,9 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
 
     let mut solana = Solana::new_with_solana_call(&accounts[1..], operator, operator_balance)?;
 
-    log_data(&[b"HASH", &trx.hash()]);
+    log_data(&[b"HASH", trx.hash()]);
     solana.log_miner_address(origin);
 
     solana.pay_to_treasury(treasury)?;
-    transaction_execute::execute_with_solana_call(solana, trx, origin, allocator)
+    transaction_execute::execute_with_solana_call(solana, trx.as_ref(), origin, allocator)
 }

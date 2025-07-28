@@ -8,11 +8,10 @@ use crate::account::state_root::AccountsStatus;
 use crate::allocator::StateAllocator;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
-#[cfg(not(target_os = "platform"))]
-use crate::executor::BlockParams;
 use crate::platform::Platform;
-use crate::types::{EncodedTransaction, Transaction};
+use crate::types::{validate_transaction, EncodedTransaction, Transaction};
 
+use evm_loader_macro::version_signature;
 use linked_list_allocator::Heap;
 use maybe_async::maybe_async;
 use solana_program::keccak;
@@ -27,8 +26,6 @@ use super::{
 // Account Layout
 // ----------------
 // Header
-//   - version_signature: 40 bytes
-//   - transaction_len: 8 bytes
 // ---------------
 // Transaction Hash: 32 bytes
 // Transaction RLP: `transaction_len` bytes
@@ -45,6 +42,7 @@ use super::{
 // ---------------
 
 type VersionSignature = [u8; 40];
+const VALID_VERSION_SIGNATURE: VersionSignature = version_signature!();
 
 #[repr(C, packed)]
 struct Offsets {
@@ -71,15 +69,6 @@ struct Header {
     pub owner: Pubkey,
     pub account_memory_address: u64,
     pub offsets: Offsets,
-}
-
-impl Header {
-    fn valid_version_signature() -> VersionSignature {
-        let mut result: VersionSignature = [0; 40];
-        let state = env!("NEON_REVISION").as_bytes();
-        result[..state.len()].copy_from_slice(state);
-        result
-    }
 }
 
 impl AccountHeader for Header {
@@ -144,23 +133,23 @@ impl<'a> StateAccount<'a> {
         Ok(state)
     }
 
-    pub async fn new_with_tree(
+    pub async fn new_with_tree<'tx>(
         account: AccountInfo<'a>,
         owner: Pubkey,
-        transaction: EncodedTransaction<'_>,
+        transaction: EncodedTransaction<'tx>,
         platform: &mut (impl Platform<'a> + 'a),
         tree: &mut TransactionTree<'a>,
-    ) -> Result<(Self, Transaction)> {
+    ) -> Result<(Self, Box<dyn Transaction + 'tx>)> {
         Self::new_inner(account, owner, transaction, platform, Some(tree)).await
     }
 
-    async fn new_inner(
+    async fn new_inner<'tx>(
         mut account: AccountInfo<'a>,
         owner: Pubkey,
-        transaction: EncodedTransaction<'_>,
+        transaction: EncodedTransaction<'tx>,
         platform: &mut (impl Platform<'a> + 'a),
         tree: Option<&mut TransactionTree<'a>>,
-    ) -> Result<(Self, Transaction)> {
+    ) -> Result<(Self, Box<dyn Transaction + 'tx>)> {
         account.init_tag(TAG_STATE, Header::VERSION)?;
         let mut state = Self {
             account,
@@ -187,9 +176,9 @@ impl<'a> StateAccount<'a> {
         if status == AccountsStatus::NeedRestart {
             log_data(&[b"RESET"]);
             unsafe {
+                state.reset_header();
                 state.initialize_heap();
                 state.reset_root(platform).await?;
-                state.reset_header_signature();
             }
         }
 
@@ -213,7 +202,7 @@ impl<'a> StateAccount<'a> {
             let header: Ref<Header> = self.account.header();
             header.version_signature
         };
-        if version_signature != Header::valid_version_signature() {
+        if version_signature != VALID_VERSION_SIGNATURE {
             return Ok(AccountsStatus::NeedRestart);
         }
 
@@ -327,7 +316,7 @@ impl<'a> StateAccount<'a> {
     }
 
     #[must_use]
-    pub fn transaction(&self) -> EncodedTransaction<'_> {
+    pub fn transaction(&self) -> EncodedTransaction<'static> {
         let (hash_range, rlp_range) = self.offsets().transaction();
 
         let data = self.account.data();
@@ -336,9 +325,9 @@ impl<'a> StateAccount<'a> {
             let hash_bytes = &data[hash_range];
             keccak::Hash(hash_bytes.try_into().unwrap())
         };
-        let rlp = Ref::map(data, |d| &d[rlp_range]);
+        let rlp = data[rlp_range].to_vec();
 
-        EncodedTransaction::Ref(rlp, hash)
+        EncodedTransaction::Owned(rlp, hash)
     }
 
     #[must_use]
@@ -373,13 +362,13 @@ impl<'a> StateAccount<'a> {
     }
 
     /// SAFETY: This functions should be called only once
-    unsafe fn initialize_header(&mut self, owner: Pubkey, transaction: &EncodedTransaction<'_>) {
+    unsafe fn initialize_header(&mut self, owner: Pubkey, transaction: &EncodedTransaction) {
         let account_memory_address = self.account.memory_address();
         let offsets = self.calculate_offsets(transaction.rlp_len());
 
         let mut header_section = self.account.header_mut_uninit::<Header>();
         header_section.write(Header {
-            version_signature: Header::valid_version_signature(),
+            version_signature: VALID_VERSION_SIGNATURE,
             owner,
             account_memory_address,
             offsets,
@@ -387,9 +376,15 @@ impl<'a> StateAccount<'a> {
     }
 
     /// SAFETY: This functions should be called with previously valid header
-    unsafe fn reset_header_signature(&mut self) {
+    unsafe fn reset_header(&mut self) {
+        // Recalculate Heap offset because `size_of::<Root>()` may change
+        let root_offset = self.offsets().root;
+        let heap_offset = self.align_offset::<Heap>(root_offset + size_of::<Root>());
+
+        // Reset the header
         let mut header: RefMut<Header> = self.account.header_mut();
-        header.version_signature = Header::valid_version_signature();
+        header.version_signature = VALID_VERSION_SIGNATURE;
+        header.offsets.heap_object = heap_offset;
     }
 
     /// SAFETY: This functions should be called only once after `initialize_header`
@@ -422,27 +417,25 @@ impl<'a> StateAccount<'a> {
     }
 
     /// SAFETY: This functions should be called only once after `initialize_heap`
-    async unsafe fn initialize_root(
+    async unsafe fn initialize_root<'tx>(
         &mut self,
-        encoded_transaction: EncodedTransaction<'_>,
+        encoded_transaction: EncodedTransaction<'tx>,
         tree: Option<&mut TransactionTree<'a>>,
         platform: &mut (impl Platform<'a> + 'a),
-    ) -> Result<Transaction> {
+    ) -> Result<Box<dyn Transaction + 'tx>> {
         let allocator = StateAllocator::new(self.heap());
 
-        let transaction = encoded_transaction.decode()?;
-        let origin = transaction.recover_caller_address()?;
+        let tx = encoded_transaction.decode()?;
+        let origin = tx.recover_caller_address()?;
 
-        transaction
-            .validate(origin, platform, tree.as_deref())
-            .await?;
+        validate_transaction(tx.as_ref(), origin, platform, tree.as_deref()).await?;
 
         let offset = self.offsets().root;
 
         let mut root_section = self.account.section_mut_uninit::<Root>(offset);
-        root_section.write(Root::new(&transaction, origin, tree, platform, allocator).await?);
+        root_section.write(Root::new(tx.as_ref(), origin, tree, platform, allocator).await?);
 
-        Ok(transaction)
+        Ok(tx)
     }
 
     /// SAFETY: This functions should be called only once after `initialize_heap` and with previously valid root
@@ -457,7 +450,9 @@ impl<'a> StateAccount<'a> {
             // Old Root is not valid. Reading from it may cause undefined behavior.
             // Can only be used to create a new one.
             let old_root = self.account.section::<Root>(offset);
-            old_root.new_after_reset(&tx, platform, allocator).await?
+            old_root
+                .new_after_reset(tx.as_ref(), platform, allocator)
+                .await?
         };
 
         let mut root_section = self.account.section_mut_uninit::<Root>(offset);
@@ -467,20 +462,20 @@ impl<'a> StateAccount<'a> {
     }
 }
 
-#[cfg(not(target_os = "platform"))]
+#[cfg(not(target_os = "solana"))]
 type StateAccountCoreApiView = (
     super::state_root::PlainData,
-    Option<BlockParams>,
+    Option<crate::executor::BlockParams>,
     Vec<Pubkey>,
     Vec<u8>, //tx rlp
 );
 
-#[cfg(not(target_os = "platform"))]
+#[cfg(not(target_os = "solana"))]
 impl StateAccount<'_> {
     pub fn get_state_account_view(&self) -> Result<StateAccountCoreApiView> {
         use super::state_root::AccountRevision;
         use super::state_root::PlainData;
-        use crate::types::read_raw_utils;
+        use crate::types::vector::read_raw_utils;
 
         let platform_memory_address: isize = self.stored_memory_address().try_into()?;
         let local_memory_address: isize = self.account.memory_address().try_into()?;

@@ -68,7 +68,7 @@ pub struct Cell {
 }
 
 pub struct StorageCell<'a> {
-    pub account: Account<'a>, // TODO: make it private after emulator changes
+    account: Account<'a>,
 }
 
 #[repr(C, packed)]
@@ -85,14 +85,8 @@ pub type Header = HeaderWithRevision;
 
 impl<'a> StorageCell<'a> {
     #[must_use]
-    pub fn required_account_size(cells: usize) -> usize {
+    pub const fn required_account_size(cells: usize) -> usize {
         ACCOUNT_PREFIX_LEN + size_of::<Header>() + cells * size_of::<Cell>()
-    }
-
-    #[must_use]
-    pub fn required_header_realloc(&self) -> usize {
-        let allocated_header_size = self.header_size();
-        size_of::<Header>().saturating_sub(allocated_header_size)
     }
 
     pub fn from_account_info(program_id: Pubkey, account: &AccountInfo<'a>) -> Result<Self> {

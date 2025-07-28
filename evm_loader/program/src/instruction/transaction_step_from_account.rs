@@ -37,7 +37,7 @@ pub fn process_inner(
             let holder = Holder::from_account(program_id, holder_info)?;
             holder.validate(&operator)?;
 
-            let rlp = holder.transaction()?.into_owned();
+            let rlp = holder.transaction()?;
             let owner = holder.owner();
             let account = holder.into_account();
 

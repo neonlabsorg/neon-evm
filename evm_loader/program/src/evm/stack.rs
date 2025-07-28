@@ -1,5 +1,3 @@
-#![allow(clippy::inline_always)]
-
 use std::{alloc::Layout, convert::TryInto, ptr::NonNull};
 
 use allocator_api2::alloc::Allocator;

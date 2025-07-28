@@ -51,7 +51,7 @@ pub enum Error {
     RlpError(
         #[from]
         #[serde(with = "as_display_string")]
-        rlp::DecoderError,
+        alloy_rlp::Error,
     ),
 
     #[error("Secp256k1 error: {0}")]
@@ -357,10 +357,10 @@ pub enum Error {
     RevertWithSolanaCall,
 
     #[error("Unsupported EIP-2718 Transaction type | First byte: {0}")]
-    UnsuppotedEthereumTransactionType(u8),
+    UnsupportedEthereumTransactionType(u8),
 
     #[error("Unsupported Neon Transaction type | Second byte: {0}")]
-    UnsuppotedNeonTransactionType(u8),
+    UnsupportedNeonTransactionType(u8),
 
     #[error("Solana programs was interrupted")]
     InterruptedCall(#[serde(skip)] SolanaCallInterrupt),

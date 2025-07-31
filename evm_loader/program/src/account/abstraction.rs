@@ -195,6 +195,8 @@ pub trait AccountDispatch<'a> {
     fn original_data_len(&self) -> usize;
 
     fn pubkey(&self) -> Pubkey;
+    fn container(&self) -> Option<Pubkey>;
+
     fn owner(&self) -> Pubkey;
     fn is_system_owned(&self) -> bool;
 
@@ -438,6 +440,10 @@ impl<'a> AccountDispatch<'a> for AccountInfo<'a> {
         *self.key
     }
 
+    fn container(&self) -> Option<Pubkey> {
+        None
+    }
+
     fn owner(&self) -> Pubkey {
         *self.owner
     }
@@ -483,6 +489,10 @@ impl<'a> AccountDispatch<'a> for AccountInContainer<'a> {
 
     fn pubkey(&self) -> Pubkey {
         self.container.account_pubkey(self.index)
+    }
+
+    fn container(&self) -> Option<Pubkey> {
+        Some(self.container.pubkey())
     }
 
     fn owner(&self) -> Pubkey {
@@ -535,6 +545,10 @@ impl AccountDispatch<'_> for SharedAccount {
 
     fn pubkey(&self) -> Pubkey {
         self.key
+    }
+
+    fn container(&self) -> Option<Pubkey> {
+        None
     }
 
     fn owner(&self) -> Pubkey {

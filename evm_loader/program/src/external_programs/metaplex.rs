@@ -1,4 +1,4 @@
-use crate::error::Result;
+use crate::{error::Result, types::vector::VectorMap};
 use borsh010::{BorshDeserialize, BorshSerialize};
 use mpl_token_metadata::{
     accounts::{MasterEdition, Metadata},
@@ -10,7 +10,6 @@ use solana_program::instruction::AccountMeta;
 use solana_program::program_option::COption;
 use solana_program::rent::Rent;
 use solana_program::{account_info::IntoAccountInfo, program_pack::Pack};
-use std::collections::BTreeMap;
 
 use crate::executor::OwnedAccountInfo;
 use solana_program::pubkey::Pubkey;
@@ -18,7 +17,7 @@ use solana_program::pubkey::Pubkey;
 pub fn emulate(
     instruction: &[u8],
     meta: &[AccountMeta],
-    accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+    accounts: &mut VectorMap<Pubkey, OwnedAccountInfo>,
     rent: &Rent,
 ) -> Result<()> {
     let discriminator = instruction[0];
@@ -39,7 +38,7 @@ pub fn emulate(
 
 fn create_metadata_accounts_v3(
     meta: &[AccountMeta],
-    accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+    accounts: &mut VectorMap<Pubkey, OwnedAccountInfo>,
     args: CreateMetadataAccountV3InstructionArgs,
     rent: &Rent,
 ) -> Result<()> {
@@ -91,7 +90,7 @@ fn create_metadata_accounts_v3(
 
 fn create_master_edition_v3(
     meta: &[AccountMeta],
-    accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+    accounts: &mut VectorMap<Pubkey, OwnedAccountInfo>,
     max_supply: Option<u64>,
     rent: &Rent,
 ) -> Result<()> {

@@ -34,13 +34,13 @@ pub trait OriginId {
     fn address(&self) -> Address;
     fn chain_id(&self) -> Option<u64>;
 }
-impl OriginId for (Address, &Transaction) {
+impl OriginId for (Address, &dyn Transaction) {
     fn address(&self) -> Address {
         self.0
     }
 
     fn chain_id(&self) -> Option<u64> {
-        self.1.try_chain_id()
+        self.1.chain_id()
     }
 }
 impl<A: Allocator + Copy> OriginId for &Root<A> {

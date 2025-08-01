@@ -1,6 +1,4 @@
-use std::collections::BTreeMap;
-
-use crate::executor::OwnedAccountInfo;
+use crate::{executor::OwnedAccountInfo, types::vector::VectorMap};
 use borsh::de::BorshDeserialize;
 use solana_program::{
     entrypoint::ProgramResult, instruction::AccountMeta, program_error::ProgramError,
@@ -11,7 +9,7 @@ use spl_associated_token_account::instruction::AssociatedTokenAccountInstruction
 pub fn emulate(
     instruction: &[u8],
     meta: &[AccountMeta],
-    accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+    accounts: &mut VectorMap<Pubkey, OwnedAccountInfo>,
     rent: &Rent,
 ) -> ProgramResult {
     let instruction = if instruction.is_empty() {

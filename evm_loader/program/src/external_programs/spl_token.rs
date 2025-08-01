@@ -1,6 +1,4 @@
-use std::collections::BTreeMap;
-
-use crate::executor::OwnedAccountInfo;
+use crate::{executor::OwnedAccountInfo, types::vector::VectorMap};
 use solana_program::{
     account_info::{AccountInfo, IntoAccountInfo},
     entrypoint::ProgramResult,
@@ -14,12 +12,12 @@ use spl_token::instruction::TokenInstruction;
 pub fn emulate(
     instruction: &[u8],
     meta: &[AccountMeta],
-    accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+    accounts: &mut VectorMap<Pubkey, OwnedAccountInfo>,
 ) -> ProgramResult {
     let accounts_info = accounts
         .iter_mut()
         .map(|(key, a)| (*key, a.into_account_info()))
-        .collect::<BTreeMap<Pubkey, AccountInfo>>();
+        .collect::<VectorMap<Pubkey, AccountInfo>>();
 
     let instruction_accounts: Vec<AccountInfo> = meta
         .iter()

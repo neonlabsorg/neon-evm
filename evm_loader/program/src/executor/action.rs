@@ -1,8 +1,3 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    fmt::Debug,
-};
-
 use allocator_api2::alloc::Allocator;
 use ethnum::U256;
 use maybe_async::maybe_async;
@@ -18,19 +13,22 @@ use crate::{
     config::STATIC_STORAGE_LIMIT,
     error::{Error, Result},
     platform::{InvokeMode, Platform},
-    types::{vector::Vector, Address},
+    types::{
+        seeds::{InvokeSeeds, SeedsRef},
+        vector::{Vector, VectorMap},
+        Address,
+    },
 };
 
 use super::owned_account::OwnedAccountInfo;
 
-#[derive(Debug, Clone)]
 #[repr(C, u8)]
 pub enum Action<A: Allocator> {
     ExternalInstruction {
         program_id: Pubkey,
         accounts: Vector<AccountMeta, A>,
         data: Vector<u8, A>,
-        seeds: Vector<Vector<Vector<u8, A>, A>, A>,
+        seeds: InvokeSeeds<A>,
     },
     Transfer {
         source: Address,
@@ -208,7 +206,7 @@ impl<A: Allocator + Copy> IterativeActions<A> {
     pub fn apply_to_external_accounts(
         &self,
         rent: &Rent,
-        accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+        accounts: &mut VectorMap<Pubkey, OwnedAccountInfo>,
     ) -> Result<()> {
         for action in &self.storage {
             if let Action::ExternalInstruction {
@@ -290,9 +288,9 @@ impl<A: Allocator> ActionExecutor for IterativeActions<A> {
 
     #[allow(clippy::too_many_lines)]
     async fn execute<'a>(&mut self, platform: &mut impl Platform<'a>) -> Result<()> {
-        let mut original_balances = HashMap::with_capacity(16);
-        let mut storage = HashMap::with_capacity(16);
-        let mut contracts = HashMap::with_capacity(8);
+        let mut original_balances = VectorMap::with_capacity(16);
+        let mut storage = VectorMap::with_capacity(16);
+        let mut contracts = VectorMap::with_capacity(8);
 
         for action in self.storage.drain(..) {
             match action {
@@ -335,7 +333,7 @@ impl<A: Allocator> ActionExecutor for IterativeActions<A> {
                 } => {
                     storage
                         .entry(address)
-                        .or_insert_with(|| HashMap::with_capacity(64))
+                        .or_insert_with(|| VectorMap::with_capacity(64))
                         .insert(index, value);
                 }
                 Action::EvmIncrementNonce { address, chain_id } => {
@@ -358,11 +356,8 @@ impl<A: Allocator> ActionExecutor for IterativeActions<A> {
                     seeds,
                     ..
                 } => {
-                    let seeds = seeds
-                        .iter()
-                        .map(|s| s.iter().map(Vector::as_slice).collect::<Vec<_>>())
-                        .collect::<Vec<_>>();
-                    let seeds = seeds.iter().map(Vec::as_slice).collect::<Vec<_>>();
+                    let seeds: Vec<SeedsRef> = seeds.data.iter().map(SeedsRef::new).collect();
+                    let seeds: Vec<&[&[u8]]> = seeds.iter().map(SeedsRef::as_slices).collect();
 
                     let instruction = Instruction {
                         program_id,
@@ -395,7 +390,7 @@ impl<A: Allocator> ActionExecutor for IterativeActions<A> {
         // Update storage accounts
         for (address, values) in storage {
             let mut contract: Option<ContractAccount> = None;
-            let mut infinite_values = HashMap::with_capacity(values.len());
+            let mut infinite_values = VectorMap::with_capacity(values.len());
 
             for (index, value) in values {
                 if index < STATIC_STORAGE_LIMIT {
@@ -412,14 +407,14 @@ impl<A: Allocator> ActionExecutor for IterativeActions<A> {
 
                     infinite_values
                         .entry(index)
-                        .or_insert_with(|| HashMap::with_capacity(32))
+                        .or_insert_with(|| VectorMap::with_capacity(32))
                         .insert(subindex, value);
                 }
             }
 
             // Process infinite storage
             for (index, values) in infinite_values {
-                let all_values_zero = values.iter().all(|v| v.1 == &[0_u8; 32]);
+                let all_values_zero = values.iter().all(|v| v.1 == [0_u8; 32]);
 
                 let mut storage = if all_values_zero {
                     // If all values are zero, we can skip creating a storage account

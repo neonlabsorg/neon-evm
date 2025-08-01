@@ -23,10 +23,10 @@ use crate::evm::precompile::is_precompile_address;
 use crate::evm::Context;
 use crate::executor::ActionExecutor;
 use crate::platform::{InvokeMode, KeysIndex, Platform};
-use crate::types::tree_map_cell::TreeMapCell;
+use crate::types::vector::VectorSet;
 use crate::types::Address;
 
-pub type TimestampedContracts<A> = TreeMapCell<Address, (), A>;
+pub type TimestampedContracts<A> = VectorSet<Address, A>;
 
 #[repr(C)]
 pub struct ExecutorStateData<A: Allocator> {
@@ -125,8 +125,8 @@ where
         self.allocator
     }
 
-    pub fn use_timestamp_by(&self, address: Address) {
-        self.data.timestamped_contracts.insert(address, ());
+    pub fn use_timestamp_by(&mut self, address: Address) {
+        self.data.timestamped_contracts.insert(address);
     }
 
     #[maybe_async]
@@ -141,7 +141,7 @@ where
 
     #[maybe_async]
     pub async fn commit_timestamps_to_solana(&mut self) -> Result<()> {
-        let contracts_addresses = self.data.timestamped_contracts.drain().map(|v| v.0);
+        let contracts_addresses = self.data.timestamped_contracts.drain();
 
         for address in contracts_addresses {
             let mut contract = self
@@ -359,7 +359,7 @@ where
         Ok(())
     }
 
-    async fn block_hash(&self, number: U256, context: &Context) -> Result<[u8; 32]> {
+    async fn block_hash(&mut self, number: U256, context: &Context) -> Result<[u8; 32]> {
         if number >= U256::from(u64::MAX) {
             return Ok(<[u8; 32]>::default());
         }
@@ -375,7 +375,7 @@ where
         super::block_hash::find_slot_hash(number, self.platform).await
     }
 
-    async fn block_number(&self, context: &Context) -> Result<U256> {
+    async fn block_number(&mut self, context: &Context) -> Result<U256> {
         self.use_timestamp_by(context.contract);
 
         if let Some(block_params) = &self.data.inhereted_block_params {
@@ -387,7 +387,7 @@ where
         Ok(slot)
     }
 
-    async fn block_timestamp(&self, context: &Context) -> Result<U256> {
+    async fn block_timestamp(&mut self, context: &Context) -> Result<U256> {
         self.use_timestamp_by(context.contract);
 
         if let Some(block_params) = &self.data.inhereted_block_params {

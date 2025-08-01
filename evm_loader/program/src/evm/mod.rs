@@ -155,7 +155,7 @@ where
 {
     #[maybe_async]
     pub async fn new_in(
-        trx: &Transaction,
+        trx: &dyn Transaction,
         origin: Address,
         backend: &mut impl Database,
         allocator: A,
@@ -170,7 +170,7 @@ where
 {
     #[maybe_async]
     pub async fn with_tracer(
-        trx: &Transaction,
+        trx: &dyn Transaction,
         origin: Address,
         backend: &mut impl Database,
         tracer: Option<T>,
@@ -186,13 +186,13 @@ where
 {
     #[maybe_async]
     pub async fn with_tracer_in(
-        trx: &Transaction,
+        trx: &dyn Transaction,
         origin: Address,
         backend: &mut impl Database,
         tracer: Option<T>,
         allocator: A,
     ) -> Result<Self> {
-        let chain_id = trx.chain_id_with_database(backend);
+        let chain_id = trx.chain_id().unwrap_or_else(|| backend.default_chain_id());
 
         if backend.balance(origin, chain_id).await? < trx.value() {
             return Err(Error::InsufficientBalance(origin, chain_id, trx.value()));
@@ -208,7 +208,7 @@ where
     #[maybe_async]
     async fn new_call(
         chain_id: u64,
-        trx: &Transaction,
+        trx: &dyn Transaction,
         origin: Address,
         backend: &mut impl Database,
         tracer: Option<T>,
@@ -216,7 +216,7 @@ where
     ) -> Result<Self> {
         assert!(trx.target().is_some());
 
-        let target = trx.target().unwrap();
+        let target = *trx.target().unwrap();
         log_data(&[b"ENTER", b"CALL", target.as_bytes()]);
 
         backend.snapshot();
@@ -268,7 +268,7 @@ where
     #[maybe_async]
     async fn new_create(
         chain_id: u64,
-        trx: &Transaction,
+        trx: &dyn Transaction,
         origin: Address,
         backend: &mut impl Database,
         tracer: Option<T>,

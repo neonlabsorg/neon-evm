@@ -5,17 +5,16 @@ use crate::account::{BalanceAccount, StateAccount, TransactionTree};
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::platform::{Platform, Solana};
-use crate::types::{EncodedTransaction, Transaction};
+use crate::types::{EncodedTransaction, ScheduledTransaction, Transaction};
 
-pub fn validate_index(tx: &Transaction, instruction_index: u16) -> Result<()> {
-    let Some(trx) = tx.if_scheduled() else {
-        unreachable!();
-    };
-
-    if trx.index == instruction_index {
+pub fn validate_index(tx: &dyn ScheduledTransaction, instruction_index: u16) -> Result<()> {
+    if tx.index() == instruction_index {
         Ok(())
     } else {
-        Err(Error::ScheduledTxInvalidIndex(trx.index, instruction_index))
+        Err(Error::ScheduledTxInvalidIndex(
+            tx.index(),
+            instruction_index,
+        ))
     }
 }
 
@@ -26,19 +25,19 @@ pub fn skip(
     mut solana: Solana,
 ) -> Result<()> {
     let tx = transaction.decode()?;
-    if !tx.is_scheduled_tx() {
+    let Some(tx) = tx.as_scheduled() else {
         return Err(Error::NotScheduledTransaction);
-    }
+    };
 
-    validate_index(&tx, tree_index)?;
-    tree.skip_transaction(&tx)?;
+    validate_index(tx, tree_index)?;
+    tree.skip_transaction(tx)?;
 
-    log_data(&[b"HASH", &tx.hash]);
+    log_data(&[b"HASH", tx.hash()]);
     solana.log_miner_address(tree.payer());
 
     solana.update_accounts_lamports()?;
     solana.use_gasometer(|g| g.record_solana_transaction_cost(tx.gas_limit()))?;
-    solana.reward_operator_from_tree(&mut tree, tx.hash)
+    solana.reward_operator_from_tree(&mut tree, tx.hash())
 }
 
 pub fn start<'a>(
@@ -52,8 +51,12 @@ pub fn start<'a>(
     let (mut state, tx) =
         StateAccount::new_with_tree(holder, holder_owner, transaction, &mut solana, &mut tree)?;
 
-    validate_index(&tx, tree_index)?;
-    tree.start_transaction(&tx)?;
+    let Some(tx) = tx.as_scheduled() else {
+        return Err(Error::NotScheduledTransaction);
+    };
+
+    validate_index(tx, tree_index)?;
+    tree.start_transaction(tx)?;
 
     let tx_hash = state.transaction_hash();
     let mut root = state.root_mut();

@@ -127,7 +127,7 @@ pub fn read_holder(program_id: Pubkey, info: AccountInfo) -> NeonResult<GetHolde
             let (plain, block_params, accounts, tx_rlp) = state.get_state_account_view()?;
             let tx = EncodedTransaction::from_rlp(&tx_rlp).decode()?;
 
-            let tx_params = TxParams::from_transaction(plain.origin, &tx);
+            let tx_params = TxParams::from_transaction(plain.origin, tx.as_ref());
 
             let owner = state.owner();
 
@@ -135,11 +135,11 @@ pub fn read_holder(program_id: Pubkey, info: AccountInfo) -> NeonResult<GetHolde
                 status,
                 len: Some(data_len),
                 owner: Some(owner),
-                tx: Some(tx.hash()),
+                tx: Some(*tx.hash()),
+                tx_type: Some(tx.transaction_type() as u8),
+                max_fee_per_gas: tx_params.max_fee_per_gas,
+                max_priority_fee_per_gas: tx_params.max_priority_fee_per_gas,
                 tx_data: Some(tx_params),
-                tx_type: Some(tx.tx_type()),
-                max_fee_per_gas: tx.max_fee_per_gas(),
-                max_priority_fee_per_gas: tx.max_priority_fee_per_gas(),
                 chain_id: plain.tx_chain_id,
                 origin: Some(plain.origin),
                 tree_account: plain.tree_account,

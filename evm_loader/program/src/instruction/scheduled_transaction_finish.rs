@@ -31,7 +31,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], _instruction: &[u8]
     let Some(exit_status) = root.plain_data.scheduled_exit_status else {
         return Err(Error::ScheduledTxNoExitStatus(state_account_pubkey));
     };
-    tree.end_transaction(tx_hash.0, exit_status, &operator)?;
+    tree.end_transaction(&tx_hash.0, exit_status, &operator)?;
 
     root.refund_unused_gas_to_tree(&mut tree)?;
 

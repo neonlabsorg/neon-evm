@@ -7,7 +7,8 @@
     clippy::module_name_repetitions,
     clippy::missing_const_for_fn,
     clippy::use_self,
-    clippy::future_not_send
+    clippy::future_not_send,
+    clippy::inline_always
 )]
 #![allow(
     missing_docs,

@@ -1454,6 +1454,10 @@ where
             return Err(Error::StaticModeViolation(self.context.contract));
         }
 
+        if self.reason == Reason::Create {
+            backend.end_create(self.context.contract, &[]).await?;
+        }
+
         let address = self.stack.pop_address()?;
 
         let chain_id = self.context.contract_chain_id;
@@ -1490,6 +1494,10 @@ where
     /// Halts execution of the contract
     #[maybe_async]
     pub async fn opcode_stop(&mut self, backend: &mut impl Database) -> Result<Action> {
+        if self.reason == Reason::Create {
+            backend.end_create(self.context.contract, &[]).await?;
+        }
+
         log_data(&[b"EXIT", b"STOP"]);
         backend.commit_snapshot();
 

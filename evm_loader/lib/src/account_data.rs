@@ -1,13 +1,14 @@
 use std::fmt;
 
 use solana_sdk::account_info::IntoAccountInfo;
+use solana_sdk::debug_account_data::debug_account_data;
 use solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE;
 use solana_sdk::{
     account::{Account, ReadableAccount},
     account_info::AccountInfo,
     pubkey::Pubkey,
 };
-use solana_sdk::{debug_account_data::debug_account_data, system_program};
+use solana_sdk_ids::system_program;
 
 use serde::{Deserialize, Serialize};
 use serde_with::hex::Hex;
@@ -194,7 +195,7 @@ mod tests {
         {
             let account_info = (&mut account_data).into_account_info();
             assert_eq!(account_info.try_data_len().unwrap(), 0);
-            account_info.realloc(new_size - 1, false).unwrap();
+            account_info.resize(new_size - 1).unwrap();
             account_info.assign(&new_owner);
         }
 
@@ -203,9 +204,9 @@ mod tests {
         {
             let account_info = (&mut account_data).into_account_info();
             assert_eq!(account_info.try_data_len().unwrap(), new_size - 1);
-            assert_eq!(account_info.realloc(new_size, false), Ok(()));
+            assert_eq!(account_info.resize(new_size), Ok(()));
             assert_eq!(
-                account_info.realloc(new_size + 1, false),
+                account_info.resize(new_size + 1),
                 Err(solana_sdk::program_error::ProgramError::InvalidRealloc)
             );
             let mut lamports = account_info.try_borrow_mut_lamports().unwrap();
@@ -218,7 +219,7 @@ mod tests {
 
         {
             let account_info = (&mut account_data).into_account_info();
-            account_info.realloc(0, false).unwrap();
+            account_info.resize(0).unwrap();
             account_info.assign(&Pubkey::default());
         }
         assert_eq!(account_data.get_length(), 0);

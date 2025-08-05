@@ -6,7 +6,7 @@ use std::{
 
 use enum_dispatch::enum_dispatch;
 use solana_account::ReadableAccount;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey, system_program};
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use crate::error::{Error, Result};
 
@@ -104,12 +104,6 @@ pub enum Account<'a> {
     SharedAccount(SharedAccount),
 }
 
-#[derive(PartialEq, Eq)]
-pub enum ZeroInit {
-    Zero,
-    Uninit,
-}
-
 pub trait AccountHeader {
     const VERSION: u8;
 }
@@ -134,7 +128,7 @@ pub trait AccountDispatch<'a> {
     fn rent_epoch(&self) -> u64;
     fn is_executable(&self) -> bool;
 
-    fn reallocate(&mut self, new_size: usize, zero_init: ZeroInit) -> Result<()>;
+    fn reallocate(&mut self, new_size: usize) -> Result<()>;
 
     fn tag(&self, program_id: Pubkey) -> Result<u8> {
         if self.owner() != program_id {
@@ -279,7 +273,7 @@ pub trait AccountDispatch<'a> {
         let required_len = ACCOUNT_PREFIX_LEN + to_len + data_len;
         assert!(required_len >= data_len);
 
-        self.reallocate(required_len, ZeroInit::Uninit)?;
+        self.reallocate(required_len)?;
 
         {
             let mut account_data = self.data_mut();
@@ -324,7 +318,7 @@ impl<'a> AccountDispatch<'a> for AccountInfo<'a> {
     }
 
     fn is_system_owned(&self) -> bool {
-        system_program::check_id(self.owner)
+        solana_sdk_ids::system_program::check_id(self.owner)
     }
 
     fn lamports(&self) -> u64 {
@@ -339,8 +333,8 @@ impl<'a> AccountDispatch<'a> for AccountInfo<'a> {
         self.executable
     }
 
-    fn reallocate(&mut self, new_size: usize, zero_init: ZeroInit) -> Result<()> {
-        self.realloc(new_size, zero_init == ZeroInit::Zero)?;
+    fn reallocate(&mut self, new_size: usize) -> Result<()> {
+        self.resize(new_size)?;
         Ok(())
     }
 }
@@ -396,7 +390,7 @@ impl AccountDispatch<'_> for SharedAccount {
         account.executable
     }
 
-    fn reallocate(&mut self, new_size: usize, _: ZeroInit) -> Result<()> {
+    fn reallocate(&mut self, new_size: usize) -> Result<()> {
         self.modified.set(true);
 
         let mut account = self.account.borrow_mut();

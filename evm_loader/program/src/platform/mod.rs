@@ -9,7 +9,7 @@ use solana_program::{
 
 use crate::account::{
     pda, Account, AccountDispatch, AllocateResult, BalanceAccount, ContractAccount, Root,
-    StorageCell, StorageCellSeed, ZeroInit, TAG_EMPTY,
+    StorageCell, StorageCellSeed, TAG_EMPTY,
 };
 use crate::error::Result;
 use crate::types::{Address, Transaction};
@@ -137,7 +137,7 @@ pub trait Platform<'a>: Sized {
         let mut account = self.assign_account(seeds).await?;
         if account.data_len() == 0 {
             let required_len = BalanceAccount::required_account_size(false);
-            account.reallocate(required_len, ZeroInit::Uninit)?;
+            account.reallocate(required_len)?;
 
             BalanceAccount::initialize(account, program_id, address, chain_id)
         } else {
@@ -160,7 +160,7 @@ pub trait Platform<'a>: Sized {
         let mut account = self.assign_account(seeds).await?;
         if account.data_len() == 0 {
             let required_len = BalanceAccount::required_account_size(true);
-            account.reallocate(required_len, ZeroInit::Uninit)?;
+            account.reallocate(required_len)?;
 
             BalanceAccount::initialize_for_solana_user(account, program_id, user_pubkey, chain.id)
         } else {
@@ -200,7 +200,7 @@ pub trait Platform<'a>: Sized {
         let mut account = self.assign_account(seeds).await?;
         if account.data_len() == 0 {
             let required_len = ContractAccount::required_account_size(&[]);
-            account.reallocate(required_len, ZeroInit::Uninit)?;
+            account.reallocate(required_len)?;
 
             ContractAccount::initialize(account, program_id, address, chain_id, &[])
         } else {
@@ -228,7 +228,7 @@ pub trait Platform<'a>: Sized {
 
         let max_size = account.original_data_len() + MAX_PERMITTED_DATA_INCREASE;
         let new_space = required_size.min(max_size);
-        account.reallocate(new_space, ZeroInit::Uninit)?;
+        account.reallocate(new_space)?;
 
         if new_space >= required_size {
             Ok(AllocateResult::Ready)
@@ -279,7 +279,7 @@ pub trait Platform<'a>: Sized {
 
         if account.data_len() == 0 {
             let required_len = StorageCell::required_account_size(0);
-            account.reallocate(required_len, ZeroInit::Uninit)?;
+            account.reallocate(required_len)?;
 
             StorageCell::initialize(account, program_id)
         } else {

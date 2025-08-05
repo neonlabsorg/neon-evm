@@ -21,15 +21,16 @@ use {
         config::TREASURY_POOL_SEED,
     },
     log::{error, info, warn},
+    solana_loader_v3_interface::get_program_data_address,
     solana_sdk::{
-        bpf_loader_upgradeable,
         instruction::{AccountMeta, Instruction},
         program_pack::Pack,
         pubkey::Pubkey,
         signer::keypair::{read_keypair_file, Keypair},
         signer::Signer,
-        system_instruction, system_program,
     },
+    solana_sdk_ids::system_program,
+    solana_system_interface::instruction as system_instruction,
     spl_associated_token_account::get_associated_token_address,
     spl_token::{self, native_mint},
     std::collections::HashMap,
@@ -124,7 +125,7 @@ pub async fn execute(
     let executor = Rc::new(TransactionExecutor::new(client, fee_payer, send_trx));
     let keys = keys_dir.map_or(Ok(HashMap::new()), read_keys_dir)?;
 
-    let program_data_address = bpf_loader_upgradeable::get_program_data_address(&config.evm_loader);
+    let program_data_address = get_program_data_address(&config.evm_loader);
     let (program_upgrade_authority, program_data) =
         read_program_data_from_account(config, client, &config.evm_loader).await?;
     let data = file.map_or(Ok(program_data), read_program_data)?;

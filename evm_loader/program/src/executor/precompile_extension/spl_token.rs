@@ -2,9 +2,8 @@ use std::convert::{Into, TryInto};
 
 use ethnum::U256;
 use maybe_async::maybe_async;
-use solana_program::{
-    program_error::ProgramError, program_pack::Pack, pubkey::Pubkey, system_program,
-};
+use solana_program::{program_error::ProgramError, program_pack::Pack, pubkey::Pubkey};
+use solana_sdk_ids::system_program;
 
 use super::{create_account, PrecompileDatabase};
 use crate::{

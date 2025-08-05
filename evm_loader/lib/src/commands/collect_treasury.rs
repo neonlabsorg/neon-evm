@@ -9,9 +9,9 @@ use solana_sdk::signature::Signer;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     message::Message,
-    system_program,
     transaction::Transaction,
 };
+use solana_sdk_ids::system_program;
 use spl_token::instruction::sync_native;
 use std::ops::Deref;
 

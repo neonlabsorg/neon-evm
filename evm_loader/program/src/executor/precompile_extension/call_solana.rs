@@ -12,8 +12,8 @@ use maybe_async::maybe_async;
 use solana_program::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
-    system_instruction,
 };
+use solana_system_interface::instruction as system_instruction;
 
 use super::PrecompileDatabase;
 

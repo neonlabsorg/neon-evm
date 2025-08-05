@@ -10,8 +10,10 @@ use neon_lib_interface::NeonEVMLibLoadError;
 use solana_cli::cli::CliError as SolanaCliError;
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_client::tpu_client::TpuSenderError as SolanaTpuSenderError;
+use solana_sdk::instruction::InstructionError;
 use solana_sdk::program_error::ProgramError as SolanaProgramError;
 use solana_sdk::pubkey::{Pubkey, PubkeyError as SolanaPubkeyError};
+use solana_sdk::sanitize::SanitizeError;
 use solana_sdk::signer::SignerError as SolanaSignerError;
 use solana_sdk::transaction::TransactionError;
 use thiserror::Error;
@@ -128,6 +130,10 @@ pub enum NeonError {
     RpcReturnedEmptyAccount(Pubkey),
     #[error("TryFromIntError {0}")]
     TryFromIntError(#[from] std::num::TryFromIntError),
+    #[error("Instruction Error. {0}")]
+    InstructionError(#[from] InstructionError),
+    #[error("Transction Sanitize Error. {0}")]
+    SanitizeError(#[from] SanitizeError),
 }
 
 impl NeonError {
@@ -177,6 +183,8 @@ impl NeonError {
             NeonError::RocksDb(_) => 266,
             NeonError::RpcReturnedEmptyAccount(_) => 267,
             NeonError::TryFromIntError(_) => 268,
+            NeonError::InstructionError(_) => 269,
+            NeonError::SanitizeError(_) => 270,
         }
     }
 }

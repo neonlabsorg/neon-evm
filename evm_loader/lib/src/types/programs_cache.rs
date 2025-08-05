@@ -1,6 +1,7 @@
 // use crate::tracing::tracers::state_diff::Account;
 use crate::rpc::Rpc;
 use async_trait::async_trait;
+use solana_sdk_ids::bpf_loader_upgradeable;
 
 use crate::commands::get_config::GetConfigResponse;
 use bincode::deserialize;
@@ -275,12 +276,11 @@ impl Rpc for FakeRpc {
         Ok(Vec::new())
     }
 }
-use evm_loader::solana_program::bpf_loader_upgradeable;
-use tokio;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio;
 
     #[tokio::test]
     async fn test_acc_slice() {

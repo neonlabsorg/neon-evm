@@ -14,9 +14,7 @@ use std::{
 
 use crate::config::STORAGE_ENTRIES_IN_CONTRACT_ACCOUNT;
 
-use super::{
-    Account, AccountDispatch, AccountHeader, ZeroInit, ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_CONTRACT,
-};
+use super::{Account, AccountDispatch, AccountHeader, ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_CONTRACT};
 
 #[derive(Eq, PartialEq)]
 pub enum AllocateResult {
@@ -208,7 +206,7 @@ impl<'a> ContractAccount<'a> {
 
         let max_size = self.account.original_data_len() + MAX_PERMITTED_DATA_INCREASE;
         let new_space = required_size.min(max_size);
-        self.account.reallocate(new_space, ZeroInit::Uninit)?;
+        self.account.reallocate(new_space)?;
 
         if new_space >= required_size {
             Ok(AllocateResult::Ready)
@@ -223,7 +221,7 @@ impl<'a> ContractAccount<'a> {
             return Ok(());
         }
 
-        self.account.reallocate(required_size, ZeroInit::Uninit)
+        self.account.reallocate(required_size)
     }
 
     pub fn set_code(&mut self, code: &[u8]) -> Result<()> {

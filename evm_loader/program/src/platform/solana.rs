@@ -2,9 +2,10 @@
 use ethnum::U256;
 use solana_program::{
     account_info::AccountInfo, instruction::Instruction, log::sol_log_data,
-    program::invoke_signed_unchecked, pubkey::Pubkey, rent::Rent, system_instruction,
-    system_program, sysvar::Sysvar,
+    program::invoke_signed_unchecked, pubkey::Pubkey, rent::Rent, sysvar::Sysvar,
 };
+use solana_sdk_ids::system_program;
+use solana_system_interface::instruction as system_instruction;
 use std::collections::HashMap;
 
 use crate::{

@@ -278,7 +278,7 @@ impl std::fmt::Debug for TxParams {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SerializedAccount {
     pub lamports: u64,
     #[serde_as(as = "DisplayFromStr")]
@@ -287,6 +287,60 @@ pub struct SerializedAccount {
     pub rent_epoch: u64,
     #[serde_as(as = "Hex")]
     pub data: Vec<u8>,
+}
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SerializedProgram {
+    #[serde_as(as = "DisplayFromStr")]
+    pub loader: Pubkey,
+    #[serde_as(as = "Hex")]
+    pub elf: Vec<u8>,
+}
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SerializedAccountMeta {
+    #[serde_as(as = "DisplayFromStr")]
+    pub pubkey: Pubkey,
+    pub is_signer: bool,
+    pub is_writable: bool,
+}
+
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SerializedInstruction {
+    #[serde_as(as = "DisplayFromStr")]
+    pub program_id: Pubkey,
+    pub accounts: Vec<SerializedAccountMeta>,
+    #[serde_as(as = "Hex")]
+    pub data: Vec<u8>,
+}
+
+impl From<SerializedAccountMeta> for solana_sdk::instruction::AccountMeta {
+    fn from(s: SerializedAccountMeta) -> Self {
+        Self {
+            pubkey: s.pubkey,
+            is_signer: s.is_signer,
+            is_writable: s.is_writable,
+        }
+    }
+}
+
+impl From<SerializedInstruction> for solana_sdk::instruction::Instruction {
+    fn from(s: SerializedInstruction) -> Self {
+        let accounts = s
+            .accounts
+            .into_iter()
+            .map(solana_sdk::instruction::AccountMeta::from)
+            .collect();
+
+        Self {
+            program_id: s.program_id,
+            accounts,
+            data: s.data,
+        }
+    }
 }
 
 impl From<&SerializedAccount> for Account {
@@ -496,15 +550,12 @@ pub struct GetHolderRequest {
 pub struct SimulateSolanaRequest {
     pub compute_units: Option<u64>,
     pub heap_size: Option<u32>,
-    pub account_limit: Option<usize>,
-    pub verify: Option<bool>,
-    #[serde_as(as = "Hex")]
-    pub blockhash: [u8; 32],
-    #[serde_as(as = "Vec<Hex>")]
-    pub transactions: Vec<Vec<u8>>,
+    pub instructions: Vec<SerializedInstruction>,
     pub id: Option<String>,
     #[serde_as(as = "Option<HashMap<DisplayFromStr,_>>")]
-    pub solana_overrides: Option<HashMap<Pubkey, Option<SerializedAccount>>>,
+    pub accounts_overrides: Option<HashMap<Pubkey, SerializedAccount>>,
+    #[serde_as(as = "Option<HashMap<DisplayFromStr,_>>")]
+    pub programs_overrides: Option<HashMap<Pubkey, SerializedProgram>>,
 }
 
 #[cfg(test)]

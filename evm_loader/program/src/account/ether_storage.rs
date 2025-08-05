@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use std::mem::size_of;
 
 use super::{
-    Account, AccountDispatch, AccountHeader, NoHeader, ZeroInit, ACCOUNT_PREFIX_LEN, TAG_EMPTY,
+    Account, AccountDispatch, AccountHeader, NoHeader, ACCOUNT_PREFIX_LEN, TAG_EMPTY,
     TAG_STORAGE_CELL,
 };
 use crate::error::{Error, Result};
@@ -219,7 +219,7 @@ impl<'a> StorageCell<'a> {
 
     fn allocate_cell(&mut self) -> Result<RefMut<Cell>> {
         let new_len = self.account.data_len() + size_of::<Cell>(); // new_len <= 8.25 kb
-        self.account.reallocate(new_len, ZeroInit::Uninit)?;
+        self.account.reallocate(new_len)?;
 
         let cells = self.cells_mut();
         let filter_result = RefMut::filter_map(cells, <[Cell]>::last_mut);

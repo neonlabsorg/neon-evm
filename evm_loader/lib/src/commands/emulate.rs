@@ -251,7 +251,7 @@ async fn calculate_response(
     tracer: Option<impl Tracer>,
     provide_account_info: Option<AccountInfoLevel>,
 ) -> NeonResult<(EmulateResponse, Option<Value>)> {
-    debug!("Execute done, result={exit_status:?}");
+    debug!("Execute done, result={}", exit_status.status());
     debug!("{steps_executed} steps executed");
 
     let execute_status = platform.execute_status();

@@ -3,8 +3,9 @@
 use crate::{executor::OwnedAccountInfo, types::vector::VectorMap};
 use solana_program::{
     entrypoint::ProgramResult, instruction::AccountMeta, program_error::ProgramError,
-    pubkey::Pubkey, system_instruction::SystemInstruction, system_program,
+    pubkey::Pubkey, system_instruction::SystemInstruction,
 };
+use solana_sdk_ids::system_program;
 
 pub fn emulate(
     instruction: &[u8],

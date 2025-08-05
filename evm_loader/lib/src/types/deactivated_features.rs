@@ -58,10 +58,7 @@ static DEACTIVATED_FEATURES: Lazy<Arc<Mutex<DeactivatedFeaturesCache>>> =
     Lazy::new(|| Arc::new(Mutex::new(DeactivatedFeaturesCache::default())));
 
 async fn get_multiple_features(rpc: &dyn BoxRpc) -> ClientResult<HashMap<Pubkey, Option<u64>>> {
-    let feature_keys: Vec<Pubkey> = solana_sdk::feature_set::FEATURE_NAMES
-        .keys()
-        .copied()
-        .collect();
+    let feature_keys: Vec<Pubkey> = agave_feature_set::FEATURE_NAMES.keys().copied().collect();
 
     let features = Rpc::get_multiple_accounts(rpc, &feature_keys).await?;
 

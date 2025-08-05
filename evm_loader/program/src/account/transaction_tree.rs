@@ -15,8 +15,7 @@ use crate::evm::ExitStatus;
 use crate::types::{Address, ScheduledTransaction};
 use ethnum::U256;
 use solana_program::{
-    account_info::AccountInfo, clock::Clock, pubkey::Pubkey, rent::Rent, system_program,
-    sysvar::Sysvar,
+    account_info::AccountInfo, clock::Clock, pubkey::Pubkey, rent::Rent, sysvar::Sysvar,
 };
 
 #[repr(u8)]
@@ -144,7 +143,7 @@ impl<'a> TransactionTree<'a> {
             return Err(Error::AccountInvalidKey(*account.key, pubkey));
         }
 
-        if account.owner != &system_program::ID {
+        if !account.is_system_owned() {
             return Err(Error::TreeAccountAlreadyExists);
         }
 

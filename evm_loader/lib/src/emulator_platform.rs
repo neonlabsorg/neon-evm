@@ -14,13 +14,9 @@ use evm_loader::{
 use solana_account_decoder::UiDataSliceConfig;
 use solana_sdk::account::Account as SolanaSdkAccount;
 use solana_sdk::clock::Clock;
-use solana_sdk::message::Message;
 use solana_sdk::program_error::ProgramError;
 use solana_sdk::rent::Rent;
-use solana_sdk::signer::Signer;
-use solana_sdk::system_program;
 use solana_sdk::sysvar::SysvarId;
-use solana_sdk::transaction::Transaction;
 use solana_sdk::transaction_context::TransactionReturnData;
 use solana_sdk::{instruction::Instruction, pubkey::Pubkey, sysvar::Sysvar};
 
@@ -39,7 +35,7 @@ const fn fake_operator_account() -> SolanaSdkAccount {
     SolanaSdkAccount {
         lamports: 100 * 1_000_000_000,
         data: vec![],
-        owner: system_program::ID,
+        owner: solana_sdk_ids::system_program::ID,
         executable: false,
         rent_epoch: u64::MAX,
     }
@@ -389,10 +385,6 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
 
         // Add accounts to the current stack frame
         self.add_accounts_to_stack(&accounts).await?;
-        for meta in instruction.accounts.iter().filter(|m| m.is_writable) {
-            let account = self.shared_account(meta.pubkey).await?;
-            account.mark_modified();
-        }
 
         // Sync accounts with the simulator
         simulator
@@ -401,30 +393,26 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
             .map_err(|e| Error::Custom(e.to_string()))?;
 
         // Execute the instruction
-        let trx = Transaction::new_unsigned(Message::new(
-            &[instruction],
-            Some(&simulator.payer().pubkey()),
-        ));
+        let (simulation_result, _) = simulator.process_instruction(&instruction);
 
-        let simulation_result = simulator
-            .process_legacy_transaction(trx)
-            .map_err(|e| Error::Custom(e.to_string()))?;
+        self.return_data = Some(TransactionReturnData {
+            program_id: target_program_id,
+            data: simulation_result.return_data,
+        });
 
-        self.return_data = simulation_result.return_data;
-
-        if let Err(error) = simulation_result.result {
+        if let Err(error) = simulation_result.raw_result {
             let message = error.to_string();
             return Err(Error::ExternalCallFailed(target_program_id, message));
         }
 
         // Update modified accounts
         let mut stack = self.current_stack_frame();
-        for (key, account_data) in simulation_result.post_simulation_accounts {
-            let Some(shared_account) = stack.get_mut(&key) else {
-                continue;
-            };
+        for meta in instruction.accounts.iter().filter(|m| m.is_writable) {
+            let account_data = simulator.get_account(&meta.pubkey);
 
+            let shared_account = stack.get_mut(&meta.pubkey).unwrap();
             shared_account.update(&account_data);
+            shared_account.mark_modified();
         }
 
         Ok(())

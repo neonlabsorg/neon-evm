@@ -160,6 +160,11 @@ impl<'a> BalanceAccount<'a> {
     }
 
     #[must_use]
+    pub fn container(&self) -> Option<Pubkey> {
+        self.account.container()
+    }
+
+    #[must_use]
     pub fn address(&self) -> Address {
         let header: Ref<HeaderV0> = self.account.header();
         header.address

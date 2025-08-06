@@ -492,6 +492,15 @@ pub struct GetHolderRequest {
 }
 
 #[serde_as]
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct GetContainerRequest {
+    #[serde_as(as = "DisplayFromStr")]
+    pub pubkey: Pubkey,
+    pub slot: Option<u64>,
+    pub id: Option<String>,
+}
+
+#[serde_as]
 #[derive(Deserialize, Serialize, Debug, Default, Clone)]
 pub struct SimulateSolanaRequest {
     pub compute_units: Option<u64>,

@@ -25,6 +25,8 @@ pub struct GetBalanceResponse {
     pub solana_address: Pubkey,
     #[serde_as(as = "DisplayFromStr")]
     pub contract_solana_address: Pubkey,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub container_address: Option<Pubkey>,
     pub trx_count: u64,
     pub balance: U256,
     pub status: BalanceStatus,
@@ -37,6 +39,7 @@ impl GetBalanceResponse {
         Self {
             solana_address: address.find_pubkey(program_id),
             contract_solana_address: address.find_contract_pubkey(program_id),
+            container_address: None,
             trx_count: 0,
             balance: U256::ZERO,
             status: BalanceStatus::Empty,
@@ -52,6 +55,7 @@ impl GetBalanceResponse {
         Self {
             solana_address: account.pubkey(),
             contract_solana_address,
+            container_address: account.container(),
             trx_count: account.nonce(),
             balance: account.balance(),
             status: BalanceStatus::Ok,

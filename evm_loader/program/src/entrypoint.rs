@@ -225,6 +225,12 @@ fn process_instruction(
         EvmInstruction::OperatorBalanceWithdraw => {
             instruction::operator_withdraw_balance::process(program_id, accounts, instruction)
         }
+        EvmInstruction::ContainerAllocate => {
+            instruction::container_allocate::process(program_id, accounts, instruction)
+        }
+        EvmInstruction::ContainerAssemble => {
+            instruction::container_assemble::process(program_id, accounts, instruction)
+        }
     }
     .inspect_err(|e| {
         e.log_data();

@@ -4,12 +4,14 @@ use std::{
     rc::Rc,
 };
 
+use agave_feature_set::FeatureSet;
 use mollusk_svm::{
     program::{
         create_program_account_loader_v2, create_program_account_loader_v3,
-        create_program_data_account_loader_v3,
+        create_program_data_account_loader_v3, ProgramCache,
     },
     result::ContextResult,
+    sysvar::Sysvars,
     Mollusk, MolluskContext,
 };
 use solana_compute_budget::compute_budget::ComputeBudget;
@@ -44,15 +46,25 @@ impl SolanaSimulator {
         compute_budget: ComputeBudget,
         sync_state: SyncState,
     ) -> Result<Self, Error> {
-        let mut mollusk = Mollusk {
-            compute_budget,
-            ..Default::default()
+        let feature_set = if sync_state == SyncState::Yes {
+            utils::download_feature_set(rpc).await?
+        } else {
+            FeatureSet::all_enabled()
         };
 
-        if sync_state == SyncState::Yes {
-            mollusk.sysvars = utils::download_sysvar_accounts(rpc).await?;
-            mollusk.feature_set = utils::download_feature_set(rpc).await?;
-        }
+        let sysvars = if sync_state == SyncState::Yes {
+            utils::download_sysvar_accounts(rpc).await?
+        } else {
+            Sysvars::default()
+        };
+
+        let mollusk = Mollusk {
+            program_cache: ProgramCache::new(&feature_set, &compute_budget),
+            feature_set,
+            compute_budget,
+            sysvars,
+            ..Mollusk::default()
+        };
 
         let account_store = InMemoryAccountStore::default();
         Ok(Self {

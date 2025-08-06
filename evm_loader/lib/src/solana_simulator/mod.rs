@@ -1,9 +1,13 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::{Ref, RefCell},
+    collections::HashMap,
+    rc::Rc,
+};
 
 use mollusk_svm::{result::ContextResult, Mollusk, MolluskContext};
 use solana_compute_budget::compute_budget::ComputeBudget;
 use solana_log_collector::LogCollector;
-use solana_sdk::{account::Account, instruction::Instruction, pubkey::Pubkey};
+use solana_sdk::{account::Account, instruction::Instruction, native_loader, pubkey::Pubkey};
 pub use utils::SyncState;
 
 use crate::rpc::Rpc;
@@ -50,13 +54,11 @@ impl SolanaSimulator {
     }
 
     pub async fn sync_accounts(&mut self, rpc: &impl Rpc, keys: &[Pubkey]) -> Result<(), Error> {
-        let keys = utils::filter_reserved_accounts(keys);
-
-        let accounts = rpc.get_multiple_accounts(&keys).await?;
+        let accounts = rpc.get_multiple_accounts(keys).await?;
         for (pubkey, account) in keys.iter().zip(accounts.into_iter()) {
             let account = account.unwrap_or_default();
 
-            if account.executable {
+            if account.executable && !native_loader::check_id(&account.owner) {
                 let loader = account.owner;
                 let elf = utils::extract_elf(rpc, account).await?;
 
@@ -92,37 +94,81 @@ impl SolanaSimulator {
             .unwrap_or_default()
     }
 
+    #[must_use]
+    pub fn try_get_account(&self, pubkey: &Pubkey) -> Option<Ref<Account>> {
+        let store = self.mollusk_context.account_store.borrow();
+        Ref::filter_map(store, |s| s.get(pubkey)).ok()
+    }
+
     pub fn into_accounts(self) -> impl Iterator<Item = (Pubkey, Account)> {
         let store = Rc::into_inner(self.mollusk_context.account_store).unwrap();
         let store = RefCell::into_inner(store);
         store.into_iter()
     }
 
-    #[must_use]
+    fn is_account_allowed_in_instruction(&self, pubkey: &Pubkey) -> bool {
+        if solana_sdk_ids::system_program::check_id(pubkey) {
+            return true;
+        }
+
+        if solana_sdk_ids::bpf_loader::check_id(pubkey) {
+            return true;
+        }
+
+        if solana_sdk_ids::bpf_loader_upgradeable::check_id(pubkey) {
+            return true;
+        }
+
+        let Some(account) = self.try_get_account(pubkey) else {
+            return true;
+        };
+
+        account.owner != native_loader::ID
+    }
+
+    fn validate_instruction(&self, instruction: &Instruction) -> Result<(), Error> {
+        if !self.is_account_allowed_in_instruction(&instruction.program_id) {
+            return Err(Error::UnsupportedAccount(instruction.program_id));
+        }
+
+        for account in &instruction.accounts {
+            if !self.is_account_allowed_in_instruction(&account.pubkey) {
+                return Err(Error::UnsupportedAccount(account.pubkey));
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn process_instruction(
         &mut self,
         instruction: &Instruction,
-    ) -> (ContextResult, Vec<String>) {
+    ) -> Result<(ContextResult, Vec<String>), Error> {
+        self.validate_instruction(instruction)?;
+
         let log_collector = LogCollector::new_ref_with_limit(None);
         self.mollusk_context.mollusk.logger = Some(Rc::clone(&log_collector));
 
         let result = self.mollusk_context.process_instruction(instruction);
         let logs = log_collector.borrow().get_recorded_content().to_vec();
 
-        (result, logs)
+        Ok((result, logs))
     }
 
-    #[must_use]
     pub fn process_instruction_chain(
         &mut self,
         instructions: &[Instruction],
-    ) -> (ContextResult, Vec<String>) {
+    ) -> Result<(ContextResult, Vec<String>), Error> {
+        for instruction in instructions {
+            self.validate_instruction(instruction)?;
+        }
+
         let log_collector = LogCollector::new_ref_with_limit(None);
         self.mollusk_context.mollusk.logger = Some(Rc::clone(&log_collector));
 
         let result = self.mollusk_context.process_instruction_chain(instructions);
         let logs = log_collector.borrow().get_recorded_content().to_vec();
 
-        (result, logs)
+        Ok((result, logs))
     }
 }

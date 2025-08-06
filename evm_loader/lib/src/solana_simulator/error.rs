@@ -10,4 +10,6 @@ pub enum Error {
     SysvarError,
     #[error("Failed to extract ELF from account")]
     AccountIsNotProgram,
+    #[error("Account {0} is not supported for simulation")]
+    UnsupportedAccount(solana_sdk::pubkey::Pubkey),
 }

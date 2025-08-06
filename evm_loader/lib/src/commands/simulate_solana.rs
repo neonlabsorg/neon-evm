@@ -33,6 +33,8 @@ pub struct SimulateSolanaResponse {
 fn account_keys(instructions: &[Instruction]) -> HashSet<Pubkey> {
     let mut pubkeys: HashSet<Pubkey> = HashSet::<Pubkey>::new();
     for instruction in instructions {
+        pubkeys.insert(instruction.program_id);
+
         let accounts = instruction.accounts.iter().map(|a| a.pubkey);
         pubkeys.extend(accounts);
     }
@@ -109,7 +111,7 @@ pub async fn execute(
     // Process instructions
     let mut results = Vec::new();
     for instruction in instructions {
-        let (r, logs) = simulator.process_instruction(&instruction);
+        let (r, logs) = simulator.process_instruction(&instruction)?;
 
         results.push(SimulateSolanaResult {
             error: r.raw_result.err(),

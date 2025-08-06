@@ -1,8 +1,7 @@
 use agave_feature_set::FeatureSet;
-use agave_reserved_account_keys::ReservedAccountKeys;
 use mollusk_svm::sysvar::Sysvars;
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
-use solana_sdk::{account::Account, pubkey::Pubkey};
+use solana_sdk::account::Account;
 
 use super::error::Error;
 use crate::rpc::Rpc;
@@ -77,12 +76,4 @@ pub async fn extract_elf(rpc: &impl Rpc, account: Account) -> Result<Vec<u8>, Er
         }
         _ => Err(Error::AccountIsNotProgram),
     }
-}
-
-pub fn filter_reserved_accounts(keys: &[Pubkey]) -> Vec<Pubkey> {
-    let reserved_accounts = ReservedAccountKeys::new_all_activated();
-    keys.iter()
-        .copied()
-        .filter(|key| !reserved_accounts.is_reserved(key))
-        .collect::<Vec<Pubkey>>()
 }

@@ -169,7 +169,7 @@ impl ConfigInstructionSimulator for SolanaSimulator {
         &mut self,
         instruction: Instruction,
     ) -> NeonResult<Vec<String>> {
-        let (result, logs) = self.process_instruction(&instruction);
+        let (result, logs) = self.process_instruction(&instruction)?;
         if let Err(e) = result.raw_result {
             return Err(e.into());
         }

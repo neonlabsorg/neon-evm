@@ -4,7 +4,14 @@ use std::{
     rc::Rc,
 };
 
-use mollusk_svm::{result::ContextResult, Mollusk, MolluskContext};
+use mollusk_svm::{
+    program::{
+        create_program_account_loader_v2, create_program_account_loader_v3,
+        create_program_data_account_loader_v3,
+    },
+    result::ContextResult,
+    Mollusk, MolluskContext,
+};
 use solana_compute_budget::compute_budget::ComputeBudget;
 use solana_log_collector::LogCollector;
 use solana_sdk::{account::Account, instruction::Instruction, native_loader, pubkey::Pubkey};
@@ -82,6 +89,21 @@ impl SolanaSimulator {
         self.mollusk_context
             .mollusk
             .add_program_with_elf_and_loader(pubkey, elf, loader);
+
+        if solana_sdk_ids::bpf_loader::check_id(loader) {
+            let account = create_program_account_loader_v2(elf);
+            self.add_account(pubkey, account);
+        }
+
+        if solana_sdk_ids::bpf_loader_upgradeable::check_id(loader) {
+            let program_account = create_program_account_loader_v3(pubkey);
+
+            let data_pubkey = solana_loader_v3_interface::get_program_data_address(pubkey);
+            let data_account = create_program_data_account_loader_v3(elf);
+
+            self.add_account(pubkey, program_account);
+            self.add_account(&data_pubkey, data_account);
+        }
     }
 
     #[must_use]

@@ -376,6 +376,15 @@ pub enum Error {
 
     #[error("Step limit {0} below minimum {1}")]
     StepLimitBellowMinimum(u64, u64),
+
+    #[error("Account {0} - not found in container {1}")]
+    AccountNotFoundInContainer(Pubkey, Pubkey),
+
+    #[error("Account {0} - not suitable for container")]
+    AccountNotSuitableForContainer(Pubkey),
+
+    #[error("Account {0} - already in container {1}")]
+    AccountAlreadyInContainer(Pubkey, Pubkey),
 }
 
 impl Error {

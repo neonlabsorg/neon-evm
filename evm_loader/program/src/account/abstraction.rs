@@ -2,13 +2,17 @@ use std::{
     cell::{Cell, Ref, RefCell, RefMut},
     mem::MaybeUninit,
     rc::Rc,
+    slice::SliceIndex,
 };
 
 use enum_dispatch::enum_dispatch;
 use solana_account::ReadableAccount;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, system_program};
 
-use crate::error::{Error, Result};
+use crate::{
+    account::AccountInContainer,
+    error::{Error, Result},
+};
 
 const TAG_OFFSET: usize = 0;
 const HEADER_VERSION_OFFSET: usize = 1;
@@ -98,10 +102,73 @@ impl From<&SharedAccount> for solana_account::Account {
 
 #[enum_dispatch]
 #[derive(Clone)]
-pub enum Account<'a> {
+pub enum RawAccount<'a> {
     AccountInfo(AccountInfo<'a>),
     #[cfg(not(target_os = "solana"))]
     SharedAccount(SharedAccount),
+}
+
+#[enum_dispatch]
+#[derive(Clone)]
+pub enum Account<'a> {
+    RawAccount(RawAccount<'a>),
+    AccountInContainer(AccountInContainer<'a>),
+}
+
+#[cfg(not(target_os = "solana"))]
+impl From<SharedAccount> for Account<'_> {
+    fn from(account: SharedAccount) -> Self {
+        let raw_account = RawAccount::SharedAccount(account);
+        Self::RawAccount(raw_account)
+    }
+}
+
+impl<'a> From<AccountInfo<'a>> for Account<'a> {
+    fn from(account: AccountInfo<'a>) -> Self {
+        let raw_account = RawAccount::AccountInfo(account);
+        Self::RawAccount(raw_account)
+    }
+}
+
+impl<'a> TryFrom<Account<'a>> for AccountInfo<'a> {
+    type Error = &'static str;
+
+    fn try_from(account: Account<'a>) -> std::result::Result<Self, Self::Error> {
+        let raw_account: RawAccount<'a> = account.try_into()?;
+        raw_account.try_into()
+    }
+}
+
+impl<'a> Account<'a> {
+    #[must_use]
+    #[allow(irrefutable_let_patterns)]
+    pub const fn as_account_info(&self) -> &AccountInfo<'a> {
+        let Account::RawAccount(solana_account) = self else {
+            panic!("Account expected to be AccountInfo")
+        };
+
+        let RawAccount::AccountInfo(account_info) = solana_account else {
+            panic!("Account expected to be AccountInfo")
+        };
+
+        account_info
+    }
+}
+
+#[cfg(not(target_os = "solana"))]
+impl Account<'_> {
+    #[must_use]
+    pub const fn as_shared_account(&self) -> &SharedAccount {
+        let Account::RawAccount(solana_account) = self else {
+            panic!("Account expected to be SharedAccount")
+        };
+
+        let RawAccount::SharedAccount(shared_account) = solana_account else {
+            panic!("Account expected to be SharedAccount")
+        };
+
+        shared_account
+    }
 }
 
 #[derive(PartialEq, Eq)]
@@ -119,6 +186,7 @@ impl AccountHeader for NoHeader {
 }
 
 #[enum_dispatch(Account)]
+#[enum_dispatch(RawAccount)]
 pub trait AccountDispatch<'a> {
     fn data(&self) -> Ref<[u8]>;
     fn data_mut(&mut self) -> RefMut<[u8]>;
@@ -127,6 +195,8 @@ pub trait AccountDispatch<'a> {
     fn original_data_len(&self) -> usize;
 
     fn pubkey(&self) -> Pubkey;
+    fn container(&self) -> Option<Pubkey>;
+
     fn owner(&self) -> Pubkey;
     fn is_system_owned(&self) -> bool;
 
@@ -135,6 +205,44 @@ pub trait AccountDispatch<'a> {
     fn is_executable(&self) -> bool;
 
     fn reallocate(&mut self, new_size: usize, zero_init: ZeroInit) -> Result<()>;
+
+    fn grow(&mut self, grow_by: usize, zero_init: ZeroInit) -> Result<()> {
+        let new_size = self.data_len().saturating_add(grow_by);
+        self.reallocate(new_size, zero_init)
+    }
+
+    fn shrink(&mut self, shrink_by: usize) -> Result<()> {
+        let new_size = self.data_len().saturating_sub(shrink_by);
+        self.reallocate(new_size, ZeroInit::Uninit)
+    }
+
+    fn allocate_within(&mut self, offset: usize, len: usize, zero_init: ZeroInit) -> Result<()> {
+        self.grow(len, ZeroInit::Uninit)?;
+
+        // Move data to the right
+        let end = self.data_len() - len;
+        let dest = offset + len;
+
+        let mut data = self.data_mut();
+        data.copy_within(offset..end, dest);
+
+        // Fill the new space with zeros if requested
+        if zero_init == ZeroInit::Zero {
+            data[offset..offset + len].fill(0);
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    fn data_get<I: SliceIndex<[u8]>>(&self, index: I) -> Ref<I::Output> {
+        Ref::map(self.data(), |data| &data[index])
+    }
+
+    #[inline]
+    fn data_get_mut<I: SliceIndex<[u8]>>(&mut self, index: I) -> RefMut<I::Output> {
+        RefMut::map(self.data_mut(), |data| &mut data[index])
+    }
 
     fn tag(&self, program_id: Pubkey) -> Result<u8> {
         if self.owner() != program_id {
@@ -146,13 +254,26 @@ pub trait AccountDispatch<'a> {
             return Err(Error::AccountInvalidData(self.pubkey()));
         }
 
-        Ok(data[TAG_OFFSET])
+        let account_tag = unsafe { data.get_unchecked(TAG_OFFSET) };
+        Ok(*account_tag)
+    }
+
+    fn tag_is(&self, program_id: Pubkey, tag: u8) -> bool {
+        if self.owner() != program_id {
+            return false;
+        }
+
+        let data = self.data();
+        if data.len() < ACCOUNT_PREFIX_LEN {
+            return false;
+        }
+
+        let account_tag = unsafe { data.get_unchecked(TAG_OFFSET) };
+        account_tag == &tag
     }
 
     fn validate_tag(&self, program_id: Pubkey, tag: u8) -> Result<()> {
-        let account_tag = self.tag(program_id)?;
-
-        if account_tag == tag {
+        if self.tag_is(program_id, tag) {
             Ok(())
         } else {
             Err(Error::AccountInvalidTag(self.pubkey(), tag))
@@ -319,6 +440,10 @@ impl<'a> AccountDispatch<'a> for AccountInfo<'a> {
         *self.key
     }
 
+    fn container(&self) -> Option<Pubkey> {
+        None
+    }
+
     fn owner(&self) -> Pubkey {
         *self.owner
     }
@@ -345,6 +470,57 @@ impl<'a> AccountDispatch<'a> for AccountInfo<'a> {
     }
 }
 
+impl<'a> AccountDispatch<'a> for AccountInContainer<'a> {
+    fn data(&self) -> Ref<[u8]> {
+        self.container.account_data(self.index)
+    }
+
+    fn data_mut(&mut self) -> RefMut<[u8]> {
+        self.container.account_data_mut(self.index)
+    }
+
+    fn data_len(&self) -> usize {
+        self.container.account_data_len(self.index)
+    }
+
+    fn original_data_len(&self) -> usize {
+        unreachable!() // Should not be used
+    }
+
+    fn pubkey(&self) -> Pubkey {
+        self.container.account_pubkey(self.index)
+    }
+
+    fn container(&self) -> Option<Pubkey> {
+        Some(self.container.pubkey())
+    }
+
+    fn owner(&self) -> Pubkey {
+        self.container.account.owner()
+    }
+
+    fn is_system_owned(&self) -> bool {
+        false
+    }
+
+    fn lamports(&self) -> u64 {
+        self.container.account.lamports()
+    }
+
+    fn rent_epoch(&self) -> u64 {
+        self.container.account.rent_epoch()
+    }
+
+    fn is_executable(&self) -> bool {
+        false
+    }
+
+    fn reallocate(&mut self, new_size: usize, zero_init: ZeroInit) -> Result<()> {
+        self.container
+            .realloc_account_data(self.index, new_size, zero_init)
+    }
+}
+
 impl AccountDispatch<'_> for SharedAccount {
     fn data(&self) -> Ref<[u8]> {
         let account = self.account.borrow();
@@ -354,7 +530,7 @@ impl AccountDispatch<'_> for SharedAccount {
     fn data_mut(&mut self) -> RefMut<[u8]> {
         self.modified.set(true);
 
-        let mut account = self.account.borrow_mut();
+        let account = self.account.borrow_mut();
         RefMut::map(account, |a| a.data.as_mut_slice())
     }
 
@@ -369,6 +545,10 @@ impl AccountDispatch<'_> for SharedAccount {
 
     fn pubkey(&self) -> Pubkey {
         self.key
+    }
+
+    fn container(&self) -> Option<Pubkey> {
+        None
     }
 
     fn owner(&self) -> Pubkey {

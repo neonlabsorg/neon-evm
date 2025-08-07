@@ -21,6 +21,7 @@ pub mod emulate;
 pub mod emulate_multiple;
 pub mod get_balance;
 pub mod get_config;
+pub mod get_container;
 pub mod get_contract;
 pub mod get_holder;
 pub mod get_neon_elf;

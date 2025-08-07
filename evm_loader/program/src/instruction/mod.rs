@@ -290,6 +290,9 @@ pub enum EvmInstruction {
     OperatorBalanceCreate,
     OperatorBalanceDelete,
     OperatorBalanceWithdraw,
+
+    ContainerAllocate,
+    ContainerAssemble,
 }
 
 impl EvmInstruction {
@@ -326,8 +329,11 @@ impl EvmInstruction {
             0x4A => Self::ScheduledTransactionCreate,           // 74
             0x4B => Self::ScheduledTransactionCreateMultiple,   // 75
             0x4C => Self::ScheduledTransactionDestroy,          // 76
-            0x4D => Self::ScheduledTransactionSkipFromAccount,  // 72
-            0x4E => Self::ScheduledTransactionSkipFromInstruction, // 73
+            0x4D => Self::ScheduledTransactionSkipFromAccount,  // 77
+            0x4E => Self::ScheduledTransactionSkipFromInstruction, // 78
+
+            0x50 => Self::ContainerAllocate, // 80
+            0x51 => Self::ContainerAssemble, // 81
 
             0xA0 => Self::ConfigGetChainCount, // 160
             0xA1 => Self::ConfigGetChainInfo,
@@ -356,6 +362,8 @@ pub mod config_get_property_by_name;
 pub mod config_get_property_count;
 pub mod config_get_status;
 pub mod config_get_version;
+pub mod container_allocate;
+pub mod container_assemble;
 pub mod create_main_treasury;
 pub mod neon_tokens_deposit;
 pub mod operator_create_balance;

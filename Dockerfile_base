@@ -6,8 +6,8 @@ RUN apt-get update
 RUN apt-get upgrade -y
 RUN apt-get install -y libssl-dev libudev-dev pkg-config libprotobuf-dev protobuf-compiler curl bzip2
 # install solana cli
-ARG SOLANA_BPF_VERSION
-RUN sh -c "$(curl -sSfL https://release.anza.xyz/${SOLANA_BPF_VERSION}/install)"
+ARG SOLANA_NODE_VERSION
+RUN sh -c "$(curl -sSfL https://release.anza.xyz/${SOLANA_NODE_VERSION}/install)"
 ENV PATH=${PATH}:/root/.local/share/solana/install/active_release/bin
 WORKDIR /opt
 

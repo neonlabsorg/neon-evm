@@ -3,7 +3,10 @@ use std::collections::HashSet;
 use std::collections::{hash_map::Entry, HashMap};
 
 use async_trait::async_trait;
-use evm_loader::account::{AccountDispatch, SharedAccount};
+use evm_loader::account::{
+    AccountDispatch, ContainerAccount, ReferenceAccount, SharedAccount, TAG_CONTAINER,
+    TAG_REFERENCE,
+};
 use evm_loader::error::{Error, Result};
 use evm_loader::platform::{DefaultKeysIndex, InvokeMode, KeysIndex, FAKE_OPERATOR};
 use evm_loader::{
@@ -248,7 +251,7 @@ impl<R: Rpc> EmulatorPlatform<R> {
         (max_data_increase / solana_sdk::entrypoint::MAX_PERMITTED_DATA_INCREASE) as u64
     }
 
-    pub async fn shared_account(&self, pubkey: Pubkey) -> Result<SharedAccount> {
+    pub async fn account_from_stack(&self, pubkey: Pubkey) -> Result<SharedAccount> {
         let mut stack_frame = self.current_stack_frame();
 
         // Search for the account in the current stack frame
@@ -498,24 +501,56 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
     }
 
     async fn get_account(&self, pubkey: Pubkey) -> Result<Account<'a>> {
-        // TODO: Containers
+        let account = self.rpc.get_account(&pubkey).await.map_err(|e| {
+            let emulator_error = NeonError::ClientError(e);
+            Error::Custom(emulator_error.to_string())
+        })?;
+
+        let Some(account) = account else {
+            return self.get_real_account(pubkey).await;
+        };
+
+        let account = SharedAccount::new(pubkey, &account);
+
+        if account.tag_is(self.program_id, TAG_CONTAINER) {
+            let container_account = self.account_from_stack(pubkey).await?.into();
+            let container = ContainerAccount::from_account(self.program_id, container_account)?;
+
+            let account_in_container = container.account(pubkey)?;
+            return Ok(account_in_container.into());
+        }
+
+        if account.tag_is(self.program_id, TAG_REFERENCE) {
+            let reference_account = account.into();
+            let reference = ReferenceAccount::from_account(self.program_id, reference_account)?;
+
+            let container_account = self.account_from_stack(reference.container()).await?.into();
+            let container = ContainerAccount::from_account(self.program_id, container_account)?;
+
+            let account_in_container = container.account(pubkey)?;
+            return Ok(account_in_container.into());
+        }
+
         self.get_real_account(pubkey).await
     }
 
     async fn get_real_account(&self, pubkey: Pubkey) -> Result<Account<'a>> {
-        self.shared_account(pubkey).await.map(SharedAccount::into)
+        let account = self.account_from_stack(pubkey).await?;
+        Ok(account.into())
     }
 
     async fn assign_account(&mut self, seeds: &[&[u8]]) -> Result<Account<'a>> {
         let pubkey = Pubkey::create_program_address(seeds, &self.program_id)?;
-        let account = self.shared_account(pubkey).await?;
+        let account = Platform::get_account(self, pubkey).await?;
 
         if account.is_system_owned() {
+            let account = account.as_shared_account();
+
             account.assign(self.program_id);
             account.mark_modified();
         }
 
-        Ok(account.into())
+        Ok(account)
     }
 
     async fn assign_account_with_seed(
@@ -528,14 +563,16 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
         assert_eq!(calculated_base, base); // `base` is passed as a parameter to avoid calculation on the program side. Verify it here.
 
         let pubkey = Pubkey::create_with_seed(&base, seed, &self.program_id)?;
-        let account = self.shared_account(pubkey).await?;
+        let account = Platform::get_account(self, pubkey).await?;
 
         if account.is_system_owned() {
+            let account = account.as_shared_account();
+
             account.assign(self.program_id);
             account.mark_modified();
         }
 
-        Ok(account.into())
+        Ok(account)
     }
 
     fn snapshot(&mut self) {

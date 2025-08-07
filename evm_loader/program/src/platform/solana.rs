@@ -6,12 +6,11 @@ use solana_program::{
 };
 use solana_sdk_ids::system_program;
 use solana_system_interface::instruction as system_instruction;
-use std::collections::HashMap;
 
 use crate::{
     account::{
-        Account, AccountDispatch, BalanceAccount, Operator, OperatorBalance,
-        OperatorBalanceValidator, Root, TransactionTree, Treasury,
+        Account, AccountDispatch, BalanceAccount, ContainerAccount, Operator, OperatorBalance,
+        OperatorBalanceValidator, Root, TransactionTree, Treasury, TAG_CONTAINER,
     },
     config::PAYMENT_TO_TREASURE,
     debug::log_data,
@@ -25,7 +24,7 @@ use super::{keys_index::CachedKeysIndex, Chain, InvokeMode, Platform, FAKE_OPERA
 
 pub struct Solana<'a> {
     sorted_account_infos: Vec<AccountInfo<'a>>,
-    containers_index: HashMap<Pubkey, (Pubkey, usize)>,
+    containers: Vec<ContainerAccount<'a>>,
     panic_on_revert: bool,
     pub operator: Operator<'a>,
     pub operator_balance: Option<OperatorBalance<'a>>,
@@ -41,7 +40,17 @@ impl<'a> Solana<'a> {
     ) -> Result<Self> {
         let mut sorted_account_infos = accounts.to_vec();
         sorted_account_infos.sort_unstable_by_key(|a| a.key);
-        sorted_account_infos.dedup_by_key(|a| a.key);
+
+        let mut containers = Vec::with_capacity(4);
+        for account_info in &sorted_account_infos {
+            if !account_info.tag_is(crate::ID, TAG_CONTAINER) {
+                continue;
+            }
+
+            let account = account_info.clone().into();
+            let container = unsafe { ContainerAccount::from_account_unchecked(account) };
+            containers.push(container);
+        }
 
         if let Some(balance) = &operator_balance {
             balance.validate_owner(&operator)?;
@@ -52,7 +61,7 @@ impl<'a> Solana<'a> {
 
         Ok(Self {
             sorted_account_infos,
-            containers_index: HashMap::new(), // TODO
+            containers,
             panic_on_revert: false,
             operator,
             operator_balance,
@@ -81,7 +90,7 @@ impl<'a> Solana<'a> {
     pub fn try_find_account_info(&self, pubkey: Pubkey) -> Option<&AccountInfo<'a>> {
         let Ok(index) = self
             .sorted_account_infos
-            .binary_search_by_key(&pubkey, |a| *a.key)
+            .binary_search_by_key(&&pubkey, |a| a.key)
         else {
             return None;
         };
@@ -388,12 +397,16 @@ impl<'a> Platform<'a> for Solana<'a> {
 
     #[track_caller]
     fn get_account(&self, pubkey: Pubkey) -> Result<Account<'a>> {
-        let Some((container_pubkey, _index)) = self.containers_index.get(&pubkey).copied() else {
-            return self.get_real_account(pubkey);
-        };
+        // Ether we have almost all accounts in containers or no containers at all
+        for container in &self.containers {
+            let Ok(account) = container.account(pubkey) else {
+                continue;
+            };
 
-        let _container_info = self.find_account_info(container_pubkey).clone();
-        todo!() // containers
+            return Ok(account.into());
+        }
+
+        self.get_real_account(pubkey)
     }
 
     #[track_caller]
@@ -408,12 +421,10 @@ impl<'a> Platform<'a> for Solana<'a> {
 
         if account.is_system_owned() {
             let system = self.find_account_info(system_program::ID);
-            let Account::AccountInfo(account) = &account else {
-                unreachable!()
-            };
+            let account_info = account.as_account_info();
 
             let assign = system_instruction::assign(&pubkey, &crate::ID);
-            let account_infos = &[system.clone(), account.clone()];
+            let account_infos = &[system.clone(), account_info.clone()];
             invoke_signed_unchecked(&assign, account_infos, &[seeds])?;
         }
 
@@ -432,12 +443,10 @@ impl<'a> Platform<'a> for Solana<'a> {
         if account.is_system_owned() {
             let system = self.find_account_info(system_program::ID);
             let base_account = self.find_account_info(base);
-            let Account::AccountInfo(account) = &account else {
-                unreachable!()
-            };
+            let account_info = account.as_account_info();
 
             let assign = system_instruction::assign_with_seed(&pubkey, &base, seed, &crate::ID);
-            let account_infos = &[system.clone(), account.clone(), base_account.clone()];
+            let account_infos = &[system.clone(), account_info.clone(), base_account.clone()];
             invoke_signed_unchecked(&assign, account_infos, &[base_seeds])?;
         }
 

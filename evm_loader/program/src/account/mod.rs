@@ -1,12 +1,10 @@
-#![allow(unused_mut)] // TODO remove after state.rs fix
-#![allow(clippy::needless_pass_by_ref_mut)] // TODO remove after state.rs fix
-
 use crate::error::Result;
 use solana_program::account_info::AccountInfo;
 
 pub use abstraction::{
     Account, AccountDispatch, AccountHeader, NoHeader, SharedAccount, ACCOUNT_PREFIX_LEN,
 };
+pub use container::{AccountInContainer, ContainerAccount, ReferenceAccount};
 pub use ether_balance::{BalanceAccount, Header as BalanceHeader};
 pub use ether_contract::{AllocateResult, ContractAccount, Header as ContractHeader};
 pub use ether_storage::{Cell, StorageCell, StorageCellSeed};
@@ -23,6 +21,7 @@ pub use transaction_tree::{
 pub use treasury::{MainTreasury, Treasury};
 
 mod abstraction;
+mod container;
 mod ether_balance;
 mod ether_contract;
 mod ether_storage;
@@ -50,6 +49,9 @@ pub const TAG_ACCOUNT_CONTRACT: u8 = 70;
 pub const TAG_OPERATOR_BALANCE: u8 = 80;
 pub const TAG_STORAGE_CELL: u8 = 43;
 pub const TAG_TRANSACTION_TREE: u8 = 90;
+
+pub const TAG_CONTAINER: u8 = 100;
+pub const TAG_REFERENCE: u8 = 110;
 
 /// # Safety
 /// *Permanently delete all data* in the account. Transfer lamports to the operator.

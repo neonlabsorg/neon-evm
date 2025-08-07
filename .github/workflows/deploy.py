@@ -35,8 +35,7 @@ IMAGE_NAME = os.environ.get("IMAGE_NAME", "evm_loader")
 BASE_IMAGE_NAME = os.environ.get("BASE_IMAGE_NAME", "evm_loader_base")
 RUN_LINK_REPO = os.environ.get("RUN_LINK_REPO")
 DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
-SOLANA_NODE_VERSION = 'v2.2.11'
-SOLANA_BPF_VERSION = 'v2.2.11'
+SOLANA_NODE_VERSION = 'v2.3.6'
 RUST_VERSION = "1.84.1"
 EVM_BASE_IMAGE_TAG = "latest"
 
@@ -142,7 +141,7 @@ def build_docker_image(evm_sha_tag):
 @click.option('--evm_sha_tag')
 def build_base_docker_image(evm_sha_tag):
     docker_client.pull(f"{DOCKERHUB_ORG_NAME}/neon_test_programs:latest")
-    buildargs = {"SOLANA_BPF_VERSION": SOLANA_BPF_VERSION,
+    buildargs = {"SOLANA_NODE_VERSION": SOLANA_NODE_VERSION,
                  "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME,
                  "MAINNET_SOLANA_URL": MAINNET_SOLANA_URL,
                  "RUST_VERSION": RUST_VERSION,

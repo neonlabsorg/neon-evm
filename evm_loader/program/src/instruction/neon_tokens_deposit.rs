@@ -10,7 +10,7 @@ use crate::error::{Error, Result};
 use crate::platform::{Platform, Solana};
 use crate::types::Address;
 
-struct Accounts<'a> {
+struct Accounts<'r, 'a> {
     mint: token::Mint<'a>,
     source: token::State<'a>,
     pool: token::State<'a>,
@@ -18,11 +18,11 @@ struct Accounts<'a> {
     contract_account: AccountInfo<'a>,
     token_program: program::Token<'a>,
     operator: Operator<'a>,
-    system_program: program::System<'a>,
+    all: &'r [AccountInfo<'a>],
 }
 
-impl<'a> Accounts<'a> {
-    pub fn from_slice(accounts: &[AccountInfo<'a>]) -> Result<Accounts<'a>> {
+impl<'r, 'a> Accounts<'r, 'a> {
+    pub fn from_slice(accounts: &'r [AccountInfo<'a>]) -> Result<Accounts<'r, 'a>> {
         Ok(Accounts {
             mint: token::Mint::from_account_info(&accounts[0])?,
             source: token::State::from_account_info(&accounts[1])?,
@@ -31,7 +31,7 @@ impl<'a> Accounts<'a> {
             contract_account: accounts[4].clone(),
             token_program: program::Token::from_account(&accounts[5])?,
             operator: unsafe { Operator::from_account_not_whitelisted(&accounts[6]) }?,
-            system_program: program::System::from_account_info(&accounts[7])?,
+            all: accounts,
         })
     }
 }
@@ -135,11 +135,7 @@ fn execute(program_id: Pubkey, accounts: Accounts, address: Address, chain_id: u
     let additional_decimals: u32 = (18 - token_decimals).into();
     let deposit = U256::from(accounts.source.delegated_amount) * 10_u128.pow(additional_decimals);
 
-    let mut solana = Solana::new(
-        &[accounts.balance_account, accounts.system_program.clone()],
-        accounts.operator,
-        None,
-    )?;
+    let mut solana = Solana::new(accounts.all, accounts.operator, None)?;
 
     let mut balance_account: BalanceAccount = solana.create_balance(address, chain_id)?;
     balance_account.mint(deposit)?;

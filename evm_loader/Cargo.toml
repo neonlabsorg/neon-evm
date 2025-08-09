@@ -33,6 +33,8 @@ solana-address-lookup-table-interface = "2.2.2"
 solana-compute-budget-interface = "2.2.2"
 solana-system-interface = "1.0.0"
 solana-loader-v3-interface = "5.0.0"
+spl-token-interface = "1.0.0"
+spl-associated-token-account-interface = "1.0.0"
 
 spl-associated-token-account = { version = "6.0", default-features = false, features = ["no-entrypoint"] }
 spl-token = { version = "7.0", default-features = false, features = ["no-entrypoint"] }

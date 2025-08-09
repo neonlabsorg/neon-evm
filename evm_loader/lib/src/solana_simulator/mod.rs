@@ -25,6 +25,7 @@ mod error;
 pub use error::Error;
 
 mod utils;
+pub use utils::instruction_error_to_string;
 
 type InMemoryAccountStore = HashMap<Pubkey, Account>;
 

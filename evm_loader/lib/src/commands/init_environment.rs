@@ -31,8 +31,8 @@ use {
     },
     solana_sdk_ids::system_program,
     solana_system_interface::instruction as system_instruction,
-    spl_associated_token_account::get_associated_token_address,
-    spl_token::{self, native_mint},
+    spl_associated_token_account_interface::address::get_associated_token_address,
+    spl_token_interface::{self, native_mint},
     std::collections::HashMap,
     std::path::Path,
     thiserror::Error,
@@ -152,7 +152,7 @@ pub async fn execute(
         let mint_signer = keys
             .get(&mint)
             .ok_or(EnvironmentError::MissingPrivateKey(mint))?;
-        let data_len = spl_token::state::Mint::LEN;
+        let data_len = spl_token_interface::state::Mint::LEN;
         let lamports = client
             .get_minimum_balance_for_rent_exemption(data_len)
             .await?;
@@ -162,10 +162,10 @@ pub async fn execute(
                 &mint,
                 lamports,
                 data_len as u64,
-                &spl_token::id(),
+                &spl_token_interface::id(),
             ),
-            spl_token::instruction::initialize_mint2(
-                &spl_token::id(),
+            spl_token_interface::instruction::initialize_mint2(
+                &spl_token_interface::id(),
                 &mint,
                 &signer.pubkey(),
                 None,
@@ -184,7 +184,10 @@ pub async fn execute(
         .check_and_create_object(
             "NEON-token mint",
             executor
-                .get_account_data_pack::<spl_token::state::Mint>(&spl_token::id(), &neon_token_mint)
+                .get_account_data_pack::<spl_token_interface::state::Mint>(
+                    &spl_token_interface::id(),
+                    &neon_token_mint,
+                )
                 .await,
             |mint| async move {
                 if mint.decimals != neon_token_mint_decimals {
@@ -209,7 +212,10 @@ pub async fn execute(
             .check_and_create_object(
                 "Token pool account",
                 executor
-                    .get_account_data_pack::<spl_token::state::Account>(&spl_token::id(), &pool)
+                    .get_account_data_pack::<spl_token_interface::state::Account>(
+                        &spl_token_interface::id(),
+                        &pool,
+                    )
                     .await,
                 |account| async move {
                     if account.mint != chain.token || account.owner != deposit_authority {
@@ -221,11 +227,11 @@ pub async fn execute(
                 || async {
                     let transaction = executor
                     .create_transaction_with_payer_only(&[
-                        spl_associated_token_account::instruction::create_associated_token_account(
+                        spl_associated_token_account_interface::instruction::create_associated_token_account(
                             &executor.fee_payer.pubkey(),
                             &deposit_authority,
                             &chain.token,
-                            &spl_token::id(),
+                            &spl_token_interface::id(),
                         ),
                     ])
                     .await?;
@@ -263,7 +269,7 @@ pub async fn execute(
                                 AccountMeta::new(main_balance_address, false),
                                 AccountMeta::new_readonly(program_data_address, false),
                                 AccountMeta::new_readonly(signer.pubkey(), true),
-                                AccountMeta::new_readonly(spl_token::id(), false),
+                                AccountMeta::new_readonly(spl_token_interface::id(), false),
                                 AccountMeta::new_readonly(system_program::id(), false),
                                 AccountMeta::new_readonly(native_mint::id(), false),
                                 AccountMeta::new(executor.fee_payer.pubkey(), true),

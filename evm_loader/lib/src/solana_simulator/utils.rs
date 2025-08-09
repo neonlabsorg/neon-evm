@@ -1,7 +1,10 @@
+use std::fmt::Display;
+
 use agave_feature_set::FeatureSet;
 use mollusk_svm::sysvar::Sysvars;
+use num_traits::FromPrimitive;
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
-use solana_sdk::account::Account;
+use solana_sdk::{account::Account, instruction::InstructionError, pubkey::Pubkey};
 
 use super::error::Error;
 use crate::rpc::Rpc;
@@ -75,5 +78,28 @@ pub async fn extract_elf(rpc: &impl Rpc, account: Account) -> Result<Vec<u8>, Er
             Ok(program_data_account.data[start..].to_vec())
         }
         _ => Err(Error::AccountIsNotProgram),
+    }
+}
+
+#[must_use]
+fn error_code_to_string<E: FromPrimitive + Display>(code: u32) -> String {
+    let Some(error) = E::from_u32(code) else {
+        return format!("unknown error: {code:#x}");
+    };
+    error.to_string()
+}
+
+#[must_use]
+pub fn instruction_error_to_string(program_id: Pubkey, error: InstructionError) -> String {
+    use solana_system_interface::error::SystemError;
+    use spl_token_interface::error::TokenError;
+
+    match error {
+        InstructionError::Custom(code) => match program_id {
+            solana_sdk_ids::system_program::ID => error_code_to_string::<SystemError>(code),
+            spl_token_interface::ID => error_code_to_string::<TokenError>(code),
+            _ => format!("custom program error: {code:#x}"),
+        },
+        error => error.to_string(),
     }
 }

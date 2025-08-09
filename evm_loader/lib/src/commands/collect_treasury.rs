@@ -12,7 +12,7 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use solana_sdk_ids::system_program;
-use spl_token::instruction::sync_native;
+use spl_token_interface::instruction::sync_native;
 use std::ops::Deref;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -84,7 +84,10 @@ pub async fn execute(
         }
     }
     let mut message = Message::new(
-        &[sync_native(&spl_token::id(), &main_balance_address)?],
+        &[sync_native(
+            &spl_token_interface::id(),
+            &main_balance_address,
+        )?],
         Some(&signer.pubkey()),
     );
     let blockhash = rpc_client.get_latest_blockhash().await?;

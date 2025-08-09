@@ -27,7 +27,7 @@ use crate::account_data::AccountData;
 use crate::commands::emulate::SolanaAccount;
 use crate::commands::get_config::ChainInfo;
 use crate::rpc::{CachedRpc, Rpc};
-use crate::solana_simulator::SolanaSimulator;
+use crate::solana_simulator::{instruction_error_to_string, SolanaSimulator};
 use crate::sysvar::get_sysvar;
 use crate::tracing::{AccountOverride, BlockOverrides};
 use crate::types::AccountInfoLevel;
@@ -406,7 +406,7 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
         });
 
         if let Err(error) = simulation_result.raw_result {
-            let message = error.to_string();
+            let message = instruction_error_to_string(target_program_id, error);
             return Err(Error::ExternalCallFailed(target_program_id, message));
         }
 

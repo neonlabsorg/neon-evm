@@ -119,8 +119,10 @@ impl<A: Allocator> Stack<A> {
 
     #[inline(always)]
     pub fn pop_address(&mut self) -> Result<Address, Error> {
-        static_assertions::assert_eq_align!(Address, u8);
-        static_assertions::assert_eq_size!(Address, [u8; 20]);
+        const {
+            assert!(std::mem::align_of::<Address>() == 1);
+            assert!(std::mem::size_of::<Address>() == 20);
+        };
 
         self.pop()?;
 

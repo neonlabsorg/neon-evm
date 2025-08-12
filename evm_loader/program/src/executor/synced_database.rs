@@ -6,6 +6,7 @@ use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
 
+use super::external_programs::{ExternalProgram, Invokable};
 use super::owned_account::OwnedAccountInfo;
 use super::precompile_extension::{
     call_precompile_extension, is_precompile_extension, PrecompileDatabase,
@@ -89,6 +90,7 @@ where
     }
 }
 
+#[maybe_async(?Send)]
 impl<'r, A, P> SyncedExecutorState<'r, A, P>
 where
     A: Allocator + Copy,
@@ -125,17 +127,14 @@ where
         self.data.timestamped_contracts.insert(address);
     }
 
-    #[maybe_async]
     pub async fn allocate_state_in_solana(&mut self) -> Result<AllocateResult> {
         self.data.actions.allocate(self.platform).await
     }
 
-    #[maybe_async]
     pub async fn commit_actions_to_solana(&mut self) -> Result<()> {
         self.data.actions.execute(self.platform).await
     }
 
-    #[maybe_async]
     pub async fn commit_timestamps_to_solana(&mut self) -> Result<()> {
         let contracts_addresses = self.data.timestamped_contracts.drain();
 
@@ -470,15 +469,14 @@ where
             .await
     }
 
-    async fn queue_invoke(&mut self, instruction: Instruction, seeds: &[&[&[u8]]]) -> Result<()> {
-        self.platform
-            .invoke(instruction, seeds, InvokeMode::Queued)
-            .await
+    async fn queue_invoke(&mut self, invokable: impl Into<ExternalProgram>) -> Result<()> {
+        let program = invokable.into();
+        program.invoke(self.platform).await
     }
 
     async fn external_account(&self, pubkey: &Pubkey) -> Result<OwnedAccountInfo> {
         let account = self.platform.get_raw_account(pubkey).await?;
-        Ok(OwnedAccountInfo::from_account(self.program_id(), &account))
+        Ok(OwnedAccountInfo::from_account(&account))
     }
 
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)> {

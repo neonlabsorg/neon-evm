@@ -5,7 +5,6 @@ use crate::error::Error;
 use ethnum::U256;
 use solana_compute_budget_interface::check_id as check_compute_budget_id;
 use solana_compute_budget_interface::ComputeBudgetInstruction;
-use solana_program::borsh1::try_from_slice_unchecked;
 use solana_program::instruction::{
     get_processed_sibling_instruction, get_stack_height, TRANSACTION_LEVEL_STACK_HEIGHT,
 };
@@ -132,6 +131,34 @@ fn calc_solana_priority_fee(
         ))
 }
 
+fn parse_compute_budget_instruction(data: &[u8]) -> Result<ComputeBudgetInstruction, Error> {
+    let [discriminator, data @ ..] = data else {
+        return Err("Invalid ComputeBudget instruction".into());
+    };
+
+    match discriminator {
+        1 => {
+            let heap = u32::from_le_bytes(data.try_into()?);
+            Ok(ComputeBudgetInstruction::RequestHeapFrame(heap))
+        }
+        2 => {
+            let limit = u32::from_le_bytes(data.try_into()?);
+            Ok(ComputeBudgetInstruction::SetComputeUnitLimit(limit))
+        }
+        3 => {
+            let price = u64::from_le_bytes(data.try_into()?);
+            Ok(ComputeBudgetInstruction::SetComputeUnitPrice(price))
+        }
+        4 => {
+            let limit = u32::from_le_bytes(data.try_into()?);
+            Ok(ComputeBudgetInstruction::SetLoadedAccountsDataSizeLimit(
+                limit,
+            ))
+        }
+        _ => Err("Unknown ComputeBudget instruction".into()),
+    }
+}
+
 /// Extracts the data about compute units from instructions within the current transaction.
 /// Returns the Solana Priority Fee
 fn get_compute_budget_priority_fee() -> Result<u64, Error> {
@@ -157,7 +184,7 @@ fn get_compute_budget_priority_fee() -> Result<u64, Error> {
 
         // As of now, data of ComputeBudgetInstruction is always non-empty.
         // This is a sanity check to have a safe future-proof implementation.
-        match try_from_slice_unchecked(&cur_ixn.data) {
+        match parse_compute_budget_instruction(&cur_ixn.data) {
             Ok(ComputeBudgetInstruction::SetComputeUnitLimit(value)) => {
                 compute_unit_limit = Some(value);
                 if compute_unit_price.is_some() {

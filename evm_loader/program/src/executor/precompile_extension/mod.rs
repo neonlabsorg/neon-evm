@@ -3,7 +3,6 @@ use crate::platform::{Chain, KeysIndex};
 use crate::{
     error::Result,
     evm::{database::Database, Context},
-    platform::FAKE_OPERATOR,
     types::Address,
 };
 use ethnum::U256;
@@ -11,8 +10,8 @@ use maybe_async::maybe_async;
 use solana_program::instruction::Instruction;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
-use solana_system_interface::instruction as system_instruction;
 
+use super::external_programs::ExternalProgram;
 use super::owned_account::OwnedAccountInfo;
 
 pub mod call_solana;
@@ -36,7 +35,7 @@ pub trait PrecompileDatabase: Database {
     fn keys(&self) -> &impl KeysIndex;
 
     async fn invoke(&mut self, instruction: Instruction, seeds: &[&[&[u8]]]) -> Result<()>;
-    async fn queue_invoke(&mut self, instruction: Instruction, seeds: &[&[&[u8]]]) -> Result<()>;
+    async fn queue_invoke(&mut self, invokable: impl Into<ExternalProgram>) -> Result<()>;
 
     async fn external_account(&self, pubkey: &Pubkey) -> Result<OwnedAccountInfo>;
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)>;
@@ -115,30 +114,4 @@ pub async fn call_precompile_extension(
         }
         _ => None,
     }
-}
-
-#[maybe_async]
-pub async fn create_account(
-    state: &mut impl PrecompileDatabase,
-    account: &OwnedAccountInfo,
-    space: usize,
-    owner: &Pubkey,
-    seeds: &[&[u8]],
-) -> Result<()> {
-    let rent = state.rent().await?;
-    let minimum_balance = rent.minimum_balance(space);
-
-    let lamports = minimum_balance.saturating_sub(account.lamports);
-    if lamports > 0 {
-        let transfer = system_instruction::transfer(&FAKE_OPERATOR, &account.key, lamports);
-        state.queue_invoke(transfer, &[]).await?;
-    }
-
-    let allocate = system_instruction::allocate(&account.key, space.try_into()?);
-    state.queue_invoke(allocate, &[seeds]).await?;
-
-    let assign = system_instruction::assign(&account.key, owner);
-    state.queue_invoke(assign, &[seeds]).await?;
-
-    Ok(())
 }

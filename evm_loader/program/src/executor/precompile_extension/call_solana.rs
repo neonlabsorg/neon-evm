@@ -1,8 +1,9 @@
 use crate::{
     account::{pda, InterruptedState},
     error::{Error, Result},
+    executor::external_programs::{system::CreateAccount, SystemProgram},
     platform::{KeysIndex, FAKE_OPERATOR},
-    types::Address,
+    types::{seeds::Seeds, Address},
 };
 
 use allocator_api2::alloc::Allocator;
@@ -252,14 +253,7 @@ pub async fn call_solana(
             let _lamports = read_u64(&input[64..])?;
             let owner = read_pubkey(&input[96..])?;
 
-            let signer = context.caller;
-            let (sol_address, bump_seed) = pda::contract_data(program_id, &signer, salt);
-            let seeds: &[&[u8]] = pda::contract_data_seeds!(signer, salt, bump_seed);
-
-            let account = state.external_account(&sol_address).await?;
-
-            super::create_account(state, &account, space, &owner, seeds).await?;
-            Ok(sol_address.to_bytes().to_vec())
+            create_resource(state, context, salt, space, owner).await
         }
 
         // "cff5c1a5": "getReturnData()",
@@ -301,6 +295,31 @@ pub async fn call_solana(
 
         _ => Err(Error::UnknownPrecompileMethodSelector(*address, selector)),
     }
+}
+
+#[maybe_async]
+pub async fn create_resource(
+    state: &mut impl PrecompileDatabase,
+    context: &crate::evm::Context,
+    salt: &[u8; 32],
+    space: usize,
+    owner: Pubkey,
+) -> Result<Vec<u8>> {
+    let program_id = state.program_id();
+    let signer = context.caller;
+
+    let (account, bump_seed) = pda::contract_data(program_id, &signer, salt);
+    let seeds: &[&[u8]] = pda::contract_data_seeds!(signer, salt, bump_seed);
+
+    let create_account = SystemProgram::CreateAccount(CreateAccount {
+        account,
+        seeds: Seeds::new(seeds),
+        owner,
+        space,
+    });
+    state.queue_invoke(create_account).await?;
+
+    Ok(account.to_bytes().to_vec())
 }
 
 #[maybe_async]

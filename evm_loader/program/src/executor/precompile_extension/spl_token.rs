@@ -2,15 +2,26 @@ use std::convert::{Into, TryInto};
 
 use ethnum::U256;
 use maybe_async::maybe_async;
-use solana_program::{program_error::ProgramError, program_pack::Pack, pubkey::Pubkey};
-use solana_sdk_ids::system_program;
+use pinocchio_token_interface::state::{
+    self as spl_token_state, account::Account as TokenAccount, mint::Mint as TokenMint,
+    Initializable, Transmutable,
+};
+use solana_program::pubkey::Pubkey;
 
-use super::{create_account, PrecompileDatabase};
+use super::PrecompileDatabase;
 use crate::{
     account::pda,
     error::{Error, Result},
-    platform::{KeysIndex, FAKE_OPERATOR},
-    types::Address,
+    executor::external_programs::{
+        spl_token::{
+            Approve, Burn, CloseAccount, Freeze, InitializeAccount, InitializeMint, MintTo, Revoke,
+            Thaw, Transfer, SPL_TOKEN_ID,
+        },
+        system::CreateAccount,
+        SplToken, SystemProgram,
+    },
+    platform::KeysIndex,
+    types::{seeds::Seeds, Address},
 };
 
 // [0xa9, 0xc1, 0x58, 0x06] : "approve(bytes32,bytes32,uint64)",
@@ -276,28 +287,21 @@ async fn initialize_mint(
     let (mint_key, bump_seed) = pda::contract_data(program_id, &signer, seed);
     let seeds: &[&[u8]] = pda::contract_data_seeds!(signer, seed, bump_seed);
 
-    let account = state.external_account(&mint_key).await?;
-    if !system_program::check_id(&account.owner) {
-        return Err(Error::AccountInvalidOwner(mint_key, system_program::ID));
-    }
+    let create_account = SystemProgram::CreateAccount(CreateAccount {
+        account: mint_key,
+        seeds: Seeds::new(seeds),
+        owner: SPL_TOKEN_ID,
+        space: TokenMint::LEN,
+    });
+    state.queue_invoke(create_account).await?;
 
-    create_account(
-        state,
-        &account,
-        spl_token::state::Mint::LEN,
-        &spl_token::ID,
-        seeds,
-    )
-    .await?;
-
-    let initialize_mint = spl_token::instruction::initialize_mint2(
-        &spl_token::ID,
-        &mint_key,
-        &mint_authority.unwrap_or(signer_pubkey),
-        Some(&freeze_authority.unwrap_or(signer_pubkey)),
+    let initialize_mint = SplToken::InitializeMint(InitializeMint {
+        account: mint_key,
         decimals,
-    )?;
-    state.queue_invoke(initialize_mint, &[]).await?;
+        mint_authority: mint_authority.unwrap_or(signer_pubkey),
+        freeze_authority: freeze_authority.unwrap_or(signer_pubkey),
+    });
+    state.queue_invoke(initialize_mint).await?;
 
     Ok(mint_key.to_bytes().to_vec())
 }
@@ -318,27 +322,20 @@ async fn initialize_account(
     let (account_key, bump_seed) = pda::contract_data(program_id, &signer, seed);
     let seeds: &[&[u8]] = pda::contract_data_seeds!(&signer, seed, bump_seed);
 
-    let account = state.external_account(&account_key).await?;
-    if !system_program::check_id(&account.owner) {
-        return Err(Error::AccountInvalidOwner(account_key, system_program::ID));
-    }
+    let create_account = SystemProgram::CreateAccount(CreateAccount {
+        account: account_key,
+        seeds: Seeds::new(seeds),
+        owner: SPL_TOKEN_ID,
+        space: TokenAccount::LEN,
+    });
+    state.queue_invoke(create_account).await?;
 
-    create_account(
-        state,
-        &account,
-        spl_token::state::Account::LEN,
-        &spl_token::ID,
-        seeds,
-    )
-    .await?;
-
-    let initialize_account = spl_token::instruction::initialize_account3(
-        &spl_token::ID,
-        &account_key,
-        &mint,
-        &owner.unwrap_or(signer_pubkey),
-    )?;
-    state.queue_invoke(initialize_account, &[]).await?;
+    let initialize_account = SplToken::InitializeAccount(InitializeAccount {
+        account: account_key,
+        mint,
+        owner: owner.unwrap_or(signer_pubkey),
+    });
+    state.queue_invoke(initialize_account).await?;
 
     Ok(account_key.to_bytes().to_vec())
 }
@@ -350,17 +347,16 @@ async fn close_account(
     account: Pubkey,
 ) -> Result<Vec<u8>> {
     let signer = context.caller;
+
     let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
     let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
-    let close_account = spl_token::instruction::close_account(
-        &spl_token::ID,
-        &account,
-        &FAKE_OPERATOR,
-        &signer_pubkey,
-        &[],
-    )?;
-    state.queue_invoke(close_account, &[seeds]).await?;
+    let close_account = SplToken::CloseAccount(CloseAccount {
+        authority: signer_pubkey,
+        seeds: Seeds::new(seeds),
+        account,
+    });
+    state.queue_invoke(close_account).await?;
 
     Ok(vec![])
 }
@@ -374,18 +370,18 @@ async fn approve(
     amount: u64,
 ) -> Result<Vec<u8>> {
     let signer = context.caller;
+
     let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
     let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
-    let approve = spl_token::instruction::approve(
-        &spl_token::ID,
-        &source,
-        &target,
-        &signer_pubkey,
-        &[],
+    let approve = SplToken::Approve(Approve {
+        authority: signer_pubkey,
+        seeds: Seeds::new(seeds),
+        account: source,
+        delegate: target,
         amount,
-    )?;
-    state.queue_invoke(approve, &[seeds]).await?;
+    });
+    state.queue_invoke(approve).await?;
 
     Ok(vec![])
 }
@@ -397,11 +393,16 @@ async fn revoke(
     account: Pubkey,
 ) -> Result<Vec<u8>> {
     let signer = context.caller;
+
     let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
     let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
-    let revoke = spl_token::instruction::revoke(&spl_token::ID, &account, &signer_pubkey, &[])?;
-    state.queue_invoke(revoke, &[seeds]).await?;
+    let revoke = SplToken::Revoke(Revoke {
+        authority: signer_pubkey,
+        seeds: Seeds::new(seeds),
+        account,
+    });
+    state.queue_invoke(revoke).await?;
 
     Ok(vec![])
 }
@@ -419,18 +420,18 @@ async fn transfer(
     }
 
     let signer = context.caller;
+
     let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
     let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
-    let transfer = spl_token::instruction::transfer(
-        &spl_token::ID,
-        &source,
-        &target,
-        &signer_pubkey,
-        &[],
+    let transfer = SplToken::Transfer(Transfer {
+        authority: signer_pubkey,
+        seeds: Seeds::new(seeds),
+        source,
+        target,
         amount,
-    )?;
-    state.queue_invoke(transfer, &[seeds]).await?;
+    });
+    state.queue_invoke(transfer).await?;
 
     Ok(vec![])
 }
@@ -449,20 +450,19 @@ async fn transfer_with_seed(
     }
 
     let program_id = state.program_id();
-
     let signer = context.caller;
+
     let (signer_pubkey, signer_seed) = pda::contract_auth(program_id, &signer, seed);
     let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, seed, signer_seed);
 
-    let transfer = spl_token::instruction::transfer(
-        &spl_token::ID,
-        &source,
-        &target,
-        &signer_pubkey,
-        &[],
+    let transfer = SplToken::Transfer(Transfer {
+        authority: signer_pubkey,
+        seeds: Seeds::new(seeds),
+        source,
+        target,
         amount,
-    )?;
-    state.queue_invoke(transfer, &[seeds]).await?;
+    });
+    state.queue_invoke(transfer).await?;
 
     Ok(vec![])
 }
@@ -480,18 +480,18 @@ async fn mint_to(
     }
 
     let signer = context.caller;
+
     let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
     let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
-    let mint_to = spl_token::instruction::mint_to(
-        &spl_token::ID,
-        &mint,
-        &target,
-        &signer_pubkey,
-        &[],
+    let mint_to = SplToken::MintTo(MintTo {
+        authority: signer_pubkey,
+        seeds: Seeds::new(seeds),
+        account: target,
+        mint,
         amount,
-    )?;
-    state.queue_invoke(mint_to, &[seeds]).await?;
+    });
+    state.queue_invoke(mint_to).await?;
 
     Ok(vec![])
 }
@@ -509,19 +509,18 @@ async fn burn(
     }
 
     let signer = context.caller;
+
     let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
     let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
-    #[rustfmt::skip]
-    let burn = spl_token::instruction::burn(
-        &spl_token::ID,
-        &source,
-        &mint,
-        &signer_pubkey,
-        &[],
-        amount
-    )?;
-    state.queue_invoke(burn, &[seeds]).await?;
+    let burn = SplToken::Burn(Burn {
+        authority: signer_pubkey,
+        seeds: Seeds::new(seeds),
+        account: source,
+        mint,
+        amount,
+    });
+    state.queue_invoke(burn).await?;
 
     Ok(vec![])
 }
@@ -534,17 +533,17 @@ async fn freeze(
     target: Pubkey,
 ) -> Result<Vec<u8>> {
     let signer = context.caller;
+
     let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
     let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
-    let freeze = spl_token::instruction::freeze_account(
-        &spl_token::ID,
-        &target,
-        &mint,
-        &signer_pubkey,
-        &[],
-    )?;
-    state.queue_invoke(freeze, &[seeds]).await?;
+    let freeze = SplToken::Freeze(Freeze {
+        authority: signer_pubkey,
+        seeds: Seeds::new(seeds),
+        account: target,
+        mint,
+    });
+    state.queue_invoke(freeze).await?;
 
     Ok(vec![])
 }
@@ -560,15 +559,13 @@ async fn thaw(
     let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
     let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
-    #[rustfmt::skip]
-    let thaw = spl_token::instruction::thaw_account(
-        &spl_token::ID,
-        &target,
-        &mint,
-        &signer_pubkey,
-        &[]
-    )?;
-    state.queue_invoke(thaw, &[seeds]).await?;
+    let thaw = SplToken::Thaw(Thaw {
+        authority: signer_pubkey,
+        seeds: Seeds::new(seeds),
+        account: target,
+        mint,
+    });
+    state.queue_invoke(thaw).await?;
 
     Ok(vec![])
 }
@@ -594,7 +591,7 @@ async fn is_system_account(
     account: Pubkey,
 ) -> Result<Vec<u8>> {
     let account = state.external_account(&account).await?;
-    if system_program::check_id(&account.owner) {
+    if solana_sdk_ids::system_program::check_id(&account.owner) {
         let mut result = vec![0_u8; 32];
         result[31] = 1; // return true
 
@@ -611,30 +608,23 @@ async fn get_account(
     account: Pubkey,
 ) -> Result<Vec<u8>> {
     let account = state.external_account(&account).await?;
-    let token = if spl_token::check_id(&account.owner) {
-        spl_token::state::Account::unpack(&account.data)?
-    } else if system_program::check_id(&account.owner) {
-        spl_token::state::Account::default()
-    } else {
-        return Err(ProgramError::IllegalOwner.into());
-    };
+    if account.owner != SPL_TOKEN_ID {
+        return Ok(vec![0_u8; 7 * 32]);
+    }
 
-    debug_print!("spl_token get_account: {:?}", token);
+    let token: &TokenAccount = unsafe { spl_token_state::load(&account.data) }?;
 
     let mut result = [0_u8; 7 * 32];
     let (mint, owner, _, amount, delegate, _, delegated_amount, close_authority, state) =
         arrayref::mut_array_refs![&mut result, 32, 32, 24, 8, 32, 24, 8, 32, 32];
 
-    *mint = token.mint.to_bytes();
-    *owner = token.owner.to_bytes();
-    *amount = token.amount.to_be_bytes();
-    *delegate = token.delegate.map(Pubkey::to_bytes).unwrap_or_default();
-    *delegated_amount = token.delegated_amount.to_be_bytes();
-    *close_authority = token
-        .close_authority
-        .map(Pubkey::to_bytes)
-        .unwrap_or_default();
-    state[31] = token.state as u8;
+    *mint = token.mint;
+    *owner = token.owner;
+    *amount = token.amount().to_be_bytes();
+    *delegate = token.delegate().copied().unwrap_or_default();
+    *delegated_amount = token.delegated_amount().to_be_bytes();
+    *close_authority = token.close_authority().copied().unwrap_or_default();
+    state[31] = token.account_state()? as u8;
 
     Ok(result.to_vec())
 }
@@ -646,31 +636,21 @@ async fn get_mint(
     account: Pubkey,
 ) -> Result<Vec<u8>> {
     let account = state.external_account(&account).await?;
-    let mint = if spl_token::check_id(&account.owner) {
-        spl_token::state::Mint::unpack(&account.data)?
-    } else if system_program::check_id(&account.owner) {
-        spl_token::state::Mint::default()
-    } else {
-        return Err(ProgramError::IllegalOwner.into());
-    };
+    if account.owner != SPL_TOKEN_ID {
+        return Ok(vec![0_u8; 5 * 32]);
+    }
 
-    debug_print!("spl_token get_mint: {:?}", mint);
+    let mint: &TokenMint = unsafe { spl_token_state::load(&account.data) }?;
 
     let mut result = [0_u8; 5 * 32];
     let (_, supply, _, decimals, _, is_initialized, freeze_authority, mint_authority) =
         arrayref::mut_array_refs![&mut result, 24, 8, 31, 1, 31, 1, 32, 32];
 
-    *supply = mint.supply.to_be_bytes();
+    *supply = mint.supply().to_be_bytes();
     *decimals = mint.decimals.to_be_bytes();
-    *is_initialized = if mint.is_initialized { [1_u8] } else { [0_u8] };
-    *freeze_authority = mint
-        .freeze_authority
-        .map(Pubkey::to_bytes)
-        .unwrap_or_default();
-    *mint_authority = mint
-        .mint_authority
-        .map(Pubkey::to_bytes)
-        .unwrap_or_default();
+    is_initialized[0] = mint.is_initialized()?.into();
+    *freeze_authority = mint.freeze_authority().copied().unwrap_or_default();
+    *mint_authority = mint.mint_authority().copied().unwrap_or_default();
 
     Ok(result.to_vec())
 }

@@ -1,7 +1,7 @@
 use std::slice::SliceIndex;
 
 use allocator_api2::alloc::Allocator;
-use allocator_api2::boxed::Box;
+use allocator_api2::boxed::Box as Box2;
 
 use crate::{
     evm::{tracing::EventListener, Machine},
@@ -12,7 +12,7 @@ pub fn checked_next_multiple_of_32(n: usize) -> Option<usize> {
     Some(n.checked_add(31)? & !31)
 }
 
-type Parent<A, T> = Option<Box<Machine<A, T>, A>>;
+type Parent<A, T> = Option<Box2<Machine<A, T>, A>>;
 
 pub enum Buffer<A: Allocator> {
     Vec { v: Vector<u8, A> },

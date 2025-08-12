@@ -41,21 +41,18 @@ default = ["custom-heap"]
 [dependencies]
 linked_list_allocator = { version = "0.10", default-features = false }
 evm-loader-macro = { path = "../program-macro" }
+pinocchio = "0.9"
+pinocchio-token-interface = { version = "0", git = "https://github.com/solana-program/token"}
 solana-program.workspace = true
 solana-sdk-ids.workspace = true
 solana-bn254.workspace = true
 solana-system-interface = { workspace = true, features = ["bincode"] }
-solana-compute-budget-interface = {workspace = true, features = ["borsh"]}
-spl-token.workspace = true
-spl-associated-token-account.workspace = true
-mpl-token-metadata = { version = "5.1.1", default-features = false }
+solana-compute-budget-interface.workspace = true
 thiserror = "1.0"
 arrayref = "0.3.8"
 hex = "0.4.3"
 ripemd = "0.1"
 alloy-rlp = { version = "0.3", features = ["derive"] }
-borsh = "1.5.2"
-borsh010 = { version = "0.10.4", package = "borsh" }
 bincode = "1"
 serde = { version = "1.0.204", default-features = false, features = ["derive", "rc"] }
 ethnum.workspace = true
@@ -67,6 +64,7 @@ async-trait = { version = "0.1.81", optional = true }
 allocator-api2 = "0.3"
 dashu =  { version = "0.4.2", default-features = false }
 enum_dispatch = "0.3"
+arrayvec = { version = "0.7", default-features = false }
 
 [target.'cfg(target_os = "solana")'.dependencies.maybe-async]
 version = "0.2.10"

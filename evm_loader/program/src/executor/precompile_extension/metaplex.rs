@@ -1,21 +1,21 @@
 #![allow(clippy::unnecessary_wraps)]
 use std::convert::{Into, TryInto};
 
+use arrayvec::ArrayString;
 use ethnum::U256;
 use maybe_async::maybe_async;
-use mpl_token_metadata::{
-    accounts::{MasterEdition, Metadata},
-    instructions::{CreateMasterEditionV3Builder, CreateMetadataAccountV3Builder},
-    programs::MPL_TOKEN_METADATA_ID,
-    types::{Creator, DataV2, TokenStandard},
-};
+
 use solana_program::pubkey::Pubkey;
 
 use crate::{
     account::pda,
     error::{Error, Result},
-    platform::{KeysIndex, FAKE_OPERATOR},
-    types::Address,
+    executor::external_programs::metaplex::{
+        CreateMasterEdition, CreateMetadata, MasterEdition, Metadata, Metaplex,
+        MPL_TOKEN_METADATA_ID,
+    },
+    platform::KeysIndex,
+    types::{seeds::Seeds, Address},
 };
 
 use super::PrecompileDatabase;
@@ -77,27 +77,27 @@ pub async fn metaplex(
         [0xf7, 0xb6, 0x37, 0xbb] => {
             // "isInitialized(bytes32)"
             let mint = read_pubkey(input)?;
-            is_initialized(context, state, mint).await
+            is_initialized(state, mint).await
         }
         [0x23, 0x5b, 0x2b, 0x94] => {
             // "isNFT(bytes32)"
             let mint = read_pubkey(input)?;
-            is_nft(context, state, mint).await
+            is_nft(state, mint).await
         }
         [0x9e, 0xd1, 0x9d, 0xdb] => {
             // "uri(bytes32)"
             let mint = read_pubkey(input)?;
-            uri(context, state, mint).await
+            uri(state, mint).await
         }
         [0x69, 0x1f, 0x34, 0x31] => {
             // "name(bytes32)"
             let mint = read_pubkey(input)?;
-            token_name(context, state, mint).await
+            token_name(state, mint).await
         }
         [0x6b, 0xaa, 0x03, 0x30] => {
             // "symbol(bytes32)"
             let mint = read_pubkey(input)?;
-            symbol(context, state, mint).await
+            symbol(state, mint).await
         }
         _ => Err(Error::UnknownPrecompileMethodSelector(*address, selector)),
     }
@@ -122,7 +122,7 @@ fn read_pubkey(input: &[u8]) -> Result<Pubkey> {
 }
 
 #[inline]
-fn read_string(input: &[u8], offset_position: usize, max_length: usize) -> Result<String> {
+fn read_string(input: &[u8], offset_position: usize, max_length: usize) -> Result<&str> {
     if input.len() < offset_position + 32 {
         return Err(Error::OutOfBounds);
     }
@@ -142,8 +142,9 @@ fn read_string(input: &[u8], offset_position: usize, max_length: usize) -> Resul
     if input.len() < end {
         return Err(Error::OutOfBounds);
     }
-    let data = input[begin..end].to_vec();
-    String::from_utf8(data).map_err(|_| Error::Custom("Invalid utf8 string".to_string()))
+
+    let str = std::str::from_utf8(&input[begin..end])?;
+    Ok(str)
 }
 
 #[maybe_async]
@@ -151,11 +152,10 @@ async fn create_metadata(
     context: &crate::evm::Context,
     state: &mut impl PrecompileDatabase,
     mint: Pubkey,
-    name: String,
-    symbol: String,
-    uri: String,
+    name: &str,
+    symbol: &str,
+    uri: &str,
 ) -> Result<Vec<u8>> {
-    let program_id = *state.program_id();
     let signer = context.caller;
 
     let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
@@ -163,36 +163,17 @@ async fn create_metadata(
 
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);
 
-    let instruction = CreateMetadataAccountV3Builder::new()
-        .metadata(metadata_pubkey)
-        .mint(mint)
-        .mint_authority(signer_pubkey)
-        .update_authority(signer_pubkey, true)
-        .payer(FAKE_OPERATOR)
-        .is_mutable(true)
-        .data(DataV2 {
-            name,
-            symbol,
-            uri,
-            seller_fee_basis_points: 0,
-            creators: Some(vec![
-                Creator {
-                    address: program_id,
-                    verified: false,
-                    share: 0,
-                },
-                Creator {
-                    address: signer_pubkey,
-                    verified: true,
-                    share: 100,
-                },
-            ]),
-            collection: None,
-            uses: None,
-        })
-        .instruction();
+    let create_metadata = Metaplex::CreateMetadata(CreateMetadata {
+        authority: signer_pubkey,
+        seeds: Seeds::new(seeds),
+        metadata: metadata_pubkey,
+        mint,
+        name: ArrayString::from(name).map_err(|_| "Name too long")?,
+        symbol: ArrayString::from(symbol).map_err(|_| "Symbol too long")?,
+        uri: ArrayString::from(uri).map_err(|_| "URI too long")?,
+    });
 
-    state.queue_invoke(instruction, &[seeds]).await?;
+    state.queue_invoke(create_metadata).await?;
 
     Ok(metadata_pubkey.to_bytes().to_vec())
 }
@@ -204,119 +185,93 @@ async fn create_master_edition(
     mint: Pubkey,
     max_supply: Option<u64>,
 ) -> Result<Vec<u8>> {
-    let program_id = state.program_id();
     let signer = context.caller;
 
-    let (signer_pubkey, bump_seed) = pda::contract(program_id, &signer);
+    let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
     let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);
     let (edition_pubkey, _) = MasterEdition::find_pda(&mint);
 
-    let mut instruction_builder = CreateMasterEditionV3Builder::new();
-    instruction_builder
-        .metadata(metadata_pubkey)
-        .edition(edition_pubkey)
-        .mint(mint)
-        .mint_authority(signer_pubkey)
-        .update_authority(signer_pubkey)
-        .payer(FAKE_OPERATOR);
+    let create_edition = Metaplex::CreateMasterEdition(CreateMasterEdition {
+        authority: signer_pubkey,
+        seeds: Seeds::new(seeds),
+        metadata: metadata_pubkey,
+        edition: edition_pubkey,
+        mint,
+        max_supply,
+    });
 
-    if let Some(max_supply) = max_supply {
-        instruction_builder.max_supply(max_supply);
-    }
-
-    let instruction = instruction_builder.instruction();
-
-    state.queue_invoke(instruction, &[seeds]).await?;
+    state.queue_invoke(create_edition).await?;
 
     Ok(edition_pubkey.to_bytes().to_vec())
 }
 
 #[maybe_async]
-async fn is_initialized(
-    context: &crate::evm::Context,
-    state: &impl PrecompileDatabase,
-    mint: Pubkey,
-) -> Result<Vec<u8>> {
-    let is_initialized = metadata(context, state, mint)
-        .await?
-        .map_or_else(|| false, |_| true);
+async fn is_initialized(state: &impl PrecompileDatabase, mint: Pubkey) -> Result<Vec<u8>> {
+    let is_initialized = use_metadata(state, mint, |_| true).await?.unwrap_or(false);
 
     Ok(to_solidity_bool(is_initialized))
 }
 
 #[maybe_async]
-async fn is_nft(
-    context: &crate::evm::Context,
-    state: &impl PrecompileDatabase,
-    mint: Pubkey,
-) -> Result<Vec<u8>> {
-    let is_nft = metadata(context, state, mint).await?.map_or_else(
-        || false,
-        |m| m.token_standard == Some(TokenStandard::NonFungible),
-    );
+async fn is_nft(state: &impl PrecompileDatabase, mint: Pubkey) -> Result<Vec<u8>> {
+    let is_nft = use_metadata(state, mint, |m| {
+        m.token_standard() == Some(0 /*NonFungible*/)
+    })
+    .await?
+    .unwrap_or(false);
 
     Ok(to_solidity_bool(is_nft))
 }
 
 #[maybe_async]
-async fn uri(
-    context: &crate::evm::Context,
-    state: &impl PrecompileDatabase,
-    mint: Pubkey,
-) -> Result<Vec<u8>> {
-    let uri = metadata(context, state, mint)
+async fn uri(state: &impl PrecompileDatabase, mint: Pubkey) -> Result<Vec<u8>> {
+    let uri = use_metadata(state, mint, |metadata| metadata.uri.to_vec())
         .await?
-        .map_or_else(String::new, |m| m.uri);
+        .unwrap_or_else(Vec::new);
 
+    let uri = String::from_utf8(uri)?;
     Ok(to_solidity_string(uri.trim_end_matches('\0')))
 }
 
 #[maybe_async]
-async fn token_name(
-    context: &crate::evm::Context,
-    state: &impl PrecompileDatabase,
-    mint: Pubkey,
-) -> Result<Vec<u8>> {
-    let token_name = metadata(context, state, mint)
+async fn token_name(state: &impl PrecompileDatabase, mint: Pubkey) -> Result<Vec<u8>> {
+    let name = use_metadata(state, mint, |metadata| metadata.name.to_vec())
         .await?
-        .map_or_else(String::new, |m| m.name);
+        .unwrap_or_else(Vec::new);
 
-    Ok(to_solidity_string(token_name.trim_end_matches('\0')))
+    let name = String::from_utf8(name)?;
+    Ok(to_solidity_string(name.trim_end_matches('\0')))
 }
 
 #[maybe_async]
-async fn symbol(
-    context: &crate::evm::Context,
-    state: &impl PrecompileDatabase,
-    mint: Pubkey,
-) -> Result<Vec<u8>> {
-    let symbol = metadata(context, state, mint)
+async fn symbol(state: &impl PrecompileDatabase, mint: Pubkey) -> Result<Vec<u8>> {
+    let symbol = use_metadata(state, mint, |metadata| metadata.symbol.to_vec())
         .await?
-        .map_or_else(String::new, |m| m.symbol);
+        .unwrap_or_else(Vec::new);
 
+    let symbol = String::from_utf8(symbol)?;
     Ok(to_solidity_string(symbol.trim_end_matches('\0')))
 }
 
 #[maybe_async]
-async fn metadata(
-    _context: &crate::evm::Context,
+async fn use_metadata<R>(
     state: &impl PrecompileDatabase,
     mint: Pubkey,
-) -> Result<Option<Metadata>> {
+    f: impl FnOnce(&Metadata) -> R,
+) -> Result<Option<R>> {
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);
     let metadata_account = state.external_account(&metadata_pubkey).await?;
 
-    let result = {
-        if MPL_TOKEN_METADATA_ID == metadata_account.owner {
-            let metadata = Metadata::safe_deserialize(&metadata_account.data);
-            metadata.ok()
-        } else {
-            None
-        }
-    };
-    Ok(result)
+    if metadata_account.owner != MPL_TOKEN_METADATA_ID {
+        return Ok(None);
+    }
+
+    let metadata = Metadata::deserialize(&metadata_account.data);
+    let result = f(&metadata);
+
+    Ok(Some(result))
 }
 
 fn to_solidity_bool(v: bool) -> Vec<u8> {

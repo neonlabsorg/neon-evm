@@ -4,12 +4,18 @@ use std::convert::TryInto;
 use arrayref::{array_ref, array_refs};
 use ethnum::U256;
 use maybe_async::maybe_async;
+use pinocchio_token_interface::state;
 use solana_program::{account_info::IntoAccountInfo, pubkey::Pubkey};
-use spl_associated_token_account::get_associated_token_address;
 
 use crate::account::pda;
+use crate::executor::external_programs::spl_associated_token::{
+    get_associated_token_address, CreateAssociatedToken,
+};
+use crate::executor::external_programs::spl_token::Transfer;
+use crate::executor::external_programs::{SplAssociatedToken, SplToken};
 use crate::platform::Platform;
 
+use crate::types::seeds::Seeds;
 use crate::{
     account::token,
     error::{Error, Result},
@@ -110,24 +116,22 @@ async fn withdraw(
         mint_chain.token
     };
 
-    let mut mint_account = state.external_account(&mint_address).await?;
-    let mint_data = {
-        let info = mint_account.into_account_info();
-        token::Mint::from_account_info(&info)?.into_data()
+    let decimals = {
+        let mint_account = state.external_account(&mint_address).await?;
+        let mint = unsafe { state::load::<state::mint::Mint>(&mint_account.data) }?;
+        mint.decimals
     };
 
-    assert!(mint_data.decimals < 18);
+    assert!(decimals < 18);
 
-    let additional_decimals: u32 = (18 - mint_data.decimals).into();
+    let additional_decimals: u32 = (18 - decimals).into();
     let min_amount: u128 = u128::pow(10, additional_decimals);
 
     let spl_amount = value / min_amount;
     let remainder = value % min_amount;
 
     if spl_amount > U256::from(u64::MAX) {
-        return Err(Error::Custom(
-            "Neon Withdraw: value exceeds u64::max".to_string(),
-        ));
+        return Err("Neon Withdraw: value exceeds u64::max".into());
     }
 
     if remainder != 0 {
@@ -137,34 +141,27 @@ async fn withdraw(
     }
 
     let target_token = get_associated_token_address(&target, &mint_address);
-    let account = state.external_account(&target_token).await?;
-    if !spl_token::check_id(&account.owner) {
-        use spl_associated_token_account::instruction::create_associated_token_account;
 
-        let create_associated =
-            create_associated_token_account(&FAKE_OPERATOR, &target, &mint_address, &spl_token::ID);
-
-        state.queue_invoke(create_associated, &[]).await?;
-    }
+    let create_associated = SplAssociatedToken::CreateIdempotent(CreateAssociatedToken {
+        account: target_token,
+        owner: target,
+        mint: mint_address,
+    });
+    state.queue_invoke(create_associated).await?;
 
     let (authority, bump_seed) = pda::main_pool_authority(state.program_id());
     let authority_seeds: &[&[u8]] = pda::main_pool_authority_seeds!(bump_seed);
 
     let pool = get_associated_token_address(&authority, &mint_address);
 
-    let transfer = spl_token::instruction::transfer_checked(
-        &spl_token::ID,
-        &pool,
-        &mint_address,
-        &target_token,
-        &authority,
-        &[],
-        spl_amount.as_u64(),
-        mint_data.decimals,
-    )?;
+    let transfer = SplToken::Transfer(Transfer {
+        authority,
+        seeds: Seeds::new(authority_seeds),
+        source: pool,
+        target: target_token,
+        amount: spl_amount.as_u64(),
+    });
 
     state.burn(source, chain_id, value).await?;
-    state.queue_invoke(transfer, &[authority_seeds]).await?;
-
-    Ok(())
+    state.queue_invoke(transfer).await
 }

@@ -6,16 +6,17 @@ use crate::account::{
 use crate::config::SOL_CHAIN_ID;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
+use crate::executor::external_programs::get_associated_token_address;
 use crate::platform::{Platform, Solana};
 use crate::types::{Address, EncodedTransaction, ScheduledTransaction};
 use arrayref::array_ref;
 use ethnum::U256;
+use pinocchio_token_interface::native_mint;
 use solana_program::account_info::AccountInfo;
 use solana_program::clock::Clock;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
 use solana_program::sysvar::Sysvar;
-use spl_associated_token_account::get_associated_token_address;
 
 fn validate_scheduled_tx(tx: &dyn ScheduledTransaction, payer: &Address) -> Result<U256> {
     if tx.payer() != payer {
@@ -52,15 +53,13 @@ fn validate_scheduled_tx(tx: &dyn ScheduledTransaction, payer: &Address) -> Resu
 }
 
 pub fn validate_pool(pool: &token::State) -> Result<()> {
+    const NATIVE_MINT: Pubkey = Pubkey::new_from_array(native_mint::ID);
+
     let (authority, _) = pda::main_pool_authority(&crate::ID);
-    let expected_pool = get_associated_token_address(&authority, &spl_token::native_mint::ID);
+    let expected_pool = get_associated_token_address(&authority, &NATIVE_MINT);
 
     if &expected_pool != pool.info.key {
-        return Err(Error::AccountInvalidKey(*pool.info.key, expected_pool));
-    }
-
-    if !spl_token::native_mint::check_id(&pool.mint) {
-        return Err(Error::AccountInvalidData(*pool.info.key));
+        return Err(Error::AccountInvalidKey(pool.pubkey(), expected_pool));
     }
 
     Ok(())

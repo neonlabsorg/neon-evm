@@ -1,34 +1,27 @@
-use allocator_api2::alloc::Allocator;
+use allocator_api2::{alloc::Allocator, boxed::Box as Box2};
 use ethnum::U256;
 use maybe_async::maybe_async;
-use mpl_token_metadata::programs::MPL_TOKEN_METADATA_ID;
-use solana_program::{
-    instruction::{AccountMeta, Instruction},
-    pubkey::Pubkey,
-    rent::Rent,
-};
+use solana_program::pubkey::Pubkey;
 
 use crate::{
     account::AllocateResult,
     config::STATIC_STORAGE_LIMIT,
-    error::{Error, Result},
-    platform::{InvokeMode, Platform},
+    error::Result,
+    platform::Platform,
     types::{
-        seeds::{InvokeSeeds, SeedsRef},
-        vector::{Vector, VectorMap},
+        vector::{Vector, VectorMap, VectorSet},
         Address,
     },
 };
 
+use super::external_programs::{ExternalProgram, Invokable};
 use super::owned_account::OwnedAccountInfo;
 
 #[repr(C, u8)]
 pub enum Action<A: Allocator> {
     ExternalInstruction {
-        program_id: Pubkey,
-        accounts: Vector<AccountMeta, A>,
-        data: Vector<u8, A>,
-        seeds: InvokeSeeds<A>,
+        // keep it in the box to reduce enum size
+        invokable: Box2<ExternalProgram, A>,
     },
     Transfer {
         source: Address,
@@ -65,6 +58,7 @@ pub struct IterativeActions<A: Allocator> {
     stack: Vector<usize, A>,
 }
 
+#[maybe_async(?Send)]
 impl<A: Allocator + Copy> IterativeActions<A> {
     pub fn new_in(allocator: A) -> Self {
         Self {
@@ -189,55 +183,31 @@ impl<A: Allocator + Copy> IterativeActions<A> {
         None
     }
 
-    pub fn collect_external_accounts(&self) -> Vec<&AccountMeta> {
-        self.storage
-            .iter()
-            .filter_map(|a| {
-                if let Action::ExternalInstruction { accounts, .. } = a {
-                    Some(accounts)
-                } else {
-                    None
-                }
-            })
-            .flatten()
-            .collect::<Vec<_>>()
+    pub fn collect_external_accounts(&self) -> VectorSet<&Pubkey> {
+        let mut accounts = VectorSet::with_capacity(32);
+
+        for action in &self.storage {
+            let Action::ExternalInstruction { invokable } = action else {
+                continue;
+            };
+
+            invokable.for_each_mutable_account(|pubkey| accounts.insert(pubkey));
+        }
+
+        accounts
     }
 
-    pub fn apply_to_external_accounts(
+    pub async fn apply_to_external_accounts(
         &self,
-        rent: &Rent,
+        platform: &impl Platform,
         accounts: &mut VectorMap<Pubkey, OwnedAccountInfo>,
     ) -> Result<()> {
         for action in &self.storage {
-            if let Action::ExternalInstruction {
-                program_id,
-                data,
-                accounts: meta,
-                ..
-            } = action
-            {
-                match program_id {
-                    program_id if solana_program::system_program::check_id(program_id) => {
-                        crate::external_programs::system::emulate(data, meta, accounts)?;
-                    }
-                    program_id if spl_token::check_id(program_id) => {
-                        crate::external_programs::spl_token::emulate(data, meta, accounts)?;
-                    }
-                    program_id if spl_associated_token_account::check_id(program_id) => {
-                        crate::external_programs::spl_associated_token::emulate(
-                            data, meta, accounts, rent,
-                        )?;
-                    }
-                    program_id if &MPL_TOKEN_METADATA_ID == program_id => {
-                        crate::external_programs::metaplex::emulate(data, meta, accounts, rent)?;
-                    }
-                    _ => {
-                        return Err(Error::Custom(format!(
-                            "Unknown external program for emulate: {program_id}"
-                        )));
-                    }
-                }
-            }
+            let Action::ExternalInstruction { invokable } = action else {
+                continue;
+            };
+
+            invokable.emulate(platform, accounts).await?;
         }
 
         Ok(())
@@ -349,24 +319,8 @@ impl<A: Allocator> ActionExecutor for IterativeActions<A> {
                     };
                     contract.1 = Some(code);
                 }
-                Action::ExternalInstruction {
-                    program_id,
-                    accounts,
-                    data,
-                    seeds,
-                    ..
-                } => {
-                    let seeds: Vec<SeedsRef> = seeds.data.iter().map(SeedsRef::new).collect();
-                    let seeds: Vec<&[&[u8]]> = seeds.iter().map(SeedsRef::as_slices).collect();
-
-                    let instruction = Instruction {
-                        program_id,
-                        accounts: accounts.to_vec(),
-                        data: data.to_vec(),
-                    };
-                    platform
-                        .invoke(instruction, &seeds, InvokeMode::Queued)
-                        .await?;
+                Action::ExternalInstruction { invokable } => {
+                    invokable.invoke(platform).await?;
                 }
             }
         }

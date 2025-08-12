@@ -1,7 +1,7 @@
 #![allow(unused_mut)]
 
 use allocator_api2::alloc::{self, Allocator};
-use allocator_api2::boxed::Box;
+use allocator_api2::boxed::Box as Box2;
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::instruction::Instruction;
@@ -142,8 +142,8 @@ where
     is_static: bool,
     reason: Reason,
 
-    parent: Option<Box<Self, A>>,
-    child: Option<Box<Self, A>>,
+    parent: Option<Box2<Self, A>>,
+    child: Option<Box2<Self, A>>,
 
     allocator: A,
     tracer: Option<T>,
@@ -409,7 +409,7 @@ where
         execution_code: Buffer<A>,
         call_data: Buffer<A>,
         gas_limit: U256,
-    ) -> Box<Self, A> {
+    ) -> Box2<Self, A> {
         let allocator = self.allocator;
 
         let machine = Self {
@@ -432,20 +432,20 @@ where
             tracer: None,
             allocator,
         };
-        Box::new_in(machine, allocator)
+        Box2::new_in(machine, allocator)
     }
 
     #[allow(clippy::too_many_arguments)]
     fn reset_child(
         &self,
-        mut child: Box<Self, A>,
+        mut child: Box2<Self, A>,
         reason: Reason,
         chain_id: u64,
         context: Context,
         execution_code: Buffer<A>,
         call_data: Buffer<A>,
         gas_limit: U256,
-    ) -> Box<Self, A> {
+    ) -> Box2<Self, A> {
         child.reason = reason;
         child.chain_id = chain_id;
         child.context = context;

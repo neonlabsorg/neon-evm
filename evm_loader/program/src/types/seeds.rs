@@ -1,11 +1,7 @@
 #![allow(clippy::needless_range_loop)]
 
-use std::{mem::MaybeUninit, ops::Deref};
-
-use allocator_api2::alloc::Allocator;
 use solana_program::pubkey::MAX_SEED_LEN;
-
-use crate::types::Vector;
+use std::{mem::MaybeUninit, ops::Deref};
 
 const MAX_SEEDS: usize = 8; // Solana limit is 16, but we don't use that much in practice
 
@@ -98,23 +94,5 @@ impl<'a> Deref for SeedsRef<'a> {
 
     fn deref(&self) -> &Self::Target {
         self.as_slices()
-    }
-}
-
-pub struct InvokeSeeds<A: Allocator> {
-    pub data: Vector<Seeds, A>,
-}
-
-impl<A: Allocator> InvokeSeeds<A> {
-    #[must_use]
-    pub fn new(invoke_seeds: &[&[&[u8]]], allocator: A) -> Self {
-        let mut data = Vector::with_capacity_in(invoke_seeds.len(), allocator);
-
-        for seeds in invoke_seeds {
-            let seeds = Seeds::new(seeds);
-            data.push(seeds);
-        }
-
-        Self { data }
     }
 }

@@ -9,6 +9,7 @@ members = [
     'rpc-client',
     'program',
     'program-macro',
+    'tracerdb-api'
 ]
 
 [workspace.dependencies]
@@ -16,6 +17,7 @@ solana-clap-utils = "=2.1.21"
 solana-cli = "=2.1.21"
 solana-cli-config = "=2.1.21"
 solana-client = "=2.1.21"
+solana-account = "=2.1.21"
 solana-account-decoder = "=2.1.21"
 solana-program = { version = "=2.1.21", default-features = false }
 solana-bn254 = "=2.1.21"

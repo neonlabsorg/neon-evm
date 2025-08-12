@@ -8,8 +8,8 @@ use web3::types::{Bytes, H256};
 
 use crate::types::TxParams;
 use evm_loader::evm::database::Database;
+use evm_loader::evm::opcode_table;
 use evm_loader::evm::tracing::{Event, EventListener};
-use evm_loader::evm::{opcode_table, Buffer};
 use evm_loader::types::Address;
 use serde::{Deserialize, Serialize};
 
@@ -35,10 +35,6 @@ impl Account {
 pub struct States {
     pub post: Account,
     pub pre: Account,
-}
-
-fn map_code(buffer: &Buffer) -> Bytes {
-    buffer.to_vec().into()
 }
 
 pub(crate) fn to_web3_u256(v: U256) -> web3::types::U256 {
@@ -111,7 +107,7 @@ impl EventListener for StateDiffTracer {
                             balance: to_web3_u256(
                                 executor_state.balance(*address, chain_id).await?,
                             ),
-                            code: map_code(&executor_state.code(*address).await?),
+                            code: executor_state.use_code(*address, |c| c.into()).await?,
                             nonce: executor_state.nonce(*address, chain_id).await?,
                             storage: {
                                 let mut new_storage = BTreeMap::new();
@@ -235,7 +231,7 @@ impl StateDiffTracer {
                     post: Account::default(),
                     pre: Account {
                         balance: to_web3_u256(executor_state.balance(address, chain_id).await?),
-                        code: map_code(&executor_state.code(address).await?),
+                        code: executor_state.use_code(address, |c| c.into()).await?,
                         nonce: executor_state.nonce(address, chain_id).await?,
                         storage: BTreeMap::new(),
                     },

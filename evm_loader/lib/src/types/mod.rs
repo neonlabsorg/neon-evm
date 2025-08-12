@@ -11,26 +11,21 @@ use crate::tracing::TraceCallConfig;
 use crate::types::tracer_ch_common::{EthSyncStatus, RevisionMap};
 pub use crate::types::tracer_ch_db::ClickHouseDb;
 pub use crate::types::tracer_rocks_db::RocksDb;
+use crate::NeonResult;
 use async_trait::async_trait;
 use enum_dispatch::enum_dispatch;
 use ethnum::U256;
+use evm_loader::platform::Platform;
 use evm_loader::solana_program::clock::{Slot, UnixTimestamp};
 pub use evm_loader::types::Address;
-use evm_loader::types::{StorageKey, Transaction};
-use evm_loader::{
-    account_storage::AccountStorage,
-    types::{
-        vector::VectorVecExt, vector::VectorVecSlowExt, AccessListTx, DynamicFeeTx, ExecutionMap,
-        LegacyTx, TransactionPayload,
-    },
-};
+use evm_loader::types::Transaction;
+use evm_loader::types::{ExecutionMap, TransactionType};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
 use solana_sdk::account::{AccountSharedData, ReadableAccount};
 
 use crate::rpc::SliceConfig;
-use evm_loader::types::TrxView;
 use solana_sdk::signature::Signature;
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::collections::HashMap;
@@ -111,7 +106,7 @@ pub struct AccessListItem {
     pub address: Address,
     #[serde(rename = "storageKeys")]
     #[serde_as(as = "Vec<Hex>")]
-    pub storage_keys: Vec<StorageKey>,
+    pub storage_keys: Vec<[u8; 32]>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -177,99 +172,96 @@ pub struct TxParams {
 }
 
 impl TxParams {
-    pub async fn into_transaction(self, backend: &impl AccountStorage) -> (Address, Transaction) {
-        let chain_id = self.chain_id.unwrap_or_else(|| backend.default_chain_id());
+    pub async fn fetch_origin_nonce<'a>(&mut self, platform: &impl Platform<'a>) -> NeonResult<()> {
+        if self.nonce.is_some() {
+            return Ok(());
+        }
 
-        let from = self.from.address();
-        let origin_nonce = backend.nonce(from, chain_id).await.unwrap_or(0u64);
-        let nonce = self.nonce.unwrap_or(origin_nonce);
-        let max_fee_per_gas = self.max_fee_per_gas.unwrap_or(U256::ZERO);
+        let origin = self.from.address();
+        let chain_id = self.chain_id.unwrap_or_else(|| platform.default_chain());
 
-        let payload = if max_fee_per_gas != U256::ZERO {
-            let access_list: Vec<_> = self
-                .access_list
-                .unwrap_or_default()
-                .into_iter()
-                .map(|a| (a.address, a.storage_keys.into_vector()))
-                .collect();
-
-            let dynamic_fee_tx = DynamicFeeTx {
-                nonce,
-                max_fee_per_gas,
-                max_priority_fee_per_gas: self.max_priority_fee_per_gas.unwrap_or(U256::ZERO),
-                gas_limit: self.gas_limit.unwrap_or(U256::MAX),
-                target: self.to,
-                value: self.value.unwrap_or_default(),
-                call_data: self.data.unwrap_or_default().into_vector(),
-                chain_id: U256::from(chain_id),
-                access_list: access_list.elementwise_copy_into_vector(),
-                r: U256::ZERO,
-                s: U256::ZERO,
-                recovery_id: 0,
-            };
-            TransactionPayload::DynamicFee(dynamic_fee_tx)
-        } else if let Some(access_list) = self.access_list {
-            let access_list: Vec<_> = access_list
-                .into_iter()
-                .map(|a| (a.address, a.storage_keys.into_vector()))
-                .collect();
-
-            let access_list_tx = AccessListTx {
-                nonce,
-                gas_price: self.gas_price.unwrap_or(U256::ZERO),
-                gas_limit: self.gas_limit.unwrap_or(U256::MAX),
-                target: self.to,
-                value: self.value.unwrap_or_default(),
-                call_data: self.data.unwrap_or_default().into_vector(),
-                chain_id: U256::from(chain_id),
-                access_list: access_list.elementwise_copy_into_vector(),
-                r: U256::ZERO,
-                s: U256::ZERO,
-                recovery_id: 0,
-            };
-            TransactionPayload::AccessList(access_list_tx)
-        } else {
-            let legacy_tx = LegacyTx {
-                nonce,
-                gas_price: self.gas_price.unwrap_or(U256::ZERO),
-                gas_limit: self.gas_limit.unwrap_or(U256::MAX),
-                target: self.to,
-                value: self.value.unwrap_or_default(),
-                call_data: self.data.unwrap_or_default().into_vector(),
-                chain_id: self.chain_id.map(U256::from),
-                v: U256::ZERO,
-                r: U256::ZERO,
-                s: U256::ZERO,
-                recovery_id: 0,
-            };
-            TransactionPayload::Legacy(legacy_tx)
-        };
-        // TODO TransactionPayload::Scheduled support (if needed?)
-
-        let tx = Transaction {
-            transaction: payload,
-            byte_len: 0,
-            hash: [0; 32],
-            signed_hash: [0; 32],
+        let Some(balance) = platform.get_balance(origin, chain_id).await? else {
+            return Ok(());
         };
 
-        (from, tx)
+        self.nonce = Some(balance.nonce());
+
+        Ok(())
+    }
+}
+
+impl Transaction for TxParams {
+    fn transaction_type(&self) -> TransactionType {
+        TransactionType::Legacy
     }
 
+    fn hash(&self) -> &[u8; 32] {
+        &[0_u8; 32]
+    }
+
+    fn chain_id(&self) -> Option<u64> {
+        self.chain_id
+    }
+
+    fn nonce(&self) -> u64 {
+        self.nonce.unwrap_or_default()
+    }
+
+    fn gas_limit(&self) -> U256 {
+        self.gas_limit.unwrap_or_default()
+    }
+
+    fn gas_price(&self) -> U256 {
+        self.gas_price.or(self.max_fee_per_gas).unwrap_or_default()
+    }
+
+    fn target(&self) -> Option<&Address> {
+        self.to.as_ref()
+    }
+
+    fn call_data(&self) -> &[u8] {
+        self.data.as_deref().unwrap_or_default()
+    }
+
+    fn value(&self) -> U256 {
+        self.value.unwrap_or_default()
+    }
+
+    fn recover_caller_address(&self) -> evm_loader::error::Result<Address> {
+        Ok(self.from.address())
+    }
+}
+
+impl TxParams {
     #[must_use]
-    pub fn from_transaction(origin: Address, tx: &Transaction) -> Self {
+    pub fn from_transaction(origin: Address, tx: &dyn Transaction) -> Self {
+        let mut payer = Some(origin);
+        let mut index = None;
+
+        let mut max_fee_per_gas = None;
+        let mut max_priority_fee_per_gas = None;
+
+        if let Some(tx) = tx.as_priority_fee() {
+            max_fee_per_gas = Some(tx.max_fee_per_gas());
+            max_priority_fee_per_gas = Some(tx.max_priority_fee_per_gas());
+        }
+        if let Some(tx) = tx.as_scheduled() {
+            payer = Some(*tx.payer());
+            index = Some(tx.index());
+        }
+
         Self {
             from: FromAddress::Ethereum(origin),
-            payer: Some(tx.payer(origin)),
-            to: tx.target(),
+            payer,
+            to: tx.target().copied(),
             nonce: Some(tx.nonce()),
-            index: tx.tree_account_index(),
+            index,
             data: Some(tx.call_data().to_vec()),
             value: Some(tx.value()),
             gas_limit: Some(tx.gas_limit()),
             gas_price: Some(tx.gas_price()),
-            max_fee_per_gas: tx.max_fee_per_gas(),
-            max_priority_fee_per_gas: tx.max_priority_fee_per_gas(),
+            max_fee_per_gas,
+            max_priority_fee_per_gas,
             chain_id: tx.chain_id(),
             access_list: None,
             actual_gas_used: None,
@@ -366,6 +358,18 @@ pub struct EmulateRequest {
     pub solana_overrides: Option<HashMap<Pubkey, Option<SerializedAccount>>>,
     pub provide_account_info: Option<AccountInfoLevel>,
     pub execution_map: Option<ExecutionMap>,
+}
+
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmulateFromHolderApiRequest {
+    #[serde_as(as = "DisplayFromStr")]
+    pub holder_pubkey: Pubkey,
+    pub step_limit: Option<u64>,
+    pub chains: Option<Vec<ChainInfo>>,
+    pub slot: Option<u64>,
+    pub tx_index_in_block: Option<u64>,
+    pub id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -490,6 +494,15 @@ pub struct GetHolderRequest {
 }
 
 #[serde_as]
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct GetContainerRequest {
+    #[serde_as(as = "DisplayFromStr")]
+    pub pubkey: Pubkey,
+    pub slot: Option<u64>,
+    pub id: Option<String>,
+}
+
+#[serde_as]
 #[derive(Deserialize, Serialize, Debug, Default, Clone)]
 pub struct SimulateSolanaRequest {
     pub compute_units: Option<u64>,
@@ -501,6 +514,8 @@ pub struct SimulateSolanaRequest {
     #[serde_as(as = "Vec<Hex>")]
     pub transactions: Vec<Vec<u8>>,
     pub id: Option<String>,
+    #[serde_as(as = "Option<HashMap<DisplayFromStr,_>>")]
+    pub solana_overrides: Option<HashMap<Pubkey, Option<SerializedAccount>>>,
 }
 
 #[cfg(test)]

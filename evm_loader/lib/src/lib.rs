@@ -6,16 +6,16 @@
     clippy::missing_panics_doc,
     clippy::too_many_lines,
     clippy::module_name_repetitions,
-    clippy::used_underscore_items
+    clippy::await_holding_refcell_ref
 )]
 
 pub mod abi;
 pub mod account_data;
-pub mod account_storage;
 pub mod build_info;
 pub mod build_info_common;
 pub mod commands;
 pub mod config;
+pub mod emulator_platform;
 pub mod errors;
 pub mod rpc;
 pub mod sysvar;
@@ -46,6 +46,8 @@ use strum_macros::{AsRefStr, Display, EnumString, IntoStaticStr};
 pub enum LibMethod {
     #[strum(serialize = "emulate")]
     Emulate,
+    #[strum(serialize = "emulate_from_holder")]
+    EmulateFromHolder,
     #[strum(serialize = "get_storage_at")]
     GetStorageAt,
     #[strum(serialize = "config")]
@@ -64,6 +66,8 @@ pub enum LibMethod {
     GetBalanceWithPubkey,
     #[strum(serialize = "transaction_tree")]
     GetTransactionTree,
-    #[strum(serialize = "emulate_mutiple")]
+    #[strum(serialize = "emulate_multiple")]
     EmulateMultiple,
+    #[strum(serialize = "container")]
+    GetContainer,
 }

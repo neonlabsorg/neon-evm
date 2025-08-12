@@ -35,8 +35,7 @@ IMAGE_NAME = os.environ.get("IMAGE_NAME", "evm_loader")
 BASE_IMAGE_NAME = os.environ.get("BASE_IMAGE_NAME", "evm_loader_base")
 RUN_LINK_REPO = os.environ.get("RUN_LINK_REPO")
 DOCKERHUB_ORG_NAME = os.environ.get("DOCKERHUB_ORG_NAME")
-SOLANA_NODE_VERSION = 'v2.2.11'
-SOLANA_BPF_VERSION = 'v2.2.11'
+SOLANA_NODE_VERSION = 'v2.3.6'
 RUST_VERSION = "1.84.1"
 EVM_BASE_IMAGE_TAG = "latest"
 
@@ -48,7 +47,6 @@ docker_client = docker.APIClient()
 NEON_TEST_IMAGE_NAME = "neon_tests"
 
 PROXY_ENDPOINT = os.environ.get("PROXY_ENDPOINT")
-NEON_TESTS_ENDPOINT = os.environ.get("NEON_TESTS_ENDPOINT")
 
 
 @click.group()
@@ -142,7 +140,7 @@ def build_docker_image(evm_sha_tag):
 @click.option('--evm_sha_tag')
 def build_base_docker_image(evm_sha_tag):
     docker_client.pull(f"{DOCKERHUB_ORG_NAME}/neon_test_programs:latest")
-    buildargs = {"SOLANA_BPF_VERSION": SOLANA_BPF_VERSION,
+    buildargs = {"SOLANA_NODE_VERSION": SOLANA_NODE_VERSION,
                  "DOCKERHUB_ORG_NAME": DOCKERHUB_ORG_NAME,
                  "MAINNET_SOLANA_URL": MAINNET_SOLANA_URL,
                  "RUST_VERSION": RUST_VERSION,
@@ -174,7 +172,7 @@ def finalize_image(evm_sha_tag, evm_tag):
     docker_client.login(username=DOCKER_USER, password=DOCKER_PASSWORD)
     docker_client.pull(f"{image}:{evm_sha_tag}")
     if re.match(RELEASE_TAG_TEMPLATE, evm_tag) is not None or evm_tag == "latest":
-        push_image_with_tag(evm_sha_tag, evm_tag)
+        push_image_with_tag(image, evm_sha_tag, evm_tag)
     else:
         click.echo(f"Nothing to finalize, the tag {evm_tag} is not version tag or latest")
 
@@ -197,20 +195,6 @@ def push_image_with_tag(image, sha, tag):
 def run_subprocess(command):
     click.echo(f"run command: {command}")
     subprocess.run(command, shell=True)
-
-
-def get_container_name(project_name, service_name):
-    data = subprocess.run(
-        f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml ps",
-        shell=True, capture_output=True, text=True).stdout
-    click.echo(data)
-    pattern = rf'{project_name}[-_]{service_name}[-_]1'
-    match = re.search(pattern, data)
-    return match.group(0)
-
-
-def stop_containers(project_name):
-    run_subprocess(f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml down")
 
 
 @cli.command(name="trigger_proxy_action")
@@ -285,9 +269,8 @@ def wait_condition(func_cond, timeout_sec=60, delay=0.5):
 @click.option("--url", help="slack app endpoint url.")
 @click.option("--build_url", help="github action test build url.")
 def send_notification(evm_tag, url, build_url):
-
     if re.match(RELEASE_TAG_TEMPLATE, evm_tag) is not None \
-        or re.match(VERSION_BRANCH_TEMPLATE, evm_tag) is not None \
+            or re.match(VERSION_BRANCH_TEMPLATE, evm_tag) is not None \
             or evm_tag == "latest":
         tpl = ERR_MSG_TPL.copy()
 

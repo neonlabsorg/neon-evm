@@ -30,17 +30,14 @@ impl<'a> Accounts<'a> {
             program_data: accounts[1].clone(),
             program_upgrade_auth: accounts[2].clone(),
             token_program: Token::from_account(&accounts[3])?,
-            system_program: System::from_account(&accounts[4])?,
+            system_program: System::from_account_info(&accounts[4])?,
             mint: accounts[5].clone(),
             payer: unsafe { Operator::from_account_not_whitelisted(&accounts[6]) }?,
         })
     }
 }
 
-fn get_program_upgrade_authority(
-    program_id: &Pubkey,
-    program_data: &AccountInfo,
-) -> Result<Pubkey> {
+fn get_program_upgrade_authority(program_id: Pubkey, program_data: &AccountInfo) -> Result<Pubkey> {
     let expected_program_data_key = bpf_loader_upgradeable::get_program_data_address(&program_id);
 
     if *program_data.key != expected_program_data_key {
@@ -64,7 +61,7 @@ fn get_program_upgrade_authority(
     Ok(upgrade_authority)
 }
 
-pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Create Main Treasury");
 
     let accounts = Accounts::from_slice(accounts)?;

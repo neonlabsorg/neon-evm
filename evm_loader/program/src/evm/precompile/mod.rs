@@ -1,6 +1,12 @@
+use allocator_api2::alloc::Allocator;
+use maybe_async::maybe_async;
+
+use crate::error::Result;
 use crate::evm::tracing::EventListener;
 use crate::evm::Machine;
-use crate::types::{Address, Vector};
+use crate::types::Address;
+
+use super::database::Database;
 
 mod big_mod_exp;
 mod blake2_f;
@@ -10,11 +16,6 @@ mod ecrecover;
 mod ripemd160;
 mod sha256;
 
-// const _SYSTEM_ACCOUNT_ERC20_WRAPPER: Address    = Address([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01]);
-// const SYSTEM_ACCOUNT_QUERY: Address             = Address([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x02]);
-// const SYSTEM_ACCOUNT_NEON_TOKEN: Address        = Address([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x03]);
-// const SYSTEM_ACCOUNT_SPL_TOKEN: Address         = Address([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x04]);
-// const SYSTEM_ACCOUNT_METAPLEX: Address          = Address([0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x05]);
 const SYSTEM_ACCOUNT_ECRECOVER: Address = Address([
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01,
 ]);
@@ -57,9 +58,13 @@ pub fn is_precompile_address(address: &Address) -> bool {
         || *address == SYSTEM_ACCOUNT_BLAKE2F
 }
 
-impl<T: EventListener> Machine<T> {
+impl<A, T> Machine<A, T>
+where
+    A: Allocator + Copy,
+    T: EventListener,
+{
     #[must_use]
-    pub fn precompile(address: &Address, data: &[u8]) -> Option<Vector<u8>> {
+    pub fn standard_precompile(address: &Address, data: &[u8]) -> Option<Vec<u8>> {
         match *address {
             SYSTEM_ACCOUNT_ECRECOVER => Some(ecrecover::ecrecover(data)),
             SYSTEM_ACCOUNT_SHA_256 => Some(sha256::sha256(data)),
@@ -72,5 +77,23 @@ impl<T: EventListener> Machine<T> {
             SYSTEM_ACCOUNT_BLAKE2F => Some(blake2_f::blake2_f(data)),
             _ => None,
         }
+    }
+
+    #[maybe_async]
+    pub async fn try_call_precompile(
+        &self,
+        address: &Address,
+        backend: &mut impl Database,
+    ) -> Option<Result<Vec<u8>>> {
+        let call_data = self.call_data.as_slice(&self.parent);
+
+        let value = Self::standard_precompile(address, call_data);
+        if let Some(value) = value {
+            return Some(Ok(value));
+        }
+
+        backend
+            .precompile_extension(&self.context, address, call_data, self.is_static)
+            .await
     }
 }

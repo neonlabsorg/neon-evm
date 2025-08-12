@@ -1,830 +1,507 @@
-use std::cell::{Ref, RefCell, RefMut};
-use std::mem::size_of;
-use std::ops::Deref;
-use std::ptr::{addr_of, slice_from_raw_parts};
+#![allow(clippy::await_holding_refcell_ref)]
 
-use crate::account_storage::AccountStorage;
-use crate::config::DEFAULT_CHAIN_ID;
+use std::cell::{Ref, RefMut};
+use std::mem::size_of;
+use std::ops::Range;
+
+use crate::account::state_root::AccountsStatus;
+use crate::allocator::StateAllocator;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
-use crate::evm::Machine;
-use crate::executor::{BlockParams, ExecutorStateData};
-use crate::types::boxx::{boxx, Boxx};
-use crate::types::vector::VectorSliceExt;
-use crate::types::{read_raw_utils::read_vec, Address, Transaction, TreeMap, TrxView, Vector};
+use crate::platform::Platform;
+use crate::types::{validate_transaction, EncodedTransaction, Transaction};
 
-use ethnum::U256;
-use solana_program::hash::Hash;
-use solana_program::system_program;
-use solana_program::{account_info::AccountInfo, instruction::AccountMeta, pubkey::Pubkey};
-use static_assertions::const_assert_eq;
+use evm_loader_macro::version_signature;
+use linked_list_allocator::Heap;
+use maybe_async::maybe_async;
+use solana_program::keccak;
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
+use super::state_root::Root;
 use super::{
-    AccountHeader, AccountsDB, BalanceAccount, ContractAccount, Holder, OperatorBalanceAccount,
-    StateFinalizedAccount, StorageCell, TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT, TAG_HOLDER,
-    TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
-    TAG_STORAGE_CELL,
+    AccountDispatch, AccountHeader, StateFinalizedAccount, TransactionTree, ACCOUNT_PREFIX_LEN,
+    TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE,
 };
 
-#[derive(PartialEq, Eq)]
-pub enum AccountsStatus {
-    Ok,
-    NeedRestart,
-}
+// Account Layout
+// ----------------
+// Header
+// ---------------
+// Transaction Hash: 32 bytes
+// Transaction RLP: `transaction_len` bytes
+// ---------------
+// alignment to `align_of::<Root>()`
+// ---------------
+// Root
+//   - plain_data: PlainData
+//   - the rest of the fields
+// ---------------
+// alignment to `align_of::<Heap>()`
+// ---------------
+// Heap
+// ---------------
 
-#[derive(Clone, PartialEq, Eq, Copy)]
-#[repr(C)]
-enum AccountRevision {
-    Revision(u32),
-    Hash([u8; 32]),
-}
+type VersionSignature = [u8; 40];
+const VALID_VERSION_SIGNATURE: VersionSignature = version_signature!();
 
-impl Default for AccountRevision {
-    fn default() -> Self {
-        AccountRevision::Revision(0)
-    }
-}
-
-impl AccountRevision {
-    pub fn new(program_id: &Pubkey, info: &AccountInfo) -> Self {
-        if (info.owner != program_id) && !system_program::check_id(info.owner) {
-            if crate::config::NO_UPDATE_TRACKING_OWNERS
-                .binary_search(info.owner)
-                .is_ok()
-            {
-                return AccountRevision::Hash(Hash::default().to_bytes());
-            }
-
-            let hash = solana_program::hash::hashv(&[
-                info.owner.as_ref(),
-                &info.lamports().to_le_bytes(),
-                &info.data.deref().borrow(),
-            ]);
-
-            return AccountRevision::Hash(hash.to_bytes());
-        }
-
-        match crate::account::tag(program_id, info) {
-            Ok(TAG_STORAGE_CELL) => {
-                let cell = StorageCell::from_account(program_id, info.clone()).unwrap();
-                Self::Revision(cell.revision())
-            }
-            Ok(TAG_ACCOUNT_CONTRACT) => {
-                let contract = ContractAccount::from_account(program_id, info.clone()).unwrap();
-                Self::Revision(contract.revision())
-            }
-            Ok(TAG_ACCOUNT_BALANCE) => {
-                let balance = BalanceAccount::from_account(program_id, info.clone()).unwrap();
-                Self::Revision(balance.revision())
-            }
-            _ => Self::Revision(0),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[repr(C)]
-pub struct InterruptedInstruction {
-    pub program_id: Pubkey,
-    pub accounts: Vector<AccountMeta>,
-    pub data: Vector<u8>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[repr(C)]
-pub struct InterruptedState {
-    pub instruction: InterruptedInstruction,
-    pub signer_seeds: Vector<Vector<u8>>,
-    pub lamports: u64,
-}
-
-#[allow(clippy::struct_field_names)]
 #[repr(C, packed)]
-pub struct Header {
-    pub version_signature: usize,
-    // Are relative offsets for the corresponding objects as allocated by the AccountAllocator.
-    pub root_offset: usize,
-    pub serialized_tx: std::ops::Range<usize>,
+struct Offsets {
+    pub header: usize,
+    pub tx_hash: usize,
+    pub tx_rlp: usize,
+    pub tx_rlp_len: usize,
+    pub root: usize,
+    pub heap_object: usize,
 }
 
-impl Header {
-    fn valid_version_signature() -> usize {
-        0
+impl Offsets {
+    pub fn transaction(&self) -> (Range<usize>, Range<usize>) {
+        let hash = self.tx_hash..(self.tx_hash + size_of::<keccak::Hash>());
+        let rlp = self.tx_rlp..(self.tx_rlp + self.tx_rlp_len);
+
+        (hash, rlp)
     }
 }
 
-/// Storage data account to store execution metainfo between steps for iterative execution
-#[repr(C)]
-#[derive(Default)]
-pub struct PlainData {
-    // We may want to extend the PlainData, so the first field
-    // indicates that some trailing fields could be filled with garbage
-    // and shouldn't be reused
-    pub layout_version: usize, // = 0
+#[repr(C, packed)]
+struct Header {
+    pub version_signature: VersionSignature,
     pub owner: Pubkey,
-    /// Ethereum transaction caller address
-    pub origin: Address,
-    /// Address of the tree account (present for scheduled transactions).
-    pub tree_account: Option<Pubkey>,
-    /// Ethereum transaction gas used and paid
-    pub gas_used: U256,
-
-    pub tx_hash: [u8; 32],
-    pub chain_id: Option<u64>, // https://github.com/neonlabsorg/neon-evm/blob/develop/evm_loader/program/src/types/transaction.rs#L958
-
-    pub tx_target: Option<Address>,
-    pub tx_nonce: u64,
-
-    pub value: U256,
-    pub gas_limit: U256,
-    pub gas_price: U256,
-
-    // (block_timestamp, block_number)
-    pub block_params: (U256, U256),
-    /// Steps executed in the transaction
-    pub steps_executed: u64,
-    // fields for layout_version >= 1
+    pub account_memory_address: u64,
+    pub offsets: Offsets,
 }
-
-impl TrxView for PlainData {
-    fn hash(&self) -> [u8; 32] {
-        self.tx_hash
-    }
-
-    fn gas_price(&self) -> U256 {
-        self.gas_price
-    }
-
-    fn chain_id(&self) -> Option<u64> {
-        self.chain_id
-    }
-
-    fn is_scheduled_tx(&self) -> bool {
-        self.tree_account.is_some()
-    }
-
-    fn nonce(&self) -> u64 {
-        self.tx_nonce
-    }
-
-    fn gas_limit(&self) -> U256 {
-        self.gas_limit
-    }
-
-    fn target(&self) -> Option<Address> {
-        self.tx_target
-    }
-
-    fn value(&self) -> U256 {
-        self.value
-    }
-}
-
-impl PlainData {
-    fn layout_version() -> usize {
-        0
-    }
-}
-
-#[repr(C)]
-pub struct Root {
-    pub plain_data: PlainData,
-    /// Stored revision
-    revisions: TreeMap<Pubkey, AccountRevision>,
-    /// Accounts that been read during the transaction    
-    pub touched_accounts: TreeMap<Pubkey, u64>,
-    /// State of `execute_external_instruction` at the Solana call interruption breakpoint
-    /// None if no Solana call interruption occurs
-    pub interrupted_state: Option<InterruptedState>,
-
-    pub executor_state: RefCell<Option<ExecutorStateData>>,
-    pub machine_state: RefCell<Option<Machine<crate::evm::tracing::NoopEventListener>>>,
-    //pub alloc : SolanaAllocator
-}
-
-// to be sure that solana and x86 size/alignment match
-const_assert_eq!(std::mem::align_of::<PlainData>(), 0x8);
-const_assert_eq!(std::mem::size_of::<PlainData>(), 0x178);
-const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x178);
 
 impl AccountHeader for Header {
     const VERSION: u8 = 2;
 }
 
-pub struct StateAccount<'local, 'sol> {
-    account: &'local AccountInfo<'sol>,
-    root_ref: RefMut<'local, Root>,
-    trx_rlp: &'local [u8],
-
+pub struct StateAccount<'sol> {
+    account: AccountInfo<'sol>,
     tag: u8,
 }
 
-type StateAccountCoreApiView = (
-    PlainData,
-    Vec<Pubkey>,
-    Vec<u8>, //tx rlp
-);
-
-impl PlainData {
-    fn use_gas(&mut self, amount: U256) -> Result<U256> {
-        if amount == U256::ZERO {
-            return Ok(U256::ZERO);
-        }
-
-        let total_gas_used = self.gas_used.saturating_add(amount);
-        let gas_limit = self.gas_limit;
-
-        if total_gas_used > gas_limit {
-            return Err(Error::OutOfGas(gas_limit, total_gas_used));
-        }
-
-        self.gas_used = total_gas_used;
-
-        amount
-            .checked_mul(self.gas_price)
-            .ok_or(Error::IntegerOverflow)
-    }
-
+#[maybe_async(?Send)]
+impl<'a> StateAccount<'a> {
     #[must_use]
-    pub fn gas_available(&self) -> U256 {
-        self.gas_limit.saturating_sub(self.gas_used)
-    }
-
-    /// Use available gas and return it to the caller.
-    /// It's caller's responsibility to mint the unused gas tokens to the appropriate recipient.
-    pub fn materialize_unused_gas(&mut self) -> Result<U256> {
-        let unused_gas = self.gas_available();
-        let gas_fee_tokens = self.use_gas(unused_gas)?;
-
-        Ok(gas_fee_tokens)
-    }
-
-    pub fn consume_gas(
-        &mut self,
-        amount: U256,
-        receiver: Option<OperatorBalanceAccount>,
-    ) -> Result<()> {
-        let tokens = self.use_gas(amount)?;
-
-        if tokens == U256::ZERO {
-            return Ok(());
-        }
-
-        let mut operator_balance = receiver.ok_or(Error::OperatorBalanceMissing)?;
-
-        let trx_chain_id = self.chain_id.unwrap_or(DEFAULT_CHAIN_ID);
-        if operator_balance.chain_id() != trx_chain_id {
-            return Err(Error::OperatorBalanceInvalidChainId);
-        }
-
-        operator_balance.mint(tokens)
-    }
-
-    pub fn refund_unused_gas(&mut self, origin: &mut BalanceAccount) -> Result<()> {
-        let trx_chain_id = self.chain_id.unwrap_or(DEFAULT_CHAIN_ID);
-
-        assert!(origin.chain_id() == trx_chain_id);
-        assert!(origin.address() == self.origin);
-
-        let total_refund = self.materialize_unused_gas()?;
-
-        origin.mint(total_refund)
-    }
-}
-
-impl<'local, 'sol> StateAccount<'local, 'sol> {
-    #[must_use]
-    pub fn into_account(self) -> &'local AccountInfo<'sol> {
+    pub fn into_account(self) -> AccountInfo<'a> {
         self.account
     }
 
-    fn validate_tag(account_key: &Pubkey, tag: u8) -> Result<()> {
+    fn validate_tag(account_key: Pubkey, tag: u8) -> Result<()> {
         if tag == TAG_STATE
             || tag == TAG_SCHEDULED_STATE_FINALIZED
             || tag == TAG_SCHEDULED_STATE_CANCELLED
         {
             Ok(())
         } else {
-            Err(Error::StorageAccountInvalidTag(*account_key, tag))
+            Err(Error::StorageAccountInvalidTag(account_key, tag))
         }
     }
 
     #[must_use]
-    pub fn trx_rlp(&self) -> &[u8] {
-        self.trx_rlp
+    fn header_size(&self) -> usize {
+        match self.account.header_version() {
+            Header::VERSION => size_of::<Header>(),
+            v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
+        }
     }
 
-    // allocator should have provided a properly aligned pointer
-    #[allow(clippy::cast_ptr_alignment)]
-    pub fn from_account(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<Self> {
-        let tag = super::tag(program_id, account)?;
-        Self::validate_tag(account.key, tag)?;
+    #[must_use]
+    pub fn pubkey(&self) -> Pubkey {
+        *self.account.key
+    }
 
-        let data_ptr = {
-            let data_ref = account.try_borrow_mut_data()?;
-            data_ref.as_ptr()
-        };
+    pub fn from_account_info(program_id: Pubkey, account_info: &AccountInfo<'a>) -> Result<Self> {
+        let account = account_info.clone();
+        Self::from_account(program_id, account)
+    }
 
-        let (offset, tx_ptr, tx_len) = {
-            let header_ref = super::header::<Header>(account);
-            (
-                header_ref.root_offset,
-                unsafe { data_ptr.offset(header_ref.serialized_tx.start.try_into()?) },
-                header_ref.serialized_tx.end - header_ref.serialized_tx.start,
-            )
-        };
+    pub fn from_account(program_id: Pubkey, account: AccountInfo<'a>) -> Result<Self> {
+        let tag = account.tag(program_id)?;
+        Self::validate_tag(account.pubkey(), tag)?;
 
-        let mem: RefMut<&mut [u8]> = account.try_borrow_mut_data()?;
+        Ok(Self { account, tag })
+    }
 
-        Ok(Self {
+    pub async fn new(
+        account: AccountInfo<'a>,
+        owner: Pubkey,
+        transaction: EncodedTransaction<'_>,
+        platform: &mut (impl Platform<'a> + 'a),
+    ) -> Result<Self> {
+        let (state, _) = Self::new_inner(account, owner, transaction, platform, None).await?;
+        Ok(state)
+    }
+
+    pub async fn new_with_tree<'tx>(
+        account: AccountInfo<'a>,
+        owner: Pubkey,
+        transaction: EncodedTransaction<'tx>,
+        platform: &mut (impl Platform<'a> + 'a),
+        tree: &mut TransactionTree<'a>,
+    ) -> Result<(Self, Box<dyn Transaction + 'tx>)> {
+        Self::new_inner(account, owner, transaction, platform, Some(tree)).await
+    }
+
+    async fn new_inner<'tx>(
+        mut account: AccountInfo<'a>,
+        owner: Pubkey,
+        transaction: EncodedTransaction<'tx>,
+        platform: &mut (impl Platform<'a> + 'a),
+        tree: Option<&mut TransactionTree<'a>>,
+    ) -> Result<(Self, Box<dyn Transaction + 'tx>)> {
+        account.init_tag(TAG_STATE, Header::VERSION)?;
+        let mut state = Self {
             account,
-            root_ref: RefMut::map(mem, |data| unsafe {
-                &mut *(data
-                    .as_mut_ptr()
-                    .offset(offset.try_into().unwrap())
-                    .cast::<Root>())
-            }),
-            trx_rlp: unsafe { &*slice_from_raw_parts(tx_ptr, tx_len) },
-            tag,
-        })
-    }
-
-    #[allow(clippy::cast_sign_loss)]
-    pub fn new(
-        program_id: &Pubkey,
-        info: &'local AccountInfo<'sol>,
-        accounts: &AccountsDB<'sol>,
-        origin: Address,
-        transaction: &Transaction,
-        transaction_rlp: &[u8],
-        tree_account: Option<Pubkey>,
-    ) -> Result<Self> {
-        let (info, owner) = match super::tag(program_id, info)? {
-            TAG_HOLDER => {
-                let holder = Holder::from_account(program_id, info)?;
-                holder.validate_owner(accounts.operator())?;
-                let owner = holder.owner();
-                (holder.into_account(), owner)
-            }
-            TAG_STATE_FINALIZED => {
-                let finalized = StateFinalizedAccount::from_account(program_id, info)?;
-                finalized.validate_owner(accounts.operator())?;
-                finalized.validate_trx(transaction)?;
-                let owner = finalized.owner();
-                (finalized.into_account(), owner)
-            }
-            tag => return Err(Error::StorageAccountInvalidTag(*info.key, tag)),
+            tag: TAG_STATE,
+        };
+        let transaction = unsafe {
+            state.initialize_header(owner, &transaction);
+            state.initialize_transaction(&transaction);
+            state.initialize_heap();
+            state.initialize_root(transaction, tree, platform).await?
         };
 
-        assert!(
-            !(transaction.is_scheduled_tx() ^ tree_account.is_some()),
-            "Tree account should be present iff it's a scheduled transaction."
-        );
-
-        super::set_tag(program_id, info, TAG_STATE, Header::VERSION)?;
-
-        let root = boxx(Root {
-            plain_data: PlainData {
-                layout_version: PlainData::layout_version(),
-                owner,
-                origin,
-                tree_account,
-                gas_used: U256::ZERO,
-                tx_hash: transaction.hash(),
-                chain_id: transaction.chain_id(),
-                tx_target: transaction.target(),
-                tx_nonce: transaction.nonce(),
-                value: transaction.value(),
-                gas_limit: transaction.gas_limit(),
-                gas_price: transaction.gas_price(),
-                block_params: (U256::ZERO, U256::ZERO),
-                steps_executed: 0_u64,
-            },
-            revisions: TreeMap::new(),
-            touched_accounts: TreeMap::new(),
-            interrupted_state: None,
-            executor_state: None.into(),
-            machine_state: None.into(),
-        });
-
-        let tx_rlp = transaction_rlp.to_vector();
-        let (ptr, len, _) = tx_rlp.into_raw_parts();
-
-        Ok(Self {
-            account: info,
-            root_ref: RefMut::map(info.try_borrow_mut_data()?, |data| {
-                let account_data_ptr = data.as_ptr();
-                {
-                    // Set header
-                    let header = super::header_mut_from_slice::<Header>(data);
-                    header.version_signature = Header::valid_version_signature();
-                    header.root_offset =
-                        unsafe { addr_of!(*root).cast::<u8>().offset_from(account_data_ptr) }
-                            as usize;
-
-                    let start = unsafe { ptr.offset_from(account_data_ptr) } as usize;
-                    let end = start + len;
-                    header.serialized_tx = std::ops::Range::<usize> { start, end };
-                }
-
-                unsafe { &mut *Boxx::into_raw(root) }
-            }),
-            trx_rlp: unsafe { &*slice_from_raw_parts(ptr, len) },
-            tag: TAG_STATE,
-        })
+        Ok((state, transaction))
     }
 
-    pub fn restore_without_revision_check(
-        program_id: &Pubkey,
-        info: &'local AccountInfo<'sol>,
+    pub async fn restore(
+        account: AccountInfo<'a>,
+        platform: &mut (impl Platform<'a> + 'a),
     ) -> Result<Self> {
-        Self::from_account(program_id, info)
-    }
+        let mut state = Self::from_account(platform.program_id(), account)?;
+        state.assert_memory_address();
 
-    pub fn restore(
-        program_id: &Pubkey,
-        info: &'local AccountInfo<'sol>,
-        accounts: &AccountsDB,
-    ) -> Result<(Self, AccountsStatus)> {
-        let mut state = Self::from_account(program_id, info)?;
-
-        let mut status = state.validate_revisions(program_id, accounts);
-        if status == AccountsStatus::Ok {
-            status = state.validate_timestamps(program_id, accounts);
-        }
-
+        let status = state.validate_accounts_status(platform).await?;
         if status == AccountsStatus::NeedRestart {
-            // reset all accounts revisions
-            state.root_ref.revisions.clear();
-            state.root_ref.touched_accounts.clear();
-            state.set_interrupted_state(None);
-        }
-
-        Ok((state, status))
-    }
-
-    fn validate_revisions(&self, program_id: &Pubkey, accounts: &AccountsDB) -> AccountsStatus {
-        let touched_accounts = self
-            .root_ref
-            .touched_accounts
-            .iter()
-            .filter_map(|(key, counter)| if counter >= &2 { Some(key) } else { None });
-
-        for pubkey in touched_accounts {
-            let account = accounts.get(pubkey);
-
-            let account_revision = AccountRevision::new(program_id, account);
-            let stored_revision = &self.root_ref.revisions[pubkey];
-
-            if stored_revision != &account_revision {
-                log_data(&[b"INVALID_REVISION", pubkey.as_ref()]);
-                return AccountsStatus::NeedRestart;
+            log_data(&[b"RESET"]);
+            unsafe {
+                state.reset_header();
+                state.initialize_heap();
+                state.reset_root(platform).await?;
             }
         }
 
-        AccountsStatus::Ok
+        Ok(state)
     }
 
-    pub fn publish_block_params(&mut self) {
-        let BlockParams { number, timestamp } =
-            self.executor_state().as_ref().unwrap().block_params;
-        self.root_ref.plain_data.block_params = (timestamp, number);
+    #[inline]
+    #[track_caller]
+    fn assert_memory_address(&self) {
+        // Validate that the SVM memory address is the same as before
+        // Could fail if the account is not first in the instruction or because of the changes to the SVM
+        // We can't use the Heap inside of the account if this is not valid
+        assert_eq!(self.stored_memory_address(), self.account.memory_address());
     }
 
-    fn validate_timestamps(&self, program_id: &Pubkey, accounts: &AccountsDB) -> AccountsStatus {
-        let state = self.root_ref.executor_state.borrow();
-        let executor_state = state.as_ref().unwrap();
-        let state_block_number: u64 = executor_state.block_params.number.as_u64();
-
-        let timestamped_contracts = executor_state.timestamped_contracts.borrow();
-        for address in timestamped_contracts.keys() {
-            let (pubkey, _) = address.find_solana_address(program_id);
-            let account = accounts.get(&pubkey).clone();
-            let Ok(contract) = ContractAccount::from_account(program_id, account) else {
-                continue;
-            };
-
-            if contract.timestamp_used_at() > state_block_number {
-                log_data(&[b"INVALID_REVISION", pubkey.as_ref()]);
-                return AccountsStatus::NeedRestart;
-            }
+    async fn validate_accounts_status(
+        &self,
+        platform: &impl Platform<'a>,
+    ) -> Result<AccountsStatus> {
+        let version_signature = {
+            let header: Ref<Header> = self.account.header();
+            header.version_signature
+        };
+        if version_signature != VALID_VERSION_SIGNATURE {
+            return Ok(AccountsStatus::NeedRestart);
         }
 
-        AccountsStatus::Ok
+        // Heap is valid, we can access the root and validate accounts
+        let root = self.root();
+        root.validate_accounts(platform).await
     }
 
-    #[must_use]
-    pub fn account_key(&self) -> &Pubkey {
-        self.account.key
-    }
+    pub fn cancel(self) -> Result<()> {
+        let is_scheduled_transaction = self.root().is_scheduled_transaction();
 
-    pub fn finalize(self, program_id: &Pubkey) -> Result<()> {
-        self.finalize_impl(program_id, TAG_SCHEDULED_STATE_FINALIZED)
-    }
-
-    pub fn cancel(self, program_id: &Pubkey) -> Result<()> {
-        // Clear an executor and set the result as canceled
-        self.executor_state_mut().as_mut().unwrap().cancel();
-        self.finalize_impl(program_id, TAG_SCHEDULED_STATE_CANCELLED)
-    }
-
-    fn finalize_impl(self, program_id: &Pubkey, scheduled_transition_tag: u8) -> Result<()> {
-        if self.tag != TAG_STATE {
-            return Err(Error::AccountInvalidTag(*self.account.key, self.tag));
-        }
-
-        if self.has_tree_account() {
-            debug_print!(
-                "Pre-finalize State {} into {} for scheduled transaction",
-                self.account.key,
-                scheduled_transition_tag
-            );
-            std::mem::drop(self.root_ref);
-            // Change the tag, leave all the data unchanged.
-            super::set_tag(
-                program_id,
-                self.account,
-                scheduled_transition_tag,
-                Header::VERSION,
-            )?;
+        if is_scheduled_transaction {
+            self.finalize_impl(Some(TAG_SCHEDULED_STATE_CANCELLED))
         } else {
-            debug_print!("Finalize State {}", self.account.key);
-            StateFinalizedAccount::convert_from_state(program_id, self)?;
+            self.finalize_impl(None)
+        }
+    }
+
+    pub fn finalize(self) -> Result<()> {
+        let is_scheduled_transaction = self.root().is_scheduled_transaction();
+
+        if is_scheduled_transaction {
+            self.finalize_impl(Some(TAG_SCHEDULED_STATE_FINALIZED))
+        } else {
+            self.finalize_impl(None)
+        }
+    }
+
+    fn finalize_impl(mut self, transition_tag: Option<u8>) -> Result<()> {
+        if self.tag != TAG_STATE {
+            return Err(Error::AccountInvalidTag(self.pubkey(), self.tag));
+        }
+
+        if let Some(transition_tag) = transition_tag {
+            // Change the tag, leave all the data unchanged.
+            self.account.replace_tag(transition_tag)?;
+        } else {
+            StateFinalizedAccount::convert_from_state(self)?;
         }
 
         Ok(())
     }
 
-    pub fn finish_scheduled_tx(self, program_id: &Pubkey) -> Result<()> {
+    pub fn finalize_scheduled_tx(self) -> Result<()> {
         let is_finalized = self.tag == TAG_SCHEDULED_STATE_FINALIZED;
         let is_canceled = self.tag == TAG_SCHEDULED_STATE_CANCELLED;
         if !(is_finalized || is_canceled) {
-            return Err(Error::StorageAccountInvalidTag(*self.account.key, self.tag));
+            return Err(Error::StorageAccountInvalidTag(self.pubkey(), self.tag));
         }
 
-        debug_print!(
-            "Finalize State {} for scheduled transaction",
-            self.account.key
-        );
-        StateFinalizedAccount::convert_from_state(program_id, self)?;
+        StateFinalizedAccount::convert_from_state(self)?;
 
         Ok(())
     }
 
-    pub fn update_touched_accounts(
-        &mut self,
-        program_id: &Pubkey,
-        accounts: &AccountsDB,
-    ) -> Result<()> {
-        let root = self.root_ref_mut();
-        for (key, counter) in &*root
-            .executor_state
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .touched_accounts
-            .borrow()
-        {
-            root.touched_accounts.update_or_insert(*key, counter, |v| {
-                v.checked_add(*counter).ok_or(Error::IntegerOverflow)
-            })?;
-        }
+    #[must_use]
+    fn align_offset<T: Sized>(&self, offset: usize) -> usize {
+        let min_required_data_len = offset + align_of::<T>() + size_of::<T>();
+        assert!(self.account.data_len() > min_required_data_len);
 
-        let touched_accounts = &root.touched_accounts;
-        let revisions = &mut root.revisions;
+        let data_ptr = self.account.data().as_ptr();
 
-        for (key, _) in touched_accounts {
-            let account = accounts.get(key);
-            revisions.insert_with_if_not_exists(*key, || AccountRevision::new(program_id, account));
-        }
+        // SAFETY: Entire range in between `data_ptr` and `data_ptr.add(offset)` in bound of the account data
+        let object_ptr = unsafe { data_ptr.add(offset) };
+        let alignment = object_ptr.align_offset(align_of::<T>());
 
-        Ok(())
+        offset + alignment
     }
 
-    pub fn accounts(&self) -> impl Iterator<Item = &Pubkey> {
-        self.root_ref.revisions.keys()
+    #[must_use]
+    fn calculate_offsets(&self, transaction_len: usize) -> Offsets {
+        let header = ACCOUNT_PREFIX_LEN;
+        let header_len = self.header_size();
+
+        let tx_hash = header + header_len;
+        let tx_hash_len = size_of::<keccak::Hash>();
+
+        let tx_rlp = tx_hash + tx_hash_len;
+        let tx_rlp_len = transaction_len;
+
+        let root = self.align_offset::<Root>(tx_rlp + tx_rlp_len);
+        let root_len = size_of::<Root>();
+
+        let heap_object = self.align_offset::<Heap>(root + root_len);
+
+        Offsets {
+            header,
+            tx_hash,
+            tx_rlp,
+            tx_rlp_len,
+            root,
+            heap_object,
+        }
+    }
+
+    fn offsets(&self) -> Ref<Offsets> {
+        let header: Ref<Header> = self.account.header();
+        Ref::map(header, |h| &h.offsets)
+    }
+
+    #[must_use]
+    fn stored_memory_address(&self) -> u64 {
+        let header: Ref<Header> = self.account.header();
+        header.account_memory_address
     }
 
     #[must_use]
     pub fn owner(&self) -> Pubkey {
-        self.root_ref.plain_data.owner
+        let header: Ref<Header> = self.account.header();
+        header.owner
     }
 
     #[must_use]
-    pub fn trx_origin(&self) -> Address {
-        self.root_ref.plain_data.origin
+    pub fn transaction(&self) -> EncodedTransaction<'static> {
+        let (hash_range, rlp_range) = self.offsets().transaction();
+
+        let data = self.account.data();
+
+        let hash = {
+            let hash_bytes = &data[hash_range];
+            keccak::Hash(hash_bytes.try_into().unwrap())
+        };
+        let rlp = data[rlp_range].to_vec();
+
+        EncodedTransaction::Owned(rlp, hash)
     }
 
     #[must_use]
-    pub fn tree_account(&self) -> Option<Pubkey> {
-        self.root_ref.plain_data.tree_account
-    }
+    pub fn transaction_hash(&self) -> keccak::Hash {
+        let (hash_range, _) = self.offsets().transaction();
+        let data = self.account.data();
 
-    fn has_tree_account(&self) -> bool {
-        self.root_ref.plain_data.tree_account.is_some()
-    }
-
-    #[must_use]
-    pub fn trx_chain_id(&self, backend: &impl AccountStorage) -> u64 {
-        self.root_ref
-            .plain_data
-            .chain_id
-            .unwrap_or_else(|| backend.default_chain_id())
+        let hash_bytes = &data[hash_range];
+        keccak::Hash(hash_bytes.try_into().unwrap())
     }
 
     #[must_use]
-    pub fn gas_used(&self) -> U256 {
-        self.root_ref.plain_data.gas_used
+    pub fn root(&self) -> Ref<Root> {
+        let offset = self.offsets().root;
+        self.account.section(offset)
     }
 
     #[must_use]
-    pub fn gas_available(&self) -> U256 {
-        self.root_ref
-            .plain_data
-            .gas_limit
-            .saturating_sub(self.gas_used())
+    pub fn root_mut(&mut self) -> RefMut<Root> {
+        let offset = self.offsets().root;
+        self.account.section_mut(offset)
     }
 
-    pub fn consume_gas(
+    /// SAFETY: It's a caller responsibility to ensure that the heap is initialized
+    unsafe fn heap(&mut self) -> *mut Heap {
+        let offset = self.offsets().heap_object;
+
+        let ptr: *mut Heap = self.account.data_mut_ptr(offset).cast();
+        assert!(!ptr.is_null() && ptr.is_aligned());
+
+        ptr
+    }
+
+    /// SAFETY: This functions should be called only once
+    unsafe fn initialize_header(&mut self, owner: Pubkey, transaction: &EncodedTransaction) {
+        let account_memory_address = self.account.memory_address();
+        let offsets = self.calculate_offsets(transaction.rlp_len());
+
+        let mut header_section = self.account.header_mut_uninit::<Header>();
+        header_section.write(Header {
+            version_signature: VALID_VERSION_SIGNATURE,
+            owner,
+            account_memory_address,
+            offsets,
+        });
+    }
+
+    /// SAFETY: This functions should be called with previously valid header
+    unsafe fn reset_header(&mut self) {
+        // Recalculate Heap offset because `size_of::<Root>()` may change
+        let root_offset = self.offsets().root;
+        let heap_offset = self.align_offset::<Heap>(root_offset + size_of::<Root>());
+
+        // Reset the header
+        let mut header: RefMut<Header> = self.account.header_mut();
+        header.version_signature = VALID_VERSION_SIGNATURE;
+        header.offsets.heap_object = heap_offset;
+    }
+
+    /// SAFETY: This functions should be called only once after `initialize_header`
+    unsafe fn initialize_transaction(&mut self, transaction: &EncodedTransaction<'_>) {
+        let (hash_range, rlp_range) = self.offsets().transaction();
+
+        let keccak::Hash(hash) = transaction.hash();
+        let rlp = transaction.rlp();
+
+        let mut data = self.account.data_mut();
+        data[hash_range].copy_from_slice(hash);
+        data[rlp_range].copy_from_slice(rlp);
+    }
+
+    /// SAFETY: This functions should be called only once after `initialize_transaction`
+    unsafe fn initialize_heap(&mut self) {
+        let heap_object_offset = self.offsets().heap_object;
+
+        let heap_bottom_offset = heap_object_offset + size_of::<Heap>();
+        assert!(self.account.data_len() > heap_bottom_offset);
+
+        let heap_bottom = unsafe { self.account.data_mut_ptr(heap_bottom_offset) };
+        let heap_size = self.account.data_len() - heap_bottom_offset;
+
+        let mut heap_section = self.account.section_mut_uninit::<Heap>(heap_object_offset);
+        heap_section.write(unsafe {
+            // SAFETY: The bottom pointer is valid and [heap_bottom, heap_bottom + heap_size) range is in bound of the account data
+            Heap::new(heap_bottom, heap_size)
+        });
+    }
+
+    /// SAFETY: This functions should be called only once after `initialize_heap`
+    async unsafe fn initialize_root<'tx>(
         &mut self,
-        amount: U256,
-        receiver: Option<OperatorBalanceAccount>,
-    ) -> Result<()> {
-        self.root_ref.plain_data.consume_gas(amount, receiver)
+        encoded_transaction: EncodedTransaction<'tx>,
+        tree: Option<&mut TransactionTree<'a>>,
+        platform: &mut (impl Platform<'a> + 'a),
+    ) -> Result<Box<dyn Transaction + 'tx>> {
+        let allocator = StateAllocator::new(self.heap());
+
+        let tx = encoded_transaction.decode()?;
+        let origin = tx.recover_caller_address()?;
+
+        validate_transaction(tx.as_ref(), origin, platform, tree.as_deref()).await?;
+
+        let offset = self.offsets().root;
+
+        let mut root_section = self.account.section_mut_uninit::<Root>(offset);
+        root_section.write(Root::new(tx.as_ref(), origin, tree, platform, allocator).await?);
+
+        Ok(tx)
     }
 
-    pub fn refund_unused_gas(&mut self, origin: &mut BalanceAccount) -> Result<()> {
-        self.root_ref.plain_data.refund_unused_gas(origin)
-    }
+    /// SAFETY: This functions should be called only once after `initialize_heap` and with previously valid root
+    async unsafe fn reset_root(&mut self, platform: &mut (impl Platform<'a> + 'a)) -> Result<()> {
+        let allocator = StateAllocator::new(self.heap());
 
-    /// Use available gas and return it to the caller.
-    /// It's caller's responsibility to mint the unused gas tokens to the appropriate recipient.
-    pub fn materialize_unused_gas(&mut self) -> Result<U256> {
-        self.root_ref.plain_data.materialize_unused_gas()
-    }
+        let tx = self.transaction().decode()?;
 
-    #[must_use]
-    pub fn steps_executed(&self) -> u64 {
-        self.root_ref.plain_data.steps_executed
-    }
+        let offset = self.offsets().root;
 
-    pub fn reset_steps_executed(&mut self) {
-        self.root_ref.plain_data.steps_executed = 0;
-    }
+        let root = {
+            // Old Root is not valid. Reading from it may cause undefined behavior.
+            // Can only be used to create a new one.
+            let old_root = self.account.section::<Root>(offset);
+            old_root
+                .new_after_reset(tx.as_ref(), platform, allocator)
+                .await?
+        };
 
-    pub fn increment_steps_executed(&mut self, steps: u64) -> Result<()> {
-        self.root_ref.plain_data.steps_executed = self
-            .root_ref
-            .plain_data
-            .steps_executed
-            .checked_add(steps)
-            .ok_or(Error::IntegerOverflow)?;
+        let mut root_section = self.account.section_mut_uninit::<Root>(offset);
+        root_section.write(root);
 
         Ok(())
     }
-
-    #[must_use]
-    pub fn interrupted_state(&self) -> Option<&InterruptedState> {
-        self.root_ref.interrupted_state.as_ref()
-    }
-
-    pub fn set_interrupted_state(&mut self, state: Option<InterruptedState>) {
-        self.root_ref.interrupted_state = state;
-    }
-
-    #[must_use]
-    pub fn trx(&self) -> &impl TrxView {
-        &self.root_ref.plain_data
-    }
 }
 
-// Implementation of functional to save/restore persistent state of iterative transactions.
-impl StateAccount<'_, '_> {
-    #[must_use]
-    pub fn executor_state(&self) -> Ref<Option<ExecutorStateData>> {
-        self.root_ref.executor_state.borrow()
-    }
+#[cfg(not(target_os = "solana"))]
+type StateAccountCoreApiView = (
+    super::state_root::PlainData,
+    Option<crate::executor::BlockParams>,
+    Vec<Pubkey>,
+    Vec<u8>, //tx rlp
+);
 
-    #[must_use]
-    pub fn executor_state_ref(&self) -> Ref<ExecutorStateData> {
-        Ref::map(self.root_ref.executor_state.borrow(), |x| {
-            x.as_ref().unwrap()
-        })
-    }
+#[cfg(not(target_os = "solana"))]
+impl StateAccount<'_> {
+    pub fn get_state_account_view(&self) -> Result<StateAccountCoreApiView> {
+        use super::state_root::AccountRevision;
+        use super::state_root::PlainData;
+        use crate::types::vector::read_raw_utils;
 
-    #[must_use]
-    pub fn executor_state_mut(&self) -> RefMut<Option<ExecutorStateData>> {
-        self.root_ref.executor_state.borrow_mut()
-    }
+        let platform_memory_address: isize = self.stored_memory_address().try_into()?;
+        let local_memory_address: isize = self.account.memory_address().try_into()?;
+        let memory_delta = local_memory_address - platform_memory_address;
 
-    #[must_use]
-    pub fn executor_state_mut_ref(&self) -> RefMut<ExecutorStateData> {
-        RefMut::map(self.root_ref.executor_state.borrow_mut(), |x| {
-            x.as_mut().unwrap()
-        })
-    }
+        let transaction = self.transaction().rlp().to_vec();
 
-    #[must_use]
-    pub fn evm(&self) -> Ref<Option<Machine<crate::evm::tracing::NoopEventListener>>> {
-        self.root_ref.machine_state.borrow()
-    }
+        let root = self.root();
+        let data = root.plain_data;
 
-    #[must_use]
-    pub fn evm_ref(&self) -> Ref<Machine<crate::evm::tracing::NoopEventListener>> {
-        Ref::map(self.root_ref.machine_state.borrow(), |x| {
-            x.as_ref().unwrap()
-        })
-    }
-
-    #[must_use]
-    pub fn evm_mut(&self) -> RefMut<Option<Machine<crate::evm::tracing::NoopEventListener>>> {
-        self.root_ref.machine_state.borrow_mut()
-    }
-
-    #[must_use]
-    pub fn evm_mut_ref(&self) -> RefMut<Machine<crate::evm::tracing::NoopEventListener>> {
-        RefMut::map(self.root_ref.machine_state.borrow_mut(), |x| {
-            x.as_mut().unwrap()
-        })
-    }
-
-    #[must_use]
-    pub fn root_ref(&self) -> &Root {
-        &self.root_ref
-    }
-
-    #[must_use]
-    pub fn root_ref_mut(&mut self) -> &mut Root {
-        &mut self.root_ref
-    }
-}
-
-impl<'local, 'sol> StateAccount<'local, 'sol> {
-    /// Implementation to squeeze bits of information from the state account.
-    /// N.B.
-    /// 1. `StateAccount` contains objects and pointers allocated by the state account allocator, so reading
-    ///     objects inside requires jumping on the offset (between the real account address as allocated by the
-    ///     current allocator) and "intended" address of the first account as provided by the Solana runtime.
-    /// 2. `addr_of!` and `read_unaligned` is heavily used to facilitate the reading of fields by raw pointers.
-    /// 3. There are upcasts from *const u8 to *const T, but since T was allocated by the allocator previously,
-    ///     it has the correct alignment and the upcast is sound.
-    #[allow(clippy::cast_ptr_alignment)]
-    pub fn get_state_account_view(
-        program_id: &Pubkey,
-        account: &'local AccountInfo<'sol>,
-    ) -> Result<StateAccountCoreApiView> {
-        Self::validate_tag(account.key, super::tag(program_id, account)?)?;
-
-        let account_data_ptr = account.try_borrow_data()?.as_ptr();
-
-        let (tx_start, tx_end, root_offset) = {
-            let header = super::header::<Header>(account);
-            (
-                header.serialized_tx.start,
-                header.serialized_tx.end,
-                header.root_offset,
-            )
-        };
-
-        let tx_rlp: Vec<u8> = account.try_borrow_data()?.as_ref()[..tx_end][tx_start..].to_vec();
-
-        let root_ptr: *const Root =
-            unsafe { account_data_ptr.add(root_offset).cast::<Root>().cast() };
-
-        let mut plain = PlainData::default();
-        {
-            let plain_ref = &mut plain;
-            let dataref = account.try_borrow_data()?;
-            let dataslice: &[u8] = &dataref.as_ref()[root_offset..][..size_of::<PlainData>()];
-            unsafe {
-                std::slice::from_raw_parts_mut(
-                    std::ptr::from_mut::<PlainData>(plain_ref).cast::<u8>(),
-                    dataslice.len(),
-                )
-                .copy_from_slice(dataslice);
-            }
-        }
-
-        if plain.layout_version == PlainData::layout_version() {
-            let memory_space_delta = {
-                account_data_ptr as isize
-                    - isize::try_from(crate::allocator::STATE_ACCOUNT_DATA_ADDRESS)?
-            };
-            let accounts = unsafe {
-                // Hereby we read the TreeMap and rely on the fact that under the hood it's a Vector<(Pubkey, AccountRevision)>.
-                // In case the structure changes, it also requires adjustments.
-                read_vec::<(Pubkey, AccountRevision)>(
-                    addr_of!((*root_ptr).revisions).cast::<usize>(),
-                    memory_space_delta,
-                )
-                .iter()
-                .map(|(key, _)| *key)
-                .collect()
-            };
-            Ok((plain, accounts, tx_rlp))
-        } else {
+        if data.layout_version != PlainData::layout_version() {
             // we don't have a reliable way to reconstruct revisions
-            Ok((plain, Vec::<Pubkey>::new(), tx_rlp))
+            return Ok((data, None, Vec::new(), transaction));
         }
+
+        let block_params = root.executor_state.inhereted_block_params;
+
+        // SAFETY: It is not safe at all
+        // `root.revisions` pointers are allocated in a different address space
+        // we do the conversion between the platform memory addresses and the local memory addresses
+        let revisions: Vec<(Pubkey, AccountRevision)> = unsafe {
+            let ptr = &raw const root.revisions;
+            read_raw_utils::read_vec(ptr.cast(), memory_delta)
+        };
+        let accounts: Vec<Pubkey> = revisions.into_iter().map(|(key, _)| key).collect();
+
+        Ok((data, block_params, accounts, transaction))
     }
 }

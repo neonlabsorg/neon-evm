@@ -9,7 +9,7 @@ pub struct Operator<'a> {
 }
 
 impl<'a> Operator<'a> {
-    pub fn from_account(info: &AccountInfo<'a>) -> Result<Self> {
+    pub fn from_account_info(info: &AccountInfo<'a>) -> Result<Self> {
         let is_authorized = crate::config::AUTHORIZED_OPERATOR_LIST
             .binary_search(info.key)
             .is_ok();

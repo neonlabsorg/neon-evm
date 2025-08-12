@@ -1,9 +1,6 @@
-use crate::types::vector::VectorSliceExt;
-use crate::types::Vector;
-
 #[must_use]
-pub fn datacopy(input: &[u8]) -> Vector<u8> {
+pub fn datacopy(input: &[u8]) -> Vec<u8> {
     debug_print!("datacopy");
 
-    input.to_vector()
+    input.to_vec()
 }

@@ -6,18 +6,13 @@ use solana_program::{
     program_error::ProgramError, program_pack::Pack, pubkey::Pubkey, system_program,
 };
 
-use super::create_account;
+use super::{create_account, PrecompileDatabase};
 use crate::{
-    account::pda_accounts,
-    account_storage::FAKE_OPERATOR,
+    account::pda,
     error::{Error, Result},
-    evm::database::Database,
+    platform::{KeysIndex, FAKE_OPERATOR},
     types::Address,
 };
-
-use crate::vector;
-
-use crate::types::vector::{Vector, VectorSliceExt};
 
 // [0xa9, 0xc1, 0x58, 0x06] : "approve(bytes32,bytes32,uint64)",
 // [0xc0, 0x67, 0xee, 0xbb] : "burn(bytes32,bytes32,uint64)",
@@ -39,13 +34,13 @@ use crate::types::vector::{Vector, VectorSliceExt};
 
 #[allow(clippy::too_many_lines)]
 #[maybe_async]
-pub async fn spl_token<State: Database>(
-    state: &mut State,
+pub async fn spl_token(
+    state: &mut impl PrecompileDatabase,
     address: &Address,
     input: &[u8],
     context: &crate::evm::Context,
     is_static: bool,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     if context.value != 0 {
         return Err(Error::Custom("SplToken: value != 0".to_string()));
     }
@@ -263,20 +258,21 @@ fn read_salt(input: &[u8]) -> Result<&[u8; 32]> {
 }
 
 #[maybe_async]
-async fn initialize_mint<State: Database>(
+async fn initialize_mint(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &mut impl PrecompileDatabase,
     seed: &[u8; 32],
     decimals: u8,
     mint_authority: Option<Pubkey>,
     freeze_authority: Option<Pubkey>,
-) -> Result<Vector<u8>> {
-    let signer = context.caller;
-    let (signer_pubkey, _) = state.contract_pubkey(signer);
+) -> Result<Vec<u8>> {
+    let program_id = state.program_id();
 
-    let (mint_key, bump_seed) =
-        pda_accounts::contract_data_address(state.program_id(), &signer, seed);
-    let seeds = pda_accounts::contract_data_seeds(&signer, seed, bump_seed);
+    let signer = context.caller;
+    let (signer_pubkey, _) = state.keys().contract_bump(signer);
+
+    let (mint_key, bump_seed) = pda::contract_data_address(&program_id, &signer, seed);
+    let seeds: &[&[u8]] = pda::contract_data_seeds!(signer, seed, bump_seed);
 
     let account = state.external_account(mint_key).await?;
     if !system_program::check_id(&account.owner) {
@@ -299,27 +295,26 @@ async fn initialize_mint<State: Database>(
         Some(&freeze_authority.unwrap_or(signer_pubkey)),
         decimals,
     )?;
-    state
-        .queue_external_instruction(initialize_mint, vector![], true)
-        .await?;
+    state.queue_invoke(initialize_mint, &[]).await?;
 
-    Ok(mint_key.to_bytes().to_vector())
+    Ok(mint_key.to_bytes().to_vec())
 }
 
 #[maybe_async]
-async fn initialize_account<State: Database>(
+async fn initialize_account(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &mut impl PrecompileDatabase,
     seed: &[u8; 32],
     mint: Pubkey,
     owner: Option<Pubkey>,
-) -> Result<Vector<u8>> {
-    let signer = context.caller;
-    let (signer_pubkey, _) = state.contract_pubkey(signer);
+) -> Result<Vec<u8>> {
+    let program_id = state.program_id();
 
-    let (account_key, bump_seed) =
-        pda_accounts::contract_data_address(state.program_id(), &signer, seed);
-    let seeds = pda_accounts::contract_data_seeds(&signer, seed, bump_seed);
+    let signer = context.caller;
+    let (signer_pubkey, _) = state.keys().contract_bump(signer);
+
+    let (account_key, bump_seed) = pda::contract_data_address(&program_id, &signer, seed);
+    let seeds: &[&[u8]] = pda::contract_data_seeds!(&signer, seed, bump_seed);
 
     let account = state.external_account(account_key).await?;
     if !system_program::check_id(&account.owner) {
@@ -335,28 +330,26 @@ async fn initialize_account<State: Database>(
     )
     .await?;
 
-    let initialize_mint = spl_token::instruction::initialize_account3(
+    let initialize_account = spl_token::instruction::initialize_account3(
         &spl_token::ID,
         &account_key,
         &mint,
         &owner.unwrap_or(signer_pubkey),
     )?;
-    state
-        .queue_external_instruction(initialize_mint, vector![], true)
-        .await?;
+    state.queue_invoke(initialize_account, &[]).await?;
 
-    Ok(account_key.to_bytes().to_vector())
+    Ok(account_key.to_bytes().to_vec())
 }
 
 #[maybe_async]
-async fn close_account<State: Database>(
+async fn close_account(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &mut impl PrecompileDatabase,
     account: Pubkey,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds = pda_accounts::contract_seeds(&signer, bump_seed);
+    let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let close_account = spl_token::instruction::close_account(
         &spl_token::ID,
@@ -365,24 +358,22 @@ async fn close_account<State: Database>(
         &signer_pubkey,
         &[],
     )?;
-    state
-        .queue_external_instruction(close_account, vector![seeds], true)
-        .await?;
+    state.queue_invoke(close_account, &[seeds]).await?;
 
-    Ok(vector![])
+    Ok(vec![])
 }
 
 #[maybe_async]
-async fn approve<State: Database>(
+async fn approve(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &mut impl PrecompileDatabase,
     source: Pubkey,
     target: Pubkey,
     amount: u64,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds = pda_accounts::contract_seeds(&signer, bump_seed);
+    let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let approve = spl_token::instruction::approve(
         &spl_token::ID,
@@ -392,46 +383,42 @@ async fn approve<State: Database>(
         &[],
         amount,
     )?;
-    state
-        .queue_external_instruction(approve, vector![seeds], true)
-        .await?;
+    state.queue_invoke(approve, &[seeds]).await?;
 
-    Ok(vector![])
+    Ok(vec![])
 }
 
 #[maybe_async]
-async fn revoke<State: Database>(
+async fn revoke(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &mut impl PrecompileDatabase,
     account: Pubkey,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds = pda_accounts::contract_seeds(&signer, bump_seed);
+    let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let revoke = spl_token::instruction::revoke(&spl_token::ID, &account, &signer_pubkey, &[])?;
-    state
-        .queue_external_instruction(revoke, vector![seeds], true)
-        .await?;
+    state.queue_invoke(revoke, &[seeds]).await?;
 
-    Ok(vector![])
+    Ok(vec![])
 }
 
 #[maybe_async]
-async fn transfer<State: Database>(
+async fn transfer(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &mut impl PrecompileDatabase,
     source: Pubkey,
     target: Pubkey,
     amount: u64,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     if (source == target) || (amount == 0) {
-        return Ok(vector![]);
+        return Ok(vec![]);
     }
 
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds = pda_accounts::contract_seeds(&signer, bump_seed);
+    let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let transfer = spl_token::instruction::transfer(
         &spl_token::ID,
@@ -441,29 +428,29 @@ async fn transfer<State: Database>(
         &[],
         amount,
     )?;
-    state
-        .queue_external_instruction(transfer, vector![seeds], true)
-        .await?;
+    state.queue_invoke(transfer, &[seeds]).await?;
 
-    Ok(vector![])
+    Ok(vec![])
 }
 
 #[maybe_async]
-async fn transfer_with_seed<State: Database>(
+async fn transfer_with_seed(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &mut impl PrecompileDatabase,
     seed: &[u8; 32],
     source: Pubkey,
     target: Pubkey,
     amount: u64,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     if (source == target) || (amount == 0) {
-        return Ok(vector![]);
+        return Ok(vec![]);
     }
 
-    let (signer_pubkey, signer_seed) =
-        pda_accounts::contract_auth_address(state.program_id(), &context.caller, seed);
-    let seeds = pda_accounts::contract_auth_seeds(&context.caller, seed, signer_seed);
+    let program_id = state.program_id();
+
+    let signer = context.caller;
+    let (signer_pubkey, signer_seed) = pda::contract_auth_address(&program_id, &signer, seed);
+    let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, seed, signer_seed);
 
     let transfer = spl_token::instruction::transfer(
         &spl_token::ID,
@@ -473,28 +460,26 @@ async fn transfer_with_seed<State: Database>(
         &[],
         amount,
     )?;
-    state
-        .queue_external_instruction(transfer, vector![seeds], true)
-        .await?;
+    state.queue_invoke(transfer, &[seeds]).await?;
 
-    Ok(vector![])
+    Ok(vec![])
 }
 
 #[maybe_async]
-async fn mint_to<State: Database>(
+async fn mint_to(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &mut impl PrecompileDatabase,
     mint: Pubkey,
     target: Pubkey,
     amount: u64,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     if amount == 0 {
-        return Ok(vector![]);
+        return Ok(vec![]);
     }
 
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds = pda_accounts::contract_seeds(&signer, bump_seed);
+    let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let mint_to = spl_token::instruction::mint_to(
         &spl_token::ID,
@@ -504,28 +489,26 @@ async fn mint_to<State: Database>(
         &[],
         amount,
     )?;
-    state
-        .queue_external_instruction(mint_to, vector![seeds], true)
-        .await?;
+    state.queue_invoke(mint_to, &[seeds]).await?;
 
-    Ok(vector![])
+    Ok(vec![])
 }
 
 #[maybe_async]
-async fn burn<State: Database>(
+async fn burn(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &mut impl PrecompileDatabase,
     mint: Pubkey,
     source: Pubkey,
     amount: u64,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     if amount == 0 {
-        return Ok(vector![]);
+        return Ok(vec![]);
     }
 
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds = pda_accounts::contract_seeds(&signer, bump_seed);
+    let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     #[rustfmt::skip]
     let burn = spl_token::instruction::burn(
@@ -536,23 +519,21 @@ async fn burn<State: Database>(
         &[],
         amount
     )?;
-    state
-        .queue_external_instruction(burn, vector![seeds], true)
-        .await?;
+    state.queue_invoke(burn, &[seeds]).await?;
 
-    Ok(vector![])
+    Ok(vec![])
 }
 
 #[maybe_async]
-async fn freeze<State: Database>(
+async fn freeze(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &mut impl PrecompileDatabase,
     mint: Pubkey,
     target: Pubkey,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds = pda_accounts::contract_seeds(&signer, bump_seed);
+    let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let freeze = spl_token::instruction::freeze_account(
         &spl_token::ID,
@@ -561,23 +542,21 @@ async fn freeze<State: Database>(
         &signer_pubkey,
         &[],
     )?;
-    state
-        .queue_external_instruction(freeze, vector![seeds], true)
-        .await?;
+    state.queue_invoke(freeze, &[seeds]).await?;
 
-    Ok(vector![])
+    Ok(vec![])
 }
 
 #[maybe_async]
-async fn thaw<State: Database>(
+async fn thaw(
     context: &crate::evm::Context,
-    state: &mut State,
+    state: &mut impl PrecompileDatabase,
     mint: Pubkey,
     target: Pubkey,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let signer = context.caller;
-    let (signer_pubkey, bump_seed) = state.contract_pubkey(signer);
-    let seeds = pda_accounts::contract_seeds(&signer, bump_seed);
+    let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
+    let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     #[rustfmt::skip]
     let thaw = spl_token::instruction::thaw_account(
@@ -587,48 +566,48 @@ async fn thaw<State: Database>(
         &signer_pubkey,
         &[]
     )?;
-    state
-        .queue_external_instruction(thaw, vector![seeds], true)
-        .await?;
+    state.queue_invoke(thaw, &[seeds]).await?;
 
-    Ok(vector![])
+    Ok(vec![])
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn find_account<State: Database>(
+fn find_account(
     context: &crate::evm::Context,
-    state: &State,
+    state: &impl PrecompileDatabase,
     seed: &[u8; 32],
-) -> Result<Vector<u8>> {
-    let signer = context.caller;
-    let (account_key, _) = pda_accounts::contract_data_address(state.program_id(), &signer, seed);
+) -> Result<Vec<u8>> {
+    let program_id = state.program_id();
 
-    Ok(account_key.to_bytes().to_vector())
+    let signer = context.caller;
+    let (account_key, _) = pda::contract_data_address(&program_id, &signer, seed);
+
+    Ok(account_key.to_bytes().to_vec())
 }
 
 #[maybe_async]
-async fn is_system_account<State: Database>(
+async fn is_system_account(
     _context: &crate::evm::Context,
-    state: &State,
+    state: &impl PrecompileDatabase,
     account: Pubkey,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let account = state.external_account(account).await?;
     if system_program::check_id(&account.owner) {
-        let mut result = vector![0_u8; 32];
+        let mut result = vec![0_u8; 32];
         result[31] = 1; // return true
 
         Ok(result)
     } else {
-        Ok(vector![0_u8; 32])
+        Ok(vec![0_u8; 32])
     }
 }
 
 #[maybe_async]
-async fn get_account<State: Database>(
+async fn get_account(
     _context: &crate::evm::Context,
-    state: &State,
+    state: &impl PrecompileDatabase,
     account: Pubkey,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let account = state.external_account(account).await?;
     let token = if spl_token::check_id(&account.owner) {
         spl_token::state::Account::unpack(&account.data)?
@@ -655,15 +634,15 @@ async fn get_account<State: Database>(
         .unwrap_or_default();
     state[31] = token.state as u8;
 
-    Ok(result.to_vector())
+    Ok(result.to_vec())
 }
 
 #[maybe_async]
-async fn get_mint<State: Database>(
+async fn get_mint(
     _context: &crate::evm::Context,
-    state: &State,
+    state: &impl PrecompileDatabase,
     account: Pubkey,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     let account = state.external_account(account).await?;
     let mint = if spl_token::check_id(&account.owner) {
         spl_token::state::Mint::unpack(&account.data)?
@@ -691,5 +670,5 @@ async fn get_mint<State: Database>(
         .map(Pubkey::to_bytes)
         .unwrap_or_default();
 
-    Ok(result.to_vector())
+    Ok(result.to_vec())
 }

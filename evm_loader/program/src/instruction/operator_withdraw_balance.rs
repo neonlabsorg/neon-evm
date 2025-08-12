@@ -1,22 +1,18 @@
-use solana_program::rent::Rent;
-use solana_program::sysvar::Sysvar;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-use crate::account::program::System;
-use crate::account::{AccountsDB, BalanceAccount, Operator, OperatorBalanceAccount};
+use crate::account::{Operator, OperatorBalance};
 use crate::error::Result;
+use crate::platform::Solana;
 
-pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Withdraw Operator Balance Account");
 
-    let system = System::from_account(&accounts[0])?;
+    // #0 System program
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1]) }?;
-    let mut operator_balance = OperatorBalanceAccount::from_account(program_id, &accounts[2])?;
-    let mut target_balance = BalanceAccount::from_account(program_id, accounts[3].clone())?;
+    let operator_balance = OperatorBalance::from_account_info(program_id, &accounts[2])?;
+    // #3 Target balance account
 
-    operator_balance.validate_owner(&operator)?;
-    operator_balance.withdraw(&mut target_balance)?;
-
-    let accounts_db = AccountsDB::new(&[], operator, Some(operator_balance), Some(system), None);
-    target_balance.increment_revision(&Rent::get()?, &accounts_db)
+    let mut solana = Solana::new(accounts, operator, Some(operator_balance))?;
+    solana.withdraw_operator_balance()?;
+    solana.update_accounts_lamports()
 }

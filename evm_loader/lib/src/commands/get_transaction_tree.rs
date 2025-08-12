@@ -1,11 +1,10 @@
 use ethnum::U256;
-use evm_loader::account::{TransactionTree, TransactionTreeNodeStatus};
+use evm_loader::account::{pda, SharedAccount, TransactionTree, TransactionTreeNodeStatus};
 use serde::{Deserialize, Serialize};
-use solana_sdk::{account_info::AccountInfo, pubkey::Pubkey};
+use solana_sdk::{account::ReadableAccount, pubkey::Pubkey};
 use std::fmt::Display;
 
 use crate::{
-    account_storage::account_info,
     rpc::Rpc,
     types::{Address, BalanceAddress},
     NeonResult,
@@ -74,8 +73,13 @@ impl GetTreeResponse {
     }
 }
 
-pub fn read_tree(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetTreeResponse> {
-    let tree = TransactionTree::from_account(program_id, info)?;
+pub fn read_tree(
+    program_id: Pubkey,
+    pubkey: Pubkey,
+    account: &impl ReadableAccount,
+) -> NeonResult<GetTreeResponse> {
+    let shared_account = SharedAccount::new(pubkey, account);
+    let tree = TransactionTree::from_account(program_id, shared_account.into())?;
 
     let transactions = tree
         .nodes()
@@ -94,7 +98,7 @@ pub fn read_tree(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetTreeRe
 
     Ok(GetTreeResponse {
         status: Status::Ok,
-        pubkey: *tree.info().key,
+        pubkey: tree.pubkey(),
         payer: tree.payer(),
         last_slot: tree.last_slot(),
         chain_id: tree.chain_id(),
@@ -112,14 +116,15 @@ pub async fn execute(
     origin: BalanceAddress,
     nonce: u64,
 ) -> NeonResult<GetTreeResponse> {
-    let (pubkey, _) =
-        TransactionTree::find_address(program_id, origin.address, origin.chain_id, nonce);
+    let payer = origin.address;
+    let chain_id = origin.chain_id;
+
+    let (pubkey, _) = pda::tree_account_address(program_id, &payer, chain_id, nonce);
 
     let response = rpc.get_account(&pubkey).await?;
-    let Some(mut account) = response else {
+    let Some(account) = response else {
         return Ok(GetTreeResponse::empty());
     };
 
-    let info = account_info(&pubkey, &mut account);
-    Ok(read_tree(program_id, info).unwrap_or_else(GetTreeResponse::error))
+    Ok(read_tree(*program_id, pubkey, &account).unwrap_or_else(GetTreeResponse::error))
 }

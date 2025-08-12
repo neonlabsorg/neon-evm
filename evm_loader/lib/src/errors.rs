@@ -59,6 +59,8 @@ pub enum NeonError {
     IncorrectProgram(Pubkey),
     #[error("Account not found {0:?}.")]
     AccountNotFound(Pubkey),
+    #[error("Account invalid status {0:?}.")]
+    AccountInvalidStatus(Pubkey),
     /// Account is not BFP
     #[error("Account is not BPF {0:?}.")]
     AccountIsNotBpf(Pubkey),
@@ -122,7 +124,11 @@ pub enum NeonError {
     StrumParseError(#[from] strum::ParseError),
     #[error("Solana Simulator error {0:?}")]
     SolanaSimulatorError(#[from] crate::solana_simulator::Error),
-    #[error("too many accounts: {0:?} > {1:?}")]
+    #[error("Solana RPC returned empty account for pubkey {0:?}")]
+    RpcReturnedEmptyAccount(Pubkey),
+    #[error("TryFromIntError {0}")]
+    TryFromIntError(#[from] std::num::TryFromIntError),
+    #[error("Too many accounts: {0:?} > {1:?}")]
     TooManyAccounts(usize, usize),
 }
 
@@ -146,6 +152,7 @@ impl NeonError {
             NeonError::KeypairNotSpecified => 202,
             NeonError::IncorrectProgram(_) => 203,
             NeonError::AccountNotFound(_) => 205,
+            NeonError::AccountInvalidStatus(_) => 206,
             NeonError::AccountIsNotBpf(_) => 226,
             NeonError::AccountIsNotUpgradeable(_) => 227,
             NeonError::AssociatedPdaNotFound(_, _) => 241,
@@ -170,7 +177,9 @@ impl NeonError {
             NeonError::StrumParseError(_) => 264,
             NeonError::SolanaSimulatorError(_) => 265,
             NeonError::RocksDb(_) => 266,
-            NeonError::TooManyAccounts(_, _) => 267,
+            NeonError::RpcReturnedEmptyAccount(_) => 267,
+            NeonError::TryFromIntError(_) => 268,
+            NeonError::TooManyAccounts(_, _) => 269,
         }
     }
 }

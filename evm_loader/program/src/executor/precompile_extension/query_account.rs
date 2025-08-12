@@ -3,14 +3,15 @@ use std::convert::TryInto;
 use arrayref::{array_ref, array_refs};
 use ethnum::U256;
 use maybe_async::maybe_async;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use solana_program::pubkey::Pubkey;
 
 use crate::{
+    account::{Account, AccountDispatch},
     error::{Error, Result},
-    evm::database::Database,
-    types::{vector::VectorSliceExt, Address, Vector},
-    vector,
+    types::Address,
 };
+
+use super::PrecompileDatabase;
 
 // QueryAccount method DEPRECATED ids:
 //-------------------------------------------
@@ -32,13 +33,13 @@ use crate::{
 // "7dd6c1a0": "data(bytes32,uint64,uint64)",
 
 #[maybe_async]
-pub async fn query_account<State: Database>(
-    state: &State,
+pub async fn query_account(
+    state: &impl PrecompileDatabase,
     address: &Address,
     input: &[u8],
     context: &crate::evm::Context,
     _is_static: bool,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     debug_print!("query_account({})", hex::encode(input));
 
     if context.value != 0 {
@@ -55,27 +56,27 @@ pub async fn query_account<State: Database>(
         [0x2b, 0x3c, 0x83, 0x22] => {
             // cache(uint256,uint64,uint64)
             // deprecated
-            Ok(vector![])
+            Ok(vec![])
         }
         [0xa1, 0x23, 0xc3, 0x3e] | [0x02, 0x57, 0x1b, 0xe3] => {
             debug_print!("query_account.owner({})", &account_address);
-            account_owner(state, &account_address).await
+            account_owner(state, account_address).await
         }
         [0xaa, 0x8b, 0x99, 0xd2] | [0xa9, 0xdb, 0xaf, 0x25] => {
             debug_print!("query_account.length({})", &account_address);
-            account_data_length(state, &account_address).await
+            account_data_length(state, account_address).await
         }
         [0x74, 0x8f, 0x2d, 0x8a] | [0x62, 0x73, 0x44, 0x8f] => {
             debug_print!("query_account.lamports({})", &account_address);
-            account_lamports(state, &account_address).await
+            account_lamports(state, account_address).await
         }
         [0xc2, 0x19, 0xa7, 0x85] | [0xe6, 0xbe, 0xf4, 0x88] => {
             debug_print!("query_account.executable({})", &account_address);
-            account_is_executable(state, &account_address).await
+            account_is_executable(state, account_address).await
         }
         [0xc4, 0xd3, 0x69, 0xb5] | [0x8b, 0xb9, 0xe6, 0xf4] => {
             debug_print!("query_account.rent_epoch({})", &account_address);
-            account_rent_epoch(state, &account_address).await
+            account_rent_epoch(state, account_address).await
         }
         [0x43, 0xca, 0x51, 0x61] | [0x7d, 0xd6, 0xc1, 0xa0] => {
             let arguments = array_ref![rest, 0, 64];
@@ -88,11 +89,11 @@ pub async fn query_account<State: Database>(
                 offset,
                 length
             );
-            account_data(state, &account_address, offset, length).await
+            account_data(state, account_address, offset, length).await
         }
         [0xb6, 0x4a, 0x09, 0x7e] => {
             debug_print!("query_account.info({})", &account_address);
-            account_info(state, &account_address).await
+            account_info(state, account_address).await
         }
         _ => {
             debug_print!("query_account UNKNOWN {:?}", method_id);
@@ -101,85 +102,63 @@ pub async fn query_account<State: Database>(
     }
 }
 
-#[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_owner<State: Database>(state: &State, address: &Pubkey) -> Result<Vector<u8>> {
-    let owner = state
-        .map_solana_account(address, |info| info.owner.to_bytes())
-        .await;
+async fn account_owner(state: &impl PrecompileDatabase, address: Pubkey) -> Result<Vec<u8>> {
+    let owner: Pubkey = state.use_real_account(address, |a| a.owner()).await?;
 
-    Ok(owner.to_vector())
+    let bytes = owner.to_bytes().to_vec();
+    Ok(bytes)
 }
 
-#[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_lamports<State: Database>(state: &State, address: &Pubkey) -> Result<Vector<u8>> {
+async fn account_lamports(state: &impl PrecompileDatabase, address: Pubkey) -> Result<Vec<u8>> {
     let lamports: U256 = state
-        .map_solana_account(address, |info| **info.lamports.borrow())
-        .await
-        .into();
+        .use_real_account(address, |a| a.lamports().into())
+        .await?;
 
-    let bytes = lamports.to_be_bytes().to_vector();
-
+    let bytes = lamports.to_be_bytes().to_vec();
     Ok(bytes)
 }
 
-#[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_rent_epoch<State: Database>(
-    state: &State,
-    address: &Pubkey,
-) -> Result<Vector<u8>> {
+async fn account_rent_epoch(state: &impl PrecompileDatabase, address: Pubkey) -> Result<Vec<u8>> {
     let epoch: U256 = state
-        .map_solana_account(address, |info| info.rent_epoch)
-        .await
-        .into();
+        .use_real_account(address, |a| a.rent_epoch().into())
+        .await?;
 
-    let bytes = epoch.to_be_bytes().to_vector();
-
+    let bytes = epoch.to_be_bytes().to_vec();
     Ok(bytes)
 }
 
-#[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_is_executable<State: Database>(
-    state: &State,
-    address: &Pubkey,
-) -> Result<Vector<u8>> {
+async fn account_is_executable(
+    state: &impl PrecompileDatabase,
+    address: Pubkey,
+) -> Result<Vec<u8>> {
     let executable: U256 = state
-        .map_solana_account(address, |info| info.executable)
-        .await
-        .into();
+        .use_real_account(address, |a| a.is_executable().into())
+        .await?;
 
-    let bytes = executable.to_be_bytes().to_vector();
-
+    let bytes = executable.to_be_bytes().to_vec();
     Ok(bytes)
 }
 
-#[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_data_length<State: Database>(
-    state: &State,
-    address: &Pubkey,
-) -> Result<Vector<u8>> {
-    let length: U256 = state
-        .map_solana_account(address, |info| info.data.borrow().len())
-        .await
-        .try_into()?;
+async fn account_data_length(state: &impl PrecompileDatabase, address: Pubkey) -> Result<Vec<u8>> {
+    let data_len: usize = state.use_real_account(address, |a| a.data_len()).await?;
 
-    let bytes = length.to_be_bytes().to_vector();
-
+    let data_len: U256 = data_len.try_into()?;
+    let bytes = data_len.to_be_bytes().to_vec();
     Ok(bytes)
 }
 
-#[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_data<State: Database>(
-    state: &State,
-    address: &Pubkey,
+async fn account_data(
+    state: &impl PrecompileDatabase,
+    address: Pubkey,
     offset: usize,
     length: usize,
-) -> Result<Vector<u8>> {
+) -> Result<Vec<u8>> {
     if length == 0 {
         return Err(Error::Custom(
             "Query Account: data() - length == 0".to_string(),
@@ -187,36 +166,31 @@ async fn account_data<State: Database>(
     }
 
     state
-        .map_solana_account(address, |info| {
-            info.data
-                .borrow()
-                .get(offset..offset + length)
-                .map(<[u8]>::to_vector)
+        .use_real_account(address, |a| {
+            a.data().get(offset..offset + length).map(<[u8]>::to_vec)
         })
-        .await
+        .await?
         .ok_or_else(|| Error::Custom("Query Account: data() - out of bounds".to_string()))
 }
 
-#[allow(clippy::unnecessary_wraps)]
 #[maybe_async]
-async fn account_info<State: Database>(state: &State, address: &Pubkey) -> Result<Vector<u8>> {
-    fn to_solidity_account_value(info: &AccountInfo) -> Vector<u8> {
+async fn account_info(state: &impl PrecompileDatabase, address: Pubkey) -> Result<Vec<u8>> {
+    fn to_solidity_account_value(info: &Account) -> Vec<u8> {
         let mut buffer = [0_u8; 5 * 32];
         let (key, _, lamports, owner, _, executable, _, rent_epoch) =
             arrayref::mut_array_refs![&mut buffer, 32, 24, 8, 32, 31, 1, 24, 8];
 
-        *key = info.key.to_bytes();
+        *key = info.pubkey().to_bytes();
         *lamports = info.lamports().to_be_bytes();
-        *owner = info.owner.to_bytes();
-        executable[0] = info.executable.into();
-        *rent_epoch = info.rent_epoch.to_be_bytes();
+        *owner = info.owner().to_bytes();
+        executable[0] = info.is_executable().into();
+        *rent_epoch = info.rent_epoch().to_be_bytes();
 
-        buffer.to_vector()
+        buffer.to_vec()
     }
 
     let info = state
-        .map_solana_account(address, to_solidity_account_value)
-        .await;
-
+        .use_real_account(address, to_solidity_account_value)
+        .await?;
     Ok(info)
 }

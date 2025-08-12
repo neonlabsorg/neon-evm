@@ -1,7 +1,12 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::{
     client_error::Result as SolanaClientResult, rpc_config::RpcSendTransactionConfig,
 };
+use solana_sdk::account_info::AccountInfo;
+use solana_sdk::pubkey::Pubkey;
 use solana_sdk::{
     commitment_config::{CommitmentConfig, CommitmentLevel},
     instruction::Instruction,
@@ -16,6 +21,7 @@ pub mod emulate;
 pub mod emulate_multiple;
 pub mod get_balance;
 pub mod get_config;
+pub mod get_container;
 pub mod get_contract;
 pub mod get_holder;
 pub mod get_neon_elf;
@@ -49,4 +55,21 @@ pub async fn send_transaction(
             },
         )
         .await
+}
+
+/// Creates new instance of `AccountInfo` from `Account`.
+pub fn account_info<'a>(
+    key: &'a Pubkey,
+    account: &'a mut solana_sdk::account::Account,
+) -> AccountInfo<'a> {
+    AccountInfo {
+        key,
+        is_signer: false,
+        is_writable: false,
+        lamports: Rc::new(RefCell::new(&mut account.lamports)),
+        data: Rc::new(RefCell::new(&mut account.data)),
+        owner: &account.owner,
+        executable: account.executable,
+        rent_epoch: account.rent_epoch,
+    }
 }

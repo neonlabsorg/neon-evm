@@ -8,14 +8,14 @@ use solana_program::{
     rent::Rent, system_instruction, sysvar::Sysvar,
 };
 
-pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> ProgramResult {
+pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> ProgramResult {
     log_msg!("Instruction: Collect treasury");
 
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
 
-    let main_treasury = MainTreasury::from_account(program_id, &accounts[0])?;
-    let treasury = Treasury::from_account(program_id, treasury_index, &accounts[1])?;
-    let system = System::from_account(&accounts[2])?;
+    let main_treasury = MainTreasury::from_account_info(program_id, &accounts[0])?;
+    let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[1])?;
+    let system = System::from_account_info(&accounts[2])?;
 
     let rent = Rent::get()?;
     let minimal_balance_for_rent_exempt = rent.minimum_balance(treasury.data_len());

@@ -33,12 +33,12 @@ pub async fn execute(
         .and_then(|value| value.parse().ok())
         .ok_or(NeonError::IncorrectProgram(config.evm_loader))?;
 
-    let main_balance_address = MainTreasury::address(&config.evm_loader).0;
+    let main_balance_address = MainTreasury::address(config.evm_loader).0;
 
     info!("Main pool balance: {}", main_balance_address);
 
     for i in 0..pool_count {
-        let (aux_balance_address, _) = Treasury::address(&config.evm_loader, i);
+        let (aux_balance_address, _) = Treasury::address(config.evm_loader, i);
 
         if let Some(aux_balance_account) = rpc_client
             .get_account_with_commitment(&aux_balance_address, config.commitment)

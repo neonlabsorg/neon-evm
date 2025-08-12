@@ -16,7 +16,6 @@ env:
   DHUBP: ${{secrets.DHUBP}}
   MAINNET_SOLANA_URL: ${{secrets.MAINNET_SOLANA_URL}}
   PROXY_ENDPOINT: "https://api.github.com/repos/${{ github.repository_owner }}/neon-proxy.py"
-  NEON_TESTS_ENDPOINT: ${{vars.NEON_TESTS_ENDPOINT}}
   DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
   RUN_LINK_REPO: "${{ github.repository_owner }}/neon-proxy.py"
   BUILD_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -28,7 +27,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build-image:
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["gha-runner-scale-set-large"]
     outputs:
       evm_tag: ${{ steps.tags.outputs.evm_tag }}
       evm_sha_tag: ${{ steps.tags.outputs.evm_sha_tag }}
@@ -38,11 +37,14 @@ jobs:
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - uses: actions/setup-python@v5
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - run:  pip install -r ./.github/workflows/requirements.txt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - run: pip install -r ./.github/workflows/requirements.txt
       - name: Specify image tags
         run: |
           python3 ./.github/workflows/deploy.py specify_image_tags \
@@ -67,7 +69,7 @@ jobs:
           --evm_sha_tag=${{ steps.tags.outputs.evm_sha_tag }} \
           --evm_tag=${{ steps.tags.outputs.evm_tag }}
   run-evm-tests:
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["gha-runner-scale-set-large"]
     needs:
       - build-image
     steps:
@@ -81,24 +83,29 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - uses: actions/setup-python@v5
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v1
 
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
 
       - name: Stop containers (cleanup from previous runs)
         run: |
-          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down || true
+          docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down || true
 
       - name: Docker compose pull
         run: |
-          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml pull
+          docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml pull
 
       - name: Docker compose up
         run: |
-          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml up -d 
+          for i in {1..5}; do
+            docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml up -d && break || sleep 10
+          done
 
       - name: Get test container name
         id: get_container_name
@@ -135,22 +142,24 @@ jobs:
       - name: Stop containers
         if: always()
         run: |
-          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down
+          docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down
 
   trigger-proxy-tests:
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["gha-runner-scale-set"]
     needs:
       - build-image
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - uses: actions/setup-python@v5
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
       - run: pip install -r ./.github/workflows/requirements.txt
       - run: curl https://api.github.com/user
-      - run: ping -c2 api.github.com
       - name: Trigger proxy build
         run: |
           python3 ./.github/workflows/deploy.py trigger_proxy_action \
@@ -166,7 +175,7 @@ jobs:
         if: "failure()"
         uses: "andymckay/cancel-action@0.4"
   finalize-image:
-    runs-on: ["self-hosted", "k8s-prod"]
+    runs-on: ["gha-runner-scale-set-large"]
     needs:
       - build-image
       - trigger-proxy-tests
@@ -175,6 +184,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0

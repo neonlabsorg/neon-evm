@@ -1,12 +1,12 @@
-#![allow(clippy::future_not_send)]
-
 use ethnum::U256;
 use evm_loader::account::BalanceAccount;
+use evm_loader::platform::Platform;
 use evm_loader::types::Address;
 use serde::{Deserialize, Serialize};
-use solana_sdk::{account::Account, pubkey::Pubkey};
+use solana_sdk::pubkey::Pubkey;
 
-use crate::{account_storage::account_info, types::BalanceAddress, NeonResult};
+use crate::rpc::Rpc;
+use crate::{emulator_platform::EmulatorPlatform, types::BalanceAddress, NeonResult};
 
 use serde_with::{serde_as, DisplayFromStr};
 
@@ -25,6 +25,8 @@ pub struct GetBalanceResponse {
     pub solana_address: Pubkey,
     #[serde_as(as = "DisplayFromStr")]
     pub contract_solana_address: Pubkey,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub container_address: Option<Pubkey>,
     pub trx_count: u64,
     pub balance: U256,
     pub status: BalanceStatus,
@@ -37,60 +39,48 @@ impl GetBalanceResponse {
         Self {
             solana_address: address.find_pubkey(program_id),
             contract_solana_address: address.find_contract_pubkey(program_id),
+            container_address: None,
             trx_count: 0,
             balance: U256::ZERO,
             status: BalanceStatus::Empty,
             user_pubkey: None,
         }
     }
-}
 
-fn read_account(
-    program_id: &Pubkey,
-    address: &BalanceAddress,
-    mut account: Account,
-) -> NeonResult<GetBalanceResponse> {
-    let solana_address = address.find_pubkey(program_id);
+    #[must_use]
+    pub fn new(program_id: &Pubkey, account: &BalanceAccount) -> Self {
+        let address = account.address();
+        let (contract_solana_address, _) = address.find_solana_address(program_id);
 
-    let account_info = account_info(&solana_address, &mut account);
-    let balance_account = BalanceAccount::from_account(program_id, account_info)?;
-
-    Ok(GetBalanceResponse {
-        solana_address,
-        contract_solana_address: address.find_contract_pubkey(program_id),
-        trx_count: balance_account.nonce(),
-        balance: balance_account.balance(),
-        status: BalanceStatus::Ok,
-        user_pubkey: balance_account.solana_address(),
-    })
+        Self {
+            solana_address: account.pubkey(),
+            contract_solana_address,
+            container_address: account.container(),
+            trx_count: account.nonce(),
+            balance: account.balance(),
+            status: BalanceStatus::Ok,
+            user_pubkey: account.solana_address(),
+        }
+    }
 }
 
 pub async fn execute(
-    rpc: &impl BuildConfigSimulator,
+    rpc: &impl Rpc,
     program_id: &Pubkey,
     address: &[BalanceAddress],
 ) -> NeonResult<Vec<GetBalanceResponse>> {
-    let mut response: Vec<Option<GetBalanceResponse>> = vec![None; address.len()];
-
-    // Download accounts
     let pubkeys: Vec<_> = address.iter().map(|a| a.find_pubkey(program_id)).collect();
-    let accounts = rpc.get_multiple_accounts(&pubkeys).await?;
+    let platform = EmulatorPlatform::new(rpc, *program_id, &[], &pubkeys).await?;
 
-    for (i, account) in accounts.into_iter().enumerate() {
-        if let Some(account) = account {
-            let balance = read_account(program_id, &address[i], account)?;
-            response[i] = Some(balance);
-        } else {
-            let balance = GetBalanceResponse::empty(program_id, &address[i]);
-            response[i] = Some(balance);
-        }
-    }
+    let mut result = Vec::with_capacity(address.len());
+    for a in address {
+        let balance = platform.get_balance(a.address, a.chain_id).await?;
+        let response = balance.map_or_else(
+            || GetBalanceResponse::empty(program_id, a),
+            |balance| GetBalanceResponse::new(program_id, &balance),
+        );
 
-    // Treat still missing accounts as empty
-    let mut result = Vec::with_capacity(response.len());
-    for (i, balance) in response.into_iter().enumerate() {
-        let balance = balance.unwrap_or_else(|| GetBalanceResponse::empty(program_id, &address[i]));
-        result.push(balance);
+        result.push(response);
     }
 
     Ok(result)

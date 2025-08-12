@@ -42,6 +42,7 @@ default = ["custom-heap"]
 linked_list_allocator = { version = "0.10", default-features = false }
 evm-loader-macro = { path = "../program-macro" }
 solana-program.workspace = true
+solana-account.workspace = true
 solana-bn254.workspace = true
 solana-compute-budget-interface = {workspace = true, features = ["borsh"]}
 spl-token.workspace = true
@@ -51,7 +52,7 @@ thiserror = "1.0"
 arrayref = "0.3.8"
 hex = "0.4.3"
 ripemd = "0.1"
-rlp = "0.5"
+alloy-rlp = { version = "0.3", features = ["derive"] }
 static_assertions = "1"
 borsh = "1.5.2"
 borsh010 = { version = "0.10.4", package = "borsh" }
@@ -63,9 +64,9 @@ log = { version = "0.4", default-features = false, optional = true }
 strum = { version = "0.26.3", features = ["derive"] }
 maybe-async = "0.2.10"
 async-trait = { version = "0.1.81", optional = true }
-allocator-api2 = "0.2.16"
-num-bigint = "0.4.6"
-num-traits = "0.2.19"
+allocator-api2 = "0.3"
+dashu = "0.4.2"
+enum_dispatch = "0.3"
 
 [target.'cfg(target_os = "solana")'.dependencies.maybe-async]
 version = "0.2.10"

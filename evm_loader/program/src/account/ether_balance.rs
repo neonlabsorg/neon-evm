@@ -1,16 +1,16 @@
+use std::cell::{Ref, RefMut};
 use std::mem::size_of;
 
+use crate::account::TAG_EMPTY;
 use crate::{
-    account_storage::KeysCache,
     error::{Error, Result},
     types::Address,
 };
 use ethnum::U256;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, system_program};
+use solana_program::account_info::AccountInfo;
+use solana_program::pubkey::Pubkey;
 
-use super::{
-    AccountHeader, AccountsDB, ACCOUNT_PREFIX_LEN, ACCOUNT_SEED_VERSION, TAG_ACCOUNT_BALANCE,
-};
+use super::{Account, AccountDispatch, AccountHeader, ACCOUNT_PREFIX_LEN, TAG_ACCOUNT_BALANCE};
 
 #[repr(C, packed)]
 pub struct HeaderV0 {
@@ -47,116 +47,59 @@ impl AccountHeader for HeaderWithSolanaAddress {
 // and change the `header_size` and `header_upgrade` functions
 pub type Header = HeaderWithSolanaAddress;
 
-#[derive(Clone)]
 pub struct BalanceAccount<'a> {
-    account: AccountInfo<'a>,
+    account: Account<'a>,
 }
 
 impl<'a> BalanceAccount<'a> {
     #[must_use]
-    pub fn required_account_size() -> usize {
-        ACCOUNT_PREFIX_LEN + size_of::<Header>()
+    pub const fn required_account_size(is_solana_user: bool) -> usize {
+        let header_size = if is_solana_user {
+            size_of::<HeaderWithSolanaAddress>()
+        } else {
+            size_of::<HeaderWithRevision>()
+        };
+
+        ACCOUNT_PREFIX_LEN + header_size
     }
 
-    #[must_use]
-    pub fn required_header_realloc(&self) -> usize {
-        let allocated_header_size = self.header_size();
-        size_of::<Header>().saturating_sub(allocated_header_size)
+    pub fn from_account_info(program_id: Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
+        let account = account.clone().into();
+        Self::from_account(program_id, account)
     }
 
-    pub fn from_account(program_id: &Pubkey, account: AccountInfo<'a>) -> Result<Self> {
-        super::validate_tag(program_id, &account, TAG_ACCOUNT_BALANCE)?;
+    pub fn from_account(program_id: Pubkey, account: Account<'a>) -> Result<Self> {
+        account.validate_tag(program_id, TAG_ACCOUNT_BALANCE)?;
 
         Ok(Self { account })
     }
 
+    /// # Safety
+    /// It's a caller responsibility to validate the account tag
     #[must_use]
-    pub fn info(&self) -> &AccountInfo<'a> {
-        &self.account
-    }
-
-    pub fn create_for_solana_user(
-        pubkey: Pubkey,
-        chain_id: u64,
-        accounts: &AccountsDB<'a>,
-        rent: &Rent,
-    ) -> Result<Self> {
-        let address = Address::from_solana_address(&pubkey);
-
-        let balance = Self::create(address, chain_id, accounts, None, rent)?;
-        if let Some(solana_address) = balance.solana_address() {
-            assert_eq!(solana_address, pubkey);
-        } else {
-            assert_eq!(balance.nonce(), 0);
-
-            let mut header = super::header_mut::<Header>(&balance.account);
-            header.solana_address = pubkey;
-        }
-
-        Ok(balance)
-    }
-
-    pub fn create(
-        address: Address,
-        chain_id: u64,
-        accounts: &AccountsDB<'a>,
-        keys: Option<&KeysCache>,
-        rent: &Rent,
-    ) -> Result<Self> {
-        let (pubkey, bump_seed) = keys.map_or_else(
-            || address.find_balance_address(&crate::ID, chain_id),
-            |keys| keys.balance_with_bump_seed(&crate::ID, address, chain_id),
-        );
-
-        // Already created. Return immidiately
-        let account = accounts.get(&pubkey).clone();
-        if !system_program::check_id(account.owner) {
-            let balance_account = Self::from_account(&crate::ID, account)?;
-            assert_eq!(balance_account.address(), address);
-            assert_eq!(balance_account.chain_id(), chain_id);
-
-            return Ok(balance_account);
-        }
-
-        // Create a new account
-        let program_seeds: &[&[u8]] = &[
-            &[ACCOUNT_SEED_VERSION],
-            address.as_bytes(),
-            &U256::from(chain_id).to_be_bytes(),
-            &[bump_seed],
-        ];
-
-        let system = accounts.system();
-        let operator = accounts.operator();
-
-        system.create_pda_account(
-            &crate::ID,
-            operator,
-            &account,
-            program_seeds,
-            ACCOUNT_PREFIX_LEN + size_of::<Header>(),
-            rent,
-        )?;
-
-        Self::initialize(account, &crate::ID, address, chain_id)
+    pub unsafe fn from_account_unchecked(account: Account<'a>) -> Self {
+        Self { account }
     }
 
     pub fn initialize(
-        account: AccountInfo<'a>,
-        program_id: &Pubkey,
+        mut account: Account<'a>,
+        program_id: Pubkey,
         address: Address,
         chain_id: u64,
     ) -> Result<Self> {
-        super::set_tag(program_id, &account, TAG_ACCOUNT_BALANCE, Header::VERSION)?;
+        assert_eq!(account.data_len(), Self::required_account_size(false));
+        assert!(account.validate_tag(program_id, TAG_EMPTY).is_ok());
+
+        account.init_tag(TAG_ACCOUNT_BALANCE, HeaderWithRevision::VERSION)?;
         {
-            let mut header = super::header_mut::<HeaderV0>(&account);
+            let mut header: RefMut<HeaderV0> = account.header_mut();
             header.address = address;
             header.chain_id = chain_id;
             header.trx_count = 0;
             header.balance = U256::ZERO;
         }
         {
-            let mut header = super::header_mut::<HeaderWithRevision>(&account);
+            let mut header: RefMut<HeaderWithRevision> = account.header_mut();
             header.revision = 1;
         }
 
@@ -164,75 +107,76 @@ impl<'a> BalanceAccount<'a> {
     }
 
     pub fn initialize_for_solana_user(
-        account: AccountInfo<'a>,
-        program_id: &Pubkey,
+        mut account: Account<'a>,
+        program_id: Pubkey,
         pubkey: Pubkey,
         chain_id: u64,
     ) -> Result<Self> {
-        super::set_tag(program_id, &account, TAG_ACCOUNT_BALANCE, Header::VERSION)?;
+        assert_eq!(account.data_len(), Self::required_account_size(true));
+        assert!(account.validate_tag(program_id, TAG_EMPTY).is_ok());
+
+        account.init_tag(TAG_ACCOUNT_BALANCE, HeaderWithSolanaAddress::VERSION)?;
+
         {
-            let mut header = super::header_mut::<HeaderV0>(&account);
+            let mut header: RefMut<HeaderV0> = account.header_mut();
             header.address = Address::from_solana_address(&pubkey);
             header.chain_id = chain_id;
             header.trx_count = 0;
             header.balance = U256::ZERO;
         }
         {
-            let mut header = super::header_mut::<HeaderWithRevision>(&account);
+            let mut header: RefMut<HeaderWithRevision> = account.header_mut();
             header.revision = 1;
         }
         {
-            let mut header = super::header_mut::<HeaderWithSolanaAddress>(&account);
+            let mut header: RefMut<HeaderWithSolanaAddress> = account.header_mut();
             header.solana_address = pubkey;
         }
 
         Ok(Self { account })
     }
 
-    fn header_size(&self) -> usize {
-        match super::header_version(&self.account) {
-            0 | 1 => size_of::<HeaderV0>(),
-            HeaderWithRevision::VERSION => size_of::<HeaderWithRevision>(),
-            HeaderWithSolanaAddress::VERSION => size_of::<HeaderWithSolanaAddress>(),
-            v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
-        }
-    }
-
-    fn header_upgrade(&mut self, rent: &Rent, db: &AccountsDB<'a>) -> Result<()> {
-        match super::header_version(&self.account) {
+    fn header_upgrade(&mut self) -> Result<()> {
+        match self.account.header_version() {
             0 | 1 => {
-                super::expand_header::<HeaderV0, Header>(&self.account, rent, db)?;
+                self.account.expand_header::<HeaderV0, Header>()?;
             }
             HeaderWithRevision::VERSION => {
-                super::expand_header::<HeaderWithRevision, Header>(&self.account, rent, db)?;
+                self.account.expand_header::<HeaderWithRevision, Header>()?;
             }
             HeaderWithSolanaAddress::VERSION => {
-                super::expand_header::<HeaderWithSolanaAddress, Header>(&self.account, rent, db)?;
+                self.account
+                    .expand_header::<HeaderWithSolanaAddress, Header>()?;
             }
-            v => panic_with_error!(Error::AccountInvalidHeader(*self.pubkey(), v)),
+            v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
         }
 
         Ok(())
     }
 
     #[must_use]
-    pub fn pubkey(&self) -> &'a Pubkey {
-        self.account.key
+    pub fn pubkey(&self) -> Pubkey {
+        self.account.pubkey()
+    }
+
+    #[must_use]
+    pub fn container(&self) -> Option<Pubkey> {
+        self.account.container()
     }
 
     #[must_use]
     pub fn address(&self) -> Address {
-        let header = super::header::<HeaderV0>(&self.account);
+        let header: Ref<HeaderV0> = self.account.header();
         header.address
     }
 
     #[must_use]
     pub fn solana_address(&self) -> Option<Pubkey> {
-        if super::header_version(&self.account) < HeaderWithSolanaAddress::VERSION {
+        if self.account.header_version() < HeaderWithSolanaAddress::VERSION {
             return None;
         }
 
-        let header = super::header::<HeaderWithSolanaAddress>(&self.account);
+        let header: Ref<HeaderWithSolanaAddress> = self.account.header();
 
         if header.solana_address == Pubkey::default() {
             return None;
@@ -241,31 +185,43 @@ impl<'a> BalanceAccount<'a> {
         Some(header.solana_address)
     }
 
+    pub fn set_solana_address(&mut self, pubkey: Pubkey) -> Result<()> {
+        if self.account.header_version() < HeaderWithSolanaAddress::VERSION {
+            self.header_upgrade()?;
+        }
+
+        {
+            let mut header: RefMut<HeaderWithSolanaAddress> = self.account.header_mut();
+            header.solana_address = pubkey;
+        }
+        self.increment_revision()
+    }
+
     #[must_use]
     pub fn chain_id(&self) -> u64 {
-        let header = super::header::<HeaderV0>(&self.account);
+        let header: Ref<HeaderV0> = self.account.header();
         header.chain_id
     }
 
     #[must_use]
     pub fn nonce(&self) -> u64 {
-        let header = super::header::<HeaderV0>(&self.account);
+        let header: Ref<HeaderV0> = self.account.header();
         header.trx_count
     }
 
     pub fn override_nonce_by(&mut self, value: u64) {
-        let mut header = super::header_mut::<HeaderV0>(&self.account);
+        let mut header: RefMut<HeaderV0> = self.account.header_mut();
         header.trx_count = value;
     }
 
     pub fn override_balance_by(&mut self, value: U256) {
-        let mut header = super::header_mut::<HeaderV0>(&self.account);
+        let mut header: RefMut<HeaderV0> = self.account.header_mut();
         header.balance = value;
     }
 
     #[must_use]
     pub fn exists(&self) -> bool {
-        let header = super::header::<HeaderV0>(&self.account);
+        let header: Ref<HeaderV0> = self.account.header();
 
         ({ header.trx_count } > 0) || ({ header.balance } > 0)
     }
@@ -275,7 +231,7 @@ impl<'a> BalanceAccount<'a> {
     }
 
     pub fn increment_nonce_by(&mut self, value: u64) -> Result<()> {
-        let mut header = super::header_mut::<HeaderV0>(&self.account);
+        let mut header: RefMut<HeaderV0> = self.account.header_mut();
 
         header.trx_count = header
             .trx_count
@@ -287,23 +243,31 @@ impl<'a> BalanceAccount<'a> {
 
     #[must_use]
     pub fn balance(&self) -> U256 {
-        let header = super::header::<HeaderV0>(&self.account);
+        let header: Ref<HeaderV0> = self.account.header();
         header.balance
     }
 
-    pub fn transfer(&mut self, target: &mut BalanceAccount, value: U256) -> Result<()> {
-        if self.account.key == target.account.key {
+    /// # Safety
+    ///  It's the caller's responsibility to increment the revision
+    pub unsafe fn transfer_without_revision(
+        &mut self,
+        target: &mut BalanceAccount,
+        value: U256,
+    ) -> Result<()> {
+        if self.account.pubkey() == target.account.pubkey() {
             return Ok(());
         }
 
         assert_eq!(self.chain_id(), target.chain_id());
 
-        self.burn(value)?;
-        target.mint(value)
+        self.burn_without_revision(value)?;
+        target.mint_without_revision(value)
     }
 
-    pub fn burn(&mut self, value: U256) -> Result<()> {
-        let mut header = super::header_mut::<HeaderV0>(&self.account);
+    /// # Safety
+    ///  It's the caller's responsibility to increment the revision
+    pub unsafe fn burn_without_revision(&mut self, value: U256) -> Result<()> {
+        let mut header: RefMut<HeaderV0> = self.account.header_mut();
 
         header.balance = header
             .balance
@@ -317,8 +281,10 @@ impl<'a> BalanceAccount<'a> {
         Ok(())
     }
 
-    pub fn mint(&mut self, value: U256) -> Result<()> {
-        let mut header = super::header_mut::<HeaderV0>(&self.account);
+    /// # Safety
+    ///  It's the caller's responsibility to increment the revision
+    pub unsafe fn mint_without_revision(&mut self, value: U256) -> Result<()> {
+        let mut header: RefMut<HeaderV0> = self.account.header_mut();
 
         header.balance = header
             .balance
@@ -328,22 +294,65 @@ impl<'a> BalanceAccount<'a> {
         Ok(())
     }
 
+    pub fn transfer(&mut self, target: &mut BalanceAccount, value: U256) -> Result<()> {
+        unsafe { self.transfer_without_revision(target, value) }?;
+
+        self.increment_revision()?;
+        target.increment_revision()
+    }
+
+    pub fn burn(&mut self, value: U256) -> Result<()> {
+        unsafe { self.burn_without_revision(value) }?;
+
+        self.increment_revision()
+    }
+
+    pub fn mint(&mut self, value: U256) -> Result<()> {
+        unsafe { self.mint_without_revision(value) }?;
+
+        self.increment_revision()
+    }
+
+    pub fn burn_gas(&mut self, gas: U256, gas_price: U256) -> Result<()> {
+        let Some(tokens) = gas.checked_mul(gas_price) else {
+            return Err(Error::IntegerOverflow);
+        };
+
+        if tokens == U256::ZERO {
+            return Ok(());
+        }
+
+        self.burn(tokens)
+    }
+
+    pub fn refund_gas(&mut self, gas: U256, gas_price: U256) -> Result<()> {
+        let Some(tokens) = gas.checked_mul(gas_price) else {
+            return Err(Error::IntegerOverflow);
+        };
+
+        if tokens == U256::ZERO {
+            return Ok(());
+        }
+
+        self.mint(tokens)
+    }
+
     #[must_use]
     pub fn revision(&self) -> u32 {
-        if super::header_version(&self.account) < HeaderWithRevision::VERSION {
+        if self.account.header_version() < HeaderWithRevision::VERSION {
             return 0;
         }
 
-        let header = super::header::<HeaderWithRevision>(&self.account);
+        let header: Ref<HeaderWithRevision> = self.account.header();
         header.revision
     }
 
-    pub fn increment_revision(&mut self, rent: &Rent, db: &AccountsDB<'a>) -> Result<()> {
-        if super::header_version(&self.account) < HeaderWithRevision::VERSION {
-            self.header_upgrade(rent, db)?;
+    pub fn increment_revision(&mut self) -> Result<()> {
+        if self.account.header_version() < HeaderWithRevision::VERSION {
+            self.header_upgrade()?;
         }
 
-        let mut header = super::header_mut::<HeaderWithRevision>(&self.account);
+        let mut header: RefMut<HeaderWithRevision> = self.account.header_mut();
         header.revision = header.revision.wrapping_add(1);
 
         Ok(())

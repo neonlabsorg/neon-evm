@@ -1,0 +1,13 @@
+[package]
+name = "tracerdb-api"
+version = "0.0.4"
+edition = "2021"
+
+[dependencies]
+
+jsonrpsee = { version = ">=0.20", features = ["server", "ws-client", "macros"] }
+solana-sdk.version = ">=1.15.0"
+serde = ">=1.0"
+serde_with = { version = ">=3.9", features = ["hex","base64"] }
+solana-account-decoder.version = ">=1.15.0"
+anyhow.version = ">=1.0"

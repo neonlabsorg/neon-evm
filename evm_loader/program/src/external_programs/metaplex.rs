@@ -1,4 +1,4 @@
-use crate::error::Result;
+use crate::{error::Result, types::vector::VectorMap};
 use borsh010::{BorshDeserialize, BorshSerialize};
 use mpl_token_metadata::{
     accounts::{MasterEdition, Metadata},
@@ -10,16 +10,14 @@ use solana_program::instruction::AccountMeta;
 use solana_program::program_option::COption;
 use solana_program::rent::Rent;
 use solana_program::{account_info::IntoAccountInfo, program_pack::Pack};
-use std::collections::BTreeMap;
 
 use crate::executor::OwnedAccountInfo;
-use crate::types::vector::VectorVecExt;
 use solana_program::pubkey::Pubkey;
 
 pub fn emulate(
     instruction: &[u8],
     meta: &[AccountMeta],
-    accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+    accounts: &mut VectorMap<Pubkey, OwnedAccountInfo>,
     rent: &Rent,
 ) -> Result<()> {
     let discriminator = instruction[0];
@@ -40,7 +38,7 @@ pub fn emulate(
 
 fn create_metadata_accounts_v3(
     meta: &[AccountMeta],
-    accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+    accounts: &mut VectorMap<Pubkey, OwnedAccountInfo>,
     args: CreateMetadataAccountV3InstructionArgs,
     rent: &Rent,
 ) -> Result<()> {
@@ -54,7 +52,7 @@ fn create_metadata_accounts_v3(
 
     let mint = {
         let mint_info = accounts.get_mut(mint_key).unwrap().into_account_info();
-        crate::account::token::Mint::from_account(&mint_info)?.into_data()
+        crate::account::token::Mint::from_account_info(&mint_info)?.into_data()
     };
 
     let (_, edition_bump_seed) = MasterEdition::find_pda(mint_key);
@@ -84,7 +82,7 @@ fn create_metadata_accounts_v3(
 
     let metadata_account = accounts.get_mut(metadata_account_key).unwrap();
     metadata_account.owner = MPL_TOKEN_METADATA_ID;
-    metadata_account.data = metadata.try_to_vec()?.into_vector();
+    metadata_account.data = metadata.try_to_vec()?;
     metadata_account.lamports = rent.minimum_balance(metadata_account.data.len());
 
     Ok(())
@@ -92,7 +90,7 @@ fn create_metadata_accounts_v3(
 
 fn create_master_edition_v3(
     meta: &[AccountMeta],
-    accounts: &mut BTreeMap<Pubkey, OwnedAccountInfo>,
+    accounts: &mut VectorMap<Pubkey, OwnedAccountInfo>,
     max_supply: Option<u64>,
     rent: &Rent,
 ) -> Result<()> {
@@ -113,7 +111,7 @@ fn create_master_edition_v3(
 
     let mut mint = {
         let mint_info = accounts.get_mut(mint_key).unwrap().into_account_info();
-        crate::account::token::Mint::from_account(&mint_info)?.into_data()
+        crate::account::token::Mint::from_account_info(&mint_info)?.into_data()
     };
 
     if &metadata.mint != mint_key {
@@ -138,7 +136,7 @@ fn create_master_edition_v3(
     {
         let edition_account = accounts.get_mut(edition_account_key).unwrap();
         edition_account.owner = MPL_TOKEN_METADATA_ID;
-        edition_account.data = edition.try_to_vec()?.into_vector();
+        edition_account.data = edition.try_to_vec()?;
         edition_account.lamports = rent.minimum_balance(edition_account.data.len());
     }
     // Metadata Account

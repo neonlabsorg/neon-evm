@@ -29,7 +29,7 @@ WSOL_PATH=${NEON_BIN}/wsol.json
 VALIDATOR_ARGS=(
   --reset
   --warp-slot 1
-  --log-messages-bytes-limit 50000
+  --log-messages-bytes-limit 100000
   --ticks-per-slot 16
   --upgradeable-program ${EVM_LOADER} ${EVM_LOADER_PATH} ${EVM_LOADER_AUTHORITY_KEYPAIR}
   --bpf-program ${METAPLEX} ${METAPLEX_PATH}
@@ -42,7 +42,7 @@ VALIDATOR_ARGS=(
   --limit-ledger-size 400000000
 )
 
-LIST_OF_TEST_PROGRAMS=("test_invoke_program" "counter" "cross_program_invocation" "transfer_sol" "transfer_tokens")
+LIST_OF_TEST_PROGRAMS=("test_invoke_program" "counter" "cross_program_invocation" "transfer_sol" "transfer_tokens" "alt_updater")
 
 for program in "${LIST_OF_TEST_PROGRAMS[@]}"; do
   keypair="${NEON_BIN}/deploy/${program}/${program}-keypair.json"

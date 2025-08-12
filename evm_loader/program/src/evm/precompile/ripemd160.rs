@@ -1,8 +1,5 @@
-use crate::types::Vector;
-use crate::vector;
-
 #[must_use]
-pub fn ripemd160(input: &[u8]) -> Vector<u8> {
+pub fn ripemd160(input: &[u8]) -> Vec<u8> {
     use ripemd::{Digest, Ripemd160};
     debug_print!("ripemd160");
 
@@ -14,7 +11,7 @@ pub fn ripemd160(input: &[u8]) -> Vector<u8> {
     let hash_val = hasher.finalize();
 
     // transform to [u8; 32]
-    let mut result = vector![0_u8; 12];
+    let mut result = vec![0_u8; 12];
     result.extend(&hash_val[..]);
 
     result

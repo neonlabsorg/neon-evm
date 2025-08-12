@@ -1,84 +1,81 @@
 use std::cell::{Ref, RefMut};
 
-use super::{AccountHeader, Operator, StateAccount, TAG_STATE_FINALIZED};
+use super::{AccountDispatch, AccountHeader, Operator, StateAccount, TAG_STATE_FINALIZED};
 use crate::{
     error::{Error, Result},
-    types::{Transaction, TrxView},
+    types::EncodedTransaction,
 };
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use ethnum::U256;
+use solana_program::{account_info::AccountInfo, keccak, pubkey::Pubkey};
 
 /// Storage data account to store execution metainfo between steps for iterative execution
 #[repr(C, packed)]
 pub struct Header {
     pub owner: Pubkey,
-    pub transaction_hash: [u8; 32],
+    pub hash: [u8; 32],
 }
 
 impl AccountHeader for Header {
     const VERSION: u8 = 0;
 }
 
-pub struct StateFinalizedAccount<'local, 'sol> {
-    account: &'local AccountInfo<'sol>,
+pub struct StateFinalizedAccount<'sol> {
+    account: AccountInfo<'sol>,
 }
 
-impl<'local, 'sol> StateFinalizedAccount<'local, 'sol> {
+impl<'sol> StateFinalizedAccount<'sol> {
     #[must_use]
-    pub fn into_account(self) -> &'local AccountInfo<'sol> {
+    pub fn into_account(self) -> AccountInfo<'sol> {
         self.account
     }
 
-    pub fn convert_from_state(
-        program_id: &Pubkey,
-        state: StateAccount<'local, 'sol>,
-    ) -> Result<&'local AccountInfo<'sol>> {
+    pub fn convert_from_state(state: StateAccount<'sol>) -> Result<Self> {
+        // Ensure that all gas is used or returned
+        // Gas will disappear if this is false
+        assert_eq!(state.root().gas_available(), U256::ZERO);
+
         let owner = state.owner();
-        let transaction_hash = state.trx().hash();
+        let hash = state.transaction_hash().to_bytes();
 
-        let account = state.into_account();
+        let mut account = state.into_account();
 
-        super::set_tag(program_id, account, TAG_STATE_FINALIZED, Header::VERSION)?;
+        account.init_tag(TAG_STATE_FINALIZED, Header::VERSION)?;
         {
-            let mut header = super::header_mut::<Header>(account);
-            header.owner = owner;
-            header.transaction_hash = transaction_hash;
+            let mut header = account.header_mut_uninit();
+            header.write(Header { owner, hash });
         }
 
-        Ok(account)
-    }
-
-    pub fn from_account(program_id: &Pubkey, account: &'local AccountInfo<'sol>) -> Result<Self> {
-        super::validate_tag(program_id, account, TAG_STATE_FINALIZED)?;
         Ok(Self { account })
     }
 
-    #[inline]
-    #[must_use]
-    fn header(&self) -> Ref<Header> {
-        super::header(self.account)
+    pub fn from_account_info(program_id: Pubkey, account_info: &AccountInfo<'sol>) -> Result<Self> {
+        let account = account_info.clone();
+        Self::from_account(program_id, account)
     }
 
-    #[inline]
-    #[must_use]
-    fn header_mut(&self) -> RefMut<Header> {
-        super::header_mut(self.account)
+    pub fn from_account(program_id: Pubkey, account: AccountInfo<'sol>) -> Result<Self> {
+        account.validate_tag(program_id, TAG_STATE_FINALIZED)?;
+        Ok(Self { account })
     }
 
     pub fn update<F>(&mut self, f: F)
     where
         F: FnOnce(RefMut<Header>),
     {
-        f(self.header_mut());
+        let header: RefMut<Header> = self.account.header_mut();
+        f(header);
     }
 
     #[must_use]
     pub fn owner(&self) -> Pubkey {
-        self.header().owner
+        let header: Ref<Header> = self.account.header();
+        header.owner
     }
 
     #[must_use]
-    pub fn trx_hash(&self) -> [u8; 32] {
-        self.header().transaction_hash
+    pub fn trx_hash(&self) -> keccak::Hash {
+        let header: Ref<Header> = self.account.header();
+        keccak::Hash(header.hash)
     }
 
     pub fn validate_owner(&self, operator: &Operator) -> Result<()> {
@@ -89,8 +86,8 @@ impl<'local, 'sol> StateFinalizedAccount<'local, 'sol> {
         Ok(())
     }
 
-    pub fn validate_trx(&self, transaction: &Transaction) -> Result<()> {
-        if self.trx_hash() == transaction.hash {
+    pub fn validate_trx(&self, transaction: &EncodedTransaction) -> Result<()> {
+        if &self.trx_hash() == transaction.hash() {
             return Err(Error::StorageAccountFinalized);
         }
 

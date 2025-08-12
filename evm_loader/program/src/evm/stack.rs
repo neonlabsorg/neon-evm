@@ -1,34 +1,30 @@
-#![allow(clippy::inline_always)]
+use std::{alloc::Layout, convert::TryInto, ptr::NonNull};
 
-use std::{
-    alloc::{GlobalAlloc, Layout},
-    convert::TryInto,
-};
-
+use allocator_api2::alloc::Allocator;
 use ethnum::{I256, U256};
 
-use crate::allocator::acc_allocator;
 use crate::{error::Error, types::Address};
 
 const ELEMENT_SIZE: usize = 32;
 const STACK_SIZE: usize = ELEMENT_SIZE * 128;
 
 #[repr(C)]
-pub struct Stack {
-    begin: *mut u8,
-    end: *mut u8,
-    top: *mut u8,
+pub struct Stack<A: Allocator> {
+    begin: NonNull<u8>,
+    end: NonNull<u8>,
+    top: NonNull<u8>,
+    allocator: A,
 }
 
-impl Stack {
-    pub fn new() -> Self {
+impl<A: Allocator> Stack<A> {
+    pub fn new_in(allocator: A) -> Self {
         let (begin, end) = unsafe {
             let layout = Layout::from_size_align_unchecked(STACK_SIZE, ELEMENT_SIZE);
-            let begin = acc_allocator().alloc(layout);
-            if begin.is_null() {
+            let Ok(begin) = allocator.allocate(layout) else {
                 std::alloc::handle_alloc_error(layout);
-            }
+            };
 
+            let begin = begin.cast::<u8>();
             let end = begin.add(STACK_SIZE - ELEMENT_SIZE);
 
             (begin, end)
@@ -38,24 +34,29 @@ impl Stack {
             begin,
             end,
             top: begin,
+            allocator,
         }
     }
 
-    #[cfg(not(target_os = "solana"))]
+    pub fn reset(&mut self) {
+        self.top = self.begin;
+    }
+
+    #[allow(unused)]
     pub fn to_vec(&self) -> Vec<[u8; 32]> {
         let slice = unsafe {
             let start = self.begin.cast::<[u8; 32]>();
             let end = self.top.cast::<[u8; 32]>();
 
             let len = end.offset_from(start).try_into().unwrap();
-            std::slice::from_raw_parts(start, len)
+            std::slice::from_raw_parts(NonNull::as_ptr(start), len)
         };
         slice.to_vec()
     }
 
     #[inline(always)]
     unsafe fn read(&self) -> &[u8; 32] {
-        &*(self.top as *const [u8; 32])
+        self.top.cast::<[u8; 32]>().as_ref()
     }
 
     #[inline(always)]
@@ -125,7 +126,7 @@ impl Stack {
 
         let address = unsafe {
             let ptr = self.top.add(12); // discard 12 bytes
-            *(ptr as *const Address)
+            ptr.cast::<Address>().read()
         };
 
         Ok(address)
@@ -139,10 +140,10 @@ impl Stack {
     #[inline(always)]
     pub fn push_byte(&mut self, value: u8) -> Result<(), Error> {
         unsafe {
-            core::ptr::write_bytes(self.top, 0, 32);
+            self.top.write_bytes(0, 32);
 
             let ptr = self.top.add(31);
-            *ptr = value;
+            ptr.write(value);
         }
 
         self.push()
@@ -151,7 +152,7 @@ impl Stack {
     #[inline(always)]
     pub fn push_zero(&mut self) -> Result<(), Error> {
         unsafe {
-            core::ptr::write_bytes(self.top, 0, 32);
+            self.top.write_bytes(0, 32);
         }
 
         self.push()
@@ -160,7 +161,7 @@ impl Stack {
     #[inline(always)]
     pub fn push_array(&mut self, value: &[u8; 32]) -> Result<(), Error> {
         unsafe {
-            core::ptr::copy_nonoverlapping(value.as_ptr(), self.top, 32);
+            core::ptr::copy_nonoverlapping(value.as_ptr(), self.top.as_ptr(), 32);
         }
 
         self.push()
@@ -172,9 +173,10 @@ impl Stack {
         let zero_bytes: usize = 32 - N;
 
         unsafe {
-            core::ptr::write_bytes(self.top, 0, zero_bytes);
+            self.top.write_bytes(0, zero_bytes);
+
             let ptr = self.top.add(zero_bytes);
-            core::ptr::copy_nonoverlapping(value.as_ptr(), ptr, N);
+            core::ptr::copy_nonoverlapping(value.as_ptr(), NonNull::as_ptr(ptr), N);
         }
 
         self.push()
@@ -226,7 +228,7 @@ impl Stack {
             let source = self.top.sub(N * 32);
             let target = self.top;
 
-            core::ptr::copy_nonoverlapping(source, target, 32);
+            source.copy_to_nonoverlapping(target, 32);
         }
 
         self.push()
@@ -246,22 +248,23 @@ impl Stack {
             let b = self.top.sub((N + 1) * 32);
 
             let mut c = [0_u8; 32];
+            let c = NonNull::new_unchecked(c.as_mut_ptr());
 
             // compiler optimizes this into register operations
-            core::ptr::copy_nonoverlapping(a, c.as_mut_ptr(), 32);
-            core::ptr::copy_nonoverlapping(b, a, 32);
-            core::ptr::copy_nonoverlapping(c.as_ptr(), b, 32);
+            a.copy_to_nonoverlapping(c, 32);
+            b.copy_to_nonoverlapping(a, 32);
+            c.copy_to_nonoverlapping(b, 32);
         }
 
         Ok(())
     }
 }
 
-impl Drop for Stack {
+impl<A: Allocator> Drop for Stack<A> {
     fn drop(&mut self) {
         unsafe {
             let layout = Layout::from_size_align_unchecked(STACK_SIZE, ELEMENT_SIZE);
-            acc_allocator().dealloc(self.begin, layout);
+            self.allocator.deallocate(self.begin, layout);
         }
     }
 }

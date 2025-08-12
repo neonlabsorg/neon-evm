@@ -2,7 +2,7 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use crate::error::Result;
 
-pub fn process(_program_id: &Pubkey, _accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
+pub fn process(_program_id: Pubkey, _accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Config Get Environment");
 
     let environment: &str = if cfg!(feature = "mainnet") {
@@ -11,6 +11,8 @@ pub fn process(_program_id: &Pubkey, _accounts: &[AccountInfo], _instruction: &[
         "testnet"
     } else if cfg!(feature = "devnet") {
         "devnet"
+    } else if cfg!(feature = "devnet-2") {
+        "devnet-2"
     } else if cfg!(feature = "govertest") {
         "govertest"
     } else if cfg!(feature = "ci") {

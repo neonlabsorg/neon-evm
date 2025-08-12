@@ -159,7 +159,7 @@ impl<'a> StorageCell<'a> {
         let data = Ref::map(data, |d| &d[cells_offset..]);
 
         Ref::map(data, |bytes| {
-            static_assertions::assert_eq_align!(Cell, u8);
+            const { assert!(std::mem::align_of::<Cell>() == 1) };
             assert_eq!(bytes.len() % size_of::<Cell>(), 0);
 
             // SAFETY: Cell has the same alignment as bytes
@@ -179,7 +179,7 @@ impl<'a> StorageCell<'a> {
         let data = RefMut::map(data, |d| &mut d[cells_offset..]);
 
         RefMut::map(data, |bytes| {
-            static_assertions::assert_eq_align!(Cell, u8);
+            const { assert!(std::mem::align_of::<Cell>() == 1) };
             assert_eq!(bytes.len() % size_of::<Cell>(), 0);
 
             // SAFETY: Cell has the same alignment as bytes

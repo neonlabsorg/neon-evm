@@ -13,7 +13,7 @@ const MAX_MEMORY_SIZE: usize = 64 * 1024;
 const MEMORY_CAPACITY: usize = 1024;
 const MEMORY_ALIGN: usize = 1;
 
-static_assertions::const_assert!(MEMORY_ALIGN.is_power_of_two());
+const _: () = assert!(MEMORY_ALIGN.is_power_of_two());
 
 #[repr(C)]
 pub struct Memory<A: Allocator> {

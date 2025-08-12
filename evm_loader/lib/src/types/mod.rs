@@ -366,6 +366,7 @@ pub struct EmulateFromHolderApiRequest {
     #[serde_as(as = "DisplayFromStr")]
     pub holder_pubkey: Pubkey,
     pub step_limit: Option<u64>,
+    pub account_limit: Option<usize>,
     pub chains: Option<Vec<ChainInfo>>,
     pub slot: Option<u64>,
     pub tx_index_in_block: Option<u64>,

@@ -167,7 +167,7 @@ pub async fn execute_from_holder(
         solana_overrides: None,
         provide_account_info: None,
         execution_map: None,
-        account_limit: None,
+        account_limit: emulate_request.account_limit,
     };
 
     execute(rpc, None, program_id, request, None::<TracerTypeEnum>).await
@@ -241,6 +241,9 @@ async fn create_platform<'rpc, T: Rpc + BuildConfigSimulator>(
     if let FromAddress::Solana(pubkey) = emulate_request.tx.from {
         platform.create_balance_for_solana_user(pubkey).await?;
     }
+
+    // Limit number of account emulator can download from RPC
+    platform.set_accounts_limit(emulate_request.account_limit);
 
     Ok(platform)
 }

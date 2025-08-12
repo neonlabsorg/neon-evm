@@ -128,7 +128,7 @@ pub enum NeonError {
     RpcReturnedEmptyAccount(Pubkey),
     #[error("TryFromIntError {0}")]
     TryFromIntError(#[from] std::num::TryFromIntError),
-    #[error("Too many accounts: {0:?} > {1:?}")]
+    #[error("Too many accounts: {0} > {1}")]
     TooManyAccounts(usize, usize),
 }
 

@@ -22,7 +22,7 @@ use evm_loader::types::Transaction;
 use evm_loader::types::{ExecutionMap, TransactionType};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
-use serde_with::{hex::Hex, serde_as, DisplayFromStr, OneOrMany};
+use serde_with::{hex::Hex, serde_as, DefaultOnNull, DisplayFromStr, OneOrMany};
 use solana_sdk::account::{AccountSharedData, ReadableAccount};
 
 use crate::rpc::SliceConfig;
@@ -312,8 +312,9 @@ pub struct SerializedAccountMeta {
 pub struct SerializedInstruction {
     #[serde_as(as = "DisplayFromStr")]
     pub program_id: Pubkey,
+    #[serde_as(as = "DefaultOnNull")]
     pub accounts: Vec<SerializedAccountMeta>,
-    #[serde_as(as = "Hex")]
+    #[serde_as(as = "DefaultOnNull<Hex>")]
     pub data: Vec<u8>,
 }
 

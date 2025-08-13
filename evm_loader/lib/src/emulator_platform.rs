@@ -440,7 +440,7 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
         // Execute the instruction
         let (simulation_result, _) = simulator
             .process_instruction(&instruction)
-            .map_err(|e| Error::Custom(e.to_string()))?;
+            .map_err(|error| Error::Fatal(Box::new(error)))?;
 
         self.return_data = Some(TransactionReturnData {
             program_id: target_program_id,

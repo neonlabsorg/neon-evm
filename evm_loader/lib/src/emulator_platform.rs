@@ -284,8 +284,10 @@ impl<R: Rpc> EmulatorPlatform<R> {
             Error::Custom(emulator_error.to_string())
         })?;
 
+        let accounts = pubkeys.iter().copied().zip(accounts.into_iter());
+
         let mut stack = self.current_stack_frame();
-        for (key, account) in pubkeys.iter().copied().zip(accounts.into_iter()) {
+        for (key, account) in accounts {
             stack.entry(key).or_insert_with(|| {
                 account.map_or_else(
                     || SharedAccount::new_empty(key),
@@ -377,17 +379,24 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
             .map(|seed| Pubkey::create_program_address(seed, &self.program_id).unwrap())
             .collect();
 
-        let mut accounts = Vec::with_capacity(instruction.accounts.len() + 1);
-        accounts.push(target_program_id);
+        let mut accounts = HashSet::with_capacity(instruction.accounts.len() + 1); // Use HashSet to remove dupplicates
+        accounts.insert(target_program_id);
+
         for meta in &instruction.accounts {
             if meta.pubkey != FAKE_OPERATOR && meta.is_signer && !signers.contains(&meta.pubkey) {
                 return Err(ProgramError::MissingRequiredSignature.into());
             }
-            accounts.push(meta.pubkey);
+            accounts.insert(meta.pubkey);
         }
+
+        let accounts = accounts.into_iter().collect::<Vec<_>>();
 
         // Add accounts to the current stack frame
         self.add_accounts_to_stack(&accounts).await?;
+        for meta in instruction.accounts.iter().filter(|m| m.is_writable) {
+            let shared_account = self.account_from_stack(meta.pubkey).await?;
+            shared_account.mark_modified();
+        }
 
         // Sync accounts with the simulator
         simulator
@@ -417,7 +426,6 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
 
             let shared_account = stack.get_mut(&meta.pubkey).unwrap();
             shared_account.update(&account_data);
-            shared_account.mark_modified();
         }
 
         Ok(())

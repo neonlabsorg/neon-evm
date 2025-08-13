@@ -258,7 +258,7 @@ pub enum Error {
     #[error("Program not allowed to call itself")]
     RecursiveCall,
 
-    #[error("CPI fails {0}: {1}")]
+    #[error("{0}: {1}")]
     ExternalCallFailed(Pubkey, String),
 
     #[error("Operator Balance - invalid owner {0}, expected = {1}")]

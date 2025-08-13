@@ -27,7 +27,7 @@ pub struct SimulateSolanaResult {
 #[serde_as]
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct SimulateSolanaResponse {
-    instructions: Vec<SimulateSolanaResult>,
+    pub instructions: Vec<SimulateSolanaResult>,
 }
 
 fn account_keys(instructions: &[Instruction]) -> HashSet<Pubkey> {

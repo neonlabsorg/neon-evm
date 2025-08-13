@@ -47,7 +47,6 @@ docker_client = docker.APIClient()
 NEON_TEST_IMAGE_NAME = "neon_tests"
 
 PROXY_ENDPOINT = os.environ.get("PROXY_ENDPOINT")
-NEON_TESTS_ENDPOINT = os.environ.get("NEON_TESTS_ENDPOINT")
 
 
 @click.group()
@@ -198,20 +197,6 @@ def run_subprocess(command):
     subprocess.run(command, shell=True)
 
 
-def get_container_name(project_name, service_name):
-    data = subprocess.run(
-        f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml ps",
-        shell=True, capture_output=True, text=True).stdout
-    click.echo(data)
-    pattern = rf'{project_name}[-_]{service_name}[-_]1'
-    match = re.search(pattern, data)
-    return match.group(0)
-
-
-def stop_containers(project_name):
-    run_subprocess(f"docker-compose -p {project_name} -f ./ci/docker-compose-ci.yml down")
-
-
 @cli.command(name="trigger_proxy_action")
 @click.option('--evm_pr_version_branch')
 @click.option('--is_evm_release')
@@ -284,9 +269,8 @@ def wait_condition(func_cond, timeout_sec=60, delay=0.5):
 @click.option("--url", help="slack app endpoint url.")
 @click.option("--build_url", help="github action test build url.")
 def send_notification(evm_tag, url, build_url):
-
     if re.match(RELEASE_TAG_TEMPLATE, evm_tag) is not None \
-        or re.match(VERSION_BRANCH_TEMPLATE, evm_tag) is not None \
+            or re.match(VERSION_BRANCH_TEMPLATE, evm_tag) is not None \
             or evm_tag == "latest":
         tpl = ERR_MSG_TPL.copy()
 

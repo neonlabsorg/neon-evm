@@ -130,6 +130,8 @@ pub enum NeonError {
     RpcReturnedEmptyAccount(Pubkey),
     #[error("TryFromIntError {0}")]
     TryFromIntError(#[from] std::num::TryFromIntError),
+    #[error("Too many accounts: {0} > {1}")]
+    TooManyAccounts(usize, usize),
     #[error("Instruction Error. {0}")]
     InstructionError(#[from] InstructionError),
     #[error("Transction Sanitize Error. {0}")]
@@ -183,8 +185,9 @@ impl NeonError {
             NeonError::RocksDb(_) => 266,
             NeonError::RpcReturnedEmptyAccount(_) => 267,
             NeonError::TryFromIntError(_) => 268,
-            NeonError::InstructionError(_) => 269,
-            NeonError::SanitizeError(_) => 270,
+            NeonError::TooManyAccounts(_, _) => 269,
+            NeonError::InstructionError(_) => 270,
+            NeonError::SanitizeError(_) => 271,
         }
     }
 }

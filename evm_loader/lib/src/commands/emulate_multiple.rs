@@ -36,6 +36,7 @@ pub async fn execute(
         let single_emulate_request = EmulateRequest {
             tx,
             step_limit: request.step_limit,
+            account_limit: request.account_limit,
             chains: Option::clone(&request.chains),
             trace_config: None,
             accounts: vec![],

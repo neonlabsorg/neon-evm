@@ -385,6 +385,9 @@ pub enum Error {
 
     #[error("Account {0} - already in container {1}")]
     AccountAlreadyInContainer(Pubkey, Pubkey),
+
+    #[error("Fatal error: {0}")]
+    Fatal(#[serde(skip)] std::boxed::Box<dyn std::error::Error + Send>),
 }
 
 impl Error {

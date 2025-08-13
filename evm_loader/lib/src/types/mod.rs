@@ -403,6 +403,7 @@ pub enum AccountInfoLevel {
 pub struct EmulateRequest {
     pub tx: TxParams,
     pub step_limit: Option<u64>,
+    pub account_limit: Option<usize>,
     pub chains: Option<Vec<ChainInfo>>,
     pub trace_config: Option<TraceCallConfig>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
@@ -419,6 +420,7 @@ pub struct EmulateFromHolderApiRequest {
     #[serde_as(as = "DisplayFromStr")]
     pub holder_pubkey: Pubkey,
     pub step_limit: Option<u64>,
+    pub account_limit: Option<usize>,
     pub chains: Option<Vec<ChainInfo>>,
     pub slot: Option<u64>,
     pub tx_index_in_block: Option<u64>,
@@ -440,6 +442,7 @@ pub struct EmulateMultipleRequest {
     pub solana_tx: SimulateSolanaRequest,
     pub tx: Vec<TxParams>,
     pub step_limit: Option<u64>,
+    pub account_limit: Option<usize>,
     pub chains: Option<Vec<ChainInfo>>,
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub accounts: Vec<Pubkey>,

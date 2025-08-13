@@ -374,6 +374,7 @@ where
 
             let opcode_result = match self.execute_opcode(backend, opcode).await {
                 Ok(result) => result,
+                Err(Error::Fatal(error)) => self.revert_fatal(error.as_ref(), backend).await?,
                 Err(error) => self.revert_from_stack_frame(error, backend).await?,
             };
 
@@ -523,19 +524,42 @@ where
     }
 
     #[maybe_async]
+    async fn revert_with_message(
+        &mut self,
+        message: &[u8],
+        backend: &mut impl Database,
+    ) -> Result<Action> {
+        self.memory.write(0, message)?;
+
+        self.stack.push_usize(message.len())?;
+        self.stack.push_zero()?; // offset
+
+        self.opcode_revert(backend).await
+    }
+
+    #[maybe_async]
     pub async fn revert_from_stack_frame(
         &mut self,
         error: impl std::error::Error,
         backend: &mut impl Database,
     ) -> Result<Action> {
         let message = build_revert_message(&error.to_string());
+        self.revert_with_message(&message, backend).await
+    }
 
-        self.memory.write(0, &message)?;
+    #[maybe_async]
+    pub async fn revert_fatal(
+        &mut self,
+        error: &dyn std::error::Error,
+        backend: &mut impl Database,
+    ) -> Result<Action> {
+        let message = build_revert_message(&error.to_string());
 
-        self.stack.push_usize(message.len())?;
-        self.stack.push_zero()?; // offset
+        while self.parent.is_some() {
+            self.revert_with_message(&message, backend).await?;
+        }
 
-        self.opcode_revert(backend).await
+        self.revert_with_message(&message, backend).await
     }
 
     pub fn set_tracer(&mut self, tracer: Option<T>) {

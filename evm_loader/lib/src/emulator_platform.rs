@@ -69,6 +69,7 @@ pub struct EmulatorPlatform<R: Rpc> {
 
     clock_used: Cell<bool>,
     execute_status: ExecuteStatus,
+    accounts_limit: Option<usize>,
 }
 
 impl<R: Rpc> EmulatorPlatform<R> {
@@ -91,6 +92,7 @@ impl<R: Rpc> EmulatorPlatform<R> {
             logs: vec![Vec::new()],
             clock_used: Cell::new(false),
             execute_status: ExecuteStatus::default(),
+            accounts_limit: None,
         })
     }
 
@@ -154,6 +156,24 @@ impl<R: Rpc> EmulatorPlatform<R> {
         Ok(())
     }
 
+    pub fn set_accounts_limit(&mut self, limit: Option<usize>) {
+        self.accounts_limit = limit;
+    }
+
+    fn validate_accounts_limit(&self) -> Result<()> {
+        let Some(limit) = self.accounts_limit else {
+            return Ok(());
+        };
+
+        let used_accounts = self.used_accounts_len();
+        if used_accounts <= limit {
+            return Ok(());
+        }
+
+        let error = NeonError::TooManyAccounts(used_accounts, limit);
+        Err(Error::Fatal(Box::new(error)))
+    }
+
     pub fn is_clock_used(&self) -> bool {
         self.clock_used.get()
     }
@@ -164,6 +184,14 @@ impl<R: Rpc> EmulatorPlatform<R> {
 
     pub fn logs(&self) -> &[web3::types::Log] {
         self.logs.last().unwrap()
+    }
+
+    pub fn used_accounts_len(&self) -> usize {
+        let stack = self.current_stack_frame();
+        stack
+            .values()
+            .filter(|a| a.pubkey() != FAKE_OPERATOR)
+            .count()
     }
 
     pub fn used_accounts(&self) -> Vec<SharedAccount> {
@@ -270,8 +298,8 @@ impl<R: Rpc> EmulatorPlatform<R> {
                     Ok(Some(account)) => SharedAccount::new(pubkey, &account),
                     Ok(None) => SharedAccount::new_empty(pubkey),
                     Err(client_error) => {
-                        let emulator_error = NeonError::ClientError(client_error);
-                        return Err(Error::Custom(emulator_error.to_string()));
+                        let error = NeonError::ClientError(client_error);
+                        return Err(Error::Fatal(Box::new(error)));
                     }
                 };
 
@@ -279,24 +307,30 @@ impl<R: Rpc> EmulatorPlatform<R> {
             }
         };
 
+        std::mem::drop(stack_frame);
+        self.validate_accounts_limit()?;
+
         Ok(account)
     }
 
     pub async fn add_accounts_to_stack(&mut self, pubkeys: &[Pubkey]) -> Result<()> {
         let accounts = self.rpc.get_multiple_accounts(pubkeys).await.map_err(|e| {
-            let emulator_error = NeonError::ClientError(e);
-            Error::Custom(emulator_error.to_string())
+            let error = NeonError::ClientError(e);
+            Error::Fatal(Box::new(error))
         })?;
 
-        let mut stack = self.current_stack_frame();
+        let mut stack_frame = self.current_stack_frame();
         for (key, account) in pubkeys.iter().copied().zip(accounts.into_iter()) {
-            stack.entry(key).or_insert_with(|| {
+            stack_frame.entry(key).or_insert_with(|| {
                 account.map_or_else(
                     || SharedAccount::new_empty(key),
                     |account| SharedAccount::new(key, &account),
                 )
             });
         }
+
+        std::mem::drop(stack_frame);
+        self.validate_accounts_limit()?;
 
         Ok(())
     }
@@ -373,7 +407,7 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
         // Start simulator setup
         let mut simulator = SolanaSimulator::new(self)
             .await
-            .map_err(|e| Error::Custom(e.to_string()))?;
+            .map_err(|error| Error::Fatal(Box::new(error)))?;
 
         // Prepare accounts
         let signers: HashSet<Pubkey> = seeds
@@ -385,7 +419,8 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
         accounts.push(target_program_id);
         for meta in &instruction.accounts {
             if meta.pubkey != FAKE_OPERATOR && meta.is_signer && !signers.contains(&meta.pubkey) {
-                return Err(ProgramError::MissingRequiredSignature.into());
+                let error = ProgramError::MissingRequiredSignature;
+                return Err(Error::Fatal(Box::new(error)));
             }
             accounts.push(meta.pubkey);
         }
@@ -401,7 +436,7 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
         simulator
             .sync_accounts(self, &accounts)
             .await
-            .map_err(|e| Error::Custom(e.to_string()))?;
+            .map_err(|error| Error::Fatal(Box::new(error)))?;
 
         // Execute the instruction
         let trx = Transaction::new_unsigned(Message::new(
@@ -416,8 +451,8 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
         self.return_data = simulation_result.return_data;
 
         if let Err(error) = simulation_result.result {
-            let message = error.to_string();
-            return Err(Error::ExternalCallFailed(target_program_id, message));
+            let error = Error::ExternalCallFailed(target_program_id, error.to_string());
+            return Err(Error::Fatal(Box::new(error)));
         }
 
         // Update modified accounts
@@ -470,12 +505,12 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
                 Ok(sysvar)
             }
             Ok(None) => {
-                let emulator_error = NeonError::RpcReturnedEmptyAccount(T::id());
-                Err(Error::Custom(emulator_error.to_string()))
+                let error = NeonError::RpcReturnedEmptyAccount(T::id());
+                Err(Error::Fatal(Box::new(error)))
             }
             Err(client_error) => {
-                let emulator_error = NeonError::ClientError(client_error);
-                Err(Error::Custom(emulator_error.to_string()))
+                let error = NeonError::ClientError(client_error);
+                Err(Error::Fatal(Box::new(error)))
             }
         }
     }
@@ -500,27 +535,25 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
                 Ok(())
             }
             Ok(None) => {
-                let emulator_error = NeonError::RpcReturnedEmptyAccount(T::id());
-                Err(Error::Custom(emulator_error.to_string()))
+                let error = NeonError::RpcReturnedEmptyAccount(T::id());
+                Err(Error::Fatal(Box::new(error)))
             }
             Err(client_error) => {
-                let emulator_error = NeonError::ClientError(client_error);
-                Err(Error::Custom(emulator_error.to_string()))
+                let error = NeonError::ClientError(client_error);
+                Err(Error::Fatal(Box::new(error)))
             }
         }
     }
 
     async fn get_account(&self, pubkey: Pubkey) -> Result<Account<'a>> {
-        let account = self.rpc.get_account(&pubkey).await.map_err(|e| {
-            let emulator_error = NeonError::ClientError(e);
-            Error::Custom(emulator_error.to_string())
-        })?;
-
-        let Some(account) = account else {
-            return self.get_real_account(pubkey).await;
+        let account = match self.rpc.get_account(&pubkey).await {
+            Ok(Some(account)) => SharedAccount::new(pubkey, &account),
+            Ok(None) => return self.get_real_account(pubkey).await,
+            Err(client_error) => {
+                let error = NeonError::ClientError(client_error);
+                return Err(Error::Fatal(Box::new(error)));
+            }
         };
-
-        let account = SharedAccount::new(pubkey, &account);
 
         if account.tag_is(self.program_id, TAG_CONTAINER) {
             let container_account = self.account_from_stack(pubkey).await?.into();

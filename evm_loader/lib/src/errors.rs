@@ -128,6 +128,8 @@ pub enum NeonError {
     RpcReturnedEmptyAccount(Pubkey),
     #[error("TryFromIntError {0}")]
     TryFromIntError(#[from] std::num::TryFromIntError),
+    #[error("Too many accounts: {0} > {1}")]
+    TooManyAccounts(usize, usize),
 }
 
 impl NeonError {
@@ -177,6 +179,7 @@ impl NeonError {
             NeonError::RocksDb(_) => 266,
             NeonError::RpcReturnedEmptyAccount(_) => 267,
             NeonError::TryFromIntError(_) => 268,
+            NeonError::TooManyAccounts(_, _) => 269,
         }
     }
 }

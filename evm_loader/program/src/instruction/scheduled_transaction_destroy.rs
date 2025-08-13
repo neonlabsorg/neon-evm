@@ -1,6 +1,7 @@
 use crate::{
     account::{BalanceAccount, Operator, TransactionTree, Treasury},
-    error::{Error, Result},
+    error::Result,
+    platform::{Platform, Solana},
 };
 use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
@@ -12,18 +13,15 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
 
     let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[0])? };
-    let mut neon_account = BalanceAccount::from_account_info(program_id, &accounts[1])?;
+    // let mut payer = BalanceAccount::from_account_info(program_id, &accounts[1])?;
     let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
     let mut tree = TransactionTree::from_account_info(program_id, &accounts[3])?;
 
-    if neon_account.address() != tree.payer() {
-        return Err(Error::TreeAccountInvalidPayer);
-    }
+    let mut solana = Solana::new(accounts, operator.clone(), None)?;
+    let mut payer: BalanceAccount = solana.create_balance(tree.payer(), tree.chain_id())?;
 
-    if neon_account.chain_id() != tree.chain_id() {
-        return Err(Error::TreeAccountInvalidChainId);
-    }
+    tree.withdraw(&mut payer)?;
+    tree.destroy(&operator, &treasury)?;
 
-    tree.withdraw(&mut neon_account)?;
-    tree.destroy(&operator, &treasury)
+    solana.update_accounts_lamports()
 }

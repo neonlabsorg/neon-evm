@@ -161,7 +161,7 @@ impl<'a> ContainerAccount<'a> {
         let data: Ref<[u8]> = self.account.data_get(range);
 
         Ref::map(data, |bytes| {
-            static_assertions::assert_eq_align!(Key, u8);
+            const { assert!(align_of::<Key>() == 1) }
             assert_eq!(bytes.len() % size_of::<Key>(), 0);
 
             // SAFETY: Key has the same alignment as bytes
@@ -179,7 +179,7 @@ impl<'a> ContainerAccount<'a> {
         let data: RefMut<[u8]> = self.account.data_get_mut(range);
 
         RefMut::map(data, |bytes| {
-            static_assertions::assert_eq_align!(Key, u8);
+            const { assert!(align_of::<Key>() == 1) }
             assert_eq!(bytes.len() % size_of::<Key>(), 0);
 
             // SAFETY: Key has the same alignment as bytes

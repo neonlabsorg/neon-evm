@@ -215,9 +215,11 @@ pub struct Root<A: Allocator + Copy = StateAllocator> {
 }
 
 // to be sure that solana and x86 size/alignment match
-// const_assert_eq!(std::mem::align_of::<PlainData>(), 0x8);
-// const_assert_eq!(std::mem::size_of::<PlainData>(), 0x1A0);
-// const_assert_eq!(std::mem::offset_of!(Root, revisions), 0x1A0);
+const _: () = {
+    assert!(std::mem::align_of::<Root>() == 0x8);
+    assert!(std::mem::size_of::<Root>() == 0x5A0);
+    assert!(std::mem::offset_of!(Root, revisions) == 0xE0);
+};
 
 #[maybe_async]
 impl<A: Allocator + Copy> Root<A> {

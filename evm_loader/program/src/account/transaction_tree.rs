@@ -45,7 +45,7 @@ pub struct Node {
     pub success_execute_limit: u16,
     pub parent_count: u16,
 }
-static_assertions::assert_eq_size!(Node, [u8; 155]);
+const _: () = assert!(std::mem::size_of::<Node>() == 155);
 
 pub const NO_CHILD_TRANSACTION: u16 = u16::MAX;
 
@@ -59,7 +59,7 @@ pub struct HeaderV0 {
     balance: U256,
     last_index: u16,
 }
-static_assertions::assert_eq_size!(HeaderV0, [u8; 134]);
+const _: () = assert!(std::mem::size_of::<HeaderV0>() == 134);
 
 impl AccountHeader for HeaderV0 {
     const VERSION: u8 = 0;
@@ -637,7 +637,7 @@ impl<'a> TransactionTree<'a> {
         let data = Ref::map(data, |d| &d[nodes_offset..]);
 
         Ref::map(data, |bytes| {
-            static_assertions::assert_eq_align!(Node, u8);
+            const { assert!(std::mem::align_of::<Node>() == 1) };
             assert_eq!(bytes.len() % size_of::<Node>(), 0);
 
             // SAFETY: Node has the same alignment as bytes
@@ -657,7 +657,7 @@ impl<'a> TransactionTree<'a> {
         let data = RefMut::map(data, |d| &mut d[nodes_offset..]);
 
         RefMut::map(data, |bytes| {
-            static_assertions::assert_eq_align!(Node, u8);
+            const { assert!(std::mem::align_of::<Node>() == 1) };
             assert_eq!(bytes.len() % size_of::<Node>(), 0);
 
             // SAFETY: Node has the same alignment as bytes

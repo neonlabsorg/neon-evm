@@ -3,7 +3,6 @@ use std::slice;
 
 use linked_list_allocator::Heap;
 use solana_program::entrypoint::HEAP_START_ADDRESS;
-use static_assertions::{const_assert, const_assert_eq};
 
 use std::alloc::Layout;
 use std::ptr::NonNull;
@@ -26,8 +25,10 @@ const SOLANA_HEAP_RANGE: Range<usize> = Range {
     end: SOLANA_HEAP_START_ADDRESS + SOLANA_HEAP_SIZE,
 };
 
-const_assert!(HEAP_START_ADDRESS < (usize::MAX as u64));
-const_assert_eq!(SOLANA_HEAP_START_ADDRESS % std::mem::align_of::<Heap>(), 0);
+const _: () = {
+    assert!(HEAP_START_ADDRESS < (usize::MAX as u64));
+    assert!((SOLANA_HEAP_START_ADDRESS % std::mem::align_of::<Heap>()) == 0);
+};
 
 #[derive(Copy, Clone)]
 pub struct SolanaAllocator {

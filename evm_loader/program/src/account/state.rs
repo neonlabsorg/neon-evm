@@ -9,7 +9,9 @@ use crate::allocator::StateAllocator;
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::platform::Platform;
-use crate::types::{validate_transaction, EncodedTransaction, Transaction};
+use crate::types::{
+    validate_scheduled_transaction, validate_transaction, EncodedTransaction, Transaction,
+};
 
 use evm_loader_macro::version_signature;
 use linked_list_allocator::Heap;
@@ -19,8 +21,8 @@ use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use super::state_root::Root;
 use super::{
-    AccountDispatch, AccountHeader, StateFinalizedAccount, TransactionTree, ACCOUNT_PREFIX_LEN,
-    TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE,
+    Account as _, AccountHeader, AccountRead, AccountWrite, StateFinalizedAccount,
+    ACCOUNT_PREFIX_LEN, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE,
 };
 
 // Account Layout
@@ -43,6 +45,8 @@ use super::{
 
 type VersionSignature = [u8; 40];
 const VALID_VERSION_SIGNATURE: VersionSignature = version_signature!();
+
+type TransactionTree<'a> = crate::account::TransactionTree<AccountInfo<'a>>;
 
 #[repr(C, packed)]
 struct Offsets {
@@ -75,8 +79,8 @@ impl AccountHeader for Header {
     const VERSION: u8 = 2;
 }
 
-pub struct StateAccount<'sol> {
-    account: AccountInfo<'sol>,
+pub struct StateAccount<'a> {
+    account: AccountInfo<'a>,
     tag: u8,
 }
 
@@ -111,12 +115,12 @@ impl<'a> StateAccount<'a> {
         *self.account.key
     }
 
-    pub fn from_account_info(program_id: Pubkey, account_info: &AccountInfo<'a>) -> Result<Self> {
+    pub fn from_account_info(program_id: &Pubkey, account_info: &AccountInfo<'a>) -> Result<Self> {
         let account = account_info.clone();
         Self::from_account(program_id, account)
     }
 
-    pub fn from_account(program_id: Pubkey, account: AccountInfo<'a>) -> Result<Self> {
+    pub fn from_account(program_id: &Pubkey, account: AccountInfo<'a>) -> Result<Self> {
         let tag = account.tag(program_id)?;
         Self::validate_tag(account.pubkey(), tag)?;
 
@@ -127,7 +131,7 @@ impl<'a> StateAccount<'a> {
         account: AccountInfo<'a>,
         owner: Pubkey,
         transaction: EncodedTransaction<'_>,
-        platform: &mut (impl Platform<'a> + 'a),
+        platform: &mut impl Platform,
     ) -> Result<Self> {
         let (state, _) = Self::new_inner(account, owner, transaction, platform, None).await?;
         Ok(state)
@@ -137,8 +141,8 @@ impl<'a> StateAccount<'a> {
         account: AccountInfo<'a>,
         owner: Pubkey,
         transaction: EncodedTransaction<'tx>,
-        platform: &mut (impl Platform<'a> + 'a),
-        tree: &mut TransactionTree<'a>,
+        platform: &mut impl Platform,
+        tree: &mut TransactionTree<'_>,
     ) -> Result<(Self, Box<dyn Transaction + 'tx>)> {
         Self::new_inner(account, owner, transaction, platform, Some(tree)).await
     }
@@ -147,10 +151,10 @@ impl<'a> StateAccount<'a> {
         mut account: AccountInfo<'a>,
         owner: Pubkey,
         transaction: EncodedTransaction<'tx>,
-        platform: &mut (impl Platform<'a> + 'a),
-        tree: Option<&mut TransactionTree<'a>>,
+        platform: &mut impl Platform,
+        tree: Option<&mut TransactionTree<'_>>,
     ) -> Result<(Self, Box<dyn Transaction + 'tx>)> {
-        account.init_tag(TAG_STATE, Header::VERSION)?;
+        account.write_tag(TAG_STATE, Header::VERSION)?;
         let mut state = Self {
             account,
             tag: TAG_STATE,
@@ -165,10 +169,7 @@ impl<'a> StateAccount<'a> {
         Ok((state, transaction))
     }
 
-    pub async fn restore(
-        account: AccountInfo<'a>,
-        platform: &mut (impl Platform<'a> + 'a),
-    ) -> Result<Self> {
+    pub async fn restore(account: AccountInfo<'a>, platform: &mut impl Platform) -> Result<Self> {
         let mut state = Self::from_account(platform.program_id(), account)?;
         state.assert_memory_address();
 
@@ -194,10 +195,7 @@ impl<'a> StateAccount<'a> {
         assert_eq!(self.stored_memory_address(), self.account.memory_address());
     }
 
-    async fn validate_accounts_status(
-        &self,
-        platform: &impl Platform<'a>,
-    ) -> Result<AccountsStatus> {
+    async fn validate_accounts_status(&self, platform: &impl Platform) -> Result<AccountsStatus> {
         let version_signature = {
             let header: Ref<Header> = self.account.header();
             header.version_signature
@@ -366,8 +364,7 @@ impl<'a> StateAccount<'a> {
         let account_memory_address = self.account.memory_address();
         let offsets = self.calculate_offsets(transaction.rlp_len());
 
-        let mut header_section = self.account.header_mut_uninit::<Header>();
-        header_section.write(Header {
+        self.account.write_header(Header {
             version_signature: VALID_VERSION_SIGNATURE,
             owner,
             account_memory_address,
@@ -420,15 +417,19 @@ impl<'a> StateAccount<'a> {
     async unsafe fn initialize_root<'tx>(
         &mut self,
         encoded_transaction: EncodedTransaction<'tx>,
-        tree: Option<&mut TransactionTree<'a>>,
-        platform: &mut (impl Platform<'a> + 'a),
+        tree: Option<&mut TransactionTree<'_>>,
+        platform: &mut impl Platform,
     ) -> Result<Box<dyn Transaction + 'tx>> {
         let allocator = StateAllocator::new(self.heap());
 
         let tx = encoded_transaction.decode()?;
         let origin = tx.recover_caller_address()?;
 
-        validate_transaction(tx.as_ref(), origin, platform, tree.as_deref()).await?;
+        if let Some(ref tree) = tree {
+            validate_scheduled_transaction(tx.as_ref(), origin, platform, tree).await?;
+        } else {
+            validate_transaction(tx.as_ref(), origin, platform).await?;
+        }
 
         let offset = self.offsets().root;
 
@@ -439,7 +440,7 @@ impl<'a> StateAccount<'a> {
     }
 
     /// SAFETY: This functions should be called only once after `initialize_heap` and with previously valid root
-    async unsafe fn reset_root(&mut self, platform: &mut (impl Platform<'a> + 'a)) -> Result<()> {
+    async unsafe fn reset_root(&mut self, platform: &mut impl Platform) -> Result<()> {
         let allocator = StateAllocator::new(self.heap());
 
         let tx = self.transaction().decode()?;

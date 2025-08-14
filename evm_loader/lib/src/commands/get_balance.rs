@@ -1,5 +1,5 @@
 use ethnum::U256;
-use evm_loader::account::BalanceAccount;
+use evm_loader::account::{AccountRead, Balance};
 use evm_loader::platform::Platform;
 use evm_loader::types::Address;
 use serde::{Deserialize, Serialize};
@@ -48,7 +48,7 @@ impl GetBalanceResponse {
     }
 
     #[must_use]
-    pub fn new(program_id: &Pubkey, account: &BalanceAccount) -> Self {
+    pub fn new(program_id: &Pubkey, account: &Balance<impl AccountRead>) -> Self {
         let address = account.address();
         let (contract_solana_address, _) = address.find_solana_address(program_id);
 

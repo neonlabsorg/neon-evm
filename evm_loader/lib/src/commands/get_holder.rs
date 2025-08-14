@@ -1,7 +1,7 @@
 use ethnum::U256;
 use evm_loader::{
     account::{
-        AccountDispatch, Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER,
+        AccountRead, Holder, StateAccount, StateFinalizedAccount, TAG_HOLDER,
         TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE,
         TAG_STATE_FINALIZED,
     },
@@ -81,7 +81,7 @@ impl GetHolderResponse {
     }
 }
 
-pub fn read_holder(program_id: Pubkey, info: AccountInfo) -> NeonResult<GetHolderResponse> {
+pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHolderResponse> {
     let data_len = info.data_len();
 
     match info.tag(program_id)? {
@@ -163,5 +163,5 @@ pub async fn execute(
     };
 
     let info = account_info(&address, &mut account);
-    Ok(read_holder(*program_id, info).unwrap_or_else(GetHolderResponse::error))
+    Ok(read_holder(program_id, info).unwrap_or_else(GetHolderResponse::error))
 }

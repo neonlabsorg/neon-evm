@@ -5,14 +5,17 @@ use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 
 use crate::account::{
-    abstraction::RawAccount, AccountDispatch, AccountHeader, ACCOUNT_PREFIX_LEN, TAG_CONTAINER,
-    TAG_REFERENCE,
+    Account, AccountHeader, AccountRead, ACCOUNT_PREFIX_LEN, TAG_CONTAINER, TAG_REFERENCE,
 };
 use crate::account::{TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT, TAG_STORAGE_CELL};
 use crate::error::{Error, Result};
 
-const VALID_TAGS_FOR_CONTAINER: [u8; 3] =
-    [TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT, TAG_STORAGE_CELL];
+#[rustfmt::skip]
+const VALID_TAGS_FOR_CONTAINER: [u8; 3] = [
+    TAG_ACCOUNT_BALANCE,
+    TAG_ACCOUNT_CONTRACT,
+    TAG_STORAGE_CELL
+];
 
 #[repr(C, packed)]
 struct ReferenceHeader {
@@ -23,17 +26,19 @@ impl AccountHeader for ReferenceHeader {
     const VERSION: u8 = 0;
 }
 
-pub struct ReferenceAccount<'a> {
-    account: RawAccount<'a>,
+pub struct Reference<T> {
+    account: T,
 }
 
-impl<'a> ReferenceAccount<'a> {
+impl Reference<()> {
     #[must_use]
     pub const fn required_account_size() -> usize {
         ACCOUNT_PREFIX_LEN + size_of::<ReferenceHeader>()
     }
+}
 
-    pub fn from_account(program_id: Pubkey, account: RawAccount<'a>) -> Result<Self> {
+impl<T: AccountRead> Reference<T> {
+    pub fn from_account(program_id: &Pubkey, account: T) -> Result<Self> {
         account.validate_tag(program_id, TAG_REFERENCE)?;
 
         Ok(Self { account })
@@ -42,7 +47,7 @@ impl<'a> ReferenceAccount<'a> {
     /// # Safety
     /// It's a caller responsibility to validate the account tag
     #[must_use]
-    pub unsafe fn from_account_unchecked(account: RawAccount<'a>) -> Self {
+    pub unsafe fn from_account_unchecked(account: T) -> Self {
         Self { account }
     }
 
@@ -58,9 +63,8 @@ impl<'a> ReferenceAccount<'a> {
     }
 }
 
-#[derive(Clone)]
-pub struct AccountInContainer<'a> {
-    pub container: ContainerAccount<'a>,
+pub struct AccountInContainer<T> {
+    pub container: Container<T>,
     pub index: usize,
 }
 
@@ -91,18 +95,32 @@ impl AccountHeader for ContainerHeader {
     const VERSION: u8 = 0;
 }
 
-#[derive(Clone)]
-pub struct ContainerAccount<'a> {
-    pub account: RawAccount<'a>,
+pub struct Container<T> {
+    pub account: T,
 }
 
-impl<'a> ContainerAccount<'a> {
-    pub fn from_account_info(program_id: Pubkey, account_info: &AccountInfo<'a>) -> Result<Self> {
-        let account = account_info.clone().into();
+impl<'a> Container<AccountInfo<'a>> {
+    pub fn from_account_info(program_id: &Pubkey, account_info: &AccountInfo<'a>) -> Result<Self> {
+        let account = account_info.clone();
         Self::from_account(program_id, account)
     }
+}
 
-    pub fn from_account(program_id: Pubkey, account: RawAccount<'a>) -> Result<Self> {
+impl<T: AccountRead + Clone> Container<T> {
+    pub fn account(&self, pubkey: &Pubkey) -> Result<AccountInContainer<T>> {
+        let index = self.key_index(pubkey)?;
+
+        Ok(AccountInContainer {
+            container: Container {
+                account: self.account.clone(),
+            },
+            index,
+        })
+    }
+}
+
+impl<T: AccountRead> Container<T> {
+    pub fn from_account(program_id: &Pubkey, account: T) -> Result<Self> {
         account.validate_tag(program_id, TAG_CONTAINER)?;
 
         Ok(Self { account })
@@ -111,7 +129,7 @@ impl<'a> ContainerAccount<'a> {
     /// # Safety
     /// It's a caller responsibility to validate the account tag
     #[must_use]
-    pub unsafe fn from_account_unchecked(account: RawAccount<'a>) -> Self {
+    pub unsafe fn from_account_unchecked(account: T) -> Self {
         Self { account }
     }
 
@@ -173,28 +191,10 @@ impl<'a> ContainerAccount<'a> {
         })
     }
 
-    #[must_use]
-    pub fn keys_mut(&mut self) -> RefMut<[Key]> {
-        let range = self.keys_section();
-        let data: RefMut<[u8]> = self.account.data_get_mut(range);
-
-        RefMut::map(data, |bytes| {
-            const { assert!(align_of::<Key>() == 1) }
-            assert_eq!(bytes.len() % size_of::<Key>(), 0);
-
-            // SAFETY: Key has the same alignment as bytes
-            unsafe {
-                let ptr = bytes.as_mut_ptr().cast::<Key>();
-                let len = bytes.len() / size_of::<Key>();
-                std::slice::from_raw_parts_mut(ptr, len)
-            }
-        })
-    }
-
-    pub fn key_index(&self, pubkey: Pubkey) -> Result<usize> {
+    pub fn key_index(&self, pubkey: &Pubkey) -> Result<usize> {
         self.keys()
-            .binary_search_by_key(&pubkey, |key| key.pubkey)
-            .map_err(|_| Error::AccountNotFoundInContainer(pubkey, self.pubkey()))
+            .binary_search_by_key(pubkey, |key| key.pubkey)
+            .map_err(|_| Error::AccountNotFoundInContainer(*pubkey, self.pubkey()))
     }
 
     #[inline]
@@ -219,13 +219,7 @@ impl<'a> ContainerAccount<'a> {
         self.account.section(offset)
     }
 
-    #[must_use]
-    pub fn key_at_mut(&mut self, index: usize) -> RefMut<Key> {
-        let offset = self.key_offset(index);
-        self.account.section_mut(offset)
-    }
-
-    pub fn key(&self, pubkey: Pubkey) -> Result<Ref<Key>> {
+    pub fn key(&self, pubkey: &Pubkey) -> Result<Ref<Key>> {
         let index = self.key_index(pubkey)?;
         let key = self.key_at(index);
         Ok(key)
@@ -235,21 +229,6 @@ impl<'a> ContainerAccount<'a> {
     pub fn accounts(&self) -> Ref<[u8]> {
         let range = self.accounts_section();
         self.account.data_get(range)
-    }
-
-    #[must_use]
-    pub fn accounts_mut(&mut self) -> RefMut<[u8]> {
-        let range = self.accounts_section();
-        self.account.data_get_mut(range)
-    }
-
-    pub fn account(&self, pubkey: Pubkey) -> Result<AccountInContainer<'a>> {
-        let index = self.key_index(pubkey)?;
-
-        Ok(AccountInContainer {
-            container: self.clone(),
-            index,
-        })
     }
 
     #[must_use]
@@ -273,6 +252,51 @@ impl<'a> ContainerAccount<'a> {
 
         let accounts: Ref<[u8]> = self.accounts();
         Ref::map(accounts, |data| &data[start..end])
+    }
+
+    #[must_use]
+    pub fn free_space_offset(&self) -> usize {
+        let mut accounts_end = 0_usize;
+        for key in self.keys().iter() {
+            let end = (key.offset + key.length) as usize;
+            if end > accounts_end {
+                accounts_end = end;
+            }
+        }
+
+        accounts_end
+    }
+}
+
+impl<T: Account> Container<T> {
+    #[must_use]
+    pub fn keys_mut(&mut self) -> RefMut<[Key]> {
+        let range = self.keys_section();
+        let data: RefMut<[u8]> = self.account.data_get_mut(range);
+
+        RefMut::map(data, |bytes| {
+            const { assert!(align_of::<Key>() == 1) }
+            assert_eq!(bytes.len() % size_of::<Key>(), 0);
+
+            // SAFETY: Key has the same alignment as bytes
+            unsafe {
+                let ptr = bytes.as_mut_ptr().cast::<Key>();
+                let len = bytes.len() / size_of::<Key>();
+                std::slice::from_raw_parts_mut(ptr, len)
+            }
+        })
+    }
+
+    #[must_use]
+    pub fn key_at_mut(&mut self, index: usize) -> RefMut<Key> {
+        let offset = self.key_offset(index);
+        self.account.section_mut(offset)
+    }
+
+    #[must_use]
+    pub fn accounts_mut(&mut self) -> RefMut<[u8]> {
+        let range = self.accounts_section();
+        self.account.data_get_mut(range)
     }
 
     #[must_use]
@@ -346,24 +370,11 @@ impl<'a> ContainerAccount<'a> {
         Ok(())
     }
 
-    #[must_use]
-    pub fn free_space_offset(&self) -> usize {
-        let mut accounts_end = 0_usize;
-        for key in self.keys().iter() {
-            let end = (key.offset + key.length) as usize;
-            if end > accounts_end {
-                accounts_end = end;
-            }
-        }
-
-        accounts_end
-    }
-
     pub fn allocate_space_for_account(&mut self, space: usize) -> Result<()> {
         self.account.grow(space)
     }
 
-    pub fn convert_from_account(program_id: Pubkey, mut account: RawAccount<'a>) -> Result<Self> {
+    pub fn convert_from_account(program_id: &Pubkey, mut account: T) -> Result<Self> {
         let tag: u8 = account.tag(program_id)?;
         if tag == TAG_CONTAINER {
             return Ok(Self { account });
@@ -382,13 +393,9 @@ impl<'a> ContainerAccount<'a> {
         // Allocate `account_offset` bytes at the front of the account
         account.allocate_within(0, account_offset)?;
 
-        // Set tag
-        account.init_tag(TAG_CONTAINER, ContainerHeader::VERSION)?;
-
-        // Set header
-        account
-            .header_mut_uninit()
-            .write(ContainerHeader { count: 1 });
+        // Set tag and header
+        account.write_tag(TAG_CONTAINER, ContainerHeader::VERSION)?;
+        account.write_header(ContainerHeader { count: 1 });
 
         // Set key
         account.section_mut_uninit(key_offset).write(Key {
@@ -404,8 +411,8 @@ impl<'a> ContainerAccount<'a> {
     /// Invalidates all indexes. Should not be used in normal transaction processing.
     pub unsafe fn add_account(
         &mut self,
-        program_id: Pubkey,
-        mut account: RawAccount<'a>,
+        program_id: &Pubkey,
+        mut account: impl Account,
     ) -> Result<()> {
         let pubkey = account.pubkey();
 
@@ -452,10 +459,10 @@ impl<'a> ContainerAccount<'a> {
         self.account.header_mut::<ContainerHeader>().count += 1;
 
         // Convert existing account to reference
-        account.init_tag(TAG_REFERENCE, ReferenceHeader::VERSION)?;
-        account.header_mut_uninit().write(ReferenceHeader {
+        account.write_tag(TAG_REFERENCE, ReferenceHeader::VERSION)?;
+        account.write_header(ReferenceHeader {
             container: self.pubkey(),
         });
-        account.reallocate(ReferenceAccount::required_account_size())
+        account.reallocate(Reference::required_account_size())
     }
 }

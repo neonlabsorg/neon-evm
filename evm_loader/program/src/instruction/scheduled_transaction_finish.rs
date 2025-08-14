@@ -3,7 +3,7 @@ use crate::debug::log_data;
 use crate::error::{Error, Result};
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Finalize Scheduled Transaction");
 
     let mut state_account = StateAccount::from_account(program_id, accounts[0].clone())?;

@@ -68,12 +68,12 @@ impl Address {
 
     #[must_use]
     pub fn find_solana_address(&self, program_id: &Pubkey) -> (Pubkey, u8) {
-        pda::contract_address(program_id, self)
+        pda::contract(program_id, self)
     }
 
     #[must_use]
     pub fn find_balance_address(&self, program_id: &Pubkey, chain_id: u64) -> (Pubkey, u8) {
-        pda::balance_address(program_id, self, chain_id)
+        pda::balance(program_id, self, chain_id)
     }
 
     #[must_use]
@@ -83,7 +83,7 @@ impl Address {
         chain_id: u64,
         operator: &Operator,
     ) -> (Pubkey, u8) {
-        pda::operator_address(program_id, operator.key, self, chain_id)
+        pda::operator_balance(program_id, operator.key, self, chain_id)
     }
 }
 

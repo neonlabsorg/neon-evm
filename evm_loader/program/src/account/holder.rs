@@ -6,8 +6,8 @@ use std::alloc::Layout;
 use std::cell::{Ref, RefMut};
 use std::mem::size_of;
 
-use crate::account::AccountDispatch;
 use crate::account::TAG_STATE_FINALIZED;
+use crate::account::{AccountRead, AccountWrite};
 use crate::allocator::StateAllocator;
 use crate::error::{Error, Result};
 use crate::types::EncodedTransaction;
@@ -26,13 +26,13 @@ impl AccountHeader for Header {
     const VERSION: u8 = 0;
 }
 
-pub struct Holder<'sol> {
-    account: AccountInfo<'sol>,
+pub struct Holder<'a> {
+    account: AccountInfo<'a>,
 }
 
-impl<'sol> Holder<'sol> {
+impl<'a> Holder<'a> {
     #[must_use]
-    pub fn into_account(self) -> AccountInfo<'sol> {
+    pub fn into_account(self) -> AccountInfo<'a> {
         self.account
     }
 
@@ -41,15 +41,15 @@ impl<'sol> Holder<'sol> {
         self.account.pubkey()
     }
 
-    pub fn from_account_info(program_id: Pubkey, account_info: &AccountInfo<'sol>) -> Result<Self> {
+    pub fn from_account_info(program_id: &Pubkey, account_info: &AccountInfo<'a>) -> Result<Self> {
         let account = account_info.clone();
         Self::from_account(program_id, account)
     }
 
-    pub fn from_account(program_id: Pubkey, mut account: AccountInfo<'sol>) -> Result<Self> {
+    pub fn from_account(program_id: &Pubkey, mut account: AccountInfo<'a>) -> Result<Self> {
         match account.tag(program_id)? {
             TAG_STATE_FINALIZED => {
-                account.init_tag(TAG_HOLDER, Header::VERSION)?;
+                account.write_tag(TAG_HOLDER, Header::VERSION)?;
 
                 let mut holder = Self { account };
                 holder.clear();
@@ -62,22 +62,22 @@ impl<'sol> Holder<'sol> {
     }
 
     pub fn create(
-        program_id: Pubkey,
-        mut account: AccountInfo<'sol>,
+        program_id: &Pubkey,
+        mut account: AccountInfo<'a>,
         seed: &str,
         operator: &Operator,
     ) -> Result<Self> {
-        if account.owner != &program_id {
-            return Err(Error::AccountInvalidOwner(account.pubkey(), program_id));
+        if account.owner != program_id {
+            return Err(Error::AccountInvalidOwner(account.pubkey(), *program_id));
         }
 
-        let key = Pubkey::create_with_seed(operator.key, seed, &program_id)?;
+        let key = Pubkey::create_with_seed(operator.key, seed, program_id)?;
         if &key != account.key {
-            return Err(Error::AccountInvalidKey(*account.key, key));
+            return Err(Error::AccountInvalidKey(account.pubkey(), key));
         }
 
         account.validate_tag(program_id, TAG_EMPTY)?;
-        account.init_tag(TAG_HOLDER, Header::VERSION)?;
+        account.write_tag(TAG_HOLDER, Header::VERSION)?;
 
         let mut holder = Self::from_account(program_id, account)?;
         holder.update(|h| h.owner = *operator.key);

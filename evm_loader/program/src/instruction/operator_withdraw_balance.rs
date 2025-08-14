@@ -4,7 +4,7 @@ use crate::account::{Operator, OperatorBalance};
 use crate::error::Result;
 use crate::platform::Solana;
 
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Withdraw Operator Balance Account");
 
     // #0 System program

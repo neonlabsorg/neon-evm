@@ -4,7 +4,7 @@ use solana_program::program::invoke_signed;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 use spl_associated_token_account::get_associated_token_address;
 
-use crate::account::{pda, program, token, BalanceAccount, Operator};
+use crate::account::{pda, program, token, Operator};
 use crate::config::CHAIN_ID_LIST;
 use crate::error::{Error, Result};
 use crate::platform::{Platform, Solana};
@@ -36,7 +36,7 @@ impl<'r, 'a> Accounts<'r, 'a> {
     }
 }
 
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Deposit");
 
     let parsed_accounts = Accounts::from_slice(accounts)?;
@@ -52,7 +52,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
 }
 
 fn validate(
-    program_id: Pubkey,
+    program_id: &Pubkey,
     accounts: &Accounts,
     address: Address,
     chain_id: u64,
@@ -62,12 +62,12 @@ fn validate(
     let pool = *accounts.pool.info.key;
     let mint = *accounts.mint.info.key;
 
-    let (expected_pubkey, _) = address.find_balance_address(&program_id, chain_id);
+    let (expected_pubkey, _) = address.find_balance_address(program_id, chain_id);
     if expected_pubkey != balance_account {
         return Err(Error::AccountInvalidKey(balance_account, expected_pubkey));
     }
 
-    let (expected_pubkey, _) = address.find_solana_address(&program_id);
+    let (expected_pubkey, _) = address.find_solana_address(program_id);
     if expected_pubkey != contract_account {
         return Err(Error::AccountInvalidKey(contract_account, expected_pubkey));
     }
@@ -81,7 +81,7 @@ fn validate(
         return Err(Error::AccountInvalidKey(mint, expected_mint));
     }
 
-    let (authority_address, _) = pda::main_pool_authority(&program_id);
+    let (authority_address, _) = pda::main_pool_authority(program_id);
     let expected_pool = get_associated_token_address(&authority_address, &mint);
     if pool != expected_pool {
         return Err(Error::AccountInvalidKey(pool, expected_pool));
@@ -107,8 +107,8 @@ fn validate(
     Ok(())
 }
 
-fn execute(program_id: Pubkey, accounts: Accounts, address: Address, chain_id: u64) -> Result<()> {
-    let (_, bump_seed) = pda::balance_address(&program_id, &address, chain_id);
+fn execute(program_id: &Pubkey, accounts: Accounts, address: Address, chain_id: u64) -> Result<()> {
+    let (_, bump_seed) = pda::balance(program_id, &address, chain_id);
     let signer_seeds: &[&[u8]] = pda::balance_seeds!(&address, chain_id, bump_seed);
 
     let instruction = spl_token::instruction::transfer(
@@ -137,7 +137,7 @@ fn execute(program_id: Pubkey, accounts: Accounts, address: Address, chain_id: u
 
     let mut solana = Solana::new(accounts.all, accounts.operator, None)?;
 
-    let mut balance_account: BalanceAccount = solana.create_balance(address, chain_id)?;
+    let mut balance_account = solana.create_balance(address, chain_id)?;
     balance_account.mint(deposit)?;
 
     solana.update_accounts_lamports()

@@ -2,11 +2,11 @@ use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
 
 use crate::{
-    account::{program::System, ContainerAccount, Operator, Treasury},
+    account::{program::System, Container, Operator, Treasury},
     error::Result,
 };
 
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Assemble Container");
 
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
@@ -18,11 +18,11 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let accounts = &accounts[4..];
 
     // Assemble the container account
-    let container = container_info.clone().into();
-    let mut container = ContainerAccount::convert_from_account(program_id, container)?;
+    let container = container_info.clone();
+    let mut container = Container::convert_from_account(program_id, container)?;
 
     for account_info in accounts {
-        let account = account_info.clone().into();
+        let account = account_info.clone();
         unsafe { container.add_account(program_id, account) }?;
     }
 

@@ -2,11 +2,12 @@ use crate::error::Result;
 use solana_program::account_info::AccountInfo;
 
 pub use abstraction::{
-    Account, AccountDispatch, AccountHeader, NoHeader, SharedAccount, ACCOUNT_PREFIX_LEN,
+    AbstractAccount, Account, AccountHeader, AccountRead, AccountWrite, NoHeader,
+    ACCOUNT_PREFIX_LEN,
 };
-pub use container::{AccountInContainer, ContainerAccount, ReferenceAccount};
-pub use ether_balance::{BalanceAccount, Header as BalanceHeader};
-pub use ether_contract::{AllocateResult, ContractAccount, Header as ContractHeader};
+pub use container::{AccountInContainer, Container, Reference};
+pub use ether_balance::{Balance, Header as BalanceHeader};
+pub use ether_contract::{AllocateResult, Contract, Header as ContractHeader};
 pub use ether_storage::{Cell, StorageCell, StorageCellSeed};
 pub use holder::{Header as HolderHeader, Holder};
 pub use operator::Operator;
@@ -55,14 +56,17 @@ pub const TAG_REFERENCE: u8 = 110;
 
 /// # Safety
 /// *Permanently delete all data* in the account. Transfer lamports to the operator.
-pub unsafe fn delete(account: &AccountInfo, operator: &Operator) {
+pub unsafe fn delete(account: &AccountInfo, operator: &Operator) -> Result<()> {
     debug_print!("DELETE ACCOUNT {}", account.key);
 
     **operator.lamports.borrow_mut() += account.lamports();
     **account.lamports.borrow_mut() = 0;
 
-    let mut data = account.data.borrow_mut();
-    data.fill(0);
+    account.data.borrow_mut().fill(0);
+    account.resize(0)?;
+    account.assign(&solana_program::system_program::ID);
+
+    Ok(())
 }
 
 /// # Safety

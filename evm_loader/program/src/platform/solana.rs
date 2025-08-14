@@ -1,4 +1,3 @@
-#![allow(irrefutable_let_patterns)]
 use ethnum::U256;
 use solana_program::{
     account_info::AccountInfo, instruction::Instruction, log::sol_log_data,
@@ -9,8 +8,8 @@ use solana_system_interface::instruction as system_instruction;
 
 use crate::{
     account::{
-        Account, AccountDispatch, BalanceAccount, ContainerAccount, Operator, OperatorBalance,
-        OperatorBalanceValidator, Root, TransactionTree, Treasury, TAG_CONTAINER,
+        AbstractAccount, AccountRead, Operator, OperatorBalanceValidator, Root, TransactionTree,
+        Treasury, TAG_CONTAINER,
     },
     config::PAYMENT_TO_TREASURE,
     debug::log_data,
@@ -22,9 +21,12 @@ use crate::{
 
 use super::{keys_index::CachedKeysIndex, Chain, InvokeMode, Platform, FAKE_OPERATOR};
 
+type Container<'a> = crate::account::Container<AccountInfo<'a>>;
+type OperatorBalance<'a> = crate::account::OperatorBalance<AccountInfo<'a>>;
+
 pub struct Solana<'a> {
     sorted_account_infos: Vec<AccountInfo<'a>>,
-    containers: Vec<ContainerAccount<'a>>,
+    containers: Vec<Container<'a>>,
     panic_on_revert: bool,
     pub operator: Operator<'a>,
     pub operator_balance: Option<OperatorBalance<'a>>,
@@ -32,6 +34,7 @@ pub struct Solana<'a> {
     gasometer: Gasometer,
 }
 
+#[maybe_async::must_be_sync]
 impl<'a> Solana<'a> {
     pub fn new(
         accounts: &[AccountInfo<'a>],
@@ -43,12 +46,12 @@ impl<'a> Solana<'a> {
 
         let mut containers = Vec::with_capacity(4);
         for account_info in &sorted_account_infos {
-            if !account_info.tag_is(crate::ID, TAG_CONTAINER) {
+            if !account_info.tag_is(&crate::ID, TAG_CONTAINER) {
                 continue;
             }
 
-            let account = account_info.clone().into();
-            let container = unsafe { ContainerAccount::from_account_unchecked(account) };
+            let account = account_info.clone();
+            let container = unsafe { Container::from_account_unchecked(account) };
             containers.push(container);
         }
 
@@ -87,10 +90,10 @@ impl<'a> Solana<'a> {
     }
 
     #[inline(always)]
-    pub fn try_find_account_info(&self, pubkey: Pubkey) -> Option<&AccountInfo<'a>> {
+    pub fn try_find_account_info(&self, pubkey: &Pubkey) -> Option<&AccountInfo<'a>> {
         let Ok(index) = self
             .sorted_account_infos
-            .binary_search_by_key(&&pubkey, |a| a.key)
+            .binary_search_by_key(&pubkey, |a| a.key)
         else {
             return None;
         };
@@ -100,9 +103,9 @@ impl<'a> Solana<'a> {
     }
 
     #[track_caller]
-    pub fn find_account_info(&self, pubkey: Pubkey) -> &AccountInfo<'a> {
+    pub fn find_account_info(&self, pubkey: &Pubkey) -> &AccountInfo<'a> {
         let Some(info) = self.try_find_account_info(pubkey) else {
-            panic_with_error!(Error::AccountMissing(pubkey))
+            panic_with_error!(Error::AccountMissing(*pubkey))
         };
 
         info
@@ -142,7 +145,7 @@ impl<'a> Solana<'a> {
         let total_lamports = expanded_accounts.iter().fold(0_u64, |total, v| total + v.1);
 
         let operator: &AccountInfo = &self.operator.info;
-        let system: &AccountInfo = self.find_account_info(system_program::ID);
+        let system: &AccountInfo = self.find_account_info(&system_program::ID);
         invoke_signed_unchecked(
             &system_instruction::transfer(operator.key, collector.key, total_lamports),
             &[system.clone(), operator.clone(), collector.clone()],
@@ -196,7 +199,7 @@ impl<'a> Solana<'a> {
 
     pub fn reward_operator_from_tree(
         &mut self,
-        tree: &mut TransactionTree,
+        tree: &mut TransactionTree<AccountInfo>,
         transaction_hash: &[u8; 32],
     ) -> Result<()> {
         let gas_limit = tree.gas_limit(&transaction_hash)?;
@@ -254,7 +257,7 @@ impl<'a> Solana<'a> {
             return Ok(());
         }
 
-        let mut origin_balance: BalanceAccount = self.create_balance(origin, chain_id)?;
+        let mut origin_balance = self.create_balance(origin, chain_id)?;
         let Some(operator_balance) = self.operator_balance.as_mut() else {
             return Err(Error::OperatorBalanceMissing);
         };
@@ -275,7 +278,7 @@ impl<'a> Solana<'a> {
         let address = operator_balance.address();
         let chain_id = operator_balance.chain_id();
 
-        let mut target: BalanceAccount = self.create_balance(address, chain_id)?;
+        let mut target = self.create_balance(address, chain_id)?;
         operator_balance.withdraw(&mut target)
     }
 
@@ -286,7 +289,7 @@ impl<'a> Solana<'a> {
     }
 
     pub fn pay_to_treasury(&mut self, treasury: Treasury<'a>) -> Result<()> {
-        let system = self.find_account_info(system_program::ID);
+        let system = self.find_account_info(&system_program::ID);
         let operator = &self.operator.info;
 
         invoke_signed_unchecked(
@@ -299,15 +302,18 @@ impl<'a> Solana<'a> {
 }
 
 #[maybe_async::sync_impl]
-impl<'a> Platform<'a> for Solana<'a> {
+impl<'a> Platform for Solana<'a> {
+    type Account = AbstractAccount<AccountInfo<'a>>;
+    type AccountRaw = AccountInfo<'a>;
+
     #[inline(always)]
-    fn program_id(&self) -> Pubkey {
-        crate::ID
+    fn program_id(&self) -> &Pubkey {
+        &crate::ID
     }
 
     #[inline(always)]
-    fn operator(&self) -> Pubkey {
-        *self.operator.key
+    fn operator(&self) -> &Pubkey {
+        self.operator.key
     }
 
     #[inline(always)]
@@ -336,12 +342,12 @@ impl<'a> Platform<'a> for Solana<'a> {
         _mode: InvokeMode,
     ) -> Result<()> {
         for meta in &mut instruction.accounts {
-            if (meta.pubkey == self.operator()) || (meta.pubkey == self.program_id()) {
+            if (&meta.pubkey == self.operator()) || (&meta.pubkey == self.program_id()) {
                 return Err(Error::InvalidAccountForCall(meta.pubkey));
             }
 
             if meta.pubkey == FAKE_OPERATOR {
-                meta.pubkey = self.operator();
+                meta.pubkey = self.operator.pubkey();
             }
         }
 
@@ -396,32 +402,33 @@ impl<'a> Platform<'a> for Solana<'a> {
     }
 
     #[track_caller]
-    fn get_account(&self, pubkey: Pubkey) -> Result<Account<'a>> {
+    fn get_account(&self, pubkey: &Pubkey) -> Result<Self::Account> {
         // Ether we have almost all accounts in containers or no containers at all
         for container in &self.containers {
             let Ok(account) = container.account(pubkey) else {
                 continue;
             };
 
-            return Ok(account.into());
+            let account = AbstractAccount::AccountInContainer(account);
+            return Ok(account);
         }
 
-        self.get_real_account(pubkey)
+        let info = self.find_account_info(pubkey);
+        Ok(AbstractAccount::RawAccount(info.clone()))
     }
 
     #[track_caller]
-    fn get_real_account(&self, pubkey: Pubkey) -> Result<Account<'a>> {
-        let info = self.find_account_info(pubkey);
-        Ok(Account::from(info.clone()))
+    fn get_raw_account(&self, pubkey: &Pubkey) -> Result<Self::AccountRaw> {
+        Ok(self.find_account_info(pubkey).clone())
     }
 
-    fn assign_account(&mut self, seeds: &[&[u8]]) -> Result<Account<'a>> {
+    fn assign_account(&mut self, seeds: &[&[u8]]) -> Result<Self::Account> {
         let pubkey = Pubkey::create_program_address(seeds, &crate::ID)?;
-        let account: Account<'a> = self.get_account(pubkey)?;
+        let account: Self::Account = self.get_account(&pubkey)?;
 
         if account.is_system_owned() {
-            let system = self.find_account_info(system_program::ID);
-            let account_info = account.as_account_info();
+            let system = self.find_account_info(&system_program::ID);
+            let account_info = account.as_raw_account();
 
             let assign = system_instruction::assign(&pubkey, &crate::ID);
             let account_infos = &[system.clone(), account_info.clone()];
@@ -433,17 +440,17 @@ impl<'a> Platform<'a> for Solana<'a> {
 
     fn assign_account_with_seed(
         &mut self,
-        base: Pubkey,
+        base: &Pubkey,
         seed: &str,
         base_seeds: &[&[u8]],
-    ) -> Result<Account<'a>> {
-        let pubkey = Pubkey::create_with_seed(&base, seed, &crate::ID)?;
-        let account: Account<'a> = self.get_account(pubkey)?;
+    ) -> Result<Self::Account> {
+        let pubkey = Pubkey::create_with_seed(base, seed, &crate::ID)?;
+        let account: Self::Account = self.get_account(&pubkey)?;
 
         if account.is_system_owned() {
-            let system = self.find_account_info(system_program::ID);
+            let system = self.find_account_info(&system_program::ID);
             let base_account = self.find_account_info(base);
-            let account_info = account.as_account_info();
+            let account_info = account.as_raw_account();
 
             let assign = system_instruction::assign_with_seed(&pubkey, &base, seed, &crate::ID);
             let account_infos = &[system.clone(), account_info.clone(), base_account.clone()];

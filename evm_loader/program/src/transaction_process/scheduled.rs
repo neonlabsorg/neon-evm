@@ -1,7 +1,7 @@
 use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 
-use crate::account::{BalanceAccount, StateAccount, TransactionTree};
+use crate::account::{Balance, StateAccount, TransactionTree};
 use crate::debug::log_data;
 use crate::error::{Error, Result};
 use crate::platform::{Platform, Solana};
@@ -21,8 +21,8 @@ pub fn validate_index(tx: &dyn ScheduledTransaction, instruction_index: u16) -> 
 pub fn skip(
     tree_index: u16,
     transaction: EncodedTransaction,
-    mut tree: TransactionTree,
     mut solana: Solana,
+    mut tree: TransactionTree<AccountInfo>,
 ) -> Result<()> {
     let tx = transaction.decode()?;
     let Some(tx) = tx.as_scheduled() else {
@@ -40,13 +40,13 @@ pub fn skip(
     solana.reward_operator_from_tree(&mut tree, tx.hash())
 }
 
-pub fn start<'a>(
+pub fn start(
     tree_index: u16,
     transaction: EncodedTransaction,
-    holder: AccountInfo<'a>,
+    holder: AccountInfo,
     holder_owner: Pubkey,
-    mut solana: Solana<'a>,
-    mut tree: TransactionTree<'a>,
+    mut solana: Solana,
+    mut tree: TransactionTree<AccountInfo>,
 ) -> Result<()> {
     let (mut state, tx) =
         StateAccount::new_with_tree(holder, holder_owner, transaction, &mut solana, &mut tree)?;
@@ -64,7 +64,7 @@ pub fn start<'a>(
     solana.log_miner_address(root.origin());
     log_data(&[b"HASH", tx_hash.as_ref()]);
 
-    let mut origin: BalanceAccount = solana.get_origin(&*root)?;
+    let mut origin = solana.get_origin(&*root)?;
     if origin.nonce() == tx.nonce() {
         // Increment origin's nonce only once for the whole execution tree.
         // All transactions in the tree should have the same nonce.

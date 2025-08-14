@@ -155,7 +155,7 @@ async fn create_metadata(
     symbol: String,
     uri: String,
 ) -> Result<Vec<u8>> {
-    let program_id = state.program_id();
+    let program_id = *state.program_id();
     let signer = context.caller;
 
     let (signer_pubkey, bump_seed) = state.keys().contract_bump(signer);
@@ -207,7 +207,7 @@ async fn create_master_edition(
     let program_id = state.program_id();
     let signer = context.caller;
 
-    let (signer_pubkey, bump_seed) = pda::contract_address(&program_id, &signer);
+    let (signer_pubkey, bump_seed) = pda::contract(program_id, &signer);
     let seeds: &[&[u8]] = pda::contract_seeds!(signer, bump_seed);
 
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);
@@ -306,7 +306,7 @@ async fn metadata(
     mint: Pubkey,
 ) -> Result<Option<Metadata>> {
     let (metadata_pubkey, _) = Metadata::find_pda(&mint);
-    let metadata_account = state.external_account(metadata_pubkey).await?;
+    let metadata_account = state.external_account(&metadata_pubkey).await?;
 
     let result = {
         if MPL_TOKEN_METADATA_ID == metadata_account.owner {

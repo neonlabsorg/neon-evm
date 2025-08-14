@@ -1,10 +1,7 @@
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{
-    account::{Account, AccountDispatch},
-    platform::FAKE_OPERATOR,
-};
+use crate::{account::AccountRead, platform::FAKE_OPERATOR};
 
 #[derive(Clone, Default)]
 #[repr(C)]
@@ -21,13 +18,13 @@ pub struct OwnedAccountInfo {
 
 impl OwnedAccountInfo {
     #[must_use]
-    pub fn from_account(program_id: Pubkey, info: &Account) -> Self {
+    pub fn from_account(program_id: &Pubkey, info: &impl AccountRead) -> Self {
         Self {
             key: info.pubkey(),
             is_signer: false,
             is_writable: false,
             lamports: info.lamports(),
-            data: if info.is_executable() || (info.owner() == program_id) {
+            data: if info.is_executable() || (&info.owner() == program_id) {
                 // This is only used to emulate external programs
                 // They don't use data in our accounts
                 vec![]

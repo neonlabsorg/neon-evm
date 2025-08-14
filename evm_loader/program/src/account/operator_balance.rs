@@ -10,8 +10,8 @@ use ethnum::U256;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent};
 
 use super::{
-    program, Account, AccountDispatch, AccountHeader, BalanceAccount, Operator, ACCOUNT_PREFIX_LEN,
-    TAG_OPERATOR_BALANCE,
+    program, Account, AccountHeader, AccountRead, AccountWrite, Balance, Operator,
+    ACCOUNT_PREFIX_LEN, TAG_OPERATOR_BALANCE,
 };
 
 #[repr(C, packed)]
@@ -26,29 +26,25 @@ impl AccountHeader for Header {
 }
 
 #[derive(Clone)]
-pub struct OperatorBalance<'a> {
-    account: Account<'a>,
+pub struct OperatorBalance<T> {
+    account: T,
 }
 
-impl<'a> OperatorBalance<'a> {
+impl OperatorBalance<()> {
     #[must_use]
-    pub fn required_account_size() -> usize {
+    pub const fn required_account_size() -> usize {
         ACCOUNT_PREFIX_LEN + size_of::<Header>()
     }
+}
 
-    pub fn from_account(program_id: Pubkey, account: Account<'a>) -> Result<Self> {
-        account.validate_tag(program_id, TAG_OPERATOR_BALANCE)?;
-
-        Ok(Self { account })
-    }
-
-    pub fn from_account_info(program_id: Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
-        let account = account.clone().into();
+impl<'a> OperatorBalance<AccountInfo<'a>> {
+    pub fn from_account_info(program_id: &Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
+        let account = account.clone();
         Self::from_account(program_id, account)
     }
 
     pub fn try_from_account_info(
-        program_id: Pubkey,
+        program_id: &Pubkey,
         account: &AccountInfo<'a>,
     ) -> Result<Option<Self>> {
         if account.is_system_owned() {
@@ -75,7 +71,7 @@ impl<'a> OperatorBalance<'a> {
 
         // Already created. Return immediately
         if !account.is_system_owned() {
-            let balance_account = Self::from_account(crate::ID, account.into())?;
+            let balance_account = Self::from_account(&crate::ID, account)?;
             assert_eq!(balance_account.address(), address);
             assert_eq!(balance_account.chain_id(), chain_id);
             assert_eq!(balance_account.owner(), *operator.key);
@@ -84,28 +80,42 @@ impl<'a> OperatorBalance<'a> {
         }
 
         // Create a new account
-        let seeds: &[&[u8]] = pda::operator_seeds!(operator.key, address, chain_id, bump_seed);
+        let seeds = pda::operator_balance_seeds!(operator.key, address, chain_id, bump_seed);
         system.create_pda_account(
             &crate::ID,
             operator,
             &account,
             seeds,
-            Self::required_account_size(),
+            OperatorBalance::required_account_size(),
             rent,
         )?;
 
-        account.init_tag(TAG_OPERATOR_BALANCE, Header::VERSION)?;
-        {
-            let mut header: RefMut<Header> = account.header_mut();
-            header.owner = *operator.key;
-            header.address = address;
-            header.chain_id = chain_id;
-            header.balance = U256::ZERO;
-        }
+        account.write_tag(TAG_OPERATOR_BALANCE, Header::VERSION)?;
+        account.write_header(Header {
+            owner: *operator.key,
+            address,
+            chain_id,
+            balance: U256::ZERO,
+        });
 
-        Ok(Self {
-            account: account.into(),
-        })
+        Ok(Self { account })
+    }
+
+    /// # Safety
+    /// Permanently deletes Operator Balance account and all data in it
+    pub unsafe fn suicide(self, operator: &Operator) -> Result<()> {
+        assert_eq!(self.balance(), U256::ZERO);
+
+        let info = self.account;
+        crate::account::delete(&info, operator)
+    }
+}
+
+impl<T: AccountRead> OperatorBalance<T> {
+    pub fn from_account(program_id: &Pubkey, account: T) -> Result<Self> {
+        account.validate_tag(program_id, TAG_OPERATOR_BALANCE)?;
+
+        Ok(Self { account })
     }
 
     #[must_use]
@@ -145,8 +155,10 @@ impl<'a> OperatorBalance<'a> {
 
         Ok(())
     }
+}
 
-    pub fn consume_gas(&mut self, source: &mut BalanceAccount, value: U256) -> Result<()> {
+impl<T: Account> OperatorBalance<T> {
+    pub fn consume_gas(&mut self, source: &mut Balance<impl Account>, value: U256) -> Result<()> {
         if self.chain_id() != source.chain_id() {
             return Err(Error::OperatorBalanceInvalidChainId);
         }
@@ -155,7 +167,7 @@ impl<'a> OperatorBalance<'a> {
         self.mint(value)
     }
 
-    pub fn withdraw(&mut self, target: &mut BalanceAccount) -> Result<()> {
+    pub fn withdraw(&mut self, target: &mut Balance<impl Account>) -> Result<()> {
         if self.chain_id() != target.chain_id() {
             return Err(Error::OperatorBalanceInvalidChainId);
         }
@@ -195,17 +207,6 @@ impl<'a> OperatorBalance<'a> {
 
         Ok(())
     }
-
-    /// # Safety
-    /// Permanently deletes Operator Balance account and all data in it
-    pub unsafe fn suicide(self, operator: &Operator) -> Result<()> {
-        assert_eq!(self.balance(), U256::ZERO);
-
-        let info = self.account.try_into()?;
-        crate::account::delete(&info, operator);
-
-        Ok(())
-    }
 }
 
 pub trait OperatorBalanceValidator {
@@ -220,7 +221,7 @@ pub trait OperatorBalanceValidator {
     fn miner(&self, origin: Address) -> Address;
 }
 
-impl OperatorBalanceValidator for Option<OperatorBalance<'_>> {
+impl<T: AccountRead> OperatorBalanceValidator for Option<OperatorBalance<T>> {
     fn validate_owner(&self, operator: &Operator) -> Result<()> {
         let Some(balance) = self else { return Ok(()) };
         balance.validate_owner(operator)

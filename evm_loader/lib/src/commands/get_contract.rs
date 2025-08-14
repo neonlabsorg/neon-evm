@@ -53,7 +53,7 @@ pub async fn execute(
     let executor = SyncedExecutorState::new(&mut platform, &mut executor_data);
 
     for address in addresses.iter().copied() {
-        let (pubkey, _) = pda::contract_address(program_id, &address);
+        let (pubkey, _) = pda::contract(program_id, &address);
         let chain_id = executor.contract_chain_id(address).await.ok();
         let code = executor.use_code(address, <[u8]>::to_vec).await?;
 

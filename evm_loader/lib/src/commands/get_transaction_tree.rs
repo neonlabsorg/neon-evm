@@ -1,10 +1,11 @@
 use ethnum::U256;
-use evm_loader::account::{pda, SharedAccount, TransactionTree, TransactionTreeNodeStatus};
+use evm_loader::account::{pda, TransactionTree, TransactionTreeNodeStatus};
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account::ReadableAccount, pubkey::Pubkey};
 use std::fmt::Display;
 
 use crate::{
+    emulator_account::SharedAccount,
     rpc::Rpc,
     types::{Address, BalanceAddress},
     NeonResult,
@@ -74,12 +75,12 @@ impl GetTreeResponse {
 }
 
 pub fn read_tree(
-    program_id: Pubkey,
+    program_id: &Pubkey,
     pubkey: Pubkey,
     account: &impl ReadableAccount,
 ) -> NeonResult<GetTreeResponse> {
     let shared_account = SharedAccount::new(pubkey, account);
-    let tree = TransactionTree::from_account(program_id, shared_account.into())?;
+    let tree = TransactionTree::from_account(program_id, shared_account)?;
 
     let transactions = tree
         .nodes()
@@ -119,12 +120,12 @@ pub async fn execute(
     let payer = origin.address;
     let chain_id = origin.chain_id;
 
-    let (pubkey, _) = pda::tree_account_address(program_id, &payer, chain_id, nonce);
+    let (pubkey, _) = pda::tree_account(program_id, &payer, chain_id, nonce);
 
     let response = rpc.get_account(&pubkey).await?;
     let Some(account) = response else {
         return Ok(GetTreeResponse::empty());
     };
 
-    Ok(read_tree(*program_id, pubkey, &account).unwrap_or_else(GetTreeResponse::error))
+    Ok(read_tree(program_id, pubkey, &account).unwrap_or_else(GetTreeResponse::error))
 }

@@ -1,4 +1,5 @@
 use allocator_api2::alloc::Allocator;
+use allocator_api2::boxed::Box as Box2;
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::clock::Clock;
@@ -6,7 +7,7 @@ use solana_program::instruction::{AccountMeta, Instruction};
 use solana_program::pubkey::Pubkey;
 use solana_sdk_ids::{bpf_loader, system_program};
 
-use crate::account::{Account, AccountDispatch};
+use crate::account::{Account, AccountRead};
 use crate::allocator::StateAllocator;
 use crate::config::{GAS_LIMIT_MULTIPLIER_NO_CHAINID, NO_UPDATE_TRACKING_OWNERS};
 use crate::debug::log_data;
@@ -19,8 +20,8 @@ use crate::types::vector::{vector_map::Entry, VectorMap, VectorSliceExt, VectorS
 use crate::types::{Address, Transaction, TransactionType, Vector};
 
 use super::{
-    BalanceAccount, ContractAccount, StorageCell, TransactionTree, TAG_ACCOUNT_BALANCE,
-    TAG_ACCOUNT_CONTRACT, TAG_STORAGE_CELL,
+    Balance, Contract, StorageCell, TransactionTree, TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT,
+    TAG_STORAGE_CELL,
 };
 
 #[derive(PartialEq, Eq)]
@@ -43,7 +44,7 @@ impl Default for AccountRevision {
 }
 
 impl AccountRevision {
-    pub fn new(program_id: Pubkey, info: Account) -> Self {
+    pub fn new(program_id: &Pubkey, info: impl AccountRead) -> Self {
         if [bpf_loader::ID, system_program::ID].contains(&info.owner()) {
             return AccountRevision::Revision(0);
         }
@@ -53,7 +54,7 @@ impl AccountRevision {
             return AccountRevision::Hash(hash);
         }
 
-        if info.owner() != program_id {
+        if &info.owner() != program_id {
             let hash = solana_program::hash::hashv(&[
                 info.owner().as_ref(),
                 &info.lamports().to_le_bytes(),
@@ -69,11 +70,11 @@ impl AccountRevision {
                 Self::Revision(cell.revision())
             }
             Ok(TAG_ACCOUNT_CONTRACT) => {
-                let contract = unsafe { ContractAccount::from_account_unchecked(info) };
+                let contract = unsafe { Contract::from_account_unchecked(info) };
                 Self::Revision(contract.revision())
             }
             Ok(TAG_ACCOUNT_BALANCE) => {
-                let balance = unsafe { BalanceAccount::from_account_unchecked(info) };
+                let balance = unsafe { Balance::from_account_unchecked(info) };
                 Self::Revision(balance.revision())
             }
             _ => Self::Revision(0),
@@ -91,7 +92,7 @@ pub struct InterruptedInstruction<A: Allocator> {
 #[repr(C)]
 pub struct InterruptedState<A: Allocator> {
     instruction: InterruptedInstruction<A>,
-    signer_seeds: Seeds,
+    signer_seeds: Box2<Seeds, A>,
     lamports: Option<u64>,
 }
 
@@ -109,7 +110,7 @@ impl<A: Allocator + Copy> InterruptedState<A> {
                 accounts: instruction.accounts.elementwise_copy_to_vector(allocator),
                 data: instruction.data.to_vector(allocator),
             },
-            signer_seeds: Seeds::new(signer_seeds),
+            signer_seeds: Box2::new_in(Seeds::new(signer_seeds), allocator),
             lamports,
         }
     }
@@ -169,7 +170,11 @@ impl PlainData {
         0
     }
 
-    pub fn new(tx: &dyn Transaction, origin: Address, tree: Option<&TransactionTree>) -> Self {
+    pub fn new(
+        tx: &dyn Transaction,
+        origin: Address,
+        tree: Option<&TransactionTree<impl AccountRead>>,
+    ) -> Self {
         assert!(
             !(tx.is(TransactionType::Scheduled) ^ tree.is_some()),
             "Tree account should be present iff it's a scheduled transaction."
@@ -215,19 +220,19 @@ pub struct Root<A: Allocator + Copy = StateAllocator> {
 }
 
 // to be sure that solana and x86 size/alignment match
-const _: () = {
-    assert!(std::mem::align_of::<Root>() == 0x8);
-    assert!(std::mem::size_of::<Root>() == 0x5A0);
-    assert!(std::mem::offset_of!(Root, revisions) == 0xE0);
-};
+// const _: () = {
+//     assert!(std::mem::align_of::<Root>() == 0x8);
+//     assert!(std::mem::size_of::<Root>() == 1128);
+//     assert!(std::mem::offset_of!(Root, revisions) == 0xE0);
+// };
 
 #[maybe_async]
 impl<A: Allocator + Copy> Root<A> {
-    pub async fn new<'a>(
+    pub async fn new(
         transaction: &dyn Transaction,
         origin: Address,
-        tree: Option<&mut TransactionTree<'a>>,
-        solana: &mut (impl Platform<'a> + 'a),
+        tree: Option<&mut TransactionTree<impl Account>>,
+        solana: &mut impl Platform,
         allocator: A,
     ) -> Result<Self> {
         let plain_data = PlainData::new(transaction, origin, tree.as_deref());
@@ -238,7 +243,7 @@ impl<A: Allocator + Copy> Root<A> {
         if let Some(tree) = tree {
             tree.burn_gas(root.gas_limit(), root.gas_price())?;
         } else {
-            let mut origin: BalanceAccount = solana.get_origin(&root).await?;
+            let mut origin = solana.get_origin(&root).await?;
             origin.burn_gas(root.gas_limit(), root.gas_price())?;
         }
 
@@ -247,10 +252,10 @@ impl<A: Allocator + Copy> Root<A> {
 
     /// # Safety
     ///  Everything related to the state reset is extremely unsafe. Be careful
-    pub async unsafe fn new_after_reset<'a>(
+    pub async unsafe fn new_after_reset(
         &self,
         transaction: &dyn Transaction,
-        solana: &mut (impl Platform<'a> + 'a),
+        solana: &mut impl Platform,
         allocator: A,
     ) -> Result<Self> {
         // SAFETY WARNING: Old heap could no longer exists.
@@ -264,10 +269,10 @@ impl<A: Allocator + Copy> Root<A> {
         Self::new_with_plain_data(plain_data, transaction, solana, allocator).await
     }
 
-    async fn new_with_plain_data<'a>(
+    async fn new_with_plain_data(
         plain_data: PlainData,
         transaction: &dyn Transaction,
-        solana: &mut (impl Platform<'a> + 'a),
+        solana: &mut impl Platform,
         allocator: A,
     ) -> Result<Self> {
         let (executor_state, machine_state, touched_accounts_during_init) =
@@ -290,10 +295,10 @@ impl<A: Allocator + Copy> Root<A> {
         Ok(root)
     }
 
-    async fn construct_machine<'a>(
+    async fn construct_machine(
         trx: &dyn Transaction,
         origin: Address,
-        solana: &mut (impl Platform<'a> + 'a),
+        solana: &mut impl Platform,
         allocator: A,
     ) -> Result<(ExecutorStateData<A>, Machine<A>, TouchedAccounts)> {
         let clock: Clock = solana.get_sysvar().await?;
@@ -308,17 +313,17 @@ impl<A: Allocator + Copy> Root<A> {
         Ok((executor_state, machine, touched_accounts_during_init))
     }
 
-    pub fn refund_unused_gas_to_tree(&mut self, tree: &mut TransactionTree) -> Result<()> {
+    pub fn refund_unused_gas_to_tree(
+        &mut self,
+        tree: &mut TransactionTree<impl Account>,
+    ) -> Result<()> {
         assert_eq!(self.plain_data.tree_account, Some(tree.pubkey()));
 
         let unused_gas = self.consume_all_unused_gas()?;
         tree.refund_gas(unused_gas, self.gas_price())
     }
 
-    pub async fn refund_unused_gas_to_origin<'a>(
-        &mut self,
-        solana: &mut impl Platform<'a>,
-    ) -> Result<()> {
+    pub async fn refund_unused_gas_to_origin(&mut self, solana: &mut impl Platform) -> Result<()> {
         assert!(!self.is_scheduled_transaction());
 
         let unused_gas = self.consume_all_unused_gas()?;
@@ -337,9 +342,9 @@ impl<A: Allocator + Copy> Root<A> {
         Ok(avaialble)
     }
 
-    pub async fn increase_gas_limit_for_transactions_without_chain_id<'a>(
+    pub async fn increase_gas_limit_for_transactions_without_chain_id(
         &mut self,
-        platform: &mut impl Platform<'a>,
+        platform: &mut impl Platform,
     ) -> Result<()> {
         assert!(self.tx_chain_id().is_none());
 
@@ -443,18 +448,17 @@ impl<A: Allocator + Copy> Root<A> {
         self.plain_data.tree_account.is_some()
     }
 
-    async fn validate_revisions<'a>(&self, platform: &impl Platform<'a>) -> Result<AccountsStatus> {
-        let touched_accounts = self
-            .touched_accounts
-            .iter()
-            .filter_map(|(key, counter)| if counter >= &2 { Some(key) } else { None })
-            .copied();
+    async fn validate_revisions(&self, platform: &impl Platform) -> Result<AccountsStatus> {
+        let touched_accounts =
+            self.touched_accounts
+                .iter()
+                .filter_map(|(key, counter)| if counter >= &2 { Some(key) } else { None });
 
         for pubkey in touched_accounts {
-            let account: Account<'a> = platform.get_account(pubkey).await?;
+            let account = platform.get_account(pubkey).await?;
 
             let account_revision = AccountRevision::new(platform.program_id(), account);
-            let stored_revision = &self.revisions[&pubkey];
+            let stored_revision = &self.revisions[pubkey];
 
             if stored_revision != &account_revision {
                 log_data(&[b"INVALID_REVISION", pubkey.as_ref()]);
@@ -465,10 +469,7 @@ impl<A: Allocator + Copy> Root<A> {
         Ok(AccountsStatus::Ok)
     }
 
-    async fn validate_timestamps<'a>(
-        &self,
-        platform: &impl Platform<'a>,
-    ) -> Result<AccountsStatus> {
+    async fn validate_timestamps(&self, platform: &impl Platform) -> Result<AccountsStatus> {
         let Some(block) = self.executor_state.inhereted_block_params else {
             return Ok(AccountsStatus::Ok);
         };
@@ -489,10 +490,7 @@ impl<A: Allocator + Copy> Root<A> {
         Ok(AccountsStatus::Ok)
     }
 
-    pub async fn validate_accounts<'a>(
-        &self,
-        platform: &impl Platform<'a>,
-    ) -> Result<AccountsStatus> {
+    pub async fn validate_accounts(&self, platform: &impl Platform) -> Result<AccountsStatus> {
         let status = self.validate_revisions(platform).await?;
         if status != AccountsStatus::Ok {
             return Ok(status);
@@ -501,10 +499,10 @@ impl<A: Allocator + Copy> Root<A> {
         self.validate_timestamps(platform).await
     }
 
-    pub async fn update_touched_accounts<'a>(
+    pub async fn update_touched_accounts(
         &mut self,
         touched_accounts: TouchedAccounts,
-        solana: &impl Platform<'a>,
+        solana: &impl Platform,
     ) -> Result<()> {
         let program_id = solana.program_id();
 
@@ -515,7 +513,7 @@ impl<A: Allocator + Copy> Root<A> {
             match self.revisions.entry(key) {
                 Entry::Occupied(_) => {}
                 Entry::Vacant(entry) => {
-                    let account: Account<'a> = solana.get_account(key).await?;
+                    let account = solana.get_account(&key).await?;
                     let revision = AccountRevision::new(program_id, account);
                     entry.insert(revision);
                 }

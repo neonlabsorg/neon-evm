@@ -1,5 +1,5 @@
 use crate::account::{
-    AccountDispatch, Holder, Operator, OperatorBalance, StateAccount, Treasury, TAG_HOLDER,
+    AccountRead, Holder, Operator, OperatorBalance, StateAccount, Treasury, TAG_HOLDER,
     TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::error::{Error, Result};
@@ -9,14 +9,14 @@ use crate::transaction_process::transaction_step;
 use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Begin or Continue Transaction from Account");
 
     process_inner(program_id, accounts, instruction, false)
 }
 
 pub fn process_inner(
-    program_id: Pubkey,
+    program_id: &Pubkey,
     accounts: &[AccountInfo],
     instruction: &[u8],
     increase_gas_limit: bool,

@@ -6,7 +6,7 @@ use crate::platform::Solana;
 use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Cancel Transaction");
 
     let transaction_hash = array_ref![instruction, 0, 32];

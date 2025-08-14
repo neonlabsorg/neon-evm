@@ -245,7 +245,9 @@ fn read_pubkey(input: &[u8]) -> Result<Pubkey> {
     if input.len() < 32 {
         return Err(Error::OutOfBounds);
     }
-    Ok(Pubkey::new_from_array(*arrayref::array_ref![input, 0, 32]))
+
+    let bytes = arrayref::array_ref![input, 0, 32];
+    Ok(Pubkey::new_from_array(*bytes))
 }
 
 #[inline]
@@ -253,6 +255,7 @@ fn read_salt(input: &[u8]) -> Result<&[u8; 32]> {
     if input.len() < 32 {
         return Err(Error::OutOfBounds);
     }
+
     Ok(arrayref::array_ref![input, 0, 32])
 }
 
@@ -270,10 +273,10 @@ async fn initialize_mint(
     let signer = context.caller;
     let (signer_pubkey, _) = state.keys().contract_bump(signer);
 
-    let (mint_key, bump_seed) = pda::contract_data_address(&program_id, &signer, seed);
+    let (mint_key, bump_seed) = pda::contract_data(program_id, &signer, seed);
     let seeds: &[&[u8]] = pda::contract_data_seeds!(signer, seed, bump_seed);
 
-    let account = state.external_account(mint_key).await?;
+    let account = state.external_account(&mint_key).await?;
     if !system_program::check_id(&account.owner) {
         return Err(Error::AccountInvalidOwner(mint_key, system_program::ID));
     }
@@ -312,10 +315,10 @@ async fn initialize_account(
     let signer = context.caller;
     let (signer_pubkey, _) = state.keys().contract_bump(signer);
 
-    let (account_key, bump_seed) = pda::contract_data_address(&program_id, &signer, seed);
+    let (account_key, bump_seed) = pda::contract_data(program_id, &signer, seed);
     let seeds: &[&[u8]] = pda::contract_data_seeds!(&signer, seed, bump_seed);
 
-    let account = state.external_account(account_key).await?;
+    let account = state.external_account(&account_key).await?;
     if !system_program::check_id(&account.owner) {
         return Err(Error::AccountInvalidOwner(account_key, system_program::ID));
     }
@@ -448,7 +451,7 @@ async fn transfer_with_seed(
     let program_id = state.program_id();
 
     let signer = context.caller;
-    let (signer_pubkey, signer_seed) = pda::contract_auth_address(&program_id, &signer, seed);
+    let (signer_pubkey, signer_seed) = pda::contract_auth(program_id, &signer, seed);
     let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, seed, signer_seed);
 
     let transfer = spl_token::instruction::transfer(
@@ -579,7 +582,7 @@ fn find_account(
     let program_id = state.program_id();
 
     let signer = context.caller;
-    let (account_key, _) = pda::contract_data_address(&program_id, &signer, seed);
+    let (account_key, _) = pda::contract_data(program_id, &signer, seed);
 
     Ok(account_key.to_bytes().to_vec())
 }
@@ -590,7 +593,7 @@ async fn is_system_account(
     state: &impl PrecompileDatabase,
     account: Pubkey,
 ) -> Result<Vec<u8>> {
-    let account = state.external_account(account).await?;
+    let account = state.external_account(&account).await?;
     if system_program::check_id(&account.owner) {
         let mut result = vec![0_u8; 32];
         result[31] = 1; // return true
@@ -607,7 +610,7 @@ async fn get_account(
     state: &impl PrecompileDatabase,
     account: Pubkey,
 ) -> Result<Vec<u8>> {
-    let account = state.external_account(account).await?;
+    let account = state.external_account(&account).await?;
     let token = if spl_token::check_id(&account.owner) {
         spl_token::state::Account::unpack(&account.data)?
     } else if system_program::check_id(&account.owner) {
@@ -642,7 +645,7 @@ async fn get_mint(
     state: &impl PrecompileDatabase,
     account: Pubkey,
 ) -> Result<Vec<u8>> {
-    let account = state.external_account(account).await?;
+    let account = state.external_account(&account).await?;
     let mint = if spl_token::check_id(&account.owner) {
         spl_token::state::Mint::unpack(&account.data)?
     } else if system_program::check_id(&account.owner) {

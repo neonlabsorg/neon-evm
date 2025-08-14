@@ -1,7 +1,8 @@
-use evm_loader::account::{ContainerAccount, SharedAccount};
+use evm_loader::account::Container;
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
 
+use crate::emulator_account::SharedAccount;
 use crate::NeonResult;
 use crate::{rpc::Rpc, NeonError};
 
@@ -57,7 +58,7 @@ pub async fn execute(
     };
 
     let account = SharedAccount::new(pubkey, &account);
-    let container = match ContainerAccount::from_account(program_id, account.into()) {
+    let container = match Container::from_account(&program_id, account) {
         Ok(container) => container,
         Err(e) => return Ok(GetContainerResponse::error(e)),
     };

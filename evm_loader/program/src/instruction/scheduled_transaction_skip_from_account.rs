@@ -5,7 +5,7 @@ use crate::transaction_process::scheduled;
 use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Skip Scheduled Transaction from Account");
 
     let tree_index = u16::try_from(u32::from_le_bytes(*array_ref![instruction, 0, 4]))?;
@@ -21,5 +21,5 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let mut solana = Solana::new(&accounts[1..], operator, operator_balance)?;
     solana.use_gasometer(|g| g.record_write_to_holder(&rlp));
 
-    scheduled::skip(tree_index, rlp, tree, solana)
+    scheduled::skip(tree_index, rlp, solana, tree)
 }

@@ -1,7 +1,7 @@
 use crate::account::program::System;
 use crate::account::{
-    pda, token, BalanceAccount, NodeInitializer, Operator, TransactionTree, Treasury,
-    TreeInitializer, NO_CHILD_TRANSACTION,
+    pda, token, Account, AccountRead, Balance, NodeInitializer, Operator, TransactionTree,
+    Treasury, TreeInitializer, NO_CHILD_TRANSACTION,
 };
 use crate::config::SOL_CHAIN_ID;
 use crate::debug::log_data;
@@ -66,7 +66,7 @@ pub fn validate_pool(pool: &token::State) -> Result<()> {
     Ok(())
 }
 
-pub fn validate_nonce(balance: &BalanceAccount, tx_nonce: u64) -> Result<()> {
+pub fn validate_nonce(balance: &Balance<impl AccountRead>, tx_nonce: u64) -> Result<()> {
     let account_nonce = balance.nonce();
     let address = balance.address();
 
@@ -79,8 +79,8 @@ pub fn validate_nonce(balance: &BalanceAccount, tx_nonce: u64) -> Result<()> {
 }
 
 pub fn payment_from_balance(
-    tree: &mut TransactionTree,
-    balance_account: &mut BalanceAccount,
+    tree: &mut TransactionTree<impl Account>,
+    balance_account: &mut Balance<impl Account>,
     gas: U256,
 ) -> Result<U256> {
     assert!(balance_account.chain_id() == tree.chain_id());
@@ -98,7 +98,7 @@ pub fn payment_from_balance(
 }
 
 pub fn payment_from_signer<'a>(
-    tree: &mut TransactionTree<'a>,
+    tree: &mut TransactionTree<impl Account>,
     signer: &Operator<'a>,
     system: &System<'a>,
     pool: &token::State<'a>,
@@ -127,7 +127,7 @@ pub fn payment_from_signer<'a>(
 }
 
 /// Execute Ethereum transaction in a single Solana transaction
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Schedule Transaction");
 
     // Instruction data
@@ -162,7 +162,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let clock = Clock::get()?;
 
     let mut solana = Solana::new(accounts, signer.clone(), None)?;
-    let mut user: BalanceAccount = solana.create_balance_for_solana_user(payer_pubkey)?;
+    let mut user = solana.create_balance_for_solana_user(payer_pubkey)?;
 
     validate_nonce(&user, tx.nonce())?;
 

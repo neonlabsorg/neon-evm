@@ -3,12 +3,10 @@ use std::cmp::Ordering;
 use std::mem::size_of;
 
 use super::{
-    Account, AccountDispatch, AccountHeader, NoHeader, ACCOUNT_PREFIX_LEN, TAG_EMPTY,
-    TAG_STORAGE_CELL,
+    Account, AccountHeader, AccountRead, NoHeader, ACCOUNT_PREFIX_LEN, TAG_EMPTY, TAG_STORAGE_CELL,
 };
 use crate::error::{Error, Result};
 use ethnum::U256;
-use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 
 #[derive(Copy, Clone)]
@@ -67,8 +65,8 @@ pub struct Cell {
     pub value: [u8; 32],
 }
 
-pub struct StorageCell<'a> {
-    account: Account<'a>,
+pub struct StorageCell<T> {
+    account: T,
 }
 
 #[repr(C, packed)]
@@ -83,18 +81,15 @@ impl AccountHeader for HeaderWithRevision {
 // and change the `header_size` and `header_upgrade` functions
 pub type Header = HeaderWithRevision;
 
-impl<'a> StorageCell<'a> {
+impl StorageCell<()> {
     #[must_use]
     pub const fn required_account_size(cells: usize) -> usize {
         ACCOUNT_PREFIX_LEN + size_of::<Header>() + cells * size_of::<Cell>()
     }
+}
 
-    pub fn from_account_info(program_id: Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
-        let account = account.clone().into();
-        Self::from_account(program_id, account)
-    }
-
-    pub fn from_account(program_id: Pubkey, account: Account<'a>) -> Result<Self> {
+impl<T: AccountRead> StorageCell<T> {
+    pub fn from_account(program_id: &Pubkey, account: T) -> Result<Self> {
         account.validate_tag(program_id, TAG_STORAGE_CELL)?;
 
         Ok(Self { account })
@@ -103,21 +98,8 @@ impl<'a> StorageCell<'a> {
     /// # Safety
     /// It's a caller responsibility to validate the account tag
     #[must_use]
-    pub unsafe fn from_account_unchecked(account: Account<'a>) -> Self {
+    pub unsafe fn from_account_unchecked(account: T) -> Self {
         Self { account }
-    }
-
-    pub fn initialize(mut account: Account<'a>, program_id: Pubkey) -> Result<Self> {
-        assert_eq!(account.data_len(), Self::required_account_size(0));
-        assert!(account.validate_tag(program_id, TAG_EMPTY).is_ok());
-
-        account.init_tag(TAG_STORAGE_CELL, Header::VERSION)?;
-        {
-            let mut header: RefMut<Header> = account.header_mut();
-            header.revision = 0; // Empty account without cells, no need to increment revision
-        }
-
-        Ok(Self { account })
     }
 
     #[must_use]
@@ -131,20 +113,6 @@ impl<'a> StorageCell<'a> {
             HeaderWithRevision::VERSION => size_of::<HeaderWithRevision>(),
             v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
         }
-    }
-
-    fn header_upgrade(&mut self) -> Result<()> {
-        match self.account.header_version() {
-            0 | 1 => {
-                self.account.expand_header::<NoHeader, Header>()?;
-            }
-            HeaderWithRevision::VERSION => {
-                self.account.expand_header::<HeaderWithRevision, Header>()?;
-            }
-            v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
-        }
-
-        Ok(())
     }
 
     fn cells_offset(&self) -> usize {
@@ -172,6 +140,57 @@ impl<'a> StorageCell<'a> {
     }
 
     #[must_use]
+    pub fn get(&self, subindex: u8) -> [u8; 32] {
+        for cell in &*self.cells() {
+            if cell.subindex != subindex {
+                continue;
+            }
+
+            return cell.value;
+        }
+
+        [0_u8; 32]
+    }
+
+    #[must_use]
+    pub fn revision(&self) -> u32 {
+        if self.account.header_version() < HeaderWithRevision::VERSION {
+            return 0;
+        }
+
+        let header: Ref<HeaderWithRevision> = self.account.header();
+        header.revision
+    }
+}
+
+impl<T: Account> StorageCell<T> {
+    pub fn initialize(mut account: T, program_id: &Pubkey) -> Result<Self> {
+        assert_eq!(account.data_len(), StorageCell::required_account_size(0));
+        assert!(account.validate_tag(program_id, TAG_EMPTY).is_ok());
+
+        account.write_tag(TAG_STORAGE_CELL, Header::VERSION)?;
+        account.write_header(HeaderWithRevision {
+            revision: 0, // Empty account without cells, no need to increment revision
+        });
+
+        Ok(Self { account })
+    }
+
+    fn header_upgrade(&mut self) -> Result<()> {
+        match self.account.header_version() {
+            0 | 1 => {
+                self.account.expand_header::<NoHeader, Header>()?;
+            }
+            HeaderWithRevision::VERSION => {
+                self.account.expand_header::<HeaderWithRevision, Header>()?;
+            }
+            v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
+        }
+
+        Ok(())
+    }
+
+    #[must_use]
     pub fn cells_mut(&mut self) -> RefMut<[Cell]> {
         let cells_offset = self.cells_offset();
 
@@ -189,19 +208,6 @@ impl<'a> StorageCell<'a> {
                 std::slice::from_raw_parts_mut(ptr, len)
             }
         })
-    }
-
-    #[must_use]
-    pub fn get(&self, subindex: u8) -> [u8; 32] {
-        for cell in &*self.cells() {
-            if cell.subindex != subindex {
-                continue;
-            }
-
-            return cell.value;
-        }
-
-        [0_u8; 32]
     }
 
     fn get_mut(&mut self, subindex: u8) -> Option<RefMut<[u8; 32]>> {
@@ -263,16 +269,6 @@ impl<'a> StorageCell<'a> {
         }
 
         Ok(())
-    }
-
-    #[must_use]
-    pub fn revision(&self) -> u32 {
-        if self.account.header_version() < HeaderWithRevision::VERSION {
-            return 0;
-        }
-
-        let header: Ref<HeaderWithRevision> = self.account.header();
-        header.revision
     }
 
     pub fn increment_revision(&mut self) -> Result<()> {

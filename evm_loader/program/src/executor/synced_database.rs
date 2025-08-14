@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use allocator_api2::alloc::{Allocator, Global};
 use ethnum::U256;
 use maybe_async::maybe_async;
@@ -15,7 +13,7 @@ use super::precompile_extension::{
 use super::transient_storage::TransientStorage;
 use super::{Action, BlockParams, IterativeActions};
 
-use crate::account::{Account, AllocateResult};
+use crate::account::AllocateResult;
 use crate::config::STATIC_STORAGE_LIMIT;
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
@@ -71,20 +69,19 @@ impl<A: Allocator + Copy> ExecutorStateData<A> {
     }
 }
 
-pub struct SyncedExecutorState<'r, 'a, A, P>
+pub struct SyncedExecutorState<'r, A, P>
 where
     A: Allocator,
-    P: Platform<'a>,
+    P: Platform,
 {
     platform: &'r mut P,
     data: &'r mut ExecutorStateData<A>,
     allocator: A,
-    phantom: PhantomData<&'a P>,
 }
 
-impl<'r, 'a, P> SyncedExecutorState<'r, 'a, Global, P>
+impl<'r, P> SyncedExecutorState<'r, Global, P>
 where
-    P: Platform<'a>,
+    P: Platform,
 {
     #[must_use]
     pub fn new(platform: &'r mut P, data: &'r mut ExecutorStateData<Global>) -> Self {
@@ -92,10 +89,10 @@ where
     }
 }
 
-impl<'r, 'a, A, P> SyncedExecutorState<'r, 'a, A, P>
+impl<'r, A, P> SyncedExecutorState<'r, A, P>
 where
     A: Allocator + Copy,
-    P: Platform<'a>,
+    P: Platform,
 {
     #[must_use]
     pub fn new_in(platform: &'r mut P, data: &'r mut ExecutorStateData<A>, allocator: A) -> Self {
@@ -103,7 +100,6 @@ where
             platform,
             data,
             allocator,
-            phantom: PhantomData,
         }
     }
 
@@ -163,10 +159,10 @@ where
 }
 
 #[maybe_async(?Send)]
-impl<'a, A, P> Database for SyncedExecutorState<'_, 'a, A, P>
+impl<A, P> Database for SyncedExecutorState<'_, A, P>
 where
     A: Allocator + Copy,
-    P: Platform<'a>,
+    P: Platform,
 {
     fn default_chain_id(&self) -> u64 {
         self.platform.default_chain()
@@ -429,16 +425,18 @@ where
 }
 
 #[maybe_async(?Send)]
-impl<'a, A, P> PrecompileDatabase for SyncedExecutorState<'_, 'a, A, P>
+impl<A, P> PrecompileDatabase for SyncedExecutorState<'_, A, P>
 where
     A: Allocator + Copy,
-    P: Platform<'a>,
+    P: Platform,
 {
-    fn program_id(&self) -> Pubkey {
+    type AccountRaw = P::AccountRaw;
+
+    fn program_id(&self) -> &Pubkey {
         self.platform.program_id()
     }
 
-    fn operator(&self) -> Pubkey {
+    fn operator(&self) -> &Pubkey {
         self.platform.operator()
     }
 
@@ -450,12 +448,12 @@ where
         self.platform.keys()
     }
 
-    async fn use_real_account<R, F>(&self, pubkey: Pubkey, f: F) -> Result<R>
+    async fn use_raw_account<R, F>(&self, pubkey: &Pubkey, f: F) -> Result<R>
     where
-        F: FnOnce(&Account) -> R,
+        F: FnOnce(Self::AccountRaw) -> R,
     {
-        let account = self.platform.get_real_account(pubkey).await?;
-        Ok(f(&account))
+        let account = self.platform.get_raw_account(pubkey).await?;
+        Ok(f(account))
     }
 
     async fn rent(&self) -> Result<Rent> {
@@ -478,8 +476,8 @@ where
             .await
     }
 
-    async fn external_account(&self, pubkey: Pubkey) -> Result<OwnedAccountInfo> {
-        let account = self.platform.get_real_account(pubkey).await?;
+    async fn external_account(&self, pubkey: &Pubkey) -> Result<OwnedAccountInfo> {
+        let account = self.platform.get_raw_account(pubkey).await?;
         Ok(OwnedAccountInfo::from_account(self.program_id(), &account))
     }
 

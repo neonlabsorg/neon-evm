@@ -2,11 +2,11 @@ use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
 
 use crate::{
-    account::{program::System, ContainerAccount, Operator, Treasury},
+    account::{program::System, Container, Operator, Treasury},
     error::Result,
 };
 
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Allocate Container");
 
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
@@ -18,7 +18,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let container_info = &accounts[3];
 
     // Assemble the container account
-    let mut container = ContainerAccount::from_account_info(program_id, container_info)?;
+    let mut container = Container::from_account_info(program_id, container_info)?;
     container.allocate_space_for_account(allocate_bytes)?;
 
     // Transfer lamports to the container account

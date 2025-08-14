@@ -1,6 +1,6 @@
 use crate::account::program::System;
 use crate::account::{
-    token, BalanceAccount, NodeInitializer, Operator, TransactionTree, Treasury, TreeInitializer,
+    token, NodeInitializer, Operator, TransactionTree, Treasury, TreeInitializer,
 };
 use crate::config::SOL_CHAIN_ID;
 use crate::debug::log_data;
@@ -86,7 +86,7 @@ fn calculate_required_balance(init_data: &TreeInitializer) -> Result<U256> {
 }
 
 /// Execute Ethereum transaction in a single Solana transaction
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Schedule Multiple Transactions");
 
     // Instruction data
@@ -112,7 +112,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let clock = Clock::get()?;
 
     let mut solana = Solana::new(accounts, signer.clone(), None)?;
-    let mut user: BalanceAccount = solana.create_balance_for_solana_user(payer_pubkey)?;
+    let mut user = solana.create_balance_for_solana_user(payer_pubkey)?;
 
     validate_nonce(&user, init.nonce)?;
 

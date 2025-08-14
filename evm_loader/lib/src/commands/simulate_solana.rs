@@ -1,27 +1,25 @@
 use crate::{
-    rpc::Rpc,
+    rpc::{CachedRpc, Rpc},
     solana_simulator::{SolanaSimulator, SyncState},
     types::SimulateSolanaRequest,
     NeonResult,
 };
-use bincode::Options;
-use log::info;
+
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use solana_compute_budget::compute_budget::ComputeBudget;
-use solana_runtime::runtime_config::RuntimeConfig;
 use solana_sdk::{
     account::Account,
+    instruction::{Instruction, InstructionError},
     pubkey::Pubkey,
-    transaction::{SanitizedTransaction, Transaction, VersionedTransaction},
 };
-use solana_transaction_status::EncodableWithMeta;
+use solana_sdk_ids::{bpf_loader, bpf_loader_upgradeable, loader_v4, native_loader};
 use std::collections::HashSet;
 
 #[serde_as]
 #[derive(Deserialize, Serialize, Debug, Default)]
-pub struct SimulateSolanaTransactionResult {
-    pub error: Option<solana_sdk::transaction::TransactionError>,
+pub struct SimulateSolanaResult {
+    pub error: Option<InstructionError>,
     pub logs: Vec<String>,
     pub executed_units: u64,
 }
@@ -29,63 +27,57 @@ pub struct SimulateSolanaTransactionResult {
 #[serde_as]
 #[derive(Deserialize, Serialize, Debug, Default)]
 pub struct SimulateSolanaResponse {
-    transactions: Vec<SimulateSolanaTransactionResult>,
+    pub instructions: Vec<SimulateSolanaResult>,
 }
 
-fn decode_transaction(data: &[u8]) -> NeonResult<VersionedTransaction> {
-    let tx_result = bincode::options()
-        .with_fixint_encoding()
-        .allow_trailing_bytes()
-        .deserialize::<VersionedTransaction>(data);
+fn account_keys(instructions: &[Instruction]) -> HashSet<Pubkey> {
+    let mut pubkeys: HashSet<Pubkey> = HashSet::<Pubkey>::new();
+    for instruction in instructions {
+        pubkeys.insert(instruction.program_id);
 
-    if let Ok(tx) = tx_result {
-        return Ok(tx);
+        let accounts = instruction.accounts.iter().map(|a| a.pubkey);
+        pubkeys.extend(accounts);
     }
 
-    let tx = bincode::options()
-        .with_fixint_encoding()
-        .allow_trailing_bytes()
-        .deserialize::<Transaction>(data)?;
-
-    Ok(tx.into())
+    pubkeys
 }
 
-fn address_table_lookups(txs: &[VersionedTransaction]) -> Vec<Pubkey> {
-    let mut accounts: HashSet<Pubkey> = HashSet::<Pubkey>::new();
-    for tx in txs {
-        let Some(address_table_lookups) = tx.message.address_table_lookups() else {
-            continue;
-        };
+fn compute_budget(request: &SimulateSolanaRequest) -> ComputeBudget {
+    let compute_unit_limit = request.compute_units.unwrap_or(1_400_000);
+    let heap_size = request.heap_size.unwrap_or(256 * 1024);
 
-        for alt in address_table_lookups {
-            accounts.insert(alt.account_key);
+    ComputeBudget {
+        compute_unit_limit,
+        heap_size,
+        ..Default::default()
+    }
+}
+
+fn override_accounts(
+    simulator: &mut SolanaSimulator,
+    solana_keys: &mut HashSet<Pubkey>,
+    request: &SimulateSolanaRequest,
+) {
+    if let Some(program_overrides) = &request.programs_overrides {
+        for (pubkey, program) in program_overrides {
+            solana_keys.remove(pubkey);
+            simulator.add_program(pubkey, &program.elf, &program.loader);
         }
     }
 
-    accounts.into_iter().collect()
-}
+    if let Some(account_overrides) = &request.accounts_overrides {
+        for (pubkey, account) in account_overrides {
+            if bpf_loader::check_id(&account.owner)
+                || bpf_loader_upgradeable::check_id(&account.owner)
+                || loader_v4::check_id(&account.owner)
+                || native_loader::check_id(&account.owner)
+            {
+                continue; // Use `program_overrides` for executable accounts
+            }
 
-fn account_keys(txs: &[SanitizedTransaction]) -> Vec<Pubkey> {
-    let mut accounts: HashSet<Pubkey> = HashSet::<Pubkey>::new();
-    for tx in txs {
-        let keys = tx.message().account_keys();
-        accounts.extend(keys.iter());
-    }
-
-    accounts.into_iter().collect()
-}
-
-fn runtime_config(request: &SimulateSolanaRequest) -> RuntimeConfig {
-    let compute_units = request.compute_units.unwrap_or(1_400_000);
-    let heap_size = request.heap_size.unwrap_or(256 * 1024);
-
-    let mut compute_budget = ComputeBudget::new(compute_units);
-    compute_budget.heap_size = heap_size;
-
-    RuntimeConfig {
-        compute_budget: Some(compute_budget),
-        log_messages_bytes_limit: Some(100 * 1024),
-        transaction_account_lock_limit: request.account_limit,
+            solana_keys.remove(pubkey);
+            simulator.add_account(pubkey, Account::from(account));
+        }
     }
 }
 
@@ -93,70 +85,44 @@ pub async fn execute(
     rpc: &impl Rpc,
     request: SimulateSolanaRequest,
 ) -> NeonResult<(SimulateSolanaResponse, SolanaSimulator)> {
-    let verify = request.verify.unwrap_or(true);
-    let config = runtime_config(&request);
+    let rpc = CachedRpc::new(rpc);
 
-    let mut simulator = SolanaSimulator::new_with_config(rpc, config, SyncState::Yes).await?;
+    let budget = compute_budget(&request);
 
-    // Decode transactions from bytes
-    let mut transactions: Vec<VersionedTransaction> = vec![];
-    for data in request.transactions {
-        let tx = decode_transaction(&data)?;
-        info!(
-            "Encoded transaction: {}",
-            serde_json::to_string(&tx.json_encode()).unwrap()
-        );
-        transactions.push(tx);
-    }
+    let mut simulator = SolanaSimulator::new_with_config(&rpc, budget, SyncState::Yes).await?;
 
-    // Download ALT
-    let alt = address_table_lookups(&transactions);
-    simulator.sync_accounts(rpc, &alt).await?;
-
-    // Sanitize transactions (verify tx and decode ALT)
-    let mut sanitized_transactions: Vec<SanitizedTransaction> = vec![];
-    for tx in transactions {
-        let sanitized = simulator.sanitize_transaction(tx, verify)?;
-        sanitized_transactions.push(sanitized);
+    // Decode instruction
+    let mut instructions: Vec<Instruction> = vec![];
+    for serialized in request.instructions.iter().cloned() {
+        let instruction = serialized.into();
+        instructions.push(instruction);
     }
 
     // Take keys for accounts that should be downloaded from Solana
-    let mut solana_keys = account_keys(&sanitized_transactions);
+    let mut solana_keys: HashSet<Pubkey> = account_keys(&instructions);
 
     // Take override accounts from request, if set
-    if let Some(solana_overrides) = request.solana_overrides {
-        let mut override_accounts: Vec<(&Pubkey, Account)> = vec![];
-        for (pubkey, account) in &solana_overrides {
-            if let Some(account) = account {
-                // don't retrieve override accounts from Solana
-                solana_keys.retain(|pk| pk != pubkey);
-                override_accounts.push((pubkey, Account::from(account)));
-            }
-        }
-        let storable_accounts: Vec<_> = override_accounts
-            .iter()
-            .map(|(pubkey, account)| (*pubkey, account))
-            .collect();
-        simulator.set_multiple_accounts(&storable_accounts);
-    }
+    override_accounts(&mut simulator, &mut solana_keys, &request);
 
     // Download accounts from Solana
-    simulator.sync_accounts(rpc, &solana_keys).await?;
+    let solana_keys: Vec<Pubkey> = solana_keys.into_iter().collect();
+    simulator.sync_accounts(&rpc, &solana_keys).await?;
 
-    // Process transactions
+    // Process instructions
     let mut results = Vec::new();
-    for tx in sanitized_transactions {
-        let r = simulator.process_transaction(request.blockhash.into(), &tx)?;
-        results.push(SimulateSolanaTransactionResult {
-            error: r.result.err(),
-            logs: r.logs,
-            executed_units: r.units_consumed,
+    for instruction in instructions {
+        let (r, logs) = simulator.process_instruction(&instruction)?;
+
+        results.push(SimulateSolanaResult {
+            error: r.raw_result.err(),
+            executed_units: r.compute_units_consumed,
+            logs,
         });
     }
 
     Ok((
         SimulateSolanaResponse {
-            transactions: results,
+            instructions: results,
         },
         simulator,
     ))

@@ -2,7 +2,7 @@ use crate::error::Result;
 use solana_program::account_info::AccountInfo;
 
 pub use abstraction::{
-    Account, AccountDispatch, AccountHeader, NoHeader, SharedAccount, ZeroInit, ACCOUNT_PREFIX_LEN,
+    Account, AccountDispatch, AccountHeader, NoHeader, SharedAccount, ACCOUNT_PREFIX_LEN,
 };
 pub use container::{AccountInContainer, ContainerAccount, ReferenceAccount};
 pub use ether_balance::{BalanceAccount, Header as BalanceHeader};
@@ -74,7 +74,7 @@ pub unsafe fn delete_with_treasury(account: &AccountInfo, treasury: &Treasury) -
     **account.lamports.borrow_mut() = 0;
 
     account.data.borrow_mut().fill(0);
-    account.realloc(0, false)?;
+    account.resize(0)?;
     account.assign(&solana_program::system_program::ID);
 
     Ok(())

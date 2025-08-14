@@ -9,8 +9,9 @@ use crate::{
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::instruction::Instruction;
+use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
-use solana_program::{pubkey::Pubkey, system_instruction};
+use solana_system_interface::instruction as system_instruction;
 
 use super::owned_account::OwnedAccountInfo;
 

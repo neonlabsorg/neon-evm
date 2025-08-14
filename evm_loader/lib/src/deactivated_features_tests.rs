@@ -7,7 +7,6 @@ mod deactivated_features_tests {
     use solana_sdk::{
         account::{Account, AccountSharedData},
         feature::Feature,
-        feature_set,
         pubkey::Pubkey,
     };
 
@@ -25,7 +24,7 @@ mod deactivated_features_tests {
 
     impl Default for RpcMockFeatures {
         fn default() -> Self {
-            let accounts: Vec<_> = feature_set::FEATURE_NAMES.keys().copied().collect();
+            let accounts: Vec<_> = agave_feature_set::FEATURE_NAMES.keys().copied().collect();
 
             let mut features = HashMap::<Pubkey, Option<u64>>::new();
 

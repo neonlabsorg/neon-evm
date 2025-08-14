@@ -1,19 +1,12 @@
-use super::error::Error;
-use log::debug;
-use solana_program_runtime::sysvar_cache::SysvarCache;
-use solana_sdk::{
-    account::Account,
-    account_utils::StateMut,
-    address_lookup_table::{
-        self,
-        state::{AddressLookupTable, LookupTableMeta},
-    },
-    bpf_loader_upgradeable::{self, UpgradeableLoaderState},
-    pubkey::Pubkey,
-    reserved_account_keys::ReservedAccountKeys,
-    sysvar,
-};
+use std::fmt::Display;
 
+use agave_feature_set::FeatureSet;
+use mollusk_svm::sysvar::Sysvars;
+use num_traits::FromPrimitive;
+use solana_loader_v3_interface::state::UpgradeableLoaderState;
+use solana_sdk::{account::Account, instruction::InstructionError, pubkey::Pubkey};
+
+use super::error::Error;
 use crate::rpc::Rpc;
 
 #[derive(Eq, PartialEq, Copy, Clone)]
@@ -22,98 +15,91 @@ pub enum SyncState {
     Yes,
 }
 
-pub async fn sync_sysvar_accounts(
-    rpc: &impl Rpc,
-    sysvar_cache: &mut SysvarCache,
-) -> Result<(), Error> {
-    let keys: Vec<Pubkey> = ReservedAccountKeys::default().active.into_iter().collect();
-    let mut accounts = rpc.get_multiple_accounts(&keys).await?;
+pub async fn download_sysvar_accounts(rpc: &impl Rpc) -> Result<Sysvars, Error> {
+    let sysvar_ids = [
+        solana_sdk_ids::sysvar::clock::ID,
+        solana_sdk_ids::sysvar::epoch_rewards::ID,
+        solana_sdk_ids::sysvar::epoch_schedule::ID,
+        solana_sdk_ids::sysvar::last_restart_slot::ID,
+        solana_sdk_ids::sysvar::rent::ID,
+        solana_sdk_ids::sysvar::slot_hashes::ID,
+        solana_sdk_ids::sysvar::stake_history::ID,
+    ];
 
-    sysvar_cache.reset();
-
-    for (account, key) in accounts.iter_mut().zip(keys) {
-        let Some(account) = account else {
-            continue;
-        };
-
-        sysvar_cache.fill_missing_entries(|pubkey, setter| match *pubkey {
-            sysvar::clock::ID
-            | sysvar::rent::ID
-            | sysvar::epoch_rewards::ID
-            | sysvar::epoch_schedule::ID
-            | sysvar::slot_hashes::ID
-            | sysvar::stake_history::ID
-            | sysvar::last_restart_slot::ID => {
-                if key == *pubkey {
-                    setter(account.data.as_mut());
-                }
-            }
-            #[allow(deprecated)]
-            id if { sysvar::fees::check_id(&id) || sysvar::recent_blockhashes::check_id(&id) } => {
-                if key == *pubkey {
-                    setter(account.data.as_mut());
-                }
-            }
-            _ => {}
-        });
+    let accounts = rpc.get_multiple_accounts(&sysvar_ids).await?;
+    if accounts.iter().any(Option::is_none) {
+        return Err(Error::SysvarError);
     }
 
-    Ok(())
+    let accounts = accounts.into_iter().map(|a| a.unwrap()).collect::<Vec<_>>();
+
+    Ok(Sysvars {
+        clock: bincode::deserialize(&accounts[0].data)?,
+        epoch_rewards: bincode::deserialize(&accounts[1].data)?,
+        epoch_schedule: bincode::deserialize(&accounts[2].data)?,
+        last_restart_slot: bincode::deserialize(&accounts[3].data)?,
+        rent: bincode::deserialize(&accounts[4].data)?,
+        slot_hashes: bincode::deserialize(&accounts[5].data)?,
+        stake_history: bincode::deserialize(&accounts[6].data)?,
+    })
 }
 
-pub fn program_data_address(account: &Account) -> Result<Pubkey, Error> {
-    assert!(account.executable);
-    assert_eq!(account.owner, bpf_loader_upgradeable::id());
+pub async fn download_feature_set(rpc: &impl Rpc) -> Result<FeatureSet, Error> {
+    let mut feature_set = FeatureSet::all_enabled();
 
-    let UpgradeableLoaderState::Program {
-        programdata_address,
-        ..
-    } = account.state()?
-    else {
-        return Err(Error::ProgramAccountError);
-    };
+    let deactivated_features = rpc.get_deactivated_solana_features().await?;
+    for feature_id in deactivated_features {
+        feature_set.deactivate(&feature_id);
+    }
 
-    Ok(programdata_address)
+    Ok(feature_set)
 }
 
-pub fn reset_program_data_slot(account: &mut Account) -> Result<(), Error> {
-    assert_eq!(account.owner, bpf_loader_upgradeable::id());
+pub async fn extract_elf(rpc: &impl Rpc, account: Account) -> Result<Vec<u8>, Error> {
+    if !account.executable {
+        return Err(Error::AccountIsNotProgram);
+    }
 
-    let UpgradeableLoaderState::ProgramData {
-        slot,
-        upgrade_authority_address,
-    } = account.state()?
-    else {
-        return Err(Error::ProgramAccountError);
-    };
+    match account.owner {
+        solana_sdk_ids::bpf_loader::ID => Ok(account.data),
+        solana_sdk_ids::bpf_loader_upgradeable::ID => {
+            let UpgradeableLoaderState::Program {
+                programdata_address,
+            } = bincode::deserialize(&account.data)?
+            else {
+                return Err(Error::AccountIsNotProgram);
+            };
 
-    debug!(
-        "slot_before_update: slot={slot} upgrade_authority_address={upgrade_authority_address:?}"
-    );
+            let Some(program_data_account) = rpc.get_account(&programdata_address).await? else {
+                return Err(Error::AccountIsNotProgram);
+            };
 
-    let new_state = UpgradeableLoaderState::ProgramData {
-        slot: 0,
-        upgrade_authority_address,
-    };
-    account.set_state(&new_state)?;
-
-    debug!(
-        "slot_after_update: slot={slot} upgrade_authority_address={upgrade_authority_address:?}"
-    );
-
-    Ok(())
+            let start = UpgradeableLoaderState::size_of_programdata_metadata();
+            Ok(program_data_account.data[start..].to_vec())
+        }
+        _ => Err(Error::AccountIsNotProgram),
+    }
 }
 
-pub fn reset_alt_slot(account: &mut Account) -> Result<(), Error> {
-    assert_eq!(account.owner, address_lookup_table::program::id());
-
-    let lookup_table = AddressLookupTable::deserialize(&account.data)?;
-    let metadata = LookupTableMeta {
-        last_extended_slot: 0,
-        ..lookup_table.meta
+#[must_use]
+fn error_code_to_string<E: FromPrimitive + Display>(code: u32) -> String {
+    let Some(error) = E::from_u32(code) else {
+        return format!("unknown error: {code:#x}");
     };
+    error.to_string()
+}
 
-    AddressLookupTable::overwrite_meta_data(&mut account.data, metadata)?;
+#[must_use]
+pub fn instruction_error_to_string(program_id: Pubkey, error: InstructionError) -> String {
+    use solana_system_interface::error::SystemError;
+    use spl_token_interface::error::TokenError;
 
-    Ok(())
+    match error {
+        InstructionError::Custom(code) => match program_id {
+            solana_sdk_ids::system_program::ID => error_code_to_string::<SystemError>(code),
+            spl_token_interface::ID => error_code_to_string::<TokenError>(code),
+            _ => format!("custom program error: {code:#x}"),
+        },
+        error => error.to_string(),
+    }
 }

@@ -9,10 +9,10 @@ use solana_sdk::signature::Signer;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     message::Message,
-    system_program,
     transaction::Transaction,
 };
-use spl_token::instruction::sync_native;
+use solana_sdk_ids::system_program;
+use spl_token_interface::instruction::sync_native;
 use std::ops::Deref;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -84,7 +84,10 @@ pub async fn execute(
         }
     }
     let mut message = Message::new(
-        &[sync_native(&spl_token::id(), &main_balance_address)?],
+        &[sync_native(
+            &spl_token_interface::id(),
+            &main_balance_address,
+        )?],
         Some(&signer.pubkey()),
     );
     let blockhash = rpc_client.get_latest_blockhash().await?;

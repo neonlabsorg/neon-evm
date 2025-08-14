@@ -4,7 +4,7 @@ use maybe_async::maybe_async;
 use solana_program::clock::Clock;
 use solana_program::instruction::{AccountMeta, Instruction};
 use solana_program::pubkey::Pubkey;
-use solana_program::{bpf_loader, system_program};
+use solana_sdk_ids::{bpf_loader, system_program};
 
 use crate::account::{Account, AccountDispatch};
 use crate::allocator::StateAllocator;

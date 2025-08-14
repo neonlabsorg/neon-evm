@@ -8,7 +8,7 @@ use crate::account::{
     abstraction::RawAccount, AccountDispatch, AccountHeader, ACCOUNT_PREFIX_LEN, TAG_CONTAINER,
     TAG_REFERENCE,
 };
-use crate::account::{ZeroInit, TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT, TAG_STORAGE_CELL};
+use crate::account::{TAG_ACCOUNT_BALANCE, TAG_ACCOUNT_CONTRACT, TAG_STORAGE_CELL};
 use crate::error::{Error, Result};
 
 const VALID_TAGS_FOR_CONTAINER: [u8; 3] =
@@ -288,12 +288,7 @@ impl<'a> ContainerAccount<'a> {
         RefMut::map(accounts, |data| &mut data[start..end])
     }
 
-    pub fn realloc_account_data(
-        &mut self,
-        index: usize,
-        new_size: usize,
-        zero_init: ZeroInit,
-    ) -> Result<()> {
+    pub fn realloc_account_data(&mut self, index: usize, new_size: usize) -> Result<()> {
         let key = *self.key_at(index);
 
         let current_size = key.length as usize;
@@ -308,8 +303,7 @@ impl<'a> ContainerAccount<'a> {
                 let account_end = offset + current_size;
                 let account_end = self.accounts_section().start + account_end;
 
-                self.account
-                    .allocate_within(account_end, delta, zero_init)?;
+                self.account.allocate_within(account_end, delta)?;
 
                 // Update keys
                 let delta: u32 = delta.try_into()?;
@@ -366,7 +360,7 @@ impl<'a> ContainerAccount<'a> {
     }
 
     pub fn allocate_space_for_account(&mut self, space: usize) -> Result<()> {
-        self.account.grow(space, ZeroInit::Uninit)
+        self.account.grow(space)
     }
 
     pub fn convert_from_account(program_id: Pubkey, mut account: RawAccount<'a>) -> Result<Self> {
@@ -386,7 +380,7 @@ impl<'a> ContainerAccount<'a> {
         let account_offset = key_offset + size_of::<Key>();
 
         // Allocate `account_offset` bytes at the front of the account
-        account.allocate_within(0, account_offset, ZeroInit::Uninit)?;
+        account.allocate_within(0, account_offset)?;
 
         // Set tag
         account.init_tag(TAG_CONTAINER, ContainerHeader::VERSION)?;
@@ -446,8 +440,7 @@ impl<'a> ContainerAccount<'a> {
             .unwrap_err();
         let key_offset = unsafe { self.key_offset_unchecked(key_index) };
 
-        self.account
-            .allocate_within(key_offset, size_of::<Key>(), ZeroInit::Uninit)?;
+        self.account.allocate_within(key_offset, size_of::<Key>())?;
 
         self.account.section_mut_uninit(key_offset).write(Key {
             pubkey,
@@ -463,6 +456,6 @@ impl<'a> ContainerAccount<'a> {
         account.header_mut_uninit().write(ReferenceHeader {
             container: self.pubkey(),
         });
-        account.reallocate(ReferenceAccount::required_account_size(), ZeroInit::Uninit)
+        account.reallocate(ReferenceAccount::required_account_size())
     }
 }

@@ -3,8 +3,9 @@ use crate::error::{Error, Result};
 use solana_program::account_info::AccountInfo;
 use solana_program::program::{invoke_signed_unchecked, invoke_unchecked};
 use solana_program::pubkey::Pubkey;
-use solana_program::system_program;
-use solana_program::{rent::Rent, system_instruction};
+use solana_program::rent::Rent;
+use solana_sdk_ids::system_program;
+use solana_system_interface::instruction as system_instruction;
 use std::convert::From;
 use std::ops::Deref;
 

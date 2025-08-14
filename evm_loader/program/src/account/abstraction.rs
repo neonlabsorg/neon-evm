@@ -7,7 +7,7 @@ use std::{
 
 use enum_dispatch::enum_dispatch;
 use solana_account::ReadableAccount;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey, system_program};
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use crate::{
     account::AccountInContainer,
@@ -171,12 +171,6 @@ impl Account<'_> {
     }
 }
 
-#[derive(PartialEq, Eq)]
-pub enum ZeroInit {
-    Zero,
-    Uninit,
-}
-
 pub trait AccountHeader {
     const VERSION: u8;
 }
@@ -204,20 +198,20 @@ pub trait AccountDispatch<'a> {
     fn rent_epoch(&self) -> u64;
     fn is_executable(&self) -> bool;
 
-    fn reallocate(&mut self, new_size: usize, zero_init: ZeroInit) -> Result<()>;
+    fn reallocate(&mut self, new_size: usize) -> Result<()>;
 
-    fn grow(&mut self, grow_by: usize, zero_init: ZeroInit) -> Result<()> {
+    fn grow(&mut self, grow_by: usize) -> Result<()> {
         let new_size = self.data_len().saturating_add(grow_by);
-        self.reallocate(new_size, zero_init)
+        self.reallocate(new_size)
     }
 
     fn shrink(&mut self, shrink_by: usize) -> Result<()> {
         let new_size = self.data_len().saturating_sub(shrink_by);
-        self.reallocate(new_size, ZeroInit::Uninit)
+        self.reallocate(new_size)
     }
 
-    fn allocate_within(&mut self, offset: usize, len: usize, zero_init: ZeroInit) -> Result<()> {
-        self.grow(len, ZeroInit::Uninit)?;
+    fn allocate_within(&mut self, offset: usize, len: usize) -> Result<()> {
+        self.grow(len)?;
 
         // Move data to the right
         let end = self.data_len() - len;
@@ -226,10 +220,8 @@ pub trait AccountDispatch<'a> {
         let mut data = self.data_mut();
         data.copy_within(offset..end, dest);
 
-        // Fill the new space with zeros if requested
-        if zero_init == ZeroInit::Zero {
-            data[offset..offset + len].fill(0);
-        }
+        // Fill the new space with zeros
+        data[offset..offset + len].fill(0);
 
         Ok(())
     }
@@ -400,7 +392,7 @@ pub trait AccountDispatch<'a> {
         let required_len = ACCOUNT_PREFIX_LEN + to_len + data_len;
         assert!(required_len >= data_len);
 
-        self.reallocate(required_len, ZeroInit::Uninit)?;
+        self.reallocate(required_len)?;
 
         {
             let mut account_data = self.data_mut();
@@ -449,7 +441,7 @@ impl<'a> AccountDispatch<'a> for AccountInfo<'a> {
     }
 
     fn is_system_owned(&self) -> bool {
-        system_program::check_id(self.owner)
+        solana_sdk_ids::system_program::check_id(self.owner)
     }
 
     fn lamports(&self) -> u64 {
@@ -464,8 +456,8 @@ impl<'a> AccountDispatch<'a> for AccountInfo<'a> {
         self.executable
     }
 
-    fn reallocate(&mut self, new_size: usize, zero_init: ZeroInit) -> Result<()> {
-        self.realloc(new_size, zero_init == ZeroInit::Zero)?;
+    fn reallocate(&mut self, new_size: usize) -> Result<()> {
+        self.resize(new_size)?;
         Ok(())
     }
 }
@@ -515,9 +507,8 @@ impl<'a> AccountDispatch<'a> for AccountInContainer<'a> {
         false
     }
 
-    fn reallocate(&mut self, new_size: usize, zero_init: ZeroInit) -> Result<()> {
-        self.container
-            .realloc_account_data(self.index, new_size, zero_init)
+    fn reallocate(&mut self, new_size: usize) -> Result<()> {
+        self.container.realloc_account_data(self.index, new_size)
     }
 }
 
@@ -576,7 +567,7 @@ impl AccountDispatch<'_> for SharedAccount {
         account.executable
     }
 
-    fn reallocate(&mut self, new_size: usize, _: ZeroInit) -> Result<()> {
+    fn reallocate(&mut self, new_size: usize) -> Result<()> {
         self.modified.set(true);
 
         let mut account = self.account.borrow_mut();

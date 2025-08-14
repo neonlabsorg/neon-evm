@@ -21,17 +21,18 @@ use {
         config::TREASURY_POOL_SEED,
     },
     log::{error, info, warn},
+    solana_loader_v3_interface::get_program_data_address,
     solana_sdk::{
-        bpf_loader_upgradeable,
         instruction::{AccountMeta, Instruction},
         program_pack::Pack,
         pubkey::Pubkey,
         signer::keypair::{read_keypair_file, Keypair},
         signer::Signer,
-        system_instruction, system_program,
     },
-    spl_associated_token_account::get_associated_token_address,
-    spl_token::{self, native_mint},
+    solana_sdk_ids::system_program,
+    solana_system_interface::instruction as system_instruction,
+    spl_associated_token_account_interface::address::get_associated_token_address,
+    spl_token_interface::{self, native_mint},
     std::collections::HashMap,
     std::path::Path,
     thiserror::Error,
@@ -124,7 +125,7 @@ pub async fn execute(
     let executor = Rc::new(TransactionExecutor::new(client, fee_payer, send_trx));
     let keys = keys_dir.map_or(Ok(HashMap::new()), read_keys_dir)?;
 
-    let program_data_address = bpf_loader_upgradeable::get_program_data_address(&config.evm_loader);
+    let program_data_address = get_program_data_address(&config.evm_loader);
     let (program_upgrade_authority, program_data) =
         read_program_data_from_account(config, client, &config.evm_loader).await?;
     let data = file.map_or(Ok(program_data), read_program_data)?;
@@ -151,7 +152,7 @@ pub async fn execute(
         let mint_signer = keys
             .get(&mint)
             .ok_or(EnvironmentError::MissingPrivateKey(mint))?;
-        let data_len = spl_token::state::Mint::LEN;
+        let data_len = spl_token_interface::state::Mint::LEN;
         let lamports = client
             .get_minimum_balance_for_rent_exemption(data_len)
             .await?;
@@ -161,10 +162,10 @@ pub async fn execute(
                 &mint,
                 lamports,
                 data_len as u64,
-                &spl_token::id(),
+                &spl_token_interface::id(),
             ),
-            spl_token::instruction::initialize_mint2(
-                &spl_token::id(),
+            spl_token_interface::instruction::initialize_mint2(
+                &spl_token_interface::id(),
                 &mint,
                 &signer.pubkey(),
                 None,
@@ -183,7 +184,10 @@ pub async fn execute(
         .check_and_create_object(
             "NEON-token mint",
             executor
-                .get_account_data_pack::<spl_token::state::Mint>(&spl_token::id(), &neon_token_mint)
+                .get_account_data_pack::<spl_token_interface::state::Mint>(
+                    &spl_token_interface::id(),
+                    &neon_token_mint,
+                )
                 .await,
             |mint| async move {
                 if mint.decimals != neon_token_mint_decimals {
@@ -208,7 +212,10 @@ pub async fn execute(
             .check_and_create_object(
                 "Token pool account",
                 executor
-                    .get_account_data_pack::<spl_token::state::Account>(&spl_token::id(), &pool)
+                    .get_account_data_pack::<spl_token_interface::state::Account>(
+                        &spl_token_interface::id(),
+                        &pool,
+                    )
                     .await,
                 |account| async move {
                     if account.mint != chain.token || account.owner != deposit_authority {
@@ -220,11 +227,11 @@ pub async fn execute(
                 || async {
                     let transaction = executor
                     .create_transaction_with_payer_only(&[
-                        spl_associated_token_account::instruction::create_associated_token_account(
+                        spl_associated_token_account_interface::instruction::create_associated_token_account(
                             &executor.fee_payer.pubkey(),
                             &deposit_authority,
                             &chain.token,
-                            &spl_token::id(),
+                            &spl_token_interface::id(),
                         ),
                     ])
                     .await?;
@@ -262,7 +269,7 @@ pub async fn execute(
                                 AccountMeta::new(main_balance_address, false),
                                 AccountMeta::new_readonly(program_data_address, false),
                                 AccountMeta::new_readonly(signer.pubkey(), true),
-                                AccountMeta::new_readonly(spl_token::id(), false),
+                                AccountMeta::new_readonly(spl_token_interface::id(), false),
                                 AccountMeta::new_readonly(system_program::id(), false),
                                 AccountMeta::new_readonly(native_mint::id(), false),
                                 AccountMeta::new(executor.fee_payer.pubkey(), true),

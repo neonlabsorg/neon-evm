@@ -1,10 +1,7 @@
 use anyhow::{Context as AContext, Result};
-use solana_sdk::{
-    account_utils::StateMut,
-    bpf_loader, bpf_loader_deprecated,
-    bpf_loader_upgradeable::{self, UpgradeableLoaderState},
-    pubkey::Pubkey,
-};
+use solana_loader_v3_interface::state::UpgradeableLoaderState;
+use solana_sdk::{account_utils::StateMut, bpf_loader, bpf_loader_deprecated, pubkey::Pubkey};
+use solana_sdk_ids::bpf_loader_upgradeable;
 use std::{collections::HashMap, convert::TryFrom, fs::File, io::Read};
 
 use crate::rpc::Rpc;

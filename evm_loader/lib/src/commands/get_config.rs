@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 pub use solana_account_decoder::UiDataSliceConfig as SliceConfig;
 use solana_client::rpc_config::RpcSimulateTransactionConfig;
-use solana_sdk::signer::Signer;
 use solana_sdk::{instruction::Instruction, pubkey::Pubkey, transaction::Transaction};
 
 use crate::NeonResult;
@@ -170,17 +169,12 @@ impl ConfigInstructionSimulator for SolanaSimulator {
         &mut self,
         instruction: Instruction,
     ) -> NeonResult<Vec<String>> {
-        let payer_pubkey = self.payer().pubkey();
-
-        let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer_pubkey));
-        transaction.message.recent_blockhash = self.blockhash();
-
-        let r = self.process_legacy_transaction(transaction)?;
-        if let Err(e) = r.result {
+        let (result, logs) = self.process_instruction(&instruction)?;
+        if let Err(e) = result.raw_result {
             return Err(e.into());
         }
 
-        Ok(r.logs)
+        Ok(logs)
     }
 }
 

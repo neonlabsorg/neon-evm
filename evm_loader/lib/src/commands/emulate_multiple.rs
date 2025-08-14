@@ -4,12 +4,40 @@ use solana_sdk::pubkey::Pubkey;
 
 use crate::{
     config::DbConfig,
+    solana_simulator::instruction_error_to_string,
     tracing::tracers::TracerTypeEnum,
     types::{AccountInfoLevel, EmulateMultipleRequest, EmulateRequest, SerializedAccount},
     NeonResult,
 };
 
 use super::{emulate::EmulateResponse, get_config::BuildConfigSimulator};
+
+/// Executes Solana simulation and checks for errors in instruction execution results
+async fn simulate_preparatory_instructions(
+    rpc: &impl BuildConfigSimulator,
+    solana_tx: crate::types::SimulateSolanaRequest,
+) -> NeonResult<crate::solana_simulator::SolanaSimulator> {
+    let instructions = solana_tx.instructions.clone();
+
+    let (result, simulator) = super::simulate_solana::execute(rpc, solana_tx).await?;
+
+    let instructions = result
+        .instructions
+        .into_iter()
+        .zip(instructions.into_iter());
+
+    for (result, instruction) in instructions {
+        let Some(error) = result.error else {
+            continue; // Skip successful instructions
+        };
+
+        let error = instruction_error_to_string(instruction.program_id, error);
+        let error = evm_loader::error::Error::ExternalCallFailed(instruction.program_id, error);
+        return Err(error.into());
+    }
+
+    Ok(simulator)
+}
 
 pub async fn execute(
     rpc: &impl BuildConfigSimulator,
@@ -27,7 +55,7 @@ pub async fn execute(
 
     let mut overrides: HashMap<_, _> = request.accounts.into_iter().zip(accounts).collect();
 
-    let (_, simulator) = super::simulate_solana::execute(rpc, request.solana_tx).await?;
+    let simulator = simulate_preparatory_instructions(rpc, request.solana_tx).await?;
     for (key, account) in simulator.into_accounts() {
         overrides.insert(key, Some(account.into()));
     }

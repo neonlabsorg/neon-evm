@@ -15,14 +15,14 @@ use async_trait::async_trait;
 
 use bincode::deserialize;
 use enum_dispatch::enum_dispatch;
-use evm_loader::solana_program::bpf_loader_upgradeable::UpgradeableLoaderState;
 pub use solana_account_decoder::UiDataSliceConfig as SliceConfig;
 use solana_cli::cli::CliError;
 use solana_client::client_error::{ClientErrorKind, Result as ClientResult};
+use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_sdk::{
-    account::Account, bpf_loader, bpf_loader_upgradeable, message::Message,
-    native_token::lamports_to_sol, pubkey::Pubkey,
+    account::Account, message::Message, native_token::lamports_to_sol, pubkey::Pubkey,
 };
+use solana_sdk_ids::{bpf_loader, bpf_loader_upgradeable};
 use std::cmp::max;
 
 #[async_trait(?Send)]

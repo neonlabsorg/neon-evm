@@ -17,13 +17,9 @@ use evm_loader::{
 use solana_account_decoder::UiDataSliceConfig;
 use solana_sdk::account::Account as SolanaSdkAccount;
 use solana_sdk::clock::Clock;
-use solana_sdk::message::Message;
 use solana_sdk::program_error::ProgramError;
 use solana_sdk::rent::Rent;
-use solana_sdk::signer::Signer;
-use solana_sdk::system_program;
 use solana_sdk::sysvar::SysvarId;
-use solana_sdk::transaction::Transaction;
 use solana_sdk::transaction_context::TransactionReturnData;
 use solana_sdk::{instruction::Instruction, pubkey::Pubkey, sysvar::Sysvar};
 
@@ -31,7 +27,7 @@ use crate::account_data::AccountData;
 use crate::commands::emulate::SolanaAccount;
 use crate::commands::get_config::ChainInfo;
 use crate::rpc::{CachedRpc, Rpc};
-use crate::solana_simulator::SolanaSimulator;
+use crate::solana_simulator::{instruction_error_to_string, SolanaSimulator};
 use crate::sysvar::get_sysvar;
 use crate::tracing::{AccountOverride, BlockOverrides};
 use crate::types::AccountInfoLevel;
@@ -42,7 +38,7 @@ const fn fake_operator_account() -> SolanaSdkAccount {
     SolanaSdkAccount {
         lamports: 100 * 1_000_000_000,
         data: vec![],
-        owner: system_program::ID,
+        owner: solana_sdk_ids::system_program::ID,
         executable: false,
         rent_epoch: u64::MAX,
     }
@@ -415,21 +411,24 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
             .map(|seed| Pubkey::create_program_address(seed, &self.program_id).unwrap())
             .collect();
 
-        let mut accounts = Vec::with_capacity(instruction.accounts.len() + 1);
-        accounts.push(target_program_id);
+        let mut accounts = HashSet::with_capacity(instruction.accounts.len() + 1); // Use HashSet to remove dupplicates
+        accounts.insert(target_program_id);
+
         for meta in &instruction.accounts {
             if meta.pubkey != FAKE_OPERATOR && meta.is_signer && !signers.contains(&meta.pubkey) {
                 let error = ProgramError::MissingRequiredSignature;
                 return Err(Error::Fatal(Box::new(error)));
             }
-            accounts.push(meta.pubkey);
+            accounts.insert(meta.pubkey);
         }
+
+        let accounts = accounts.into_iter().collect::<Vec<_>>();
 
         // Add accounts to the current stack frame
         self.add_accounts_to_stack(&accounts).await?;
         for meta in instruction.accounts.iter().filter(|m| m.is_writable) {
-            let account = self.account_from_stack(meta.pubkey).await?;
-            account.mark_modified();
+            let shared_account = self.account_from_stack(meta.pubkey).await?;
+            shared_account.mark_modified();
         }
 
         // Sync accounts with the simulator
@@ -439,29 +438,27 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
             .map_err(|error| Error::Fatal(Box::new(error)))?;
 
         // Execute the instruction
-        let trx = Transaction::new_unsigned(Message::new(
-            &[instruction],
-            Some(&simulator.payer().pubkey()),
-        ));
+        let (simulation_result, _) = simulator
+            .process_instruction(&instruction)
+            .map_err(|error| Error::Fatal(Box::new(error)))?;
 
-        let simulation_result = simulator
-            .process_legacy_transaction(trx)
-            .map_err(|e| Error::Custom(e.to_string()))?;
+        self.return_data = Some(TransactionReturnData {
+            program_id: target_program_id,
+            data: simulation_result.return_data,
+        });
 
-        self.return_data = simulation_result.return_data;
-
-        if let Err(error) = simulation_result.result {
-            let error = Error::ExternalCallFailed(target_program_id, error.to_string());
+        if let Err(error) = simulation_result.raw_result {
+            let message = instruction_error_to_string(target_program_id, error);
+            let error = Error::ExternalCallFailed(target_program_id, message);
             return Err(Error::Fatal(Box::new(error)));
         }
 
         // Update modified accounts
         let mut stack = self.current_stack_frame();
-        for (key, account_data) in simulation_result.post_simulation_accounts {
-            let Some(shared_account) = stack.get_mut(&key) else {
-                continue;
-            };
+        for meta in instruction.accounts.iter().filter(|m| m.is_writable) {
+            let account_data = simulator.get_account(&meta.pubkey);
 
+            let shared_account = stack.get_mut(&meta.pubkey).unwrap();
             shared_account.update(&account_data);
         }
 

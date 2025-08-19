@@ -367,7 +367,7 @@ async fn prepare_origin_before_multi_step(
             gas_limit = gas_limit.saturating_mul(U256::from(GAS_LIMIT_MULTIPLIER_NO_CHAINID));
         }
 
-        let tokens = gas_limit * tx.gas_limit();
+        let tokens = gas_limit * tx.gas_price();
         database.burn(origin, chain_id, tokens).await?;
     }
 
@@ -400,21 +400,17 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
     let mut rpc = create_tracer_rpc(db_config, block, index).await?;
 
+    let overrides = init_overrides(&emulate_request);
+
     let clock = get_sysvar::<Clock>(&rpc).await?;
-
-    let mut overrides = init_overrides(&emulate_request);
-
-    let block_number = execution_map.block_number.or(Some(clock.slot));
-    let block_timestamp = execution_map.block_timestamp.or(Some(clock.unix_timestamp));
-
-    overrides.blocks.get_or_insert(BlockOverrides {
-        number: block_number,
-        time: block_timestamp,
+    let mut clone_overrides = overrides.clone();
+    clone_overrides.blocks.get_or_insert(BlockOverrides {
+        number: execution_map.block_number.or(Some(clock.slot)),
+        time: execution_map.block_timestamp.or(Some(clock.unix_timestamp)),
         ..Default::default()
     });
 
-    let mut platform =
-        create_platform(&rpc, program_id, &emulate_request, overrides.clone()).await?;
+    let mut platform = create_platform(&rpc, program_id, &emulate_request, clone_overrides).await?;
 
     emulate_request.tx.fetch_origin_nonce(&platform).await?;
 
@@ -463,8 +459,20 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
 
                 rpc = create_tracer_rpc(db_config, execution_step.block, execution_step.index)
                     .await?;
+
+                let clock = get_sysvar::<Clock>(&rpc).await?;
+                let mut clone_overrides = overrides.clone();
+                clone_overrides.blocks.get_or_insert(BlockOverrides {
+                    number: execution_map.block_number.or(Some(clock.slot)),
+                    time: execution_map.block_timestamp.or(Some(clock.unix_timestamp)),
+                    ..Default::default()
+                });
                 platform =
-                    create_platform(&rpc, program_id, &emulate_request, overrides.clone()).await?;
+                    create_platform(&rpc, program_id, &emulate_request, clone_overrides).await?;
+
+                // Gas was burn in the initialization step, but we need to mark origin account as writable again
+                let mut origin_balance = platform.create_balance(origin, chain_id).await?;
+                origin_balance.increment_revision()?;
 
                 if let Some(ref mut tracer) = tracer_result {
                     tracer.clear(&emulate_request.tx);
@@ -496,6 +504,10 @@ async fn emulate_trx_multiple_steps<T: Tracer>(
                     .await?;
                 platform =
                     create_platform(&rpc, program_id, &emulate_request, overrides.clone()).await?;
+
+                // NeonEVM return unspent gas to the origin account, so we need it to be writable
+                let mut origin_balance = platform.create_balance(origin, chain_id).await?;
+                origin_balance.increment_revision()?;
 
                 database_data = ExecutorStateData::new();
                 database = SyncedExecutorState::new(&mut platform, &mut database_data);

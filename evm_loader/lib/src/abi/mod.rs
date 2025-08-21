@@ -12,6 +12,9 @@ mod simulate_solana;
 pub mod state;
 mod trace;
 
+use futures::{FutureExt, TryFutureExt};
+use std::any::Any;
+
 use crate::{
     abi::state::State,
     config::{self, APIOptions},
@@ -21,9 +24,9 @@ use crate::{
 use abi_stable::{
     prefix_type::WithMetadata,
     sabi_extern_fn,
-    std_types::{RStr, RString},
+    std_types::{RResult, RStr, RString},
 };
-use async_ffi::FutureExt;
+use async_ffi::FutureExt as _;
 use lazy_static::lazy_static;
 use neon_lib_interface::{
     types::{NeonEVMLibError, RNeonEVMLibResult},
@@ -32,7 +35,6 @@ use neon_lib_interface::{
 use serde_json::json;
 
 lazy_static! {
-    static ref RUNTIME: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
     static ref STATE: State = init_state_sync();
 }
 
@@ -40,7 +42,7 @@ lazy_static! {
 pub fn init_state_sync() -> State {
     tokio::runtime::Runtime::new()
         .unwrap()
-        .block_on(async { State::new(load_config()).await })
+        .block_on(State::new(load_config()))
 }
 
 pub const _MODULE_WM_: &WithMetadata<NeonEVMLib> = &WithMetadata::new(NeonEVMLib {
@@ -69,18 +71,11 @@ fn get_build_info() -> RString {
 
 #[sabi_extern_fn]
 fn invoke<'a>(method: RStr<'a>, params: RStr<'a>) -> RNeonEVMLibResult<'a> {
-    async move {
-        // Needed for tokio::task::spawn_blocking using thread local storage inside dynamic library
-        // since dynamic library and executable have different thread local storage namespaces
-        let _guard = RUNTIME.enter();
-
-        dispatch(method.as_str(), params.as_str())
-            .await
-            .map(RString::from)
-            .map_err(neon_error_to_rstring)
-            .into()
-    }
-    .into_local_ffi()
+    dispatch(method.as_str(), params.as_str())
+        .map_ok(RString::from)
+        .map_err(neon_error_to_rstring)
+        .map(RResult::from)
+        .into_local_ffi()
 }
 
 fn load_config() -> APIOptions {
@@ -167,4 +162,30 @@ fn neon_error_to_neon_lib_error(error: &NeonError) -> NeonEVMLibError {
 #[allow(clippy::needless_pass_by_value)]
 fn neon_error_to_rstring(error: NeonError) -> RString {
     RString::from(serde_json::to_string(&neon_error_to_neon_lib_error(&error)).unwrap())
+}
+
+#[allow(unused)]
+#[allow(clippy::option_if_let_else)]
+fn panic_payload_to_rstring(payload: &(dyn Any + Send + 'static)) -> RString {
+    let message = if let Some(s) = payload.downcast_ref::<&str>() {
+        NeonEVMLibError {
+            code: u32::MAX,
+            message: (*s).to_string(),
+            data: None,
+        }
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        NeonEVMLibError {
+            code: u32::MAX,
+            message: s.clone(),
+            data: None,
+        }
+    } else {
+        NeonEVMLibError {
+            code: u32::MAX,
+            message: "unknown panic!".to_string(),
+            data: None,
+        }
+    };
+
+    RString::from(serde_json::to_string(&message).unwrap())
 }

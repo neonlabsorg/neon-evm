@@ -2068,7 +2068,7 @@ dependencies = [
 
 [[package]]
 name = "evm-loader"
-version = "1.21.0"
+version = "1.21.1"
 dependencies = [
  "allocator-api2",
  "alloy-rlp",
@@ -3775,7 +3775,7 @@ dependencies = [
 
 [[package]]
 name = "neon-api"
-version = "1.21.0"
+version = "1.21.1"
 dependencies = [
  "actix-request-identifier",
  "actix-web",
@@ -3798,7 +3798,7 @@ dependencies = [
 
 [[package]]
 name = "neon-cli"
-version = "1.21.0"
+version = "1.21.1"
 dependencies = [
  "build-info",
  "build-info-build",
@@ -3820,7 +3820,7 @@ dependencies = [
 
 [[package]]
 name = "neon-lib"
-version = "1.21.0"
+version = "1.21.1"
 dependencies = [
  "abi_stable",
  "agave-feature-set",
@@ -3892,7 +3892,7 @@ dependencies = [
 
 [[package]]
 name = "neon-rpc"
-version = "1.21.0"
+version = "1.21.1"
 dependencies = [
  "actix-web",
  "build-info",

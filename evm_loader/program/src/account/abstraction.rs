@@ -226,6 +226,12 @@ pub trait AccountDispatch<'a> {
         Ok(())
     }
 
+    fn shrink_within(&mut self, offset: usize, len: usize) -> Result<()> {
+        // Move data to the left
+        self.data_mut().copy_within((offset + len).., offset);
+        self.shrink(len)
+    }
+
     #[inline]
     fn data_get<I: SliceIndex<[u8]>>(&self, index: I) -> Ref<I::Output> {
         Ref::map(self.data(), |data| &data[index])

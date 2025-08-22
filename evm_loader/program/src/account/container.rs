@@ -33,6 +33,11 @@ impl<'a> ReferenceAccount<'a> {
         ACCOUNT_PREFIX_LEN + size_of::<ReferenceHeader>()
     }
 
+    pub fn from_account_info(program_id: Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
+        let account = account.clone().into();
+        Self::from_account(program_id, account)
+    }
+
     pub fn from_account(program_id: Pubkey, account: RawAccount<'a>) -> Result<Self> {
         account.validate_tag(program_id, TAG_REFERENCE)?;
 
@@ -55,6 +60,11 @@ impl<'a> ReferenceAccount<'a> {
     pub fn container(&self) -> Pubkey {
         let header: Ref<ReferenceHeader> = self.account.header();
         header.container
+    }
+
+    #[must_use]
+    pub fn into_raw_account(self) -> impl AccountDispatch<'a> {
+        self.account
     }
 }
 
@@ -321,13 +331,10 @@ impl<'a> ContainerAccount<'a> {
                 let delta = current_size - new_size;
 
                 // Move other accounts to make space
-                let start = offset + current_size;
-                let dest = start - delta;
+                let account_end = offset + new_size;
+                let account_end = self.accounts_section().start + account_end;
 
-                self.accounts_mut().copy_within(start.., dest);
-
-                // Shrink real account
-                self.account.shrink(delta)?;
+                self.account.shrink_within(account_end, delta)?;
 
                 // Update keys
                 let delta: u32 = delta.try_into()?;
@@ -400,6 +407,18 @@ impl<'a> ContainerAccount<'a> {
         Ok(Self { account })
     }
 
+    pub fn unwrap_container(self) -> Result<RawAccount<'a>> {
+        assert_eq!(self.count(), 1);
+
+        let data = self.account_data(0).to_vec(); // at most 30kb
+
+        let mut account = self.account;
+        account.reallocate(data.len())?;
+        account.data_mut().copy_from_slice(&data);
+
+        Ok(account)
+    }
+
     /// # Safety
     /// Invalidates all indexes. Should not be used in normal transaction processing.
     pub unsafe fn add_account(
@@ -438,10 +457,9 @@ impl<'a> ContainerAccount<'a> {
             .keys()
             .binary_search_by_key(&pubkey, |key| key.pubkey)
             .unwrap_err();
-        let key_offset = unsafe { self.key_offset_unchecked(key_index) };
+        let key_offset = self.key_offset_unchecked(key_index);
 
         self.account.allocate_within(key_offset, size_of::<Key>())?;
-
         self.account.section_mut_uninit(key_offset).write(Key {
             pubkey,
             offset: account_offset.try_into()?,
@@ -457,5 +475,35 @@ impl<'a> ContainerAccount<'a> {
             container: self.pubkey(),
         });
         account.reallocate(ReferenceAccount::required_account_size())
+    }
+
+    /// # Safety
+    /// Invalidates all indexes. Should not be used in normal transaction processing.
+    pub unsafe fn remove_account(&mut self, reference: ReferenceAccount<'a>) -> Result<()> {
+        if self.pubkey() != reference.container() {
+            return Err(Error::AccountInvalidData(reference.pubkey()));
+        }
+
+        let index = self.key_index(reference.pubkey())?;
+        let data_len = self.account_data_len(index);
+
+        // Copy data into reference account
+        let mut reference = reference.into_raw_account();
+        reference.reallocate(data_len)?;
+
+        let mut account_data = reference.data_mut();
+        account_data.copy_from_slice(&self.account_data(index));
+
+        // Remove account data from container
+        self.realloc_account_data(index, 0)?;
+
+        // Remove key
+        let key_offset = self.key_offset_unchecked(index);
+        self.account.shrink_within(key_offset, size_of::<Key>())?;
+
+        // Update header
+        self.account.header_mut::<ContainerHeader>().count -= 1;
+
+        Ok(())
     }
 }

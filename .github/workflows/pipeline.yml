@@ -1,4 +1,4 @@
-name: Deploy image
+name: CI
 on:
   pull_request:
     types: [opened, reopened, synchronize, labeled, unlabeled, ready_for_review]
@@ -14,10 +14,8 @@ on:
 env:
   DHUBU: ${{secrets.DHUBU}}
   DHUBP: ${{secrets.DHUBP}}
-  DEVNET_SOLANA_URL: ${{secrets.DEVNET_SOLANA_URL}}
   MAINNET_SOLANA_URL: ${{secrets.MAINNET_SOLANA_URL}}
   PROXY_ENDPOINT: "https://api.github.com/repos/${{ github.repository_owner }}/neon-proxy.py"
-  NEON_TESTS_ENDPOINT: ${{vars.NEON_TESTS_ENDPOINT}}
   DOCKERHUB_ORG_NAME: ${{vars.DOCKERHUB_ORG_NAME}}
   RUN_LINK_REPO: "${{ github.repository_owner }}/neon-proxy.py"
   BUILD_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -39,11 +37,14 @@ jobs:
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - uses: actions/setup-python@v5
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - run:  pip install -r ./.github/workflows/requirements.txt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - run: pip install -r ./.github/workflows/requirements.txt
       - name: Specify image tags
         run: |
           python3 ./.github/workflows/deploy.py specify_image_tags \
@@ -82,24 +83,29 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - uses: actions/setup-python@v5
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v1
 
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
 
       - name: Stop containers (cleanup from previous runs)
         run: |
-          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down || true
+          docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down || true
 
       - name: Docker compose pull
         run: |
-          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml pull
+          docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml pull
 
       - name: Docker compose up
         run: |
-          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml up -d 
+          for i in {1..5}; do
+            docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml up -d && break || sleep 10
+          done
 
       - name: Get test container name
         id: get_container_name
@@ -115,7 +121,7 @@ jobs:
       - name: Get container logs
         if: always()
         run: |
-          evm_container_name=$(docker ps --format "{{.Names}}" | grep ${{ env.PROJECT_NAME }} | grep solana)
+          evm_container_name=$(docker ps -a --format "{{.Names}}" | grep ${{ env.PROJECT_NAME }} | grep solana)
           docker logs $evm_container_name 2>&1 | gzip -f > solana.log.gz
       - uses: actions/upload-artifact@v4
         if: always()
@@ -136,22 +142,24 @@ jobs:
       - name: Stop containers
         if: always()
         run: |
-          docker-compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down
+          docker compose -p "${{ env.PROJECT_NAME }}" -f ./ci/docker-compose-ci.yml down
 
   trigger-proxy-tests:
-    runs-on: ["gha-runner-scale-set-large"]
+    runs-on: ["gha-runner-scale-set"]
     needs:
       - build-image
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - uses: actions/setup-python@v5
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
       - run: pip install -r ./.github/workflows/requirements.txt
       - run: curl https://api.github.com/user
-      - run: ping -c2 api.github.com
       - name: Trigger proxy build
         run: |
           python3 ./.github/workflows/deploy.py trigger_proxy_action \
@@ -176,6 +184,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0

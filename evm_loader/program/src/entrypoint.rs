@@ -226,6 +226,9 @@ fn process_instruction(
         EvmInstruction::UpdateERC20 => {
             instruction::erc20_update::process(program_id, accounts, instruction)
         }
+        EvmInstruction::EthervistaERC20 => {
+            instruction::erc20_ethervista::process(program_id, accounts, instruction)
+        }
     }
     .inspect_err(|e| {
         e.log_data();

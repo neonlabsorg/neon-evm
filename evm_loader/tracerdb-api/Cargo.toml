@@ -11,3 +11,4 @@ serde_with = { version = ">=3.9", features = ["hex","base64"] }
 solana-sdk.workspace = true
 solana-account-decoder.workspace = true
 anyhow.version = ">=1.0"
+hex = ">=0.4"

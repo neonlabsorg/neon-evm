@@ -2,6 +2,9 @@ use serde_with::serde_as;
 use solana_account_decoder::UiDataSliceConfig;
 use solana_sdk::bs58;
 
+use std::fmt;
+use hex;
+
 use jsonrpsee::core::RpcResult;
 use jsonrpsee::proc_macros::rpc;
 
@@ -47,7 +50,7 @@ impl<'de, const N: usize> DeserializeAs<'de, [u8; N]> for Base58Array<N> {
     }
 }
 #[serde_as]
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct PubkeyBase58(#[serde_as(as = "Base58Array<32>")] pub [u8; 32]);
 
 impl From<Pubkey> for PubkeyBase58 {
@@ -60,8 +63,15 @@ impl From<PubkeyBase58> for Pubkey {
         Self::new_from_array(pubkey_base58.0)
     }
 }
+impl fmt::Debug for PubkeyBase58 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let encoded = bs58::encode(self.0).into_string();
+        write!(f, "{}", encoded)
+    }
+}
+
 #[serde_as]
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct BlockHashBase58(#[serde_as(as = "Base58Array<32>")] pub [u8; 32]);
 
 impl From<Hash> for BlockHashBase58 {
@@ -74,9 +84,14 @@ impl From<BlockHashBase58> for Hash {
         Self::new_from_array(block_hash_base58.0)
     }
 }
-
+impl fmt::Debug for BlockHashBase58 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let encoded = bs58::encode(self.0).into_string();
+        write!(f, "{}", encoded)
+    }
+}
 #[serde_as]
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct SignatureBase58(#[serde_as(as = "Base58Array<64>")] [u8; 64]);
 
 impl From<Signature> for SignatureBase58 {
@@ -84,15 +99,20 @@ impl From<Signature> for SignatureBase58 {
         Self(sig.as_ref().try_into().expect("Signature must be 64 bytes"))
     }
 }
-
 impl From<SignatureBase58> for Signature {
     fn from(signature_base58: SignatureBase58) -> Self {
         Self::from(signature_base58.0)
     }
 }
+impl fmt::Debug for SignatureBase58 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let encoded = bs58::encode(self.0).into_string();
+        write!(f, "{}", encoded)
+    }
+}
 
 #[serde_as]
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct SolanaReadableAccount {
     pub lamports: u64,
     #[serde_as(as = "Base64")]
@@ -125,7 +145,26 @@ impl From<SolanaReadableAccount> for Account {
         }
     }
 }
-
+impl fmt::Debug for SolanaReadableAccount {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "SolanaReadableAccount {{ lamports: {}, owner: {:?}, executable: {}, data: {}{}, rent_epoch: {} }}",
+            self.lamports,
+            self.owner,
+            self.executable,
+            hex::encode(&self.data[0..std::cmp::min(128, self.data.len())]),
+            if self.data.len() > 128 {
+                format!("... ({} bytes)", self.data.len())
+            } else if self.data.is_empty() {
+                "None".to_string()
+            } else {
+                "".to_string()
+            },
+            self.rent_epoch
+        )
+    }
+}
 // API
 #[rpc(client, server)]
 #[async_trait]

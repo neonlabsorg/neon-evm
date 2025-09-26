@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::account_data::AccountData;
+// use crate::account_data::AccountData;
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::config::DbConfig;
 use crate::rpc::Rpc;
@@ -15,6 +15,7 @@ use crate::types::{AccountInfoLevel, EmulateRequest};
 use crate::{
     account_storage::{EmulatorAccountStorage, SyncedAccountStorage},
     errors::NeonError,
+    types::SerializedAccount,
     NeonResult,
 };
 use ethnum::U256;
@@ -60,7 +61,7 @@ pub struct EmulateResponse {
     pub iterations: u64,
     pub solana_accounts: Vec<SolanaAccount>,
     pub logs: Vec<Log>,
-    pub accounts_data: Option<Vec<AccountData>>,
+    pub accounts_data: Option<Vec<(Pubkey, SerializedAccount)>>,
 }
 
 #[derive(Clone)]
@@ -577,7 +578,7 @@ async fn provide_account_data(
     storage: &EmulatorAccountStorage<'_, impl Rpc>,
     solana_accounts: &[SolanaAccount],
     level: AccountInfoLevel,
-) -> NeonResult<Vec<AccountData>> {
+) -> NeonResult<Vec<(Pubkey, SerializedAccount)>> {
     let pubkeys = solana_accounts
         .iter()
         .filter_map(|v| {
@@ -595,7 +596,10 @@ async fn provide_account_data(
         .iter()
         .zip(result.into_iter())
         .filter_map(|(pubkey, account)| {
-            account.map(|acc| AccountData::new_from_account(*pubkey, &acc))
+            account.map(|acc| /*AccountData::new_from_account(*pubkey, &acc)*/
+                (*pubkey, SerializedAccount::from(acc))
+            )
         })
-        .collect::<Vec<_>>())
+        .collect::<Vec<_>>()
+    )
 }

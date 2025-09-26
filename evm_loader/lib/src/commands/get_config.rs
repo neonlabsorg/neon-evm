@@ -14,7 +14,8 @@ use serde_with::{serde_as, DisplayFromStr};
 pub use solana_account_decoder::UiDataSliceConfig as SliceConfig;
 use solana_client::rpc_config::RpcSimulateTransactionConfig;
 use solana_sdk::signer::Signer;
-use solana_sdk::{instruction::Instruction, pubkey::Pubkey, transaction::Transaction};
+use solana_sdk::system_program;
+use solana_sdk::{instruction::{AccountMeta, Instruction}, pubkey::Pubkey, transaction::Transaction};
 
 use crate::NeonResult;
 use tokio::sync::OnceCell;
@@ -207,7 +208,9 @@ impl ConfigSimulator<'_> {
             .simulate_solana_instruction(Instruction::new_with_bytes(
                 program_id,
                 &[&[evm_instruction], data].concat(),
-                vec![],
+                vec![
+                    AccountMeta::new_readonly(system_program::id(), false),
+                ],
             ))
             .await?;
 

@@ -77,7 +77,6 @@ impl AccountHeader for Header {
 
 pub struct StateAccount<'sol> {
     account: AccountInfo<'sol>,
-    tag: u8,
 }
 
 #[maybe_async(?Send)]
@@ -85,17 +84,6 @@ impl<'a> StateAccount<'a> {
     #[must_use]
     pub fn into_account(self) -> AccountInfo<'a> {
         self.account
-    }
-
-    fn validate_tag(account_key: Pubkey, tag: u8) -> Result<()> {
-        if tag == TAG_STATE
-            || tag == TAG_SCHEDULED_STATE_FINALIZED
-            || tag == TAG_SCHEDULED_STATE_CANCELLED
-        {
-            Ok(())
-        } else {
-            Err(Error::StorageAccountInvalidTag(account_key, tag))
-        }
     }
 
     #[must_use]
@@ -118,9 +106,16 @@ impl<'a> StateAccount<'a> {
 
     pub fn from_account(program_id: Pubkey, account: AccountInfo<'a>) -> Result<Self> {
         let tag = account.tag(program_id)?;
-        Self::validate_tag(account.pubkey(), tag)?;
+        let is_valid_tag = matches!(
+            tag,
+            TAG_STATE | TAG_SCHEDULED_STATE_FINALIZED | TAG_SCHEDULED_STATE_CANCELLED
+        );
 
-        Ok(Self { account, tag })
+        if is_valid_tag {
+            Ok(Self { account })
+        } else {
+            Err(Error::StorageAccountInvalidTag(account.pubkey(), tag))
+        }
     }
 
     pub async fn new(
@@ -151,10 +146,7 @@ impl<'a> StateAccount<'a> {
         tree: Option<&mut TransactionTree<'a>>,
     ) -> Result<(Self, Box<dyn Transaction + 'tx>)> {
         account.init_tag(TAG_STATE, Header::VERSION)?;
-        let mut state = Self {
-            account,
-            tag: TAG_STATE,
-        };
+        let mut state = Self { account };
         let transaction = unsafe {
             state.initialize_header(owner, &transaction);
             state.initialize_transaction(&transaction);
@@ -169,7 +161,9 @@ impl<'a> StateAccount<'a> {
         account: AccountInfo<'a>,
         platform: &mut (impl Platform<'a> + 'a),
     ) -> Result<Self> {
-        let mut state = Self::from_account(platform.program_id(), account)?;
+        account.validate_tag(platform.program_id(), TAG_STATE)?;
+
+        let mut state = Self { account };
         state.assert_memory_address();
 
         let status = state.validate_accounts_status(platform).await?;
@@ -232,8 +226,9 @@ impl<'a> StateAccount<'a> {
     }
 
     fn finalize_impl(mut self, transition_tag: Option<u8>) -> Result<()> {
-        if self.tag != TAG_STATE {
-            return Err(Error::AccountInvalidTag(self.pubkey(), self.tag));
+        let tag = unsafe { self.account.tag_unchecked() };
+        if tag != TAG_STATE {
+            return Err(Error::AccountInvalidTag(self.pubkey(), tag));
         }
 
         if let Some(transition_tag) = transition_tag {
@@ -247,10 +242,12 @@ impl<'a> StateAccount<'a> {
     }
 
     pub fn finalize_scheduled_tx(self) -> Result<()> {
-        let is_finalized = self.tag == TAG_SCHEDULED_STATE_FINALIZED;
-        let is_canceled = self.tag == TAG_SCHEDULED_STATE_CANCELLED;
+        let tag = unsafe { self.account.tag_unchecked() };
+
+        let is_finalized = tag == TAG_SCHEDULED_STATE_FINALIZED;
+        let is_canceled = tag == TAG_SCHEDULED_STATE_CANCELLED;
         if !(is_finalized || is_canceled) {
-            return Err(Error::StorageAccountInvalidTag(self.pubkey(), self.tag));
+            return Err(Error::StorageAccountInvalidTag(self.pubkey(), tag));
         }
 
         StateFinalizedAccount::convert_from_state(self)?;
@@ -476,6 +473,11 @@ impl StateAccount<'_> {
         use super::state_root::AccountRevision;
         use super::state_root::PlainData;
         use crate::types::vector::read_raw_utils;
+
+        let owner = self.owner();
+        if !owner.is_on_curve() {
+            return Err("Inconsistent Holder account data".into());
+        }
 
         let platform_memory_address: isize = self.stored_memory_address().try_into()?;
         let local_memory_address: isize = self.account.memory_address().try_into()?;

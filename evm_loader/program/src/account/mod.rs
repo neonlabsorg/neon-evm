@@ -40,8 +40,8 @@ mod treasury;
 pub const TAG_EMPTY: u8 = 0;
 pub const TAG_STATE: u8 = 26;
 pub const TAG_STATE_FINALIZED: u8 = 32;
-pub const TAG_SCHEDULED_STATE_FINALIZED: u8 = 35;
-pub const TAG_SCHEDULED_STATE_CANCELLED: u8 = 38;
+pub const TAG_SCHEDULED_STATE_FINALIZED: u8 = 36;
+pub const TAG_SCHEDULED_STATE_CANCELLED: u8 = 39;
 pub const TAG_HOLDER: u8 = 52;
 
 pub const TAG_ACCOUNT_BALANCE: u8 = 60;

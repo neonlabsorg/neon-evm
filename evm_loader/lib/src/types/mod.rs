@@ -172,7 +172,7 @@ pub struct TxParams {
 }
 
 impl TxParams {
-    pub async fn fetch_origin_nonce<'a>(&mut self, platform: &impl Platform<'a>) -> NeonResult<()> {
+    pub async fn fetch_origin_nonce(&mut self, platform: &impl Platform) -> NeonResult<()> {
         if self.nonce.is_some() {
             return Ok(());
         }

@@ -5,7 +5,7 @@ use crate::{
     error::Result,
 };
 
-pub fn process(_program_id: Pubkey, _accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
+pub fn process(_program_id: &Pubkey, _accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Config Get Version");
 
     let version = std::str::from_utf8(&NEON_PKG_VERSION)?;

@@ -54,12 +54,12 @@ impl<A: Allocator> TouchedAccounts<A> {
         }
     }
 
-    pub fn touch_solana(&self, pubkey: Pubkey) {
-        if pubkey == FAKE_OPERATOR {
+    pub fn touch_solana(&self, pubkey: &Pubkey) {
+        if pubkey == &FAKE_OPERATOR {
             return;
         }
 
-        Self::touch(&self.touched_solana, pubkey, 2);
+        Self::touch(&self.touched_solana, *pubkey, 2);
     }
 
     fn touch<K: Ord>(map: &VectorMapCell<K, u64, A>, key: K, count: u64) {

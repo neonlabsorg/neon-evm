@@ -6,7 +6,7 @@ use crate::error::{Error, Result};
 use crate::platform::{Platform, Solana};
 use crate::types::Address;
 
-pub fn process(_program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Create Balance Account");
 
     let address = array_ref![instruction, 0, 20];

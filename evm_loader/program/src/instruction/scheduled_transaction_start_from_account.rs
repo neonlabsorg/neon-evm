@@ -1,5 +1,5 @@
 use crate::account::{
-    AccountDispatch, Holder, Operator, OperatorBalance, TransactionTree, TAG_HOLDER,
+    AccountRead, Holder, Operator, OperatorBalance, TransactionTree, TAG_HOLDER,
     TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE, TAG_STATE_FINALIZED,
 };
 use crate::error::{Error, Result};
@@ -8,7 +8,7 @@ use crate::transaction_process::scheduled;
 use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Start Scheduled Transaction from Account");
 
     let tree_index = u16::try_from(u32::from_le_bytes(*array_ref![instruction, 0, 4]))?;

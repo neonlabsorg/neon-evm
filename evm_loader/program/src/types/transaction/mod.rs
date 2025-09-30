@@ -5,7 +5,7 @@ use solana_program::keccak;
 
 use super::Address;
 use crate::{
-    account::TransactionTree,
+    account::{AccountRead, TransactionTree},
     error::{Error, Result},
     platform::Platform,
 };
@@ -174,11 +174,10 @@ pub trait Transaction {
 }
 
 #[maybe_async::maybe_async]
-pub async fn validate_transaction<'a>(
+pub async fn validate_transaction(
     tx: &dyn Transaction,
     origin: Address,
-    platform: &impl Platform<'a>,
-    tree: Option<&TransactionTree<'_>>,
+    platform: &impl Platform,
 ) -> Result<()> {
     let chain_id = tx.chain_id().unwrap_or_else(|| platform.default_chain());
 
@@ -186,7 +185,43 @@ pub async fn validate_transaction<'a>(
         return Err(Error::InvalidChainId(chain_id));
     }
 
-    if tree.is_some() != tx.is(TransactionType::Scheduled) {
+    if tx.is(TransactionType::Scheduled) {
+        return Err(Error::TreeAccountTxInvalidType);
+    }
+
+    if let Some(tx) = tx.as_priority_fee() {
+        if tx.max_fee_per_gas() < tx.max_priority_fee_per_gas() {
+            return Err("max_fee_per_gas < max_priority_fee_per_gas".into());
+        }
+    }
+
+    let origin_nonce = platform
+        .get_balance(origin, chain_id)
+        .await?
+        .map_or(0_u64, |a| a.nonce());
+
+    if origin_nonce != tx.nonce() {
+        let error = Error::InvalidTransactionNonce(origin, origin_nonce, tx.nonce());
+        return Err(error);
+    }
+
+    Ok(())
+}
+
+#[maybe_async::maybe_async]
+pub async fn validate_scheduled_transaction(
+    tx: &dyn Transaction,
+    origin: Address,
+    platform: &impl Platform,
+    tree: &TransactionTree<impl AccountRead>,
+) -> Result<()> {
+    let chain_id = tx.chain_id().unwrap_or_else(|| platform.default_chain());
+
+    if !platform.chains().any(|c| c.id == chain_id) {
+        return Err(Error::InvalidChainId(chain_id));
+    }
+
+    if !tx.is(TransactionType::Scheduled) {
         return Err(Error::TreeAccountTxInvalidType);
     }
 
@@ -204,8 +239,7 @@ pub async fn validate_transaction<'a>(
     //
     // Scheduled transactions:
     // payer's nonce (origin) validated only for the first transaction in the tree
-    let validate_nonce = tree.map_or(true, TransactionTree::is_not_started);
-    if !validate_nonce {
+    if !tree.is_not_started() {
         return Ok(());
     }
 

@@ -110,7 +110,7 @@ async fn withdraw(
         mint_chain.token
     };
 
-    let mut mint_account = state.external_account(mint_address).await?;
+    let mut mint_account = state.external_account(&mint_address).await?;
     let mint_data = {
         let info = mint_account.into_account_info();
         token::Mint::from_account_info(&info)?.into_data()
@@ -137,7 +137,7 @@ async fn withdraw(
     }
 
     let target_token = get_associated_token_address(&target, &mint_address);
-    let account = state.external_account(target_token).await?;
+    let account = state.external_account(&target_token).await?;
     if !spl_token::check_id(&account.owner) {
         use spl_associated_token_account::instruction::create_associated_token_account;
 
@@ -147,7 +147,7 @@ async fn withdraw(
         state.queue_invoke(create_associated, &[]).await?;
     }
 
-    let (authority, bump_seed) = pda::main_pool_authority(&state.program_id());
+    let (authority, bump_seed) = pda::main_pool_authority(state.program_id());
     let authority_seeds: &[&[u8]] = pda::main_pool_authority_seeds!(bump_seed);
 
     let pool = get_associated_token_address(&authority, &mint_address);

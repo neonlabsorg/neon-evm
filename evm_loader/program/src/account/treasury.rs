@@ -16,7 +16,7 @@ pub struct MainTreasury<'a> {
 
 impl<'a> Treasury<'a> {
     pub fn from_account_info(
-        program_id: Pubkey,
+        program_id: &Pubkey,
         index: u32,
         info: &AccountInfo<'a>,
     ) -> Result<Self> {
@@ -33,8 +33,8 @@ impl<'a> Treasury<'a> {
     }
 
     #[must_use]
-    pub fn address(program_id: Pubkey, index: u32) -> (Pubkey, u8) {
-        pda::aux_treasury_pool_address(&program_id, index)
+    pub fn address(program_id: &Pubkey, index: u32) -> (Pubkey, u8) {
+        pda::aux_treasury_pool_address(program_id, index)
     }
 
     #[must_use]
@@ -63,7 +63,7 @@ impl<'a> From<Treasury<'a>> for AccountInfo<'a> {
 }
 
 impl<'a> MainTreasury<'a> {
-    pub fn from_account_info(program_id: Pubkey, info: &AccountInfo<'a>) -> Result<Self> {
+    pub fn from_account_info(program_id: &Pubkey, info: &AccountInfo<'a>) -> Result<Self> {
         let (expected_key, bump_seed) = MainTreasury::address(program_id);
         if *info.key != expected_key {
             return Err(Error::AccountInvalidKey(*info.key, expected_key));
@@ -88,8 +88,8 @@ impl<'a> MainTreasury<'a> {
     }
 
     #[must_use]
-    pub fn address(program_id: Pubkey) -> (Pubkey, u8) {
-        pda::main_treasury_pool_address(&program_id)
+    pub fn address(program_id: &Pubkey) -> (Pubkey, u8) {
+        pda::main_treasury_pool_address(program_id)
     }
 
     #[must_use]

@@ -2,11 +2,11 @@ use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey, rent::Rent, sysvar::Sysvar};
 
 use crate::{
-    account::{program::System, ContainerAccount, Operator, ReferenceAccount, Treasury},
+    account::{program::System, Container, Operator, Reference, Treasury},
     error::Result,
 };
 
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Disassemble Container");
 
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
@@ -14,11 +14,11 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let operator = Operator::from_account_info(&accounts[0])?;
     let _treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[1])?;
     let system = System::from_account_info(&accounts[2])?;
-    let mut container = ContainerAccount::from_account_info(program_id, &accounts[3])?;
+    let mut container = Container::from_account(program_id, accounts[3].clone())?;
 
     // Remove accounts from container
     for account in &accounts[4..] {
-        let reference = ReferenceAccount::from_account_info(program_id, account)?;
+        let reference = Reference::from_account(program_id, account.clone())?;
         unsafe { container.remove_account(reference) }?;
     }
 

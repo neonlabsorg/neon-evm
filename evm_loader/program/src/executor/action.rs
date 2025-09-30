@@ -9,7 +9,7 @@ use solana_program::{
 };
 
 use crate::{
-    account::{AllocateResult, ContractAccount},
+    account::AllocateResult,
     config::STATIC_STORAGE_LIMIT,
     error::{Error, Result},
     platform::{InvokeMode, Platform},
@@ -264,13 +264,13 @@ impl<'r, A: Allocator> IntoIterator for &'r IterativeActions<A> {
 
 #[maybe_async(?Send)]
 pub trait ActionExecutor {
-    async fn allocate<'a>(&self, platform: &mut impl Platform<'a>) -> Result<AllocateResult>;
-    async fn execute<'a>(&mut self, platform: &mut impl Platform<'a>) -> Result<()>;
+    async fn allocate(&self, platform: &mut impl Platform) -> Result<AllocateResult>;
+    async fn execute(&mut self, platform: &mut impl Platform) -> Result<()>;
 }
 
 #[maybe_async(?Send)]
 impl<A: Allocator> ActionExecutor for IterativeActions<A> {
-    async fn allocate<'a>(&self, platform: &mut impl Platform<'a>) -> Result<AllocateResult> {
+    async fn allocate(&self, platform: &mut impl Platform) -> Result<AllocateResult> {
         let mut total_result = AllocateResult::Ready;
 
         for action in &self.storage {
@@ -287,7 +287,7 @@ impl<A: Allocator> ActionExecutor for IterativeActions<A> {
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn execute<'a>(&mut self, platform: &mut impl Platform<'a>) -> Result<()> {
+    async fn execute(&mut self, platform: &mut impl Platform) -> Result<()> {
         let mut original_balances = VectorMap::with_capacity(16);
         let mut storage = VectorMap::with_capacity(16);
         let mut contracts = VectorMap::with_capacity(8);
@@ -389,7 +389,7 @@ impl<A: Allocator> ActionExecutor for IterativeActions<A> {
 
         // Update storage accounts
         for (address, values) in storage {
-            let mut contract: Option<ContractAccount> = None;
+            let mut contract = None;
             let mut infinite_values = VectorMap::with_capacity(values.len());
 
             for (index, value) in values {

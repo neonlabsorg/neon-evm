@@ -3,9 +3,10 @@ use std::mem::size_of;
 
 use super::treasury::Treasury;
 use super::{
-    pda, program, Account, AccountDispatch, AccountHeader, BalanceAccount, Operator,
-    ACCOUNT_PREFIX_LEN, TAG_TRANSACTION_TREE,
+    pda, program, AccountHeader, AccountRead, AccountWrite, Balance, Operator, ACCOUNT_PREFIX_LEN,
+    TAG_TRANSACTION_TREE,
 };
+use crate::account::Account;
 use crate::config::{
     BASE_ITERATIVE_TRANSACTION_COST, TREE_ACCOUNT_DESTROY_FEE, TREE_ACCOUNT_FINISH_TRANSACTION_FEE,
     TREE_ACCOUNT_TIMEOUT,
@@ -87,41 +88,36 @@ pub struct TreeInitializer {
     pub nodes: Vec<NodeInitializer>,
 }
 
-pub struct TransactionTree<'a> {
-    account: Account<'a>,
+pub struct TransactionTree<T> {
+    account: T,
 }
 
-impl<'a> TransactionTree<'a> {
+impl TransactionTree<()> {
     #[must_use]
-    pub fn required_account_size(transactions: usize) -> usize {
+    pub const fn required_account_size(transactions: usize) -> usize {
         ACCOUNT_PREFIX_LEN + size_of::<Header>() + transactions * size_of::<Node>()
     }
 
     #[must_use]
-    pub fn required_header_realloc(&self) -> usize {
-        let allocated_header_size = self.header_size();
-        size_of::<Header>().saturating_sub(allocated_header_size)
+    pub fn prepare_exit_status(result: &ExitStatus) -> (Status, solana_program::keccak::Hash) {
+        use solana_program::keccak::hash as keccak256;
+
+        let (status, result_hash) = match result {
+            ExitStatus::Stop | ExitStatus::Suicide => (Status::Success, keccak256(&[])),
+            ExitStatus::Return(result) => (Status::Success, keccak256(result)),
+            ExitStatus::Revert(result) => (Status::Failed, keccak256(result)),
+            ExitStatus::Cancel => (Status::Failed, keccak256(&[])),
+            ExitStatus::Interrupted(_) | ExitStatus::StepLimit => unreachable!(),
+        };
+
+        (status, result_hash)
     }
+}
 
-    pub fn from_account(program_id: Pubkey, account: Account<'a>) -> Result<Self> {
-        account.validate_tag(program_id, TAG_TRANSACTION_TREE)?;
-
-        Ok(Self { account })
-    }
-
-    pub fn from_account_info(program_id: Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
-        let account = account.clone().into();
+impl<'a> TransactionTree<AccountInfo<'a>> {
+    pub fn from_account_info(program_id: &Pubkey, account: &AccountInfo<'a>) -> Result<Self> {
+        let account = account.clone();
         Self::from_account(program_id, account)
-    }
-
-    #[must_use]
-    pub fn find_address(
-        program_id: &Pubkey,
-        payer: &Address,
-        chain_id: u64,
-        nonce: u64,
-    ) -> (Pubkey, u8) {
-        pda::tree_account_address(program_id, payer, chain_id, nonce)
     }
 
     pub fn create(
@@ -138,7 +134,7 @@ impl<'a> TransactionTree<'a> {
         const TREE_ACCOUNT_MAX_NODES: usize = 16;
 
         // Validate account
-        let (pubkey, bump) = Self::find_address(&crate::ID, &init.payer, init.chain_id, init.nonce);
+        let (pubkey, bump) = pda::tree_account(&crate::ID, &init.payer, init.chain_id, init.nonce);
         if account.key != &pubkey {
             return Err(Error::AccountInvalidKey(*account.key, pubkey));
         }
@@ -192,7 +188,7 @@ impl<'a> TransactionTree<'a> {
 
         // Create account
         let seeds: &[&[u8]] = pda::tree_account_seeds!(init, bump);
-        let space = Self::required_account_size(nodes.len());
+        let space = TransactionTree::required_account_size(nodes.len());
 
         system.create_pda_account_with_treasury_payer(
             &crate::ID,
@@ -208,20 +204,18 @@ impl<'a> TransactionTree<'a> {
         system.transfer(destroy_fee_payer, &account, fee)?;
 
         // Init data
-        account.init_tag(TAG_TRANSACTION_TREE, Header::VERSION)?;
+        account.write_tag(TAG_TRANSACTION_TREE, Header::VERSION)?;
+        account.write_header(HeaderV0 {
+            payer: init.payer,
+            last_slot: clock.slot,
+            chain_id: init.chain_id,
+            max_fee_per_gas: init.max_fee_per_gas,
+            max_priority_fee_per_gas: init.max_priority_fee_per_gas,
+            balance: U256::ZERO,
+            last_index: nodes.len().try_into()?,
+        });
 
-        let account: Account<'a> = account.into();
         let mut tree = Self { account };
-        {
-            let mut header: RefMut<HeaderV0> = tree.account.header_mut();
-            header.payer = init.payer;
-            header.last_slot = clock.slot;
-            header.chain_id = init.chain_id;
-            header.max_fee_per_gas = init.max_fee_per_gas;
-            header.max_priority_fee_per_gas = init.max_priority_fee_per_gas;
-            header.balance = U256::ZERO;
-            header.last_index = nodes.len().try_into()?;
-        }
 
         let init_nodes = nodes.into_iter().zip(parent_counts);
         for (node, (init, parent_count)) in tree.nodes_mut().iter_mut().zip(init_nodes) {
@@ -237,6 +231,132 @@ impl<'a> TransactionTree<'a> {
         }
 
         Ok(tree)
+    }
+
+    pub fn destroy(self, operator: &Operator, treasury: &Treasury<'a>) -> Result<()> {
+        let clock = Clock::get()?;
+
+        if !self.can_be_destroyed(&clock) {
+            return Err(Error::TreeAccountNotReadyForDestruction);
+        }
+
+        let account_info = self.account;
+
+        **operator.lamports.borrow_mut() += TREE_ACCOUNT_DESTROY_FEE;
+        **account_info.lamports.borrow_mut() -= TREE_ACCOUNT_DESTROY_FEE;
+
+        unsafe { super::delete_with_treasury(&account_info, treasury) }
+    }
+
+    pub fn start_transaction(&mut self, tx: &dyn ScheduledTransaction) -> Result<()> {
+        self.validate_transaction(tx)?;
+        let mut node = self.node_mut(tx.index());
+
+        if node.status != Status::NotStarted {
+            return Err(Error::TreeAccountTxInvalidStatus);
+        }
+        if node.parent_count != 0 {
+            return Err(Error::TreeAccountTxInvalidParentCount);
+        }
+        if node.success_execute_limit != 0 {
+            return Err(Error::TreeAccountTxInvalidSuccessLimit);
+        }
+
+        node.status = Status::InProgress;
+        std::mem::drop(node);
+
+        let clock = Clock::get()?;
+        self.update_last_slot(&clock);
+
+        Ok(())
+    }
+
+    pub fn skip_transaction(&mut self, tx: &dyn ScheduledTransaction) -> Result<()> {
+        self.validate_transaction(tx)?;
+        let mut node = self.node_mut(tx.index());
+
+        if node.status != Status::NotStarted {
+            return Err(Error::TreeAccountTxInvalidStatus);
+        }
+        if node.parent_count != 0 {
+            return Err(Error::TreeAccountTxInvalidParentCount);
+        }
+        if node.success_execute_limit == 0 {
+            // Transaction need to be started
+            return Err(Error::TreeAccountTxInvalidSuccessLimit);
+        }
+
+        node.status = Status::Skipped;
+
+        let child_index = node.child_transaction;
+        std::mem::drop(node);
+
+        let clock = Clock::get()?;
+        self.update_last_slot(&clock);
+
+        self.decrease_parent_count(child_index, Status::Skipped);
+
+        Ok(())
+    }
+
+    pub fn end_transaction(
+        &mut self,
+        hash: &[u8; 32],
+        result: (Status, solana_program::keccak::Hash),
+        operator: &Operator<'a>,
+    ) -> Result<()> {
+        use solana_program::keccak::Hash;
+
+        let index = self.find_node(hash)?;
+        let mut node = self.node_mut(index);
+
+        if node.status != Status::InProgress {
+            return Err(Error::TreeAccountTxInvalidStatus);
+        }
+
+        let (status, Hash(result_hash)) = result;
+
+        node.status = status;
+        node.result_hash = result_hash;
+
+        let child_index = node.child_transaction;
+        std::mem::drop(node);
+
+        let clock = Clock::get()?;
+        self.update_last_slot(&clock);
+
+        self.decrease_parent_count(child_index, status);
+        self.pay_for_end_transaction(operator)
+    }
+
+    fn pay_for_end_transaction(&self, operator: &Operator<'a>) -> Result<()> {
+        let rent = Rent::get()?;
+        let minimum_balance = rent.minimum_balance(self.account.data_len());
+
+        let available_lamports = self
+            .account
+            .lamports()
+            .saturating_sub(minimum_balance)
+            .saturating_sub(TREE_ACCOUNT_DESTROY_FEE);
+
+        if available_lamports < TREE_ACCOUNT_FINISH_TRANSACTION_FEE {
+            return Ok(()); // Not enough funds. This could happen if working with old tree account.
+        }
+
+        let account_info = &self.account;
+
+        **account_info.lamports.borrow_mut() -= TREE_ACCOUNT_FINISH_TRANSACTION_FEE;
+        **operator.lamports.borrow_mut() += TREE_ACCOUNT_FINISH_TRANSACTION_FEE;
+
+        Ok(())
+    }
+}
+
+impl<T: AccountRead> TransactionTree<T> {
+    pub fn from_account(program_id: &Pubkey, account: T) -> Result<Self> {
+        account.validate_tag(program_id, TAG_TRANSACTION_TREE)?;
+
+        Ok(Self { account })
     }
 
     #[must_use]
@@ -277,27 +397,12 @@ impl<'a> TransactionTree<'a> {
         self.is_complete()
     }
 
-    pub fn destroy(self, operator: &Operator, treasury: &Treasury<'a>) -> Result<()> {
-        let clock = Clock::get()?;
-
-        if !self.can_be_destroyed(&clock) {
-            return Err(Error::TreeAccountNotReadyForDestruction);
-        }
-
-        let account_info: AccountInfo<'a> = self.account.try_into()?;
-
-        **operator.lamports.borrow_mut() += TREE_ACCOUNT_DESTROY_FEE;
-        **account_info.lamports.borrow_mut() -= TREE_ACCOUNT_DESTROY_FEE;
-
-        unsafe { super::delete_with_treasury(&account_info, treasury) }
-    }
-
     fn validate_transaction(&self, tx: &dyn ScheduledTransaction) -> Result<()> {
         let tx_chain_id = tx
             .chain_id()
             .expect("Scheduled transaction must have chain_id");
 
-        let (pubkey, _) = Self::find_address(&crate::ID, tx.payer(), tx_chain_id, tx.nonce());
+        let (pubkey, _) = pda::tree_account(&crate::ID, tx.payer(), tx_chain_id, tx.nonce());
         if pubkey != self.account.pubkey() {
             return Err(Error::TreeAccountTxInvalidData);
         }
@@ -352,124 +457,6 @@ impl<'a> TransactionTree<'a> {
         Ok(())
     }
 
-    pub fn start_transaction(&mut self, tx: &dyn ScheduledTransaction) -> Result<()> {
-        self.validate_transaction(tx)?;
-        let mut node = self.node_mut(tx.index());
-
-        if node.status != Status::NotStarted {
-            return Err(Error::TreeAccountTxInvalidStatus);
-        }
-        if node.parent_count != 0 {
-            return Err(Error::TreeAccountTxInvalidParentCount);
-        }
-        if node.success_execute_limit != 0 {
-            return Err(Error::TreeAccountTxInvalidSuccessLimit);
-        }
-
-        node.status = Status::InProgress;
-        std::mem::drop(node);
-
-        let clock = Clock::get()?;
-        self.update_last_slot(&clock);
-
-        Ok(())
-    }
-
-    pub fn skip_transaction(&mut self, tx: &dyn ScheduledTransaction) -> Result<()> {
-        self.validate_transaction(tx)?;
-        let mut node = self.node_mut(tx.index());
-
-        if node.status != Status::NotStarted {
-            return Err(Error::TreeAccountTxInvalidStatus);
-        }
-        if node.parent_count != 0 {
-            return Err(Error::TreeAccountTxInvalidParentCount);
-        }
-        if node.success_execute_limit == 0 {
-            // Transaction need to be started
-            return Err(Error::TreeAccountTxInvalidSuccessLimit);
-        }
-
-        node.status = Status::Skipped;
-
-        let child_index = node.child_transaction;
-        std::mem::drop(node);
-
-        let clock = Clock::get()?;
-        self.update_last_slot(&clock);
-
-        self.decrease_parent_count(child_index, Status::Skipped);
-
-        Ok(())
-    }
-
-    #[must_use]
-    pub fn prepare_exit_status(result: &ExitStatus) -> (Status, solana_program::keccak::Hash) {
-        use solana_program::keccak::hash as keccak256;
-
-        let (status, result_hash) = match result {
-            ExitStatus::Stop | ExitStatus::Suicide => (Status::Success, keccak256(&[])),
-            ExitStatus::Return(result) => (Status::Success, keccak256(result)),
-            ExitStatus::Revert(result) => (Status::Failed, keccak256(result)),
-            ExitStatus::Cancel => (Status::Failed, keccak256(&[])),
-            ExitStatus::Interrupted(_) | ExitStatus::StepLimit => unreachable!(),
-        };
-
-        (status, result_hash)
-    }
-
-    pub fn end_transaction(
-        &mut self,
-        hash: &[u8; 32],
-        result: (Status, solana_program::keccak::Hash),
-        operator: &Operator<'a>,
-    ) -> Result<()> {
-        use solana_program::keccak::Hash;
-
-        let index = self.find_node(hash)?;
-        let mut node = self.node_mut(index);
-
-        if node.status != Status::InProgress {
-            return Err(Error::TreeAccountTxInvalidStatus);
-        }
-
-        let (status, Hash(result_hash)) = result;
-
-        node.status = status;
-        node.result_hash = result_hash;
-
-        let child_index = node.child_transaction;
-        std::mem::drop(node);
-
-        let clock = Clock::get()?;
-        self.update_last_slot(&clock);
-
-        self.decrease_parent_count(child_index, status);
-        self.pay_for_end_transaction(operator)
-    }
-
-    fn pay_for_end_transaction(&self, operator: &Operator<'a>) -> Result<()> {
-        let rent = Rent::get()?;
-        let minimum_balance = rent.minimum_balance(self.account.data_len());
-
-        let available_lamports = self
-            .account
-            .lamports()
-            .saturating_sub(minimum_balance)
-            .saturating_sub(TREE_ACCOUNT_DESTROY_FEE);
-
-        if available_lamports < TREE_ACCOUNT_FINISH_TRANSACTION_FEE {
-            return Ok(()); // Not enough funds. This could happen if working with old tree account.
-        }
-
-        let account_info: AccountInfo<'a> = self.account.clone().try_into()?;
-
-        **account_info.lamports.borrow_mut() -= TREE_ACCOUNT_FINISH_TRANSACTION_FEE;
-        **operator.lamports.borrow_mut() += TREE_ACCOUNT_FINISH_TRANSACTION_FEE;
-
-        Ok(())
-    }
-
     #[must_use]
     pub fn payer(&self) -> Address {
         let header: Ref<HeaderV0> = self.account.header();
@@ -480,11 +467,6 @@ impl<'a> TransactionTree<'a> {
     pub fn last_slot(&self) -> u64 {
         let header: Ref<HeaderV0> = self.account.header();
         header.last_slot
-    }
-
-    pub fn update_last_slot(&mut self, clock: &Clock) {
-        let mut header: RefMut<HeaderV0> = self.account.header_mut();
-        header.last_slot = clock.slot;
     }
 
     #[must_use]
@@ -531,7 +513,73 @@ impl<'a> TransactionTree<'a> {
         header.balance
     }
 
-    pub fn withdraw(&mut self, target: &mut BalanceAccount) -> Result<()> {
+    #[must_use]
+    pub fn last_index(&self) -> u16 {
+        let header: Ref<HeaderV0> = self.account.header();
+        header.last_index
+    }
+
+    #[must_use]
+    pub fn pubkey(&self) -> Pubkey {
+        self.account.pubkey()
+    }
+
+    fn header_size(&self) -> usize {
+        match self.account.header_version() {
+            0 | 1 => size_of::<HeaderV0>(),
+            v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
+        }
+    }
+
+    fn nodes_offset(&self) -> usize {
+        ACCOUNT_PREFIX_LEN + self.header_size()
+    }
+
+    #[must_use]
+    pub fn nodes(&self) -> Ref<[Node]> {
+        let nodes_offset = self.nodes_offset();
+
+        let data = self.account.data();
+        let data = Ref::map(data, |d| &d[nodes_offset..]);
+
+        Ref::map(data, |bytes| {
+            const { assert!(std::mem::align_of::<Node>() == 1) };
+            assert_eq!(bytes.len() % size_of::<Node>(), 0);
+
+            // SAFETY: Node has the same alignment as bytes
+            unsafe {
+                let ptr = bytes.as_ptr().cast::<Node>();
+                let len = bytes.len() / size_of::<Node>();
+                std::slice::from_raw_parts(ptr, len)
+            }
+        })
+    }
+
+    #[must_use]
+    pub fn node(&self, index: u16) -> Ref<Node> {
+        let nodes = self.nodes();
+        Ref::map(nodes, |nodes| &nodes[index as usize])
+    }
+
+    pub fn find_node(&self, hash: &[u8; 32]) -> Result<u16> {
+        let nodes = self.nodes();
+        let index = nodes
+            .iter()
+            .position(|node| &node.transaction_hash == hash)
+            .ok_or(Error::TreeAccountTxNotFound)?;
+
+        let index: u16 = index.try_into()?;
+        Ok(index)
+    }
+}
+
+impl<T: Account> TransactionTree<T> {
+    pub fn update_last_slot(&mut self, clock: &Clock) {
+        let mut header: RefMut<HeaderV0> = self.account.header_mut();
+        header.last_slot = clock.slot;
+    }
+
+    pub fn withdraw(&mut self, target: &mut Balance<impl Account>) -> Result<()> {
         assert_eq!(self.chain_id(), target.chain_id());
         assert_eq!(self.payer(), target.address());
 
@@ -585,12 +633,6 @@ impl<'a> TransactionTree<'a> {
         self.mint(tokens)
     }
 
-    #[must_use]
-    pub fn last_index(&self) -> u16 {
-        let header: Ref<HeaderV0> = self.account.header();
-        header.last_index
-    }
-
     pub fn increment_last_index(&mut self) -> Result<()> {
         let mut header: RefMut<HeaderV0> = self.account.header_mut();
         header.last_index = header
@@ -599,54 +641,6 @@ impl<'a> TransactionTree<'a> {
             .ok_or(Error::TreeAccountLastIndexOverflow)?;
 
         Ok(())
-    }
-
-    #[must_use]
-    pub fn pubkey(&self) -> Pubkey {
-        self.account.pubkey()
-    }
-
-    fn header_size(&self) -> usize {
-        match self.account.header_version() {
-            0 | 1 => size_of::<HeaderV0>(),
-            v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
-        }
-    }
-
-    #[allow(unused)]
-    fn header_upgrade(&mut self) -> Result<()> {
-        match self.account.header_version() {
-            0 | 1 => {
-                self.account.expand_header::<HeaderV0, Header>()?;
-            }
-            v => panic_with_error!(Error::AccountInvalidHeader(self.pubkey(), v)),
-        }
-
-        Ok(())
-    }
-
-    fn nodes_offset(&self) -> usize {
-        ACCOUNT_PREFIX_LEN + self.header_size()
-    }
-
-    #[must_use]
-    pub fn nodes(&self) -> Ref<[Node]> {
-        let nodes_offset = self.nodes_offset();
-
-        let data = self.account.data();
-        let data = Ref::map(data, |d| &d[nodes_offset..]);
-
-        Ref::map(data, |bytes| {
-            const { assert!(std::mem::align_of::<Node>() == 1) };
-            assert_eq!(bytes.len() % size_of::<Node>(), 0);
-
-            // SAFETY: Node has the same alignment as bytes
-            unsafe {
-                let ptr = bytes.as_ptr().cast::<Node>();
-                let len = bytes.len() / size_of::<Node>();
-                std::slice::from_raw_parts(ptr, len)
-            }
-        })
     }
 
     #[must_use]
@@ -670,26 +664,9 @@ impl<'a> TransactionTree<'a> {
     }
 
     #[must_use]
-    pub fn node(&self, index: u16) -> Ref<Node> {
-        let nodes = self.nodes();
-        Ref::map(nodes, |nodes| &nodes[index as usize])
-    }
-
-    #[must_use]
     pub fn node_mut(&mut self, index: u16) -> RefMut<Node> {
         let nodes = self.nodes_mut();
         RefMut::map(nodes, |nodes| &mut nodes[index as usize])
-    }
-
-    pub fn find_node(&self, hash: &[u8; 32]) -> Result<u16> {
-        let nodes = self.nodes();
-        let index = nodes
-            .iter()
-            .position(|node| &node.transaction_hash == hash)
-            .ok_or(Error::TreeAccountTxNotFound)?;
-
-        let index: u16 = index.try_into()?;
-        Ok(index)
     }
 
     fn decrease_parent_count(&mut self, index: u16, parent_status: Status) {

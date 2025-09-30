@@ -30,22 +30,22 @@ impl DefaultKeysIndex {
 impl KeysIndex for DefaultKeysIndex {
     #[inline]
     fn balance(&self, address: Address, chain_id: u64) -> Pubkey {
-        pda::balance_address(&self.program_id, &address, chain_id).0
+        pda::balance(&self.program_id, &address, chain_id).0
     }
 
     #[inline]
     fn balance_bump(&self, address: Address, chain_id: u64) -> (Pubkey, u8) {
-        pda::balance_address(&self.program_id, &address, chain_id)
+        pda::balance(&self.program_id, &address, chain_id)
     }
 
     #[inline]
     fn contract(&self, address: Address) -> Pubkey {
-        pda::contract_address(&self.program_id, &address).0
+        pda::contract(&self.program_id, &address).0
     }
 
     #[inline]
     fn contract_bump(&self, address: Address) -> (Pubkey, u8) {
-        pda::contract_address(&self.program_id, &address)
+        pda::contract(&self.program_id, &address)
     }
 
     #[inline]
@@ -82,7 +82,7 @@ impl KeysIndex for CachedKeysIndex {
     fn balance_bump(&self, address: Address, chain_id: u64) -> (Pubkey, u8) {
         self.balance_cache
             .get_or_insert((address, chain_id), |(address, chain_id)| {
-                pda::balance_address(&self.program_id, address, *chain_id)
+                pda::balance(&self.program_id, address, *chain_id)
             })
     }
 
@@ -92,9 +92,8 @@ impl KeysIndex for CachedKeysIndex {
     }
 
     fn contract_bump(&self, address: Address) -> (Pubkey, u8) {
-        self.contract_cache.get_or_insert(address, |address| {
-            pda::contract_address(&self.program_id, address)
-        })
+        self.contract_cache
+            .get_or_insert(address, |address| pda::contract(&self.program_id, address))
     }
 
     #[inline]

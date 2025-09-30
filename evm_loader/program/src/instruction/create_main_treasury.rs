@@ -37,8 +37,11 @@ impl<'a> Accounts<'a> {
     }
 }
 
-fn get_program_upgrade_authority(program_id: Pubkey, program_data: &AccountInfo) -> Result<Pubkey> {
-    let expected_program_data_key = bpf_loader_upgradeable::get_program_data_address(&program_id);
+fn get_program_upgrade_authority(
+    program_id: &Pubkey,
+    program_data: &AccountInfo,
+) -> Result<Pubkey> {
+    let expected_program_data_key = bpf_loader_upgradeable::get_program_data_address(program_id);
 
     if *program_data.key != expected_program_data_key {
         return Err(Error::AccountInvalidKey(
@@ -61,7 +64,7 @@ fn get_program_upgrade_authority(program_id: Pubkey, program_data: &AccountInfo)
     Ok(upgrade_authority)
 }
 
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Create Main Treasury");
 
     let accounts = Accounts::from_slice(accounts)?;

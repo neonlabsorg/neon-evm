@@ -1,4 +1,4 @@
-use crate::account::{Account, AccountDispatch};
+use crate::account::AccountRead;
 use crate::platform::{Chain, KeysIndex};
 use crate::{
     error::Result,
@@ -24,10 +24,12 @@ mod spl_token;
 
 #[maybe_async(?Send)]
 pub trait PrecompileDatabase: Database {
+    type AccountRaw: crate::account::AccountRead;
+
     fn is_iterative_mode(&self) -> bool;
 
-    fn program_id(&self) -> Pubkey;
-    fn operator(&self) -> Pubkey;
+    fn program_id(&self) -> &Pubkey;
+    fn operator(&self) -> &Pubkey;
     fn chains(&self) -> impl Iterator<Item = Chain>;
     async fn rent(&self) -> Result<Rent>;
 
@@ -36,18 +38,18 @@ pub trait PrecompileDatabase: Database {
     async fn invoke(&mut self, instruction: Instruction, seeds: &[&[&[u8]]]) -> Result<()>;
     async fn queue_invoke(&mut self, instruction: Instruction, seeds: &[&[&[u8]]]) -> Result<()>;
 
-    async fn external_account(&self, pubkey: Pubkey) -> Result<OwnedAccountInfo>;
+    async fn external_account(&self, pubkey: &Pubkey) -> Result<OwnedAccountInfo>;
     fn return_data(&self) -> Option<(Pubkey, Vec<u8>)>;
 
     async fn solana_user_pubkey(&self, address: Address) -> Result<Option<Pubkey>>;
     async fn burn(&mut self, address: Address, chain_id: u64, amount: U256) -> Result<()>;
 
-    async fn use_real_account<R, F>(&self, pubkey: Pubkey, f: F) -> Result<R>
+    async fn use_raw_account<R, F>(&self, pubkey: &Pubkey, f: F) -> Result<R>
     where
-        F: FnOnce(&Account) -> R;
+        F: FnOnce(Self::AccountRaw) -> R;
 
-    async fn real_lamports(&self, pubkey: Pubkey) -> Result<u64> {
-        self.use_real_account(pubkey, |a| a.lamports()).await
+    async fn raw_lamports(&self, pubkey: &Pubkey) -> Result<u64> {
+        self.use_raw_account(pubkey, |a| a.lamports()).await
     }
 }
 

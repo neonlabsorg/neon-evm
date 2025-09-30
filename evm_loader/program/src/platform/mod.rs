@@ -8,8 +8,8 @@ use solana_program::{
 };
 
 use crate::account::{
-    pda, Account, AccountDispatch, AllocateResult, BalanceAccount, ContractAccount, Root,
-    StorageCell, StorageCellSeed, TAG_EMPTY,
+    pda, AccountRead, AccountWrite, AllocateResult, Balance, Contract, Root, StorageCell,
+    StorageCellSeed, TAG_EMPTY,
 };
 use crate::error::Result;
 use crate::types::{Address, Transaction};
@@ -60,9 +60,12 @@ pub enum InvokeMode {
 }
 
 #[maybe_async(?Send)]
-pub trait Platform<'a>: Sized {
-    fn program_id(&self) -> Pubkey;
-    fn operator(&self) -> Pubkey;
+pub trait Platform {
+    type Account: crate::account::Account;
+    type AccountRaw: crate::account::AccountRead;
+
+    fn program_id(&self) -> &Pubkey;
+    fn operator(&self) -> &Pubkey;
 
     fn chains(&self) -> impl Iterator<Item = Chain>;
     fn default_chain(&self) -> u64;
@@ -86,22 +89,23 @@ pub trait Platform<'a>: Sized {
 
     async fn get_sysvar<T: Sysvar>(&self) -> Result<T>;
     async fn get_sysvar_part<T: Sysvar>(&self, offset: usize, buffer: &mut [u8]) -> Result<()>;
-    async fn get_account(&self, pubkey: Pubkey) -> Result<Account<'a>>;
-    async fn get_real_account(&self, pubkey: Pubkey) -> Result<Account<'a>>;
 
-    async fn assign_account(&mut self, seeds: &[&[u8]]) -> Result<Account<'a>>;
+    async fn get_account(&self, pubkey: &Pubkey) -> Result<Self::Account>;
+    async fn get_raw_account(&self, pubkey: &Pubkey) -> Result<Self::AccountRaw>;
+
+    async fn assign_account(&mut self, seeds: &[&[u8]]) -> Result<Self::Account>;
     async fn assign_account_with_seed(
         &mut self,
-        base: Pubkey,
+        base: &Pubkey,
         seed: &str,
         base_seeds: &[&[u8]],
-    ) -> Result<Account<'a>>;
+    ) -> Result<Self::Account>;
 
     fn snapshot(&mut self);
     fn revert(&mut self);
     fn commit(&mut self);
 
-    async fn get_origin(&mut self, id: impl OriginId) -> Result<BalanceAccount<'a>> {
+    async fn get_origin(&mut self, id: impl OriginId) -> Result<Balance<Self::Account>> {
         let chain_id = id.chain_id().unwrap_or_else(|| self.default_chain());
         self.create_balance(id.address(), chain_id).await
     }
@@ -110,17 +114,17 @@ pub trait Platform<'a>: Sized {
         &self,
         address: Address,
         chain_id: u64,
-    ) -> Result<Option<BalanceAccount<'a>>> {
+    ) -> Result<Option<Balance<Self::Account>>> {
         let program_id = self.program_id();
 
         let pubkey = self.keys().balance(address, chain_id);
 
-        let account = self.get_account(pubkey).await?;
+        let account = self.get_account(&pubkey).await?;
         if account.is_system_owned() {
             return Ok(None);
         }
 
-        let balance = BalanceAccount::from_account(program_id, account)?;
+        let balance = Balance::from_account(program_id, account)?;
         Ok(Some(balance))
     }
 
@@ -128,28 +132,28 @@ pub trait Platform<'a>: Sized {
         &mut self,
         address: Address,
         chain_id: u64,
-    ) -> Result<BalanceAccount<'a>> {
-        let program_id = self.program_id();
+    ) -> Result<Balance<Self::Account>> {
+        let program_id = *self.program_id();
 
         let (_, bump_seed) = self.keys().balance_bump(address, chain_id);
         let seeds: &[&[u8]] = pda::balance_seeds!(address, chain_id, bump_seed);
 
         let mut account = self.assign_account(seeds).await?;
         if account.data_len() == 0 {
-            let required_len = BalanceAccount::required_account_size(false);
+            let required_len = Balance::required_account_size(false);
             account.reallocate(required_len)?;
 
-            BalanceAccount::initialize(account, program_id, address, chain_id)
+            Balance::initialize(account, &program_id, address, chain_id)
         } else {
-            BalanceAccount::from_account(program_id, account)
+            Balance::from_account(&program_id, account)
         }
     }
 
     async fn create_balance_for_solana_user(
         &mut self,
         user_pubkey: Pubkey,
-    ) -> Result<BalanceAccount<'a>> {
-        let program_id = self.program_id();
+    ) -> Result<Balance<Self::Account>> {
+        let program_id = *self.program_id();
 
         let address = Address::from_solana_address(&user_pubkey);
         let chain = self.chains().find(|c| c.name == "sol").unwrap();
@@ -159,12 +163,12 @@ pub trait Platform<'a>: Sized {
 
         let mut account = self.assign_account(seeds).await?;
         if account.data_len() == 0 {
-            let required_len = BalanceAccount::required_account_size(true);
+            let required_len = Balance::required_account_size(true);
             account.reallocate(required_len)?;
 
-            BalanceAccount::initialize_for_solana_user(account, program_id, user_pubkey, chain.id)
+            Balance::initialize_for_solana_user(account, &program_id, user_pubkey, chain.id)
         } else {
-            let mut balance = BalanceAccount::from_account(program_id, account)?;
+            let mut balance = Balance::from_account(&program_id, account)?;
             if balance.solana_address().is_none() {
                 balance.set_solana_address(user_pubkey)?;
             }
@@ -173,17 +177,17 @@ pub trait Platform<'a>: Sized {
         }
     }
 
-    async fn get_contract(&self, address: Address) -> Result<Option<ContractAccount<'a>>> {
+    async fn get_contract(&self, address: Address) -> Result<Option<Contract<Self::Account>>> {
         let program_id = self.program_id();
 
         let pubkey = self.keys().contract(address);
 
-        let account = self.get_account(pubkey).await?;
+        let account = self.get_account(&pubkey).await?;
         if account.is_system_owned() || (account.tag(program_id)? == TAG_EMPTY) {
             return Ok(None);
         }
 
-        let contract = ContractAccount::from_account(program_id, account)?;
+        let contract = Contract::from_account(program_id, account)?;
         Ok(Some(contract))
     }
 
@@ -191,20 +195,20 @@ pub trait Platform<'a>: Sized {
         &mut self,
         address: Address,
         chain_id: u64,
-    ) -> Result<ContractAccount<'a>> {
-        let program_id = self.program_id();
+    ) -> Result<Contract<Self::Account>> {
+        let program_id = *self.program_id();
 
         let (_, bump_seed) = self.keys().contract_bump(address);
         let seeds: &[&[u8]] = pda::contract_seeds!(address, bump_seed);
 
         let mut account = self.assign_account(seeds).await?;
         if account.data_len() == 0 {
-            let required_len = ContractAccount::required_account_size(&[]);
+            let required_len = Contract::required_account_size(&[]);
             account.reallocate(required_len)?;
 
-            ContractAccount::initialize(account, program_id, address, chain_id, &[])
+            Contract::initialize(account, &program_id, address, chain_id, &[])
         } else {
-            let contract = ContractAccount::from_account(program_id, account)?;
+            let contract = Contract::from_account(&program_id, account)?;
             assert_eq!(contract.address(), address);
             assert_eq!(contract.chain_id(), chain_id);
 
@@ -213,15 +217,15 @@ pub trait Platform<'a>: Sized {
     }
 
     async fn allocate_contract(&mut self, address: Address, code: &[u8]) -> Result<AllocateResult> {
-        let program_id = self.program_id();
+        let program_id = *self.program_id();
 
         let (_, bump_seed) = self.keys().contract_bump(address);
         let seeds: &[&[u8]] = pda::contract_seeds!(address, bump_seed);
 
         let mut account = self.assign_account(seeds).await?;
-        assert!((account.data_len() == 0) || account.validate_tag(program_id, TAG_EMPTY).is_ok());
+        assert!((account.data_len() == 0) || account.validate_tag(&program_id, TAG_EMPTY).is_ok());
 
-        let required_size = ContractAccount::required_account_size(code);
+        let required_size = Contract::required_account_size(code);
         if account.data_len() >= required_size {
             return Ok(AllocateResult::Ready);
         }
@@ -242,21 +246,25 @@ pub trait Platform<'a>: Sized {
         address: Address,
         chain_id: u64,
         code: &[u8],
-    ) -> Result<ContractAccount<'a>> {
+    ) -> Result<Contract<Self::Account>> {
         let program_id = self.program_id();
 
         let pubkey = self.keys().contract(address);
 
-        let account = self.get_account(pubkey).await?;
-        ContractAccount::initialize(account, program_id, address, chain_id, code)
+        let account = self.get_account(&pubkey).await?;
+        Contract::initialize(account, program_id, address, chain_id, code)
     }
 
-    async fn get_storage(&self, contract: Address, index: U256) -> Result<Option<StorageCell<'a>>> {
+    async fn get_storage(
+        &self,
+        contract: Address,
+        index: U256,
+    ) -> Result<Option<StorageCell<Self::Account>>> {
         let program_id = self.program_id();
 
         let pubkey = self.keys().storage(contract, index);
 
-        let account = self.get_account(pubkey).await?;
+        let account = self.get_account(&pubkey).await?;
         if account.is_system_owned() {
             return Ok(None);
         }
@@ -265,8 +273,12 @@ pub trait Platform<'a>: Sized {
         Ok(Some(storage_cell))
     }
 
-    async fn create_storage(&mut self, contract: Address, index: U256) -> Result<StorageCell<'a>> {
-        let program_id = self.program_id();
+    async fn create_storage(
+        &mut self,
+        contract: Address,
+        index: U256,
+    ) -> Result<StorageCell<Self::Account>> {
+        let program_id = *self.program_id();
 
         let (base, bump_seed) = self.keys().contract_bump(contract);
         let base_seeds: &[&[u8]] = pda::contract_seeds!(contract, bump_seed);
@@ -274,16 +286,16 @@ pub trait Platform<'a>: Sized {
         let storage_seed = StorageCellSeed::new(index);
 
         let mut account = self
-            .assign_account_with_seed(base, &storage_seed, base_seeds)
+            .assign_account_with_seed(&base, &storage_seed, base_seeds)
             .await?;
 
         if account.data_len() == 0 {
             let required_len = StorageCell::required_account_size(0);
             account.reallocate(required_len)?;
 
-            StorageCell::initialize(account, program_id)
+            StorageCell::initialize(account, &program_id)
         } else {
-            StorageCell::from_account(program_id, account)
+            StorageCell::from_account(&program_id, account)
         }
     }
 }

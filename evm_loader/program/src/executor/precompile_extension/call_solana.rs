@@ -106,7 +106,7 @@ pub async fn call_solana(
             let instruction: Instruction = bincode::deserialize(&input[offset + 32..])?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_auth_address(&program_id, &signer, salt);
+            let (_, bump_seed) = pda::contract_auth(program_id, &signer, salt);
             let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
 
             execute_instruction(state, context, instruction, seeds, None).await
@@ -124,7 +124,7 @@ pub async fn call_solana(
             let instruction: Instruction = bincode::deserialize(&input[offset + 32..])?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_auth_address(&program_id, &signer, salt);
+            let (_, bump_seed) = pda::contract_auth(program_id, &signer, salt);
             let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
 
             execute_instruction(state, context, instruction, seeds, Some(required_lamports)).await
@@ -174,7 +174,7 @@ pub async fn call_solana(
             let instruction = read_instruction(&input[instruction_offset..])?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_auth_address(&program_id, &signer, salt);
+            let (_, bump_seed) = pda::contract_auth(program_id, &signer, salt);
             let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
 
             execute_instruction(state, context, instruction, seeds, None).await
@@ -192,7 +192,7 @@ pub async fn call_solana(
             let instruction = read_instruction(&input[instruction_offset..])?;
 
             let signer = context.caller;
-            let (_, bump_seed) = pda::contract_auth_address(&program_id, &signer, salt);
+            let (_, bump_seed) = pda::contract_auth(program_id, &signer, salt);
             let seeds: &[&[u8]] = pda::contract_auth_seeds!(signer, salt, bump_seed);
 
             execute_instruction(state, context, instruction, seeds, Some(required_lamports)).await
@@ -208,14 +208,14 @@ pub async fn call_solana(
         // "59e4ad63": "getResourceAddress(bytes32)"
         [0x59, 0xe4, 0xad, 0x63] => {
             let salt = read_salt(input)?;
-            let (sol_address, _) = pda::contract_data_address(&program_id, &context.caller, salt);
+            let (sol_address, _) = pda::contract_data(program_id, &context.caller, salt);
             Ok(sol_address.to_bytes().to_vec())
         }
 
         // "cd2d1a3a": "getExtAuthority(bytes32)"
         [0xcd, 0x2d, 0x1a, 0x3a] => {
             let salt = read_salt(input)?;
-            let (sol_address, _) = pda::contract_auth_address(&program_id, &context.caller, salt);
+            let (sol_address, _) = pda::contract_auth(program_id, &context.caller, salt);
             Ok(sol_address.to_bytes().to_vec())
         }
 
@@ -237,7 +237,7 @@ pub async fn call_solana(
 
         // "30aa81c6": "getPayer()"
         [0x30, 0xaa, 0x81, 0xc6] => {
-            let (sol_address, _) = pda::contract_payer_address(&program_id, &context.caller);
+            let (sol_address, _) = pda::contract_payer(program_id, &context.caller);
             Ok(sol_address.to_bytes().to_vec())
         }
 
@@ -253,10 +253,10 @@ pub async fn call_solana(
             let owner = read_pubkey(&input[96..])?;
 
             let signer = context.caller;
-            let (sol_address, bump_seed) = pda::contract_data_address(&program_id, &signer, salt);
+            let (sol_address, bump_seed) = pda::contract_data(program_id, &signer, salt);
             let seeds: &[&[u8]] = pda::contract_data_seeds!(signer, salt, bump_seed);
 
-            let account = state.external_account(sol_address).await?;
+            let account = state.external_account(&sol_address).await?;
 
             super::create_account(state, &account, space, &owner, seeds).await?;
             Ok(sol_address.to_bytes().to_vec())
@@ -339,23 +339,22 @@ pub async fn execute_instruction(
         return Err(Error::InterruptedCall(interrupt));
     }
 
-    let program_id = state.program_id();
     let called_program = instruction.program_id;
 
-    if called_program == program_id {
+    if &called_program == state.program_id() {
         return Err(Error::RecursiveCall);
     }
 
     for meta in &instruction.accounts {
         if meta.pubkey == FAKE_OPERATOR
-            || meta.pubkey == state.operator()
-            || meta.pubkey == program_id
+            || &meta.pubkey == state.operator()
+            || &meta.pubkey == state.program_id()
         {
             return Err(Error::InvalidAccountForCall(meta.pubkey));
         }
     }
 
-    let (payer_pubkey, payer_bump_seed) = pda::contract_payer_address(&program_id, &context.caller);
+    let (payer_pubkey, payer_bump_seed) = pda::contract_payer(state.program_id(), &context.caller);
     let required_payer = instruction
         .accounts
         .iter()
@@ -367,7 +366,7 @@ pub async fn execute_instruction(
         // transfer lamports to the payer account
         let lamports = match required_lamports {
             Some(lamports) => lamports,
-            None => state.real_lamports(state.operator()).await?,
+            None => state.raw_lamports(state.operator()).await?,
         };
 
         let transfer = system_instruction::transfer(&FAKE_OPERATOR, &payer_pubkey, lamports);
@@ -378,7 +377,7 @@ pub async fn execute_instruction(
         state.invoke(instruction, seeds).await?;
 
         // transfer lamports from the payer account
-        let lamports = state.real_lamports(payer_pubkey).await?;
+        let lamports = state.raw_lamports(&payer_pubkey).await?;
         if lamports > 0 {
             let transfer = system_instruction::transfer(&payer_pubkey, &FAKE_OPERATOR, lamports);
             state.invoke(transfer, &[payer_seeds]).await?;

@@ -1,6 +1,6 @@
 use crate::account::{
-    AccountDispatch, Holder, Operator, OperatorBalance, StateAccount, StateFinalizedAccount,
-    Treasury, TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE,
+    AccountRead, Holder, Operator, OperatorBalance, StateAccount, StateFinalizedAccount, Treasury,
+    TAG_HOLDER, TAG_SCHEDULED_STATE_CANCELLED, TAG_SCHEDULED_STATE_FINALIZED, TAG_STATE,
     TAG_STATE_FINALIZED,
 };
 use crate::error::{Error, Result};
@@ -11,7 +11,7 @@ use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 pub fn validate_holder<'a>(
-    program_id: Pubkey,
+    program_id: &Pubkey,
     info: AccountInfo<'a>,
     operator: &Operator,
     rlp: &EncodedTransaction,
@@ -36,7 +36,7 @@ pub fn validate_holder<'a>(
     }
 }
 
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Begin or Continue Transaction from Instruction");
 
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);

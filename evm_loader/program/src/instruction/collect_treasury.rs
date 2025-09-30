@@ -8,7 +8,7 @@ use solana_program::{
     rent::Rent, system_instruction, sysvar::Sysvar,
 };
 
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> ProgramResult {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> ProgramResult {
     log_msg!("Instruction: Collect treasury");
 
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);

@@ -13,7 +13,7 @@ pub fn execute(
     origin: Address,
     allocator: StateAllocator,
 ) -> Result<()> {
-    validate_transaction(trx, origin, &solana, None)?;
+    validate_transaction(trx, origin, &solana)?;
     solana.get_origin((origin, trx))?.increment_nonce()?;
 
     let mut backend_data = ExecutorStateData::new_in(allocator);
@@ -51,7 +51,7 @@ pub fn execute_with_solana_call(
     origin: Address,
     allocator: StateAllocator,
 ) -> Result<()> {
-    validate_transaction(trx, origin, &solana, None)?;
+    validate_transaction(trx, origin, &solana)?;
     solana.get_origin((origin, trx))?.increment_nonce()?;
 
     let mut backend_data = ExecutorStateData::new_in(allocator);

@@ -4,13 +4,11 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use async_trait::async_trait;
 use evm_loader::account::{
-    AccountDispatch, ContainerAccount, ReferenceAccount, SharedAccount, TAG_CONTAINER,
-    TAG_REFERENCE,
+    AbstractAccount, AccountRead, Container, Reference, TAG_CONTAINER, TAG_REFERENCE,
 };
 use evm_loader::error::{Error, Result};
 use evm_loader::platform::{DefaultKeysIndex, InvokeMode, KeysIndex, FAKE_OPERATOR};
 use evm_loader::{
-    account::Account,
     platform::{Chain as ProgramChain, Platform},
     types::Address,
 };
@@ -26,6 +24,7 @@ use solana_sdk::{instruction::Instruction, pubkey::Pubkey, sysvar::Sysvar};
 use crate::account_data::AccountData;
 use crate::commands::emulate::SolanaAccount;
 use crate::commands::get_config::ChainInfo;
+use crate::emulator_account::SharedAccount;
 use crate::rpc::{CachedRpc, Rpc};
 use crate::solana_simulator::{instruction_error_to_string, SolanaSimulator};
 use crate::sysvar::get_sysvar;
@@ -362,13 +361,16 @@ impl<R: Rpc> EmulatorPlatform<R> {
 }
 
 #[async_trait(?Send)]
-impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
-    fn program_id(&self) -> Pubkey {
-        self.program_id
+impl<R: Rpc> Platform for EmulatorPlatform<R> {
+    type Account = AbstractAccount<SharedAccount>;
+    type AccountRaw = SharedAccount;
+
+    fn program_id(&self) -> &Pubkey {
+        &self.program_id
     }
 
-    fn operator(&self) -> Pubkey {
-        FAKE_OPERATOR
+    fn operator(&self) -> &Pubkey {
+        &FAKE_OPERATOR
     }
 
     fn chains(&self) -> impl Iterator<Item = ProgramChain> {
@@ -542,49 +544,52 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
         }
     }
 
-    async fn get_account(&self, pubkey: Pubkey) -> Result<Account<'a>> {
-        let account = match self.rpc.get_account(&pubkey).await {
-            Ok(Some(account)) => SharedAccount::new(pubkey, &account),
-            Ok(None) => return self.get_real_account(pubkey).await,
+    async fn get_account(&self, pubkey: &Pubkey) -> Result<Self::Account> {
+        let account = match self.rpc.get_account(pubkey).await {
+            Ok(Some(account)) => SharedAccount::new(*pubkey, &account),
+            Ok(None) => {
+                let empty_account_from_stack = self.account_from_stack(*pubkey).await?;
+                return Ok(empty_account_from_stack.into());
+            }
             Err(client_error) => {
                 let error = NeonError::ClientError(client_error);
                 return Err(Error::Fatal(Box::new(error)));
             }
         };
 
-        if account.tag_is(self.program_id, TAG_CONTAINER) {
-            let container_account = self.account_from_stack(pubkey).await?.into();
-            let container = ContainerAccount::from_account(self.program_id, container_account)?;
+        if account.tag_is(&self.program_id, TAG_CONTAINER) {
+            let container_account = self.account_from_stack(*pubkey).await?;
+            let container = Container::from_account(&self.program_id, container_account)?;
 
             let account_in_container = container.account(pubkey)?;
             return Ok(account_in_container.into());
         }
 
-        if account.tag_is(self.program_id, TAG_REFERENCE) {
-            let reference_account = account.into();
-            let reference = ReferenceAccount::from_account(self.program_id, reference_account)?;
+        if account.tag_is(&self.program_id, TAG_REFERENCE) {
+            let reference = Reference::from_account(&self.program_id, account)?;
 
-            let container_account = self.account_from_stack(reference.container()).await?.into();
-            let container = ContainerAccount::from_account(self.program_id, container_account)?;
+            let container_account = self.account_from_stack(reference.container()).await?;
+            let container = Container::from_account(&self.program_id, container_account)?;
 
             let account_in_container = container.account(pubkey)?;
             return Ok(account_in_container.into());
         }
 
-        self.get_real_account(pubkey).await
-    }
-
-    async fn get_real_account(&self, pubkey: Pubkey) -> Result<Account<'a>> {
-        let account = self.account_from_stack(pubkey).await?;
+        let account = self.account_from_stack(*pubkey).await?;
         Ok(account.into())
     }
 
-    async fn assign_account(&mut self, seeds: &[&[u8]]) -> Result<Account<'a>> {
+    async fn get_raw_account(&self, pubkey: &Pubkey) -> Result<Self::AccountRaw> {
+        let account = self.account_from_stack(*pubkey).await?;
+        Ok(account)
+    }
+
+    async fn assign_account(&mut self, seeds: &[&[u8]]) -> Result<Self::Account> {
         let pubkey = Pubkey::create_program_address(seeds, &self.program_id)?;
-        let account = Platform::get_account(self, pubkey).await?;
+        let account = Platform::get_account(self, &pubkey).await?;
 
         if account.is_system_owned() {
-            let account = account.as_shared_account();
+            let account = account.as_raw_account();
 
             account.assign(self.program_id);
             account.mark_modified();
@@ -595,18 +600,18 @@ impl<'a, R: Rpc> Platform<'a> for EmulatorPlatform<R> {
 
     async fn assign_account_with_seed(
         &mut self,
-        base: Pubkey,
+        base: &Pubkey,
         seed: &str,
         base_seeds: &[&[u8]],
-    ) -> Result<Account<'a>> {
+    ) -> Result<Self::Account> {
         let calculated_base = Pubkey::create_program_address(base_seeds, &self.program_id)?;
-        assert_eq!(calculated_base, base); // `base` is passed as a parameter to avoid calculation on the program side. Verify it here.
+        assert_eq!(&calculated_base, base); // `base` is passed as a parameter to avoid calculation on the program side. Verify it here.
 
-        let pubkey = Pubkey::create_with_seed(&base, seed, &self.program_id)?;
-        let account = Platform::get_account(self, pubkey).await?;
+        let pubkey = Pubkey::create_with_seed(base, seed, &self.program_id)?;
+        let account = Platform::get_account(self, &pubkey).await?;
 
         if account.is_system_owned() {
-            let account = account.as_shared_account();
+            let account = account.as_raw_account();
 
             account.assign(self.program_id);
             account.mark_modified();

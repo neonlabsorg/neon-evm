@@ -1,4 +1,4 @@
-use crate::account::{Account, AllocateResult};
+use crate::account::AllocateResult;
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
 use crate::platform::{Chain, KeysIndex, Platform, FAKE_OPERATOR};
@@ -18,20 +18,20 @@ use super::{
     ExecutorStateData, IterativeActions, SyncedExecutorState,
 };
 
-pub struct ExecutorState<'r, 'a, A, P>
+pub struct ExecutorState<'r, A, P>
 where
     A: Allocator,
-    P: Platform<'a>,
+    P: Platform,
 {
-    state: SyncedExecutorState<'r, 'a, A, P>,
+    state: SyncedExecutorState<'r, A, P>,
     touched_accounts: TouchedAccounts,
 }
 
 #[maybe_async]
-impl<'r, 'a, A, P> ExecutorState<'r, 'a, A, P>
+impl<'r, A, P> ExecutorState<'r, A, P>
 where
     A: Allocator + Copy,
-    P: Platform<'a>,
+    P: Platform,
 {
     #[must_use]
     pub fn new_in(platform: &'r mut P, data: &'r mut ExecutorStateData<A>, allocator: A) -> Self {
@@ -82,10 +82,10 @@ where
 }
 
 #[maybe_async(?Send)]
-impl<'a, A, P> Database for ExecutorState<'_, 'a, A, P>
+impl<A, P> Database for ExecutorState<'_, A, P>
 where
     A: Allocator + Copy,
-    P: Platform<'a>,
+    P: Platform,
 {
     fn default_chain_id(&self) -> u64 {
         self.state.default_chain_id()
@@ -295,16 +295,18 @@ where
 }
 
 #[maybe_async(?Send)]
-impl<'a, A, P> PrecompileDatabase for ExecutorState<'_, 'a, A, P>
+impl<A, P> PrecompileDatabase for ExecutorState<'_, A, P>
 where
     A: Allocator + Copy,
-    P: Platform<'a>,
+    P: Platform,
 {
-    fn program_id(&self) -> Pubkey {
+    type AccountRaw = P::AccountRaw;
+
+    fn program_id(&self) -> &Pubkey {
         self.state.program_id()
     }
 
-    fn operator(&self) -> Pubkey {
+    fn operator(&self) -> &Pubkey {
         self.state.operator()
     }
 
@@ -316,13 +318,13 @@ where
         self.state.keys()
     }
 
-    async fn use_real_account<R, F>(&self, pubkey: Pubkey, f: F) -> Result<R>
+    async fn use_raw_account<R, F>(&self, pubkey: &Pubkey, f: F) -> Result<R>
     where
-        F: FnOnce(&Account) -> R,
+        F: FnOnce(Self::AccountRaw) -> R,
     {
         self.touched_accounts.touch_solana(pubkey);
 
-        self.state.use_real_account(pubkey, f).await
+        self.state.use_raw_account(pubkey, f).await
     }
 
     async fn rent(&self) -> Result<Rent> {
@@ -351,11 +353,11 @@ where
         Ok(())
     }
 
-    async fn external_account(&self, pubkey: Pubkey) -> Result<OwnedAccountInfo> {
+    async fn external_account(&self, pubkey: &Pubkey) -> Result<OwnedAccountInfo> {
         self.touched_accounts.touch_solana(pubkey);
 
         let metas = self.actions().collect_external_accounts();
-        if !metas.iter().any(|m| (m.pubkey == pubkey) && m.is_writable) {
+        if !metas.iter().any(|m| (&m.pubkey == pubkey) && m.is_writable) {
             let account = self.state.external_account(pubkey).await?;
             return Ok(account);
         }
@@ -363,14 +365,14 @@ where
         let mut accounts = VectorMap::<Pubkey, OwnedAccountInfo>::new();
 
         for m in metas {
-            self.touched_accounts.touch_solana(m.pubkey);
+            self.touched_accounts.touch_solana(&m.pubkey);
 
             let entry = accounts.entry(m.pubkey);
             if let vector_map::Entry::Vacant(entry) = entry {
                 let account = if m.pubkey == FAKE_OPERATOR {
                     OwnedAccountInfo::fake_operator()
                 } else {
-                    self.state.external_account(m.pubkey).await?
+                    self.state.external_account(&m.pubkey).await?
                 };
                 entry.insert(account);
             }
@@ -380,7 +382,7 @@ where
         self.actions()
             .apply_to_external_accounts(&rent, &mut accounts)?;
 
-        let account = accounts.into_single_value(&pubkey).unwrap();
+        let account = accounts.into_single_value(pubkey).unwrap();
         Ok(account)
     }
 

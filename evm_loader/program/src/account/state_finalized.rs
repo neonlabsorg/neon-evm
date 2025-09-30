@@ -1,6 +1,8 @@
 use std::cell::{Ref, RefMut};
 
-use super::{AccountDispatch, AccountHeader, Operator, StateAccount, TAG_STATE_FINALIZED};
+use super::{
+    AccountHeader, AccountRead, AccountWrite, Operator, StateAccount, TAG_STATE_FINALIZED,
+};
 use crate::{
     error::{Error, Result},
     types::EncodedTransaction,
@@ -19,17 +21,17 @@ impl AccountHeader for Header {
     const VERSION: u8 = 0;
 }
 
-pub struct StateFinalizedAccount<'sol> {
-    account: AccountInfo<'sol>,
+pub struct StateFinalizedAccount<'a> {
+    account: AccountInfo<'a>,
 }
 
-impl<'sol> StateFinalizedAccount<'sol> {
+impl<'a> StateFinalizedAccount<'a> {
     #[must_use]
-    pub fn into_account(self) -> AccountInfo<'sol> {
+    pub fn into_account(self) -> AccountInfo<'a> {
         self.account
     }
 
-    pub fn convert_from_state(state: StateAccount<'sol>) -> Result<Self> {
+    pub fn convert_from_state(state: StateAccount<'a>) -> Result<Self> {
         // Ensure that all gas is used or returned
         // Gas will disappear if this is false
         assert_eq!(state.root().gas_available(), U256::ZERO);
@@ -39,21 +41,18 @@ impl<'sol> StateFinalizedAccount<'sol> {
 
         let mut account = state.into_account();
 
-        account.init_tag(TAG_STATE_FINALIZED, Header::VERSION)?;
-        {
-            let mut header = account.header_mut_uninit();
-            header.write(Header { owner, hash });
-        }
+        account.write_tag(TAG_STATE_FINALIZED, Header::VERSION)?;
+        account.write_header(Header { owner, hash });
 
         Ok(Self { account })
     }
 
-    pub fn from_account_info(program_id: Pubkey, account_info: &AccountInfo<'sol>) -> Result<Self> {
+    pub fn from_account_info(program_id: &Pubkey, account_info: &AccountInfo<'a>) -> Result<Self> {
         let account = account_info.clone();
         Self::from_account(program_id, account)
     }
 
-    pub fn from_account(program_id: Pubkey, account: AccountInfo<'sol>) -> Result<Self> {
+    pub fn from_account(program_id: &Pubkey, account: AccountInfo<'a>) -> Result<Self> {
         account.validate_tag(program_id, TAG_STATE_FINALIZED)?;
         Ok(Self { account })
     }

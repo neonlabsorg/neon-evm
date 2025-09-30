@@ -1,5 +1,5 @@
 use crate::{
-    account::{BalanceAccount, Operator, TransactionTree, Treasury},
+    account::{Operator, TransactionTree, Treasury},
     error::Result,
     platform::{Platform, Solana},
 };
@@ -7,7 +7,7 @@ use arrayref::array_ref;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 /// Destroy the Scheduled Transaction.
-pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Destroy Transaction Tree Account");
 
     let treasury_index = u32::from_le_bytes(*array_ref![instruction, 0, 4]);
@@ -18,7 +18,7 @@ pub fn process(program_id: Pubkey, accounts: &[AccountInfo], instruction: &[u8])
     let mut tree = TransactionTree::from_account_info(program_id, &accounts[3])?;
 
     let mut solana = Solana::new(accounts, operator.clone(), None)?;
-    let mut payer: BalanceAccount = solana.create_balance(tree.payer(), tree.chain_id())?;
+    let mut payer = solana.create_balance(tree.payer(), tree.chain_id())?;
 
     tree.withdraw(&mut payer)?;
     tree.destroy(&operator, &treasury)?;

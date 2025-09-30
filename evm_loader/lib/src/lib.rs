@@ -15,6 +15,7 @@ pub mod build_info;
 pub mod build_info_common;
 pub mod commands;
 pub mod config;
+pub mod emulator_account;
 pub mod emulator_platform;
 pub mod errors;
 pub mod rpc;

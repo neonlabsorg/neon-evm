@@ -1,6 +1,6 @@
 use std::u64;
 
-use crate::account::{AllocateResult, BalanceAccount, Root, StateAccount};
+use crate::account::{AllocateResult, Balance, Root, StateAccount};
 
 use crate::config::EVM_STEPS_MIN;
 use crate::debug::log_data;
@@ -98,7 +98,7 @@ pub fn start_iterative(mut solana: Solana, mut state: StateAccount) -> Result<()
     let tx_hash = state.transaction_hash();
     let mut root = state.root_mut();
 
-    let mut origin: BalanceAccount = solana.get_origin(&*root)?;
+    let mut origin = solana.get_origin(&*root)?;
     origin.increment_nonce()?;
 
     // All state changes are happened in the `StateAccount` and `Root` constructors

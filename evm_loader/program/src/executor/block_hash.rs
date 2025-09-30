@@ -8,7 +8,7 @@ use crate::error::Result;
 use crate::platform::Platform;
 
 #[maybe_async(?Send)]
-trait SlotHashProvider<'a> {
+trait SlotHashProvider {
     async fn fill(&self, offset: usize, buffer: &mut [u8]) -> Result<()>;
 
     async fn get<const L: usize>(&self, offset: usize) -> Result<[u8; L]> {
@@ -24,14 +24,14 @@ trait SlotHashProvider<'a> {
 }
 
 #[maybe_async(?Send)]
-impl<'a, T: Platform<'a>> SlotHashProvider<'a> for T {
+impl<T: Platform> SlotHashProvider for T {
     async fn fill(&self, offset: usize, buffer: &mut [u8]) -> Result<()> {
         self.get_sysvar_part::<SlotHashes>(offset, buffer).await
     }
 }
 
 #[maybe_async(?Send)]
-pub async fn find_slot_hash<'a>(value: Slot, platform: &impl Platform<'a>) -> Result<[u8; 32]> {
+pub async fn find_slot_hash(value: Slot, platform: &impl Platform) -> Result<[u8; 32]> {
     struct SmallHashBuf {
         data: Vec<u8>,
         offset: usize,

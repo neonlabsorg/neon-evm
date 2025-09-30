@@ -229,6 +229,9 @@ fn process_instruction(
         EvmInstruction::ContainerAssemble => {
             instruction::container_assemble::process(program_id, accounts, instruction)
         }
+        EvmInstruction::ContainerDisassemble => {
+            instruction::container_disassemble::process(program_id, accounts, instruction)
+        }
     }
     .inspect_err(|e| {
         e.log_data();

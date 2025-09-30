@@ -2,7 +2,7 @@
 
 [package]
 name = "evm-loader"
-version = "1.19.0-dev"
+version = "1.21.0-dev"
 description = "Neon EVM loader"
 authors = ["NeonLabs Maintainers <maintainers@neonlabs.org>"]
 edition = "2021"
@@ -48,7 +48,7 @@ solana-system-interface = { workspace = true, features = ["bincode"] }
 solana-compute-budget-interface = {workspace = true, features = ["borsh"]}
 spl-token.workspace = true
 spl-associated-token-account.workspace = true
-mpl-token-metadata = { version = "5.1.0", default-features = false }
+mpl-token-metadata = { version = "5.1.1", default-features = false }
 thiserror = "1.0"
 arrayref = "0.3.8"
 hex = "0.4.3"

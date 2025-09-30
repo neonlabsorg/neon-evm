@@ -242,6 +242,13 @@ pub trait AccountDispatch<'a> {
         RefMut::map(self.data_mut(), |data| &mut data[index])
     }
 
+    /// # Safety
+    /// The caller must ensure that the account is owned by `NeonEVM` and it's data is valid
+    unsafe fn tag_unchecked(&self) -> u8 {
+        let data = self.data();
+        data[TAG_OFFSET]
+    }
+
     fn tag(&self, program_id: Pubkey) -> Result<u8> {
         if self.owner() != program_id {
             return Err(Error::AccountInvalidOwner(self.pubkey(), program_id));

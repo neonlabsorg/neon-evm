@@ -312,8 +312,19 @@ impl Tracer for CallTracer {
         self.call_stack = vec![CallFrame {
             gas: tx.gas_limit.map(to_web3_u256).unwrap_or_default(),
             gas_used: tx.actual_gas_used.map(to_web3_u256).unwrap_or_default(),
+            from: tx.from.address(),
+            to: tx.to,
+            input: tx.data.clone().unwrap_or_default().into(),
+            value: tx
+                .value
+                .map(|value| U256::from_big_endian(&value.to_be_bytes())),
             ..CallFrame::default()
         }];
         self.depth = 0;
+    }
+
+    fn cancel(&mut self, tx: &TxParams) {
+        self.clear(tx);
+        self.call_stack[0].process_output(ExitStatus::Cancel);
     }
 }

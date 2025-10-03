@@ -74,4 +74,8 @@ impl Tracer for OpenEthereumTracer {
         self.output = None;
         self.state_diff_tracer = StateDiffTracer::new(tx);
     }
+
+    fn cancel(&mut self, tx: &TxParams) {
+        self.clear(tx);
+    }
 }

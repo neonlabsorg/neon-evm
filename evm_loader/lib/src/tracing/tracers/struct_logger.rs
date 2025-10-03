@@ -220,6 +220,11 @@ impl Tracer for StructLogger {
         self.storage = BTreeMap::new();
         self.exit_status = None;
     }
+
+    fn cancel(&mut self, tx: &TxParams) {
+        self.clear(tx);
+        self.exit_status = Some(ExitStatus::Cancel);
+    }
 }
 
 #[cfg(test)]

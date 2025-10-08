@@ -151,6 +151,7 @@ type StateAccountCoreApiView = (
     Address,
     Vec<Pubkey>,
     u64,
+    U256,
     (U256, U256),
 );
 
@@ -749,6 +750,7 @@ impl<'a> StateAccount<'a> {
                 .collect();
 
             let steps = read_unaligned(addr_of!((*data_ptr).steps_executed));
+            let gas_used = read_unaligned(addr_of!((*data_ptr).gas_used));
 
             // Reading the Cache from ExecutorStateData
             let executor_state_ptr = account_data_ptr
@@ -765,6 +767,7 @@ impl<'a> StateAccount<'a> {
                 origin,
                 accounts,
                 steps,
+                gas_used,
                 (block_params.timestamp, block_params.number),
             ))
         }

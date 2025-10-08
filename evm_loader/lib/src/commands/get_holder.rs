@@ -62,6 +62,7 @@ pub struct GetHolderResponse {
     pub accounts: Option<Vec<Pubkey>>,
 
     pub steps_executed: u64,
+    pub gas_used: U256,
 }
 
 impl GetHolderResponse {
@@ -146,6 +147,7 @@ pub fn read_holder(program_id: &Pubkey, info: AccountInfo) -> NeonResult<GetHold
                 block_params: block_params.map(|p| (p.timestamp, p.number)),
                 accounts: Some(accounts),
                 steps_executed: plain.steps_executed,
+                gas_used: plain.gas_used,
             })
         }
         _ => Err(ProgramError::InvalidAccountData.into()),

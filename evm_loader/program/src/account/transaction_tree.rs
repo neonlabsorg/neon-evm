@@ -675,6 +675,10 @@ impl<'a> TransactionTree<'a> {
         Ref::map(nodes, |nodes| &nodes[index as usize])
     }
 
+    pub fn root_trx_hash(&self) -> [u8; 32] {
+        self.node(0).transaction_hash
+    }
+
     #[must_use]
     pub fn node_mut(&mut self, index: u16) -> RefMut<Node> {
         let nodes = self.nodes_mut();

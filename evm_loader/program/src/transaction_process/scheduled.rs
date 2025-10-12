@@ -33,6 +33,7 @@ pub fn skip(
     tree.skip_transaction(tx)?;
 
     log_data(&[b"HASH", tx.hash()]);
+    log_data(&[b"ROOT_HASH", &tree.root_trx_hash()]);
     solana.log_miner_address(tree.payer());
 
     solana.update_accounts_lamports()?;
@@ -63,6 +64,7 @@ pub fn start<'a>(
 
     solana.log_miner_address(root.origin());
     log_data(&[b"HASH", tx_hash.as_ref()]);
+    log_data(&[b"ROOT_HASH", &tree.root_trx_hash()]);
 
     let mut origin: BalanceAccount = solana.get_origin(&*root)?;
     if origin.nonce() == tx.nonce() {

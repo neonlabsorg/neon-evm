@@ -49,5 +49,5 @@ function createAccount() {
 NUM_ACCOUNTS=${1}
 createAccount 1
 for i in $(seq 2 ${NUM_ACCOUNTS}); do
-  createAccount ${i}
+  createAccount ${i} &
 done

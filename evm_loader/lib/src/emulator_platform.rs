@@ -207,7 +207,10 @@ impl<R: Rpc> EmulatorPlatform<R> {
             .collect()
     }
 
-    pub fn provide_account_data(&self, level: AccountInfoLevel) -> NeonResult<Vec<(Pubkey, SerializedAccount)>> {
+    pub fn provide_account_data(
+        &self,
+        level: AccountInfoLevel,
+    ) -> NeonResult<Vec<(Pubkey, SerializedAccount)>> {
         let mut result = Vec::new();
 
         for account in &self.used_accounts() {

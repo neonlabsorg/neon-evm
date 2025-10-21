@@ -11,7 +11,7 @@ use crate::tracing::{AccountOverride, BlockOverrides, TraceCallConfig, TraceConf
 use crate::types::{AccountInfoLevel, EmulateFromHolderApiRequest, EmulateRequest};
 use crate::types::{FromAddress, TracerDb};
 
-use crate::{errors::NeonError, NeonResult, types::SerializedAccount};
+use crate::{errors::NeonError, types::SerializedAccount, NeonResult};
 use ethnum::U256;
 use evm_loader::error::build_revert_message;
 use evm_loader::evm::database::Database;

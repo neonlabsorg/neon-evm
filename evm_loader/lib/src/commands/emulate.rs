@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use crate::account_data::AccountData;
 use crate::commands::get_config::BuildConfigSimulator;
 use crate::config::DbConfig;
 use crate::emulator_platform::EmulatorPlatform;
@@ -12,7 +11,7 @@ use crate::tracing::{AccountOverride, BlockOverrides, TraceCallConfig, TraceConf
 use crate::types::{AccountInfoLevel, EmulateFromHolderApiRequest, EmulateRequest};
 use crate::types::{FromAddress, TracerDb};
 
-use crate::{errors::NeonError, NeonResult};
+use crate::{errors::NeonError, types::SerializedAccount, NeonResult};
 use ethnum::U256;
 use evm_loader::error::build_revert_message;
 use evm_loader::evm::database::Database;
@@ -61,7 +60,7 @@ pub struct EmulateResponse {
     pub realloc_iterations: u64,
     pub solana_accounts: Vec<SolanaAccount>,
     pub logs: Vec<Log>,
-    pub accounts_data: Option<Vec<AccountData>>,
+    pub accounts_data: Option<Vec<(Pubkey, SerializedAccount)>>,
 }
 
 #[derive(Clone)]

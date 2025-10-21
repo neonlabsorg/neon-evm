@@ -21,7 +21,6 @@ use solana_sdk::sysvar::SysvarId;
 use solana_sdk::transaction_context::TransactionReturnData;
 use solana_sdk::{instruction::Instruction, pubkey::Pubkey, sysvar::Sysvar};
 
-use crate::account_data::AccountData;
 use crate::commands::emulate::SolanaAccount;
 use crate::commands::get_config::ChainInfo;
 use crate::emulator_account::SharedAccount;
@@ -29,7 +28,7 @@ use crate::rpc::{CachedRpc, Rpc};
 use crate::solana_simulator::{instruction_error_to_string, SolanaSimulator};
 use crate::sysvar::get_sysvar;
 use crate::tracing::{AccountOverride, BlockOverrides};
-use crate::types::AccountInfoLevel;
+use crate::types::{AccountInfoLevel, SerializedAccount};
 use crate::{NeonError, NeonResult};
 
 #[must_use]
@@ -208,7 +207,10 @@ impl<R: Rpc> EmulatorPlatform<R> {
             .collect()
     }
 
-    pub fn provide_account_data(&self, level: AccountInfoLevel) -> NeonResult<Vec<AccountData>> {
+    pub fn provide_account_data(
+        &self,
+        level: AccountInfoLevel,
+    ) -> NeonResult<Vec<(Pubkey, SerializedAccount)>> {
         let mut result = Vec::new();
 
         for account in &self.used_accounts() {
@@ -217,8 +219,7 @@ impl<R: Rpc> EmulatorPlatform<R> {
             }
 
             let sdk_account: solana_sdk::account::Account = account.into();
-            let account_data = AccountData::new_from_account(account.pubkey(), &sdk_account);
-            result.push(account_data);
+            result.push((account.pubkey(), SerializedAccount::from(sdk_account)));
         }
 
         Ok(result)

@@ -1,40 +1,77 @@
+use crate::account::AccountRead;
 use crate::error::{Error, Result};
+use crate::executor::external_programs::spl_token::SPL_TOKEN_ID;
+use pinocchio_token_interface::state::{load, load_unchecked, Initializable, Transmutable};
 use solana_program::account_info::AccountInfo;
-use solana_program::program_pack::{IsInitialized, Pack};
-use std::ops::Deref;
+use solana_program::pubkey::Pubkey;
 
-pub struct Account<'a, T: Pack + IsInitialized> {
+use std::cell::Ref;
+use std::marker::PhantomData;
+
+pub struct Account<'a, T: Initializable + Transmutable> {
     pub info: AccountInfo<'a>,
-    data: T,
+    phantom: PhantomData<&'a T>,
 }
 
-impl<'a, T: Pack + IsInitialized> Account<'a, T> {
+impl<'a, T: Initializable + Transmutable> Account<'a, T> {
     pub fn from_account_info(info: &AccountInfo<'a>) -> Result<Self> {
-        if !spl_token::check_id(info.owner) {
-            return Err(Error::AccountInvalidOwner(*info.key, spl_token::ID));
+        if info.owner() != SPL_TOKEN_ID {
+            return Err(Error::AccountInvalidOwner(info.pubkey(), SPL_TOKEN_ID));
         }
 
         let data = info.try_borrow_data()?;
-        let data = T::unpack(&data)?;
+        let _ = unsafe { load::<T>(&data) }?;
 
         Ok(Self {
             info: info.clone(),
-            data,
+            phantom: PhantomData,
         })
     }
 
-    pub fn into_data(self) -> T {
-        self.data
+    #[must_use]
+    pub fn pubkey(&self) -> Pubkey {
+        *self.info.key
+    }
+
+    #[must_use]
+    pub fn load(&self) -> Ref<T> {
+        let data = self.info.data();
+        Ref::map(data, |d| unsafe { load_unchecked(d).unwrap() })
     }
 }
 
-impl<T: Pack + IsInitialized> Deref for Account<'_, T> {
-    type Target = T;
+pub type State<'a> = Account<'a, pinocchio_token_interface::state::account::Account>;
+pub type Mint<'a> = Account<'a, pinocchio_token_interface::state::mint::Mint>;
 
-    fn deref(&self) -> &Self::Target {
-        &self.data
+impl State<'_> {
+    #[must_use]
+    pub fn mint(&self) -> Pubkey {
+        let mint = self.load().mint;
+        Pubkey::new_from_array(mint)
+    }
+
+    #[must_use]
+    pub fn amount(&self) -> u64 {
+        self.load().amount()
+    }
+
+    #[must_use]
+    pub fn delegated_amount(&self) -> u64 {
+        self.load().delegated_amount()
+    }
+
+    #[must_use]
+    pub fn delegate(&self) -> Option<&Pubkey> {
+        #[allow(clippy::transmute_ptr_to_ptr)]
+        self.load()
+            .delegate()
+            .map(|d| unsafe { std::mem::transmute(d) })
     }
 }
 
-pub type State<'a> = Account<'a, spl_token::state::Account>;
-pub type Mint<'a> = Account<'a, spl_token::state::Mint>;
+impl Mint<'_> {
+    #[must_use]
+    pub fn decimals(&self) -> u8 {
+        self.load().decimals
+    }
+}

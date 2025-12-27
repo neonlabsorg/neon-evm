@@ -1,38 +1,40 @@
 use crate::{
-    account::{program::System, program::Token, MainTreasury, Operator},
+    account::{MainTreasury, Operator},
     config::TREASURY_POOL_SEED,
     error::{Error, Result},
+    executor::external_programs::{
+        spl_token::{self, SPL_TOKEN_ID},
+        system, Invokable,
+    },
+    platform::Solana,
+    types::seeds::Seeds,
 };
+use pinocchio_token_interface::{native_mint, state::Transmutable};
 use solana_program::{
     account_info::AccountInfo,
     bpf_loader_upgradeable::{self, UpgradeableLoaderState},
-    program_pack::Pack,
     pubkey::Pubkey,
-    rent::Rent,
-    system_program,
-    sysvar::Sysvar,
 };
 
-struct Accounts<'a> {
-    main_treasury: AccountInfo<'a>,
-    program_data: AccountInfo<'a>,
-    program_upgrade_auth: AccountInfo<'a>,
-    token_program: Token<'a>,
-    system_program: System<'a>,
-    mint: AccountInfo<'a>,
+struct Accounts<'r, 'a> {
+    main_treasury: &'r AccountInfo<'a>,
+    program_data: &'r AccountInfo<'a>,
+    authority: &'r AccountInfo<'a>,
     payer: Operator<'a>,
+    all: &'r [AccountInfo<'a>],
 }
 
-impl<'a> Accounts<'a> {
-    pub fn from_slice(accounts: &[AccountInfo<'a>]) -> Result<Accounts<'a>> {
+impl<'r, 'a> Accounts<'r, 'a> {
+    pub fn from_slice(accounts: &'r [AccountInfo<'a>]) -> Result<Accounts<'r, 'a>> {
         Ok(Accounts {
-            main_treasury: accounts[0].clone(),
-            program_data: accounts[1].clone(),
-            program_upgrade_auth: accounts[2].clone(),
-            token_program: Token::from_account(&accounts[3])?,
-            system_program: System::from_account_info(&accounts[4])?,
-            mint: accounts[5].clone(),
+            main_treasury: &accounts[0],
+            program_data: &accounts[1],
+            authority: &accounts[2],
+            // token_program: accounts[3],
+            // system_program: accounts[4],
+            // native_mint: accounts[5],
             payer: unsafe { Operator::from_account_not_whitelisted(&accounts[6]) }?,
+            all: accounts,
         })
     }
 }
@@ -41,19 +43,14 @@ fn get_program_upgrade_authority(
     program_id: &Pubkey,
     program_data: &AccountInfo,
 ) -> Result<Pubkey> {
-    let expected_program_data_key = bpf_loader_upgradeable::get_program_data_address(program_id);
+    let expected_key = bpf_loader_upgradeable::get_program_data_address(&program_id);
 
-    if *program_data.key != expected_program_data_key {
-        return Err(Error::AccountInvalidKey(
-            *program_data.key,
-            expected_program_data_key,
-        ));
+    if program_data.key != &expected_key {
+        return Err(Error::AccountInvalidKey(*program_data.key, expected_key));
     }
 
-    let unpacked_program_data: UpgradeableLoaderState =
-        bincode::deserialize(&program_data.data.borrow())?;
-
-    let upgrade_authority: Pubkey = match unpacked_program_data {
+    let program_data: UpgradeableLoaderState = bincode::deserialize(&program_data.data.borrow())?;
+    let upgrade_authority: Pubkey = match program_data {
         UpgradeableLoaderState::ProgramData {
             slot: _,
             upgrade_authority_address,
@@ -68,62 +65,37 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8
     log_msg!("Instruction: Create Main Treasury");
 
     let accounts = Accounts::from_slice(accounts)?;
-    let (expected_key, bump_seed) = MainTreasury::address(program_id);
 
-    if *accounts.main_treasury.key != expected_key {
-        return Err(Error::AccountInvalidKey(
-            *accounts.main_treasury.key,
-            expected_key,
-        ));
+    let (main_treasury, bump_seed) = MainTreasury::address(program_id);
+    if accounts.main_treasury.key != &main_treasury {
+        let error = Error::AccountInvalidKey(*accounts.main_treasury.key, main_treasury);
+        return Err(error);
     }
 
-    if *accounts.mint.key != spl_token::native_mint::id() {
-        return Err(Error::Custom(std::format!(
-            "Account {} - not wrapped SOL mint",
-            accounts.mint.key
-        )));
+    let authority = get_program_upgrade_authority(program_id, &accounts.program_data)?;
+    if accounts.authority.key != &authority {
+        let error = Error::AccountInvalidKey(*accounts.authority.key, authority);
+        return Err(error);
+    }
+    if !accounts.authority.is_signer {
+        return Err(Error::AccountNotSigner(*accounts.authority.key));
     }
 
-    if *accounts.system_program.key != system_program::id() {
-        return Err(Error::AccountInvalidKey(
-            *accounts.system_program.key,
-            system_program::id(),
-        ));
+    let mut solana = Solana::new(accounts.all, accounts.payer, None)?;
+
+    let seeds = &[TREASURY_POOL_SEED.as_bytes(), &[bump_seed]];
+    system::CreateAccount {
+        account: main_treasury,
+        seeds: Seeds::new(seeds),
+        owner: SPL_TOKEN_ID,
+        space: pinocchio_token_interface::state::account::Account::LEN,
     }
+    .invoke(&mut solana)?;
 
-    if *accounts.token_program.key != spl_token::id() {
-        return Err(Error::AccountInvalidKey(
-            *accounts.token_program.key,
-            spl_token::id(),
-        ));
+    spl_token::InitializeAccount {
+        account: main_treasury,
+        mint: Pubkey::new_from_array(native_mint::ID),
+        owner: authority,
     }
-
-    let expected_upgrade_auth_key =
-        get_program_upgrade_authority(program_id, &accounts.program_data)?;
-    if *accounts.program_upgrade_auth.key != expected_upgrade_auth_key {
-        return Err(Error::AccountInvalidKey(
-            *accounts.program_upgrade_auth.key,
-            expected_upgrade_auth_key,
-        ));
-    }
-    if !accounts.program_upgrade_auth.is_signer {
-        return Err(Error::AccountNotSigner(*accounts.program_upgrade_auth.key));
-    }
-
-    accounts.system_program.create_pda_account(
-        &spl_token::id(),
-        &accounts.payer,
-        &accounts.main_treasury,
-        &[TREASURY_POOL_SEED.as_bytes(), &[bump_seed]],
-        spl_token::state::Account::LEN,
-        &Rent::get()?,
-    )?;
-
-    accounts.token_program.create_account(
-        &accounts.main_treasury,
-        &accounts.mint,
-        &accounts.program_upgrade_auth,
-    )?;
-
-    Ok(())
+    .invoke(&mut solana)
 }

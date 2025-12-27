@@ -1,11 +1,12 @@
 use crate::account::AllocateResult;
 use crate::error::{Error, Result};
 use crate::evm::database::Database;
-use crate::platform::{Chain, KeysIndex, Platform, FAKE_OPERATOR};
-use crate::types::seeds::InvokeSeeds;
-use crate::types::vector::{vector_map, VectorMap, VectorSliceExt, VectorVecExt, VectorVecSlowExt};
+use crate::executor::external_programs::ExternalProgram;
+use crate::platform::{Chain, KeysIndex, Platform};
+use crate::types::vector::{VectorMap, VectorSliceExt};
 use crate::types::Address;
 use allocator_api2::alloc::{self, Allocator};
+use allocator_api2::boxed::Box as Box2;
 use ethnum::U256;
 use maybe_async::maybe_async;
 use solana_program::instruction::Instruction;
@@ -27,7 +28,7 @@ where
     touched_accounts: TouchedAccounts,
 }
 
-#[maybe_async]
+#[maybe_async(?Send)]
 impl<'r, A, P> ExecutorState<'r, A, P>
 where
     A: Allocator + Copy,
@@ -53,12 +54,10 @@ where
         self.state.actions()
     }
 
-    #[maybe_async]
     pub async fn allocate_state_in_solana(&mut self) -> Result<AllocateResult> {
         self.state.allocate_state_in_solana().await
     }
 
-    #[maybe_async]
     pub async fn commit_state_to_solana(&mut self) -> Result<()> {
         self.state.commit_actions_to_solana().await?;
         self.state.commit_timestamps_to_solana().await
@@ -339,14 +338,9 @@ where
         unreachable!("Invoke should not be called in iterative mode, use queue_invoke instead");
     }
 
-    async fn queue_invoke(&mut self, instruction: Instruction, seeds: &[&[&[u8]]]) -> Result<()> {
-        let allocator = self.allocator();
-
+    async fn queue_invoke(&mut self, invokable: impl Into<ExternalProgram>) -> Result<()> {
         let action = Action::ExternalInstruction {
-            program_id: instruction.program_id,
-            accounts: instruction.accounts.elementwise_copy_into_vector(allocator),
-            data: instruction.data.into_vector(allocator),
-            seeds: InvokeSeeds::new(seeds, allocator),
+            invokable: Box2::new_in(invokable.into(), self.allocator()),
         };
         self.add_action(action);
 
@@ -356,31 +350,25 @@ where
     async fn external_account(&self, pubkey: &Pubkey) -> Result<OwnedAccountInfo> {
         self.touched_accounts.touch_solana(pubkey);
 
-        let metas = self.actions().collect_external_accounts();
-        if !metas.iter().any(|m| (&m.pubkey == pubkey) && m.is_writable) {
+        let mutated_pubkeys = self.actions().collect_external_accounts();
+        if !mutated_pubkeys.contains(&pubkey) {
+            // Account is not affected by any of queued instructions
             let account = self.state.external_account(pubkey).await?;
             return Ok(account);
         }
 
         let mut accounts = VectorMap::<Pubkey, OwnedAccountInfo>::new();
+        for pubkey in mutated_pubkeys {
+            self.touched_accounts.touch_solana(pubkey);
 
-        for m in metas {
-            self.touched_accounts.touch_solana(&m.pubkey);
-
-            let entry = accounts.entry(m.pubkey);
-            if let vector_map::Entry::Vacant(entry) = entry {
-                let account = if m.pubkey == FAKE_OPERATOR {
-                    OwnedAccountInfo::fake_operator()
-                } else {
-                    self.state.external_account(&m.pubkey).await?
-                };
-                entry.insert(account);
-            }
+            let account = self.state.external_account(pubkey).await?;
+            accounts.insert(*pubkey, account);
         }
 
-        let rent = self.rent().await?;
+        let platform = self.state.platform();
         self.actions()
-            .apply_to_external_accounts(&rent, &mut accounts)?;
+            .apply_to_external_accounts(platform, &mut accounts)
+            .await?;
 
         let account = accounts.into_single_value(pubkey).unwrap();
         Ok(account)

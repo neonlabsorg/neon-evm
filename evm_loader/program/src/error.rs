@@ -10,7 +10,7 @@ use solana_program::{
     pubkey::{Pubkey, PubkeyError},
     secp256k1_recover::Secp256k1RecoverError,
 };
-use std::{array::TryFromSliceError, num::TryFromIntError, str::Utf8Error};
+use std::{array::TryFromSliceError, convert::Infallible, num::TryFromIntError, str::Utf8Error};
 use thiserror::Error;
 
 mod as_display_string {
@@ -388,6 +388,19 @@ pub enum Error {
 
     #[error("Fatal error: {0}")]
     Fatal(#[serde(skip)] std::boxed::Box<dyn std::error::Error + Send>),
+
+    #[error("Utf8 Error: {0}")]
+    FromUtf8Error(
+        #[from]
+        #[serde(with = "as_display_string")]
+        std::string::FromUtf8Error,
+    ),
+
+    #[error("Pinocchio {0}")]
+    PinocchioError(&'static str),
+
+    #[error("Error: {0}")]
+    CustomStatic(&'static str),
 }
 
 impl Error {
@@ -421,13 +434,34 @@ impl From<Error> for ProgramError {
 
 impl From<&'static str> for Error {
     fn from(value: &'static str) -> Self {
-        Self::Custom(value.to_string())
+        Self::CustomStatic(value)
     }
 }
 
 impl From<String> for Error {
     fn from(value: String) -> Self {
         Self::Custom(value)
+    }
+}
+
+impl From<pinocchio::program_error::ProgramError> for Error {
+    fn from(value: pinocchio::program_error::ProgramError) -> Self {
+        let str = pinocchio::program_error::ToStr::to_str::<PinocchioCustomError>(&value);
+        Self::PinocchioError(str)
+    }
+}
+
+struct PinocchioCustomError;
+impl TryFrom<u32> for PinocchioCustomError {
+    type Error = Infallible;
+
+    fn try_from(_: u32) -> std::result::Result<Self, Self::Error> {
+        Ok(Self)
+    }
+}
+impl pinocchio::program_error::ToStr for PinocchioCustomError {
+    fn to_str<E>(&self) -> &'static str {
+        "Error: Unknown"
     }
 }
 

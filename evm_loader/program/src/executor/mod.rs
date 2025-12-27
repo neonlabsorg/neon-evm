@@ -7,6 +7,7 @@ mod synced_database;
 mod touched_accounts;
 mod transient_storage;
 
+pub mod external_programs;
 pub mod precompile_extension;
 
 pub use action::{Action, ActionExecutor, IterativeActions};

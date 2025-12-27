@@ -1,6 +1,7 @@
 use crate::account::pda;
+use crate::account::token;
 use crate::error::{Error, Result};
-use solana_program::{account_info::AccountInfo, program_pack::Pack, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 use std::ops::Deref;
 
 pub struct Treasury<'a> {
@@ -69,16 +70,12 @@ impl<'a> MainTreasury<'a> {
             return Err(Error::AccountInvalidKey(*info.key, expected_key));
         }
 
-        if *info.owner != spl_token::id() {
-            return Err(Error::AccountInvalidOwner(*info.key, spl_token::id()));
-        }
+        let account = token::State::from_account_info(info)?;
+        let account = account.load();
 
-        let account = spl_token::state::Account::unpack(&info.data.borrow())?;
-        if account.mint != spl_token::native_mint::id() {
-            return Err(Error::Custom(format!(
-                "Account {} - not wrapped SOL spl_token account",
-                info.key
-            )));
+        if !account.is_native() {
+            let error = format!("Account {} - not wrapped SOL spl_token account", info.key);
+            return Err(Error::Custom(error));
         }
 
         Ok(Self {

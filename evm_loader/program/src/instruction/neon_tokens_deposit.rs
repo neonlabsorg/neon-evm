@@ -1,3 +1,4 @@
+#![allow(unreachable_code, unused)]
 use arrayref::array_ref;
 use ethnum::U256;
 use solana_program::program::invoke_signed;
@@ -38,6 +39,7 @@ impl<'r, 'a> Accounts<'r, 'a> {
 
 pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Deposit");
+    panic!("Deposit instruction is disabled");
 
     let parsed_accounts = Accounts::from_slice(accounts)?;
 

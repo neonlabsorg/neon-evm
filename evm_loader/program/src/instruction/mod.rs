@@ -294,6 +294,39 @@ pub enum EvmInstruction {
     ContainerAllocate,
     ContainerAssemble,
     ContainerDisassemble,
+
+    /// Delete a list of program owned accounts
+    ///
+    /// Accounts:
+    ///  `[WRITE,SIGNER]` Authorized signer (receives the lamports)
+    ///  `[WRITE]` Program owned accounts to delete
+    /// Instruction data:
+    ///   None
+    DeleteEvmAccount,
+
+    /// Delete spl-token accounts owned by a contract
+    ///
+    /// Accounts:
+    ///  `[WRITE,SIGNER]` Authorized signer (receives the lamports)
+    ///  `[]` Contract account (spl-token authority for the token accounts)
+    ///  `[]` SPL Token program
+    ///  `[WRITE]` Pool spl-token account owned by the signer (receives the tokens)
+    ///  `[WRITE]` spl-token accounts owned by the contract to delete
+    /// Instruction data:
+    ///   None
+    DeleteSplTokenAccount,
+
+    /// Delete a deposit pool
+    ///
+    /// Accounts:
+    ///  `[WRITE,SIGNER]` Authorized signer (receives the lamports)
+    ///  `[WRITE]` Destination spl-token account owned by the signer (receives the tokens)
+    ///  `[WRITE]` Deposit pool spl-token account to delete
+    ///  `[]` Deposit pool authority (`PDA["Deposit"]`)
+    ///  `[]` SPL Token program
+    /// Instruction data:
+    ///   None
+    DeleteDepositPool,
 }
 
 impl EvmInstruction {
@@ -333,9 +366,12 @@ impl EvmInstruction {
             0x4D => Self::ScheduledTransactionSkipFromAccount,  // 77
             0x4E => Self::ScheduledTransactionSkipFromInstruction, // 78
 
-            0x50 => Self::ContainerAllocate,    // 80
-            0x51 => Self::ContainerAssemble,    // 81
-            0x52 => Self::ContainerDisassemble, // 82
+            0x50 => Self::ContainerAllocate,     // 80
+            0x51 => Self::ContainerAssemble,     // 81
+            0x52 => Self::ContainerDisassemble,  // 82
+            0x53 => Self::DeleteEvmAccount,      // 83
+            0x54 => Self::DeleteSplTokenAccount, // 84
+            0x55 => Self::DeleteDepositPool,     // 85
 
             0xA0 => Self::ConfigGetChainCount, // 160
             0xA1 => Self::ConfigGetChainInfo,
@@ -368,6 +404,9 @@ pub mod container_allocate;
 pub mod container_assemble;
 pub mod container_disassemble;
 pub mod create_main_treasury;
+pub mod delete_deposit_pool;
+pub mod delete_evm_account;
+pub mod delete_spl_token_account;
 pub mod neon_tokens_deposit;
 pub mod operator_create_balance;
 pub mod operator_delete_balance;

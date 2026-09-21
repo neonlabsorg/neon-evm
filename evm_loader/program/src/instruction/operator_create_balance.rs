@@ -9,7 +9,7 @@ use crate::types::Address;
 pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]) -> Result<()> {
     log_msg!("Instruction: Create Operator Balance Account");
 
-    let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[0]) }?;
+    let operator = Operator::from_account_info(&accounts[0])?;
     let system = program::System::from_account_info(&accounts[1])?;
     let account = accounts[2].clone();
 

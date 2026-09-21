@@ -17,7 +17,7 @@ pub fn process(_program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8
 
     log_msg!("Address: {}, ChainID: {}", address, chain_id);
 
-    let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[0]) }?;
+    let operator = Operator::from_account_info(&accounts[0])?;
     let mut solana = Solana::new(accounts, operator, None)?;
 
     if !solana.chains().any(|c| c.id == chain_id) {

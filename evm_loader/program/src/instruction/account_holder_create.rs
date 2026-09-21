@@ -7,7 +7,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     log_msg!("Instruction: Create Holder Account");
 
     let holder = accounts[0].clone();
-    let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1]) }?;
+    let operator = Operator::from_account_info(&accounts[1])?;
 
     let seed_len = usize::from_le_bytes(*array_ref![instruction, 0, 8]);
     let seed_bytes = instruction[8..8 + seed_len].to_vec();

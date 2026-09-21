@@ -12,7 +12,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let data = &instruction[32 + 8..];
 
     let holder_info = accounts[0].clone();
-    let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1]) }?;
+    let operator = Operator::from_account_info(&accounts[1])?;
 
     let mut holder = Holder::from_account_info(program_id, &holder_info)?;
     holder.validate(&operator)?;

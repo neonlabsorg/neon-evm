@@ -232,6 +232,15 @@ fn process_instruction(
         EvmInstruction::ContainerDisassemble => {
             instruction::container_disassemble::process(program_id, accounts, instruction)
         }
+        EvmInstruction::DeleteEvmAccount => {
+            instruction::delete_evm_account::process(program_id, accounts, instruction)
+        }
+        EvmInstruction::DeleteSplTokenAccount => {
+            instruction::delete_spl_token_account::process(program_id, accounts, instruction)
+        }
+        EvmInstruction::DeleteDepositPool => {
+            instruction::delete_deposit_pool::process(program_id, accounts, instruction)
+        }
     }
     .inspect_err(|e| {
         e.log_data();

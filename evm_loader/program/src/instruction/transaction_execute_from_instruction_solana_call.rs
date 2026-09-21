@@ -15,7 +15,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let messsage = &instruction[4..];
 
     let holder = Holder::from_account_info(program_id, &accounts[0])?;
-    let operator = unsafe { Operator::from_account_not_whitelisted(&accounts[1])? };
+    let operator = Operator::from_account_info(&accounts[1])?;
     let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
     let operator_balance = OperatorBalance::try_from_account_info(program_id, &accounts[3])?;
 

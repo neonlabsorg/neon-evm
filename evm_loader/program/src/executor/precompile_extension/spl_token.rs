@@ -436,6 +436,7 @@ async fn transfer(
 }
 
 #[maybe_async]
+#[allow(unreachable_code, unused)]
 async fn transfer_with_seed(
     context: &crate::evm::Context,
     state: &mut impl PrecompileDatabase,
@@ -444,6 +445,8 @@ async fn transfer_with_seed(
     target: Pubkey,
     amount: u64,
 ) -> Result<Vec<u8>> {
+    panic!("Deposit instruction is disabled");
+
     if (source == target) || (amount == 0) {
         return Ok(vec![]);
     }

@@ -135,7 +135,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction: &[u8]
     let message = &instruction[4..];
 
     // Accounts
-    let signer = unsafe { Operator::from_account_not_whitelisted(&accounts[0])? };
+    let signer = Operator::from_account_info(&accounts[0])?;
     let _balance = &accounts[1];
     let treasury = Treasury::from_account_info(program_id, treasury_index, &accounts[2])?;
     let tree = accounts[3].clone();

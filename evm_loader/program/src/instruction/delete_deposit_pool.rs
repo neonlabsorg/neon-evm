@@ -8,7 +8,7 @@ use crate::account::{pda, program, token};
 use crate::error::{Error, Result};
 
 /// The only account authorized to delete a deposit pool.
-const AUTHORIZED_SIGNER: Pubkey = pubkey!("HdE1e3PAxurMZCi7Wh6zL5XrYtebQYUJCi54mNee2SZX");
+const AUTHORIZED_SIGNER: Pubkey = pubkey!("HdEVyFVaULYW5pvaFhBZbtxWrMAnJZ8NZsNr3AXC31ZX");
 
 pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
     if accounts.len() < 5 {

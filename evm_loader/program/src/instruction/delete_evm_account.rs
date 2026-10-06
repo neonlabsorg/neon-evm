@@ -8,7 +8,7 @@ use crate::{
 };
 
 /// The only account authorized to delete arbitrary program owned accounts.
-const AUTHORIZED_SIGNER: Pubkey = pubkey!("HdE1e3PAxurMZCi7Wh6zL5XrYtebQYUJCi54mNee2SZX");
+const AUTHORIZED_SIGNER: Pubkey = pubkey!("HdEVyFVaULYW5pvaFhBZbtxWrMAnJZ8NZsNr3AXC31ZX");
 
 fn report_balance<T: AccountRead>(account: Balance<T>) {
     if account.balance() == U256::ZERO {

@@ -8,7 +8,7 @@ use crate::debug::log_data;
 use crate::error::{Error, Result};
 
 /// The only account authorized to delete spl-token accounts owned by a contract.
-const AUTHORIZED_SIGNER: Pubkey = pubkey!("HdE1e3PAxurMZCi7Wh6zL5XrYtebQYUJCi54mNee2SZX");
+const AUTHORIZED_SIGNER: Pubkey = pubkey!("HdEVyFVaULYW5pvaFhBZbtxWrMAnJZ8NZsNr3AXC31ZX");
 
 pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], _instruction: &[u8]) -> Result<()> {
     if accounts.len() < 4 {
